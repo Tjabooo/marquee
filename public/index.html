@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1F1019">
+  <meta name="color-scheme" content="dark">
+  <!-- Lets "Add to Home Screen" open it like an app on iPhone/Android -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Marquee">
+  <title>Marquee</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎞️</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="top-inner">
+      <h1 class="wordmark">Marquee</h1>
+      <form class="search" role="search" id="search-form">
+        <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+        <label class="sr-only" for="q">Search</label>
+        <input id="q" type="search" enterkeyhint="search" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="Search films and shows">
+        <button type="button" class="search-clear" id="q-clear" aria-label="Clear search" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+      </form>
+    </div>
+  </header>
+
+  <main id="main">
+    <section id="view-discover" class="view" aria-labelledby="discover-heading">
+      <h2 class="view-heading" id="discover-heading">Trending this week</h2>
+      <div id="discover-body"></div>
+    </section>
+
+    <section id="view-library" class="view" aria-labelledby="library-heading" hidden>
+      <h2 class="view-heading" id="library-heading">On this server</h2>
+      <div id="library-body"></div>
+    </section>
+
+    <section id="view-downloads" class="view" aria-labelledby="downloads-heading" hidden>
+      <div class="view-head">
+        <h2 class="view-heading" id="downloads-heading">Downloads</h2>
+        <button class="head-btn" id="find-torrents" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+          Find torrents
+        </button>
+      </div>
+      <div id="downloads-body"></div>
+    </section>
+  </main>
+
+  <nav class="tabs" aria-label="Sections">
+    <button class="tab" data-view="discover" aria-current="page">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4z"/><path d="M10 9.5v5l4-2.5z"/></svg>
+      <span>Discover</span>
+    </button>
+    <button class="tab" data-view="library">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4v16M10 4v16M15 5l4 14.5"/></svg>
+      <span>Library</span>
+    </button>
+    <button class="tab" data-view="downloads">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>
+      <span>Downloads</span>
+      <b class="tab-badge" id="dl-badge" hidden></b>
+    </button>
+  </nav>
+
+  <!-- Title details: bottom sheet on phones, centered panel on wide screens -->
+  <div class="sheet-backdrop" id="sheet-backdrop" hidden></div>
+  <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" hidden>
+    <div class="sheet-handle" aria-hidden="true"></div>
+    <button class="icon-btn sheet-close" id="sheet-close" aria-label="Close">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+    </button>
+    <div id="sheet-body"></div>
+  </div>
+
+  <!-- "Play on TV" picker -->
+  <div class="sheet-backdrop picker-backdrop" id="picker-backdrop" hidden></div>
+  <div class="sheet picker" id="picker" role="dialog" aria-modal="true" aria-labelledby="picker-title" hidden>
+    <div class="sheet-handle" aria-hidden="true"></div>
+    <button class="icon-btn sheet-close" aria-label="Close">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+    </button>
+    <div class="sheet-content" id="picker-body"></div>
+  </div>
+
+  <!-- Remote for whatever is playing on a TV -->
+  <div class="remote" id="remote" role="dialog" aria-modal="true" aria-labelledby="remote-title" hidden>
+    <div id="remote-body"></div>
+  </div>
+
+  <!-- Shows while something is playing on a TV -->
+  <button class="nowbar" id="nowbar" hidden></button>
+
+  <!-- Player -->
+  <div class="player" id="player" role="dialog" aria-modal="true" aria-labelledby="player-title" hidden>
+    <div class="player-bar">
+      <button class="icon-btn" id="player-close" aria-label="Close player">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+      </button>
+      <p class="player-title" id="player-title"></p>
+      <button class="icon-btn cc-btn" id="cc-btn" aria-label="Subtitles" aria-haspopup="menu" aria-expanded="false" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M10.5 10.2a2 2 0 1 0 0 3.6M17 10.2a2 2 0 1 0 0 3.6"/></svg>
+      </button>
+      <div class="cc-menu" id="cc-menu" role="menu" aria-label="Subtitles" hidden></div>
+      <button class="icon-btn cc-btn" id="sync-btn" aria-label="Audio sync" aria-haspopup="true" aria-expanded="false" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9h3l4-4v14l-4-4H3z"/><path d="M15 8.5a5 5 0 0 1 0 7M18 6a8.5 8.5 0 0 1 0 12"/></svg>
+      </button>
+      <div class="cc-menu sync-menu" id="sync-menu" role="dialog" aria-label="Audio sync" hidden></div>
+    </div>
+    <p class="player-note" id="player-note" role="status" hidden></p>
+    <video id="video" controls playsinline preload="metadata"></video>
+    <p class="player-error" id="player-error" hidden></p>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

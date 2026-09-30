@@ -1,0 +1,14 @@
+{
+  "name": "marquee",
+  "version": "1.0.0",
+  "description": "Self-hosted media server with torrent search, subtitles, automatic conversion and casting to smart TVs and Apple TV.",
+  "type": "module",
+  "main": "server.js",
+  "private": true,
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
