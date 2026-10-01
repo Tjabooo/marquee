@@ -18,7 +18,7 @@ const TMP_TAG = '.marquee-tmp';
 // Downloaded MP4s are never modified (they may be seeding). If their audio isn't browser-compatible,
 // a fixed copy is written to the cache directory and served to browsers only.
 const FIX_EXT = new Set(['.mp4', '.m4v', '.mov']);
-const INTERVAL_MS = 2 * 60 * 1000;
+const INTERVAL_MS = 30 * 1000;
 
 const status = {
   enabled: false,
