@@ -11,6 +11,7 @@ import * as cast from './cast.js';
 import * as converter from './convert.js';
 import * as torrents from './torrents.js';
 import * as subtitles from './subtitles.js';
+import { isHomeRequest, describeRequest } from './network.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(ROOT, 'public');
@@ -21,6 +22,9 @@ const TMDB_TOKEN = process.env.TMDB_TOKEN || '';
 const TMDB_KEY = process.env.TMDB_API_KEY || '';
 const TMDB_LANG = process.env.TMDB_LANG || 'en-US';
 const QBIT_URL = (process.env.QBIT_URL || '').replace(/\/+$/, '');
+// TVs live on the home network, so they're only offered to visitors who are at home.
+const CAST_WHEN_AWAY = (process.env.CAST_WHEN_AWAY || 'off').toLowerCase() === 'on';
+const castAllowed = async (req) => CAST_WHEN_AWAY || (await isHomeRequest(req)) !== false;
 
 // LAN address TVs use to reach this server. Override with SERVER_IP.
 function lanAddress() {
@@ -499,6 +503,7 @@ async function handleApi(req, res, url) {
       search: Boolean(TMDB_TOKEN || TMDB_KEY), library: Boolean(MEDIA_DIR), downloads: Boolean(QBIT_URL),
       torrents: torrents.torrentsEnabled(),
       subtitles: subtitles.subtitlesConfigured(),
+      casting: await castAllowed(req),
     });
   }
   if (p === '/api/convert') return sendJson(res, 200, converter.converterStatus());
@@ -558,12 +563,19 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, { items: await listDownloads() });
   }
   // ---- casting ----
+  if (p === '/api/network') {
+    return sendJson(res, 200, { ...(await describeRequest(req)), castAllowed: await castAllowed(req), castWhenAwaySetting: CAST_WHEN_AWAY });
+  }
   if (p === '/api/cast/devices') {
+    if (!(await castAllowed(req))) return sendJson(res, 200, { devices: [], notes: [], away: true });
     if (url.searchParams.get('refresh')) return sendJson(res, 200, await cast.discover());
     return sendJson(res, 200, { devices: cast.knownDevices(), notes: [] });
   }
   if (p === '/api/cast/sessions') return sendJson(res, 200, { sessions: cast.listSessions() });
   if (p === '/api/cast/play' && req.method === 'POST') {
+    if (!(await castAllowed(req))) {
+      throw new HttpError(403, 'You’re away from home, so the TVs there aren’t available. Play it on this device instead.');
+    }
     const body = await readJson(req);
     const sub = body.sub && subtitles.validLang(body.sub) ? String(body.sub).toLowerCase() : null;
     const media = await resolveMedia(body.kind, body.id, sub);

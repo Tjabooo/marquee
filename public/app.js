@@ -629,6 +629,12 @@ function openPicker(file, opener) {
     if (refresh) list.replaceChildren(h('li', { class: 'searching', role: 'status' }, 'Looking for TVs on your network…'));
     try {
       const data = await api(`/api/cast/devices${refresh ? '?refresh=1' : ''}`);
+      if (data.away) {
+        again.hidden = true;
+        list.replaceChildren(h('li', {}, notice('You’re away from home',
+          'Only TVs on the server’s home network can be used, and you’re on a different network right now. Close this and press Play to watch it on this device.')));
+        return;
+      }
       if (!refresh && !data.devices.length) return load(true); // empty cache: scan now
       list.replaceChildren(...data.devices.map(deviceRow));
       if (!data.devices.length) {

@@ -93,6 +93,7 @@ All settings live in `.env`. Changes take effect after a restart.
 | --- | --- | --- |
 | `DLNA_DEVICES` | | Description URLs for TVs that aren't discovered automatically. |
 | `CAST_APPLETV` | `on` | Set to `off` to disable Apple TV support. |
+| `CAST_WHEN_AWAY` | `off` | Set to `on` to allow casting to home TVs from outside the home network. |
 | `ATVSCRIPT` | `atvscript` | Full path to pyatv's `atvscript` if it isn't on `PATH`. |
 | `ATV_HOSTS` | | Apple TV IP addresses to query directly if discovery fails. |
 
@@ -137,6 +138,10 @@ winget install Gyan.FFmpeg
 ```
 
 On first run the converter processes existing files in the background at below-normal priority. NVENC is used automatically when an NVIDIA GPU is available.
+
+### Away from home
+
+TVs are only offered to visitors on the server's home network, since that's the only network the server can see. Direct visits are judged by their LAN address. Visits through Cloudflare Tunnel are compared with the home network's public IPv4 address and IPv6 /64, which the server looks up every 10 minutes through icanhazip.com, Cloudflare or ipify. If no lookup succeeds, casting stays available. Set `CAST_WHEN_AWAY=on` to allow casting from anywhere; `GET /api/network` shows how a request was classified.
 
 ### Smart TVs (DLNA)
 
@@ -211,6 +216,7 @@ marquee/
 ├── subtitles.js          OpenSubtitles client and local subtitle files
 ├── convert.js            Background ffmpeg conversion and audio fixes
 ├── cast.js               DLNA and Apple TV casting
+├── network.js            Home-network detection for casting
 ├── public/
 │   ├── index.html
 │   ├── app.js            Web client
@@ -252,6 +258,7 @@ The web client uses a JSON API that can also be scripted. `<kind>` is `lib` for 
 | `GET` | `/api/subs/file/<kind>/<id>/<lang>.vtt` | Subtitles as WebVTT (`.srt` also available) |
 | `GET` | `/api/stream/<kind>/<id>` | Video stream with range support |
 | `GET` | `/api/cast/devices`, `/api/cast/sessions` | TVs and what's playing |
+| `GET` | `/api/network` | Whether the request is from the home network, for troubleshooting |
 | `POST` | `/api/cast/play` | Start playback on a TV |
 
 ## Security
