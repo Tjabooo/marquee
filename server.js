@@ -7,6 +7,7 @@ import path from 'node:path';
 import { pipeline } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import os from 'node:os';
+import crypto from 'node:crypto';
 import * as cast from './cast.js';
 import * as converter from './convert.js';
 import * as torrents from './torrents.js';
@@ -409,6 +410,59 @@ async function sourceFile(kind, id) {
   }
   throw new HttpError(400, 'Unknown media type.');
 }
+// ---------- signed stream links ----------
+// AirPlay and Chromecast hand the video URL to the TV, which fetches it itself and can't
+// sign in to Cloudflare Access. /play/ links carry an expiring signature instead, so only
+// that one file can be fetched, and only for a limited time.
+const PLAY_LINK_HOURS = 12;
+const streamSecret = (() => {
+  if (process.env.STREAM_SECRET) return process.env.STREAM_SECRET;
+  const file = path.join(ROOT, '.marquee-secret');
+  try { return fs.readFileSync(file, 'utf8').trim(); } catch { /* first run */ }
+  const secret = crypto.randomBytes(32).toString('hex');
+  try { fs.writeFileSync(file, secret); } catch { /* links then only last until restart */ }
+  return secret;
+})();
+const signPlay = (kind, id, variant, exp) => crypto.createHmac('sha256', streamSecret)
+  .update(`${kind}|${id}|${variant}|${exp}`).digest('base64url').slice(0, 32);
+
+// variant "browser" = the copy with browser-friendly audio; "tv" = original audio for TVs.
+async function streamFile(kind, id, variant) {
+  const browser = variant === 'browser';
+  if (kind === 'lib') return browser ? converter.preferConverted(librarySource(id), { browser: true }) : libraryPath(id);
+  if (kind === 'dl') {
+    if (!validHash(id)) throw new HttpError(400, 'Invalid download.');
+    return browser ? converter.preferConverted(await downloadSource(id), { browser: true }) : downloadPath(id);
+  }
+  throw new HttpError(400, 'Unknown media type.');
+}
+
+async function playLink(kind, id, variant) {
+  if (!['browser', 'tv'].includes(variant)) throw new HttpError(400, 'Unknown variant.');
+  if (!/^[A-Za-z0-9_-]+$/.test(id)) throw new HttpError(400, 'Invalid file.');
+  const file = await streamFile(kind, id, variant);
+  if (!fs.existsSync(file)) throw new HttpError(404, 'That file is no longer on the server.');
+  const exp = Math.floor(Date.now() / 1000) + PLAY_LINK_HOURS * 3600;
+  const name = path.basename(file);
+  return {
+    url: `/play/${kind}/${id}/${variant}/${exp}/${signPlay(kind, id, variant, exp)}/${encodeURIComponent(name)}`,
+    name,
+    ext: path.extname(name).slice(1).toLowerCase(),
+  };
+}
+
+async function handlePlay(req, res, url) {
+  const m = url.pathname.match(/^\/play\/(lib|dl)\/([A-Za-z0-9_-]+)\/(browser|tv)\/(\d+)\/([A-Za-z0-9_-]+)(?:\/[^/]*)?$/);
+  if (!m) throw new HttpError(404, 'Not found.');
+  const [, kind, id, variant, exp, sig] = m;
+  const expected = signPlay(kind, id, variant, exp);
+  if (sig.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
+    throw new HttpError(403, 'Invalid link.');
+  }
+  if (Number(exp) < Date.now() / 1000) throw new HttpError(410, 'This link has expired. Start playback again.');
+  return sendVideo(req, res, await streamFile(kind, id, variant));
+}
+
 // Title, year and episode used for subtitle searches.
 const infoFor = (file) => parseName(path.basename(file));
 
@@ -563,6 +617,10 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, { items: await listDownloads() });
   }
   // ---- casting ----
+  if (p === '/api/play-link') {
+    const q = url.searchParams;
+    return sendJson(res, 200, await playLink(q.get('kind') || '', q.get('id') || '', q.get('variant') || 'browser'));
+  }
   if (p === '/api/network') {
     return sendJson(res, 200, { ...(await describeRequest(req)), castAllowed: await castAllowed(req), castWhenAwaySetting: CAST_WHEN_AWAY });
   }
@@ -716,6 +774,7 @@ const server = http.createServer(async (req, res) => {
       || (req.method === 'POST' && (url.pathname.startsWith('/api/cast/') || url.pathname === '/api/downloads/add' || url.pathname === '/api/subs/fetch' || url.pathname === '/api/library/delete' || /^\/api\/media\/\w+\/[\w-]+\/sync$/.test(url.pathname)));
     if (!allowed) throw new HttpError(405, 'Method not allowed.');
     if (url.pathname.startsWith('/api/')) await handleApi(req, res, url);
+    else if (url.pathname.startsWith('/play/')) await handlePlay(req, res, url);
     else await serveStatic(res, url.pathname);
   } catch (err) {
     const status = err.status || 500;

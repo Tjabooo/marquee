@@ -94,6 +94,7 @@ All settings live in `.env`. Changes take effect after a restart.
 | `DLNA_DEVICES` | | Description URLs for TVs that aren't discovered automatically. |
 | `CAST_APPLETV` | `on` | Set to `off` to disable Apple TV support. |
 | `CAST_WHEN_AWAY` | `off` | Set to `on` to allow casting to home TVs from outside the home network. |
+| `STREAM_SECRET` | generated | Key for signing `/play/` links. Generated into `.marquee-secret` on first run if empty. |
 | `ATVSCRIPT` | `atvscript` | Full path to pyatv's `atvscript` if it isn't on `PATH`. |
 | `ATV_HOSTS` | | Apple TV IP addresses to query directly if discovery fails. |
 
@@ -142,6 +143,12 @@ On first run the converter processes existing files in the background at below-n
 ### Away from home
 
 TVs are only offered to visitors on the server's home network, since that's the only network the server can see. Direct visits are judged by their LAN address. Visits through Cloudflare Tunnel are compared with the home network's public IPv4 address and IPv6 /64, which the server looks up every 10 minutes through icanhazip.com, Cloudflare or ipify. If no lookup succeeds, casting stays available. Set `CAST_WHEN_AWAY=on` to allow casting from anywhere; `GET /api/network` shows how a request was classified.
+
+### AirPlay and Chromecast from your phone
+
+Wherever you are, the player and the **Play on TV** sheet offer your phone's own AirPlay (Safari) or Chromecast (Chrome on Android) list, so you can use TVs on the network you're on. The TV streams straight from the server at full quality while the phone acts as a remote. With AirPlay, the TV receives the version with the original surround audio.
+
+The TV fetches the video itself and can't sign in to Cloudflare Access, so the player uses signed `/play/` links: each one works for a single file for 12 hours. If Marquee is behind Cloudflare Access, add a second Access application for the path `<your-hostname>/play` with a **Bypass** policy (Include: Everyone). Everything else stays behind your login.
 
 ### Smart TVs (DLNA)
 
@@ -234,6 +241,7 @@ Created at runtime and excluded from Git:
 | `.env` | Your configuration and credentials |
 | `.marquee-convert.json` | Conversion failures and audio checks |
 | `.marquee-subs.json` | Subtitles waiting for downloads to finish |
+| `.marquee-secret` | Key for signed `/play/` links |
 | `cache/audio/` | Audio-fixed copies of downloaded MP4s |
 | `logs/` | Output from the auto-start task |
 
@@ -257,6 +265,8 @@ The web client uses a JSON API that can also be scripted. `<kind>` is `lib` for 
 | `POST` | `/api/subs/fetch` | Download subtitles (`{ kind, id, lang }`) |
 | `GET` | `/api/subs/file/<kind>/<id>/<lang>.vtt` | Subtitles as WebVTT (`.srt` also available) |
 | `GET` | `/api/stream/<kind>/<id>` | Video stream with range support |
+| `GET` | `/api/play-link?kind=&id=&variant=` | Signed `/play/` link (`variant`: `browser` or `tv`) |
+| `GET` | `/play/...` | Video stream through a signed link; works without signing in |
 | `GET` | `/api/cast/devices`, `/api/cast/sessions` | TVs and what's playing |
 | `GET` | `/api/network` | Whether the request is from the home network, for troubleshooting |
 | `POST` | `/api/cast/play` | Start playback on a TV |

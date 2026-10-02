@@ -20,6 +20,7 @@ function h(tag, props = {}, ...kids) {
 }
 
 const ICONS = {
+  airplay: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 17H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-1"/><path d="M12 14l5 6H7z"/></svg>',
   play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l13-7.5z"/></svg>',
   pause: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 4.5h4v15h-4zM13.5 4.5h4v15h-4z"/></svg>',
   tv: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4.5" width="18" height="12" rx="2"/><path d="M8.5 20h7M12 16.5V20"/></svg>',
@@ -617,10 +618,20 @@ function openPicker(file, opener) {
   const list = h('ul', { class: 'rows device-list' });
   const notes = h('div', { class: 'picker-notes' });
   const again = h('button', { class: 'retry', onclick: () => load(true) }, 'Search again');
+  // The phone's own AirPlay / Chromecast list: works on whatever network the phone is on.
+  const nearby = canCastFromBrowser && h('button', {
+    class: 'device device-nearby',
+    onclick: () => openPlayer(file, { replace: true, castHint: true }),
+  },
+  h('span', { class: 'device-icon' }, icon('airplay')),
+  h('span', { class: 'row-text' },
+    h('span', { class: 'row-title' }, hasAirPlay ? 'AirPlay to a TV near you' : 'Cast to a TV near you'),
+    h('span', { class: 'row-meta' }, h('span', {}, 'Pick a TV from this phone’s own list. The TV streams straight from the server.'))));
+  const nearbyWrap = h('div', { class: 'nearby', hidden: true }, h('p', { class: 'muted nearby-label' }, 'Or from this phone'), nearby);
   $('#picker-body').replaceChildren(
     h('h2', { id: 'picker-title' }, 'Play on TV'),
     h('p', { class: 'muted picker-sub' }, name),
-    list, notes, again);
+    ...[list, notes, again, nearby && nearbyWrap].filter(Boolean));
   pushOverlay(showSheet($('#picker'), $('#picker-backdrop'), () => opener?.focus({ preventScroll: true })));
 
   async function load(refresh) {
@@ -631,10 +642,17 @@ function openPicker(file, opener) {
       const data = await api(`/api/cast/devices${refresh ? '?refresh=1' : ''}`);
       if (data.away) {
         again.hidden = true;
-        list.replaceChildren(h('li', {}, notice('You’re away from home',
-          'Only TVs on the server’s home network can be used, and you’re on a different network right now. Close this and press Play to watch it on this device.')));
+        if (nearby) {
+          nearbyWrap.hidden = true;
+          list.replaceChildren(h('li', {}, nearby));
+          notes.replaceChildren(h('p', { class: 'muted' }, 'You’re away from home, so the TVs there aren’t listed.'));
+        } else {
+          list.replaceChildren(h('li', {}, notice('You’re away from home',
+            'The TVs at home aren’t available from here, and this browser can’t cast to TVs near you. Open Marquee in Safari (AirPlay) or Chrome (Chromecast) to use one, or press Play to watch here.')));
+        }
         return;
       }
+      if (nearby) nearbyWrap.hidden = false;
       if (!refresh && !data.devices.length) return load(true); // empty cache: scan now
       list.replaceChildren(...data.devices.map(deviceRow));
       if (!data.devices.length) {
@@ -1140,6 +1158,86 @@ function saveProgress(force = false) {
 const mediaId = (f) => (f.kind === 'lib' ? f.id || f.key : f.hash || f.key);
 
 // ---- subtitles ----
+// ---------- AirPlay / Chromecast from the browser ----------
+// Safari hands the video URL to the Apple TV, which then streams straight from the server
+// (full quality; the phone just acts as a remote). Signed /play/ links make that possible
+// through Cloudflare Access. Chrome on Android does the same with Chromecast.
+const airplayBtn = $('#airplay-btn');
+const hasAirPlay = 'WebKitPlaybackTargetAvailabilityEvent' in window;
+const hasRemotePlayback = !hasAirPlay && 'remote' in HTMLMediaElement.prototype;
+const canCastFromBrowser = hasAirPlay || hasRemotePlayback;
+let remoteWatchId = null;
+let onTvVersion = false;   // AirPlay is playing the TV version (original audio)
+let swappingSource = false;
+
+airplayBtn.setAttribute('aria-label', hasAirPlay ? 'AirPlay' : 'Cast to a TV');
+airplayBtn.addEventListener('click', () => {
+  airplayBtn.classList.remove('is-hint');
+  if (hasAirPlay) video.webkitShowPlaybackTargetPicker();
+  else if (hasRemotePlayback) video.remote.prompt().catch(() => { /* dismissed */ });
+});
+if (hasAirPlay) {
+  video.addEventListener('webkitplaybacktargetavailabilitychanged', (e) => {
+    airplayBtn.hidden = e.availability !== 'available';
+  });
+  video.addEventListener('webkitcurrentplaybacktargetiswirelesschanged', () => onWireless(video.webkitCurrentPlaybackTargetIsWireless));
+}
+if (hasRemotePlayback) {
+  video.remote.addEventListener('connect', () => onWireless(true));
+  video.remote.addEventListener('disconnect', () => onWireless(false));
+}
+
+function watchCastTargets() {
+  if (!hasRemotePlayback) return; // Safari reports availability through the event above
+  video.remote.watchAvailability((available) => { airplayBtn.hidden = !available; })
+    .then((id) => { remoteWatchId = id; })
+    .catch(() => { airplayBtn.hidden = true; });
+}
+
+function resetCasting() {
+  airplayBtn.hidden = true;
+  airplayBtn.classList.remove('is-hint');
+  if (hasRemotePlayback && remoteWatchId != null) video.remote.cancelWatchAvailability(remoteWatchId).catch(() => {});
+  remoteWatchId = null;
+  onTvVersion = false;
+}
+
+// Keeps the position and play state while changing the video's source.
+function swapSource(url) {
+  const at = video.currentTime;
+  const wasPlaying = !video.paused;
+  swappingSource = true;
+  video.addEventListener('loadedmetadata', () => {
+    swappingSource = false;
+    if (at > 1) video.currentTime = at;
+    if (wasPlaying) video.play().catch(() => {});
+  }, { once: true });
+  video.src = url;
+}
+
+async function onWireless(on) {
+  const session = current;
+  if (!session) return;
+  const note = $('#player-note');
+  if (on) {
+    note.textContent = 'Playing on your TV. The controls here work as a remote.';
+    note.hidden = false;
+  } else if (note.textContent.startsWith('Playing on your TV')) {
+    note.hidden = true;
+  }
+  // With AirPlay, switch to the TV version so the TV gets the original surround audio.
+  // (Chromecast keeps the current version: changing the source would end the cast.)
+  if (!hasAirPlay || on === onTvVersion) return;
+  try {
+    const link = await api(`/api/play-link?kind=${session.kind}&id=${encodeURIComponent(mediaId(session))}&variant=${on ? 'tv' : 'browser'}`);
+    if (current !== session) return;
+    const tvCanPlay = ['mp4', 'm4v', 'mov'].includes(link.ext);
+    if (on && (!tvCanPlay || link.name === session.browserName)) return; // nothing better to send
+    swapSource(link.url);
+    onTvVersion = on;
+  } catch { /* keep playing the current version */ }
+}
+
 const ccBtn = $('#cc-btn');
 const ccMenu = $('#cc-menu');
 let ccLangs = [];
@@ -1314,20 +1412,19 @@ async function watchAudio(f, session, target = null) {
 function switchToFixedAudio(session, message) {
   const at = video.currentTime;
   const wasPlaying = !video.paused;
-  const base = video.src.split('&v=')[0];
+  const base = video.src.replace(/[?&]v=\d+$/, '');
   video.addEventListener('loadedmetadata', () => {
     if (current !== session) return;
     if (at > 1) video.currentTime = at;
     if (wasPlaying) video.play().catch(() => {});
   }, { once: true });
-  video.src = `${base}&v=${Date.now()}`; // cache-busting URL
+  video.src = `${base}${base.includes('?') ? '&' : '?'}v=${Date.now()}`; // cache-busting URL
   $('#player-note').hidden = true;
   toast(message);
 }
 
-async function openPlayer(f) {
-  // ?browser=1 serves the audio-fixed copy when one exists.
-  const src = `${f.kind === 'lib' ? `/api/stream/lib/${f.id || f.key}` : `/api/stream/dl/${f.hash || f.key}`}?browser=1`;
+async function openPlayer(f, opts = {}) {
+  let src = null; // signed link to the browser version (audio-fixed copy when one exists)
   const opener = document.activeElement;
   const err = $('#player-error');
   const session = current = { ...f };
@@ -1338,9 +1435,10 @@ async function openPlayer(f) {
   document.body.style.overflow = 'hidden';
   $('#player-close').focus({ preventScroll: true });
 
-  pushOverlay(() => {
+  (opts.replace ? swapTopOverlay : pushOverlay)(() => {
     saveProgress(true);
     video.pause();
+    resetCasting();
     clearSubTracks();
     closeCcMenu();
     ccBtn.hidden = true;
@@ -1357,8 +1455,11 @@ async function openPlayer(f) {
     if (state.view === 'library') renderLibrary(); // refresh watched bars
   });
 
-  // Request one byte first so server errors can be shown as text.
+  // Get a signed link, then request one byte so server errors can be shown as text.
   try {
+    const link = await api(`/api/play-link?kind=${f.kind}&id=${encodeURIComponent(mediaId(f))}&variant=browser`);
+    src = link.url;
+    session.browserName = link.name;
     const r = await fetch(src, { headers: { Range: 'bytes=0-0' } });
     if (!r.ok) {
       let msg = `The server responded with ${r.status}.`;
@@ -1375,6 +1476,15 @@ async function openPlayer(f) {
 
   if (current !== session) return; // closed while we were checking
   video.src = src;
+  watchCastTargets();
+  if (opts.castHint && canCastFromBrowser) {
+    const note = $('#player-note');
+    note.textContent = hasAirPlay
+      ? 'Tap the AirPlay button at the top to pick a TV. No button means there’s no AirPlay TV on this network.'
+      : 'Tap the cast button at the top to pick a TV. No button means there’s no Chromecast on this network.';
+    note.hidden = false;
+    airplayBtn.classList.add('is-hint');
+  }
   setupPlayerSubs(f, session);
   syncBtn.hidden = true;
   watchAudio(f, session);
@@ -1382,6 +1492,7 @@ async function openPlayer(f) {
 }
 
 video.addEventListener('loadedmetadata', () => {
+  if (swappingSource) return; // swapSource restores the position itself
   const saved = current && savedProgress(current);
   if (saved && saved.time > 30 && saved.time < video.duration - 90) {
     video.currentTime = saved.time;

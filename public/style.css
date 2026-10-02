@@ -141,18 +141,14 @@ main {
 }
 .segmented button[aria-pressed="true"] { color: var(--velvet); background: var(--paper); }
 .genre-chips {
-  display: flex; gap: 6px;
-  margin: 8px calc(-1 * var(--gutter)) -2px;
-  padding: 4px var(--gutter);
+  display: flex; gap: 6px; margin: 12px calc(-1 * var(--gutter)) 0; padding: 0 var(--gutter) 2px;
   overflow-x: auto; scrollbar-width: none; scroll-padding: 0 var(--gutter);
 }
 .genre-chips::-webkit-scrollbar { display: none; }
 .genre-chips .chip { flex: none; }
 
 .hero {
-  display: flex; gap: 12px;
-  margin: -4px calc(-1 * var(--gutter)) 22px;
-  padding: 4px var(--gutter);
+  display: flex; gap: 12px; margin: 0 calc(-1 * var(--gutter)) 26px; padding: 0 var(--gutter);
   list-style: none; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding: 0 var(--gutter); scrollbar-width: none;
 }
 .hero::-webkit-scrollbar { display: none; }
@@ -185,8 +181,7 @@ main {
 }
 .shelf-items {
   display: grid; grid-auto-flow: column; grid-auto-columns: 124px; gap: 12px;
-  margin: -4px calc(-1 * var(--gutter));
-  padding: 4px var(--gutter);
+  margin: 0 calc(-1 * var(--gutter)); padding: 0 var(--gutter);
   list-style: none; overflow-x: auto; scroll-snap-type: x proximity; scroll-padding: 0 var(--gutter); scrollbar-width: none;
 }
 .shelf-items::-webkit-scrollbar { display: none; }
@@ -668,3 +663,11 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* Phone's own AirPlay / Chromecast */
+.airplay-btn.is-hint { color: var(--velvet); background: var(--bulb); animation: hint-pulse 1.6s ease-in-out 3; }
+@keyframes hint-pulse { 50% { box-shadow: 0 0 0 8px rgba(244, 193, 82, 0.25); } }
+.device-nearby { border-color: var(--line); }
+.device-nearby .device-icon { color: var(--velvet); background: var(--bulb); }
+.nearby { margin-top: 18px; }
+.nearby-label { margin: 0 0 8px; font-size: 14px; }

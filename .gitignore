@@ -6,6 +6,7 @@ logs/
 cache/
 .marquee-convert.json
 .marquee-subs.json
+.marquee-secret
 *.marquee-tmp.mp4
 
 # Dependencies and environments
