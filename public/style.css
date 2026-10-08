@@ -671,3 +671,26 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .device-nearby .device-icon { color: var(--velvet); background: var(--bulb); }
 .nearby { margin-top: 18px; }
 .nearby-label { margin: 0 0 8px; font-size: 14px; }
+
+/* Phone turned sideways: the video fills the screen with nothing on top, so screen
+   mirroring to a TV shows just the film. Turn the phone back (or swipe back) to leave. */
+@media (orientation: landscape) and (max-height: 600px) and (pointer: coarse) {
+  .player { padding: 0; }
+  .player-note { display: none !important; }
+  /* The bar floats over the video: it appears on a tap and fades out while the film plays. */
+  .player-bar {
+    position: absolute; top: 0; left: 0; right: 0; z-index: 2;
+    padding: 10px max(env(safe-area-inset-left, 0px), 16px) 24px max(env(safe-area-inset-right, 0px), 16px);
+    background: linear-gradient(rgba(0, 0, 0, 0.7), transparent);
+    transition: opacity 0.3s ease;
+  }
+  .player:not(.ui-visible) .player-bar { opacity: 0; pointer-events: none; }
+  /* Keep the video's controls out of the bottom edge: in Safari, a tap there brings
+     back its own toolbar. The strip below is black, so it doesn't show on the TV. */
+  .player video {
+    position: absolute; top: 0; left: 0;
+    width: 100%; height: calc(100% - max(env(safe-area-inset-bottom, 0px), 16px));
+    object-fit: contain;
+  }
+  .player video::cue { font-size: 1.15em; }
+}

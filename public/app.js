@@ -1243,6 +1243,27 @@ const ccMenu = $('#cc-menu');
 let ccLangs = [];
 let ccActive = null;
 
+// iOS's own fullscreen player picks captions itself and often lands on "Auto", which hides
+// subtitles in your own language. Re-select ours when it opens, and mirror any change the
+// viewer makes there back to the CC button when it closes.
+function showActiveSub() {
+  for (const t of video.textTracks) {
+    if (t.kind === 'subtitles') t.mode = ccActive && t.language === ccActive ? 'showing' : 'disabled';
+  }
+}
+video.addEventListener('webkitbeginfullscreen', () => {
+  showActiveSub();
+  setTimeout(showActiveSub, 500); // again, after the native player has applied its own choice
+});
+video.addEventListener('webkitendfullscreen', () => {
+  const showing = [...video.textTracks].find((t) => t.kind === 'subtitles' && t.mode === 'showing');
+  ccActive = showing ? showing.language : null;
+  ccBtn.classList.toggle('is-on', Boolean(ccActive));
+  ccMenu.querySelectorAll('.cc-item').forEach((b, i) => {
+    b.setAttribute('aria-checked', String(i === 0 ? !ccActive : ccLangs[i - 1]?.code === ccActive));
+  });
+});
+
 function clearSubTracks() {
   video.querySelectorAll('track').forEach((t) => t.remove());
   ccActive = null;
@@ -1423,6 +1444,42 @@ function switchToFixedAudio(session, message) {
   toast(message);
 }
 
+// Safari tints its toolbars with theme-color; black while the player is open so it blends in.
+const themeMeta = document.querySelector('meta[name="theme-color"]');
+const PAGE_THEME = themeMeta?.content;
+const setTheme = (color) => { if (themeMeta) themeMeta.content = color; };
+
+// Safari's toolbars can't be hidden by a web page; the Home Screen version has none.
+// Mention that once, the first time the phone is turned sideways in Safari.
+const isStandalone = window.navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+const landscapeQuery = matchMedia('(orientation: landscape) and (max-height: 600px) and (pointer: coarse)');
+landscapeQuery.addEventListener('change', (e) => {
+  if (!e.matches || isStandalone || !current || !/iPhone|iPad/.test(navigator.userAgent)) return;
+  try {
+    if (localStorage.getItem('tip:homescreen')) return;
+    localStorage.setItem('tip:homescreen', '1');
+  } catch { return; }
+  toast('Tip: open Marquee from your Home Screen for fullscreen without Safari’s bar');
+});
+
+// Theater mode (phone sideways): the top bar shows on a tap and hides 3 s into playback,
+// like the video's own controls. Stays up while paused or while a menu is open.
+const playerEl = $('#player');
+let uiTimer = null;
+function showPlayerUi() {
+  playerEl.classList.add('ui-visible');
+  clearTimeout(uiTimer);
+  if (video.paused) return;
+  uiTimer = setTimeout(() => {
+    if (!ccMenu.hidden || !syncMenu.hidden) return showPlayerUi();
+    playerEl.classList.remove('ui-visible');
+  }, 3000);
+}
+playerEl.addEventListener('touchstart', showPlayerUi, { passive: true });
+playerEl.addEventListener('click', showPlayerUi);
+video.addEventListener('play', showPlayerUi);
+video.addEventListener('pause', showPlayerUi);
+
 async function openPlayer(f, opts = {}) {
   let src = null; // signed link to the browser version (audio-fixed copy when one exists)
   const opener = document.activeElement;
@@ -1435,7 +1492,10 @@ async function openPlayer(f, opts = {}) {
   document.body.style.overflow = 'hidden';
   $('#player-close').focus({ preventScroll: true });
 
+  setTheme('#000000');
+  showPlayerUi();
   (opts.replace ? swapTopOverlay : pushOverlay)(() => {
+    setTheme(PAGE_THEME);
     saveProgress(true);
     video.pause();
     resetCasting();
