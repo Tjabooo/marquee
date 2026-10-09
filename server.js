@@ -13,6 +13,7 @@ import * as converter from './convert.js';
 import * as torrents from './torrents.js';
 import * as subtitles from './subtitles.js';
 import * as subsync from './subsync.js';
+import * as activity from './activity.js';
 import { isHomeRequest, describeRequest } from './network.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -42,6 +43,7 @@ function lanAddress() {
   return '127.0.0.1';
 }
 const LAN_IP = lanAddress();
+activity.initActivity({ dataDir: ROOT });
 cast.initCasting({ lanIp: LAN_IP });
 subsync.initSubsync({ dataDir: ROOT, audioShift: (video) => converter.syncState(video).shift });
 subtitles.initSubtitles({
@@ -569,9 +571,22 @@ async function readJson(req) {
 }
 
 // ---------- API routes ----------
+// "Dune (2021)", "Severance S02 E03": how a file is named in the activity log.
+function titleOf(file) {
+  const info = parseName(path.basename(file));
+  const ep = info.season != null ? ` S${String(info.season).padStart(2, '0')} E${String(info.episode).padStart(2, '0')}` : '';
+  return `${info.title}${info.year && !ep ? ` (${info.year})` : ''}${ep}`;
+}
+
 async function handleApi(req, res, url) {
   const p = url.pathname;
   let m;
+  activity.seen(req);
+
+  if (p === '/api/activity') {
+    if (!activity.isAdmin(req)) throw new HttpError(403, 'Only the server’s owner can see activity.');
+    return sendJson(res, 200, activity.report());
+  }
 
   if (p === '/api/status') {
     return sendJson(res, 200, {
@@ -579,6 +594,7 @@ async function handleApi(req, res, url) {
       torrents: torrents.torrentsEnabled(),
       subtitles: subtitles.subtitlesConfigured(),
       casting: await castAllowed(req),
+      admin: activity.isAdmin(req),
     });
   }
   if (p === '/api/convert') return sendJson(res, 200, converter.converterStatus());
@@ -615,6 +631,10 @@ async function handleApi(req, res, url) {
     if (/application\/json/i.test(req.headers['content-type'] || '')) {
       const body = await readJson(req);
       await addDownload({ link: body.link });
+      const dn = /[?&]dn=([^&]+)/.exec(String(body.link || ''))?.[1];
+      let name = String(body.name || '');
+      if (!name && dn) { try { name = decodeURIComponent(dn.replace(/\+/g, ' ')); } catch { name = dn; } }
+      activity.record(req, 'download', name || 'a torrent link');
       // Subtitles chosen in torrent search are fetched when the download completes.
       if (Array.isArray(body.subs) && body.subs.length) {
         subtitles.wantSubtitles(String(body.link || ''), body.subs, String(body.name || ''));
@@ -624,6 +644,7 @@ async function handleApi(req, res, url) {
       const file = await readRaw(req, 10 * 1024 * 1024);
       if (!file.length) throw new HttpError(400, 'The file was empty.');
       await addDownload({ file });
+      activity.record(req, 'download', 'a .torrent file');
     }
     return sendJson(res, 200, { ok: true });
   }
@@ -640,7 +661,9 @@ async function handleApi(req, res, url) {
   // ---- casting ----
   if (p === '/api/play-link') {
     const q = url.searchParams;
-    return sendJson(res, 200, await playLink(q.get('kind') || '', q.get('id') || '', q.get('variant') || 'browser'));
+    const link = await playLink(q.get('kind') || '', q.get('id') || '', q.get('variant') || 'browser');
+    activity.record(req, 'play', titleOf(link.name), { quietMs: 3 * 3600 * 1000 });
+    return sendJson(res, 200, link);
   }
   if (p === '/api/network') {
     return sendJson(res, 200, { ...(await describeRequest(req)), castAllowed: await castAllowed(req), castWhenAwaySetting: CAST_WHEN_AWAY });
@@ -669,6 +692,7 @@ async function handleApi(req, res, url) {
     const session = await cast.castTo(String(body.deviceId || ''), media);
     castOwners.set(session.deviceId, clientOf(req));
     console.log(`[cast] ${session.title} on ${session.deviceName}, started by ${clientOf(req).slice(0, 12)}`);
+    activity.record(req, 'cast', `${session.title}${session.subtitle ? ` ${session.subtitle}` : ''} → ${session.deviceName}`);
     return sendJson(res, 200, { session: { ...session, mine: true } });
   }
   if ((m = p.match(/^\/api\/cast\/([\w-]+)\/subtitles$/)) && req.method === 'POST') {
@@ -690,7 +714,10 @@ async function handleApi(req, res, url) {
   if ((m = p.match(/^\/api\/cast\/([\w-]+)\/status$/))) return sendJson(res, 200, await cast.status(m[1]));
   if ((m = p.match(/^\/api\/cast\/([\w-]+)\/control$/)) && req.method === 'POST') {
     const body = await readJson(req);
-    return sendJson(res, 200, await cast.control(m[1], String(body.action || ''), Number(body.value)));
+    const before = cast.getSession(m[1]);
+    const result = await cast.control(m[1], String(body.action || ''), Number(body.value));
+    if (body.action === 'stop' && before) activity.record(req, 'stop', `${before.title} on ${before.deviceName}`);
+    return sendJson(res, 200, result);
   }
 
   // ---- subtitles ----
@@ -712,6 +739,7 @@ async function handleApi(req, res, url) {
     const lang = String(body.lang || '').toLowerCase();
     const file = converter.preferConverted(await sourceFile(body.kind, body.id));
     await subtitles.ensureSubtitle(file, infoFor(file), lang);
+    activity.record(req, 'subtitles', `${subtitles.LANG_NAMES[lang] || lang} subtitles for ${titleOf(file)}`, { quietMs: 24 * 3600 * 1000 });
     return sendJson(res, 200, { url: `/api/subs/file/${body.kind}/${encodeURIComponent(body.id)}/${lang}.vtt` });
   }
   if (p === '/api/subs/sync') {
@@ -746,18 +774,21 @@ async function handleApi(req, res, url) {
     const source = await sourceFile(m[1], m[2]);
     const served = converter.preferConverted(source, { browser: true });
     let tracks = null;
-    try { tracks = await converter.probeAudio(served); } catch { /* unreadable: say nothing */ }
+    let vid = null;
+    try { [tracks, vid] = await Promise.all([converter.probeAudio(served), converter.probeVideo(served)]); } catch { /* unreadable: say nothing */ }
     if (!tracks) return sendJson(res, 200, { known: false });
+    const videoSafe = converter.videoBrowserSafe(vid);
     const main = tracks[0]?.codec || null;
     // Extra codecs the client reports it can decode (e.g. Edge with Dolby).
     const plays = new Set((url.searchParams.get('plays') || '').split(',').filter(Boolean));
     const browserSafe = !main || converter.BROWSER_AUDIO.has(main) || plays.has(main);
     const aligned = converter.isAligned(tracks);
-    // Unplayable or out-of-sync audio: move this file to the front of the conversion queue.
-    const fix = browserSafe && aligned ? {} : converter.requestBrowserAudio(source);
+    // Unplayable video or audio, or out-of-sync audio: move this file to the front of the conversion queue.
+    const fix = browserSafe && aligned && videoSafe ? {} : converter.requestBrowserAudio(source);
     const sync = converter.syncState(source);
     return sendJson(res, 200, {
       known: true, codec: main, tracks, browserSafe, aligned,
+      videoSafe, videoCodec: vid ? (vid.codec === 'hevc' ? `HEVC (${vid.tag || 'hev1'})` : `${converter.VIDEO_NAMES[vid.codec] || vid.codec}${vid.tenBit ? ' 10-bit' : ''}`) : null,
       fixable: Boolean(fix.fixable), job: fix.state || sync.state || null,
       percent: fix.percent ?? (sync.state === 'converting' ? converter.converterStatus().current?.percent ?? 0 : null),
       error: fix.error || null,
@@ -778,7 +809,11 @@ async function handleApi(req, res, url) {
   }
   if (p === '/api/library/delete' && req.method === 'POST') {
     const body = await readJson(req);
-    await deleteMedia(String(body.id || ''), body.scope === 'torrent' ? 'torrent' : 'file');
+    const id = String(body.id || '');
+    let what = id;
+    try { what = titleOf((await deletePlan(id)).original); } catch { /* named by id */ }
+    await deleteMedia(id, body.scope === 'torrent' ? 'torrent' : 'file');
+    activity.record(req, 'delete', `${what}${body.scope === 'torrent' ? ' (whole download)' : ''}`);
     return sendJson(res, 200, { ok: true });
   }
 

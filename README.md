@@ -58,6 +58,7 @@ All settings live in `.env`. Changes take effect after a restart.
 | --- | --- | --- |
 | `PORT` | `8080` | Port for the web app. |
 | `SERVER_IP` | auto | LAN address TVs use to stream from the server. Set it if the address printed at startup is wrong. |
+| `ADMIN_EMAILS` | | Cloudflare Access emails that see the Activity tab, comma-separated. |
 
 ### Metadata and library
 
@@ -192,7 +193,11 @@ powershell -ExecutionPolicy Bypass -File .\setup-autostart.ps1
 | `restart-marquee.ps1` | Restarts the task and prints which features are enabled. |
 | `start-marquee.cmd` | Runs the server in a restart loop; used by the task. |
 
-Output is written to `logs/marquee.log`. To remove the task:
+Output is written to `logs/marquee.log`.
+
+Restarting is safe at any time. Downloads run in qBittorrent and carry on regardless. A conversion in progress is stopped together with the server (`restart-marquee.ps1` also stops any ffmpeg Marquee started) and starts again from the beginning shortly after the server is back; the MP4 is written under a temporary name and only renamed once complete, so an interrupted conversion never leaves a broken file, and leftover temporary files are cleaned up automatically. Subtitles waiting for downloads and subtitle timing checks also pick up where they left off.
+
+To remove the task:
 
 ```powershell
 Unregister-ScheduledTask -TaskName Marquee -Confirm:$false
@@ -224,6 +229,14 @@ Both subtitle files are turned into on/off signals and compared at every offset 
 
 The subtitle menu in the player shows the result and has **Undo timing fix**; the original is kept in `cache/subsync/`. **Fix timing** runs the check on demand for subtitles that weren't checked automatically. A fix moves or stretches the whole file, so subtitles for a different cut of the film (extra or missing scenes) can't be fully corrected.
 
+### Browser copies of MP4s
+
+Downloaded MP4s are never modified, since qBittorrent may still be seeding them. When one won't play in browsers, a browser copy is made in `cache/audio/` and played instead; TVs still get the original. That happens when the audio isn't AAC or MP3 or starts out of sync, and when the video won't play in Safari: HEVC labelled `hev1` (relabelled to `hvc1`, which is quick and keeps the quality), 10-bit H.264, AV1 or other codecs (re-encoded to H.264). Opening such a file in the player moves it to the front of the queue, and playback switches to the copy by itself when it's ready.
+
+### Activity
+
+The **Activity** tab shows who has been using Marquee and what they did: downloads started, films watched in the browser, casts to TVs, subtitles fetched and deletions. People are identified by the email they log in to Cloudflare Access with, plus the device and browser; visits through the server's local address show up as "Home network". The tab is only shown to the emails listed in `ADMIN_EMAILS`, and only through the Cloudflare address, since local visits have no email. The last 2,000 entries are kept in `.marquee-activity.jsonl`. Logins themselves (who signed in, when, from where) are in the Cloudflare Zero Trust dashboard under **Logs → Access**.
+
 ### Deletion
 
 Deleting a video that belongs to a torrent removes it through qBittorrent, so the torrent stops seeding and no "missing files" errors appear. For multi-file torrents you can delete a single episode (qBittorrent is told not to download it again) or the whole torrent. The MP4 copy, subtitles and audio-fixed copy are deleted too, as are any empty folders left behind.
@@ -240,6 +253,7 @@ marquee/
 ├── convert.js            Background ffmpeg conversion and audio fixes
 ├── cast.js               DLNA and Apple TV casting
 ├── network.js            Home-network detection for casting
+├── activity.js           Activity log
 ├── public/
 │   ├── index.html
 │   ├── app.js            Web client
@@ -257,6 +271,7 @@ Created at runtime and excluded from Git:
 | `.env` | Your configuration and credentials |
 | `.marquee-convert.json` | Conversion failures and audio checks |
 | `.marquee-subs.json` | Subtitles waiting for downloads to finish |
+| `.marquee-activity.jsonl` | Activity log |
 | `.marquee-subsync.json` | Subtitle timing results |
 | `cache/subsync/` | Subtitles as they were before a timing fix |
 | `.marquee-secret` | Key for signed `/play/` links |
@@ -270,6 +285,7 @@ The web client uses a JSON API that can also be scripted. `<kind>` is `lib` for 
 | Method | Route | Description |
 | --- | --- | --- |
 | `GET` | `/api/status` | Enabled features |
+| `GET` | `/api/activity` | Recent activity and people (`ADMIN_EMAILS` only) |
 | `GET` | `/api/trending`, `/api/search?q=` | TMDB titles |
 | `GET` | `/api/library` | Library contents |
 | `GET` | `/api/library/delete-info?id=` | What deleting an item would remove |

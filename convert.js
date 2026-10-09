@@ -35,7 +35,7 @@ let failures = {};     // key -> { error, at }
 let audioChecked = {}; // file key -> true once its audio is known to be browser-compatible and in sync
 let syncShift = {};    // source key -> manual audio correction in seconds (negative = earlier)
 let syncApplied = {};  // source key -> correction baked into the current copy
-const CHECK_VERSION = 'v2|'; // bump to re-check files after the audio checks change
+const CHECK_VERSION = 'v3|'; // bump to re-check files after the audio checks change
 const SYNC_TOLERANCE = 0.04; // seconds; below one video frame
 let onConvertedHook = null;
 let onSidecarHook = null;
@@ -163,6 +163,23 @@ export async function probeAudio(file) {
   return out;
 }
 
+// Video every Apple device plays: 8-bit H.264, or HEVC labelled "hvc1". Downloads often carry HEVC
+// labelled "hev1" (fine in Chrome and Edge, refused by Safari), 10-bit H.264 or AV1. Those get a
+// browser copy: HEVC is just relabelled (fast, no quality loss); the others are re-encoded to H.264.
+const videoCache = new Map();
+export async function probeVideo(file) {
+  if (!status.enabled) return null;
+  const key = failureKey(file);
+  if (videoCache.has(key)) return videoCache.get(key);
+  const info = await probe(file);
+  const v = (info.streams || []).find((s) => s.codec_type === 'video' && !s.disposition?.attached_pic);
+  const out = v ? { codec: v.codec_name, tag: v.codec_tag_string || null, tenBit: /10|12/.test(v.pix_fmt || '') } : null;
+  videoCache.set(key, out);
+  return out;
+}
+export const videoBrowserSafe = (v) => !v || (v.codec === 'h264' && !v.tenBit) || (v.codec === 'hevc' && v.tag === 'hvc1');
+export const VIDEO_NAMES = { hevc: 'HEVC (H.265)', h264: 'H.264', av1: 'AV1', vp9: 'VP9', mpeg4: 'MPEG-4' };
+
 // The job that rebuilds a file's browser copy: a redo for converted files, a fix copy for downloaded MP4s.
 function browserJob(file) {
   const original = originalFor(file);
@@ -214,10 +231,22 @@ export const jobState = (file) => (file === currentFile ? 'converting' : queue.s
 
 export function converterStatus() { return { ...status, queued: queue.length }; }
 
+// ffmpeg processes stop with the server, so none keeps writing a half-finished copy after a restart.
+// (The copy is written under a temporary name and only renamed once complete, so an interrupted
+// conversion never leaves a broken MP4; it simply starts again from the beginning.)
+const children = new Set();
+function stopChildren() { for (const c of children) { try { c.kill(); } catch { /* already gone */ } } }
+process.on('exit', stopChildren);
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGBREAK', 'SIGHUP']) {
+  try { process.on(sig, () => { stopChildren(); process.exit(0); }); } catch { /* signal not available here */ }
+}
+
 function run(cmd, args, { onStdout, priorityLow = false } = {}) {
   return new Promise((resolve, reject) => {
     let child;
     try { child = spawn(cmd, args, { windowsHide: true }); } catch (e) { return reject(e); }
+    children.add(child);
+    child.on('close', () => children.delete(child));
     if (priorityLow) {
       try { os.setPriority(child.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch { /* not allowed */ }
     }
@@ -315,7 +344,13 @@ async function convert(job) {
   const tmp = job.fix
     ? output.replace(/\.mp4$/, `${TMP_TAG}.mp4`)
     : path.join(path.dirname(file), `${path.basename(file, path.extname(file))}${TMP_TAG}.mp4`);
-  fs.rmSync(tmp, { force: true });
+  try {
+    fs.rmSync(tmp, { force: true });
+  } catch (e) {
+    // Still open: an ffmpeg left running by a previous server process. Try again on a later scan.
+    if (/EBUSY|EPERM|EACCES/.test(e.code || '')) { e.retryLater = true; e.message = 'an earlier conversion is still finishing'; }
+    throw e;
+  }
 
   const info = await probe(file);
   const key = failureKey(file);
@@ -326,7 +361,7 @@ async function convert(job) {
   const attempt = async (encoder) => {
     const p = plan(file, tmp, info, encoder, shift, safeAudio, sidecars);
     const started = Date.now();
-    status.current = { name, mode: p.reencode ? 'Re-encoding' : job.fix ? 'Fixing audio' : 'Repackaging', percent: 0, speed: null, eta: null };
+    status.current = { name, mode: p.reencode ? 'Re-encoding' : job.fix ? 'Making a browser copy' : 'Repackaging', percent: 0, speed: null, eta: null };
     let buf = '';
     await run(FFMPEG, p.args, {
       priorityLow: true,
@@ -394,6 +429,7 @@ async function convert(job) {
     throw e;
   }
   audioCache.clear();
+  videoCache.clear();
   delete failures[key]; // an earlier failure no longer applies
   syncApplied[key] = shift;
   saveFailures();
@@ -417,6 +453,30 @@ function removeOriginal(file) {
   }
   saveFailures();
 }
+// Temporary files left by a conversion that was interrupted (server restarted, PC turned off).
+function cleanTemps(candidates) {
+  const dirs = new Set(candidates.map((c) => path.dirname(c.file)));
+  if (fixDir) dirs.add(fixDir);
+  for (const dir of dirs) {
+    let entries = [];
+    try { entries = fs.readdirSync(dir); } catch { continue; }
+    for (const e of entries) {
+      if (!isTempFile(e)) continue;
+      const full = path.join(dir, e);
+      if (currentFile) { // the conversion running now
+        const stem = path.join(path.dirname(currentFile), path.basename(currentFile, path.extname(currentFile)));
+        const fixTmp = fixPath(currentFile)?.replace(/\.mp4$/, `${TMP_TAG}.mp4`);
+        if (full.startsWith(`${stem}.`) || full === fixTmp) continue;
+      }
+      try {
+        if (Date.now() - fs.statSync(full).mtimeMs < 10 * 60 * 1000) continue; // possibly being written right now
+        fs.rmSync(full, { force: true });
+        console.log(`[convert] removed leftover ${e}`);
+      } catch { /* still open; next time */ }
+    }
+  }
+}
+
 function retryDeletes() {
   for (const file of [...pendingDeletes]) {
     if (!fs.existsSync(file) || !fs.existsSync(twinPath(file))) pendingDeletes = pendingDeletes.filter((f) => f !== file);
@@ -445,14 +505,16 @@ function cleanFixDir(keep) {
     } catch { /* gone already */ }
   }
 }
-// True if the default audio track isn't browser-compatible or doesn't start with the video.
-// Cached per file version.
+// True if the default audio track isn't browser-compatible or doesn't start with the video,
+// or the video itself won't play in Safari (see videoBrowserSafe). Cached per file version.
 async function audioNeedsFix(file) {
   const key = CHECK_VERSION + failureKey(file);
   if (audioChecked[key]) return false;
   let audio;
-  try { audio = await probeAudio(file); } catch { return false; }
-  if (!audio?.length || (BROWSER_AUDIO.has(audio[0].codec) && isAligned(audio))) {
+  let video;
+  try { [audio, video] = await Promise.all([probeAudio(file), probeVideo(file)]); } catch { return false; }
+  const audioOk = !audio?.length || (BROWSER_AUDIO.has(audio[0].codec) && isAligned(audio));
+  if (audioOk && videoBrowserSafe(video)) {
     audioChecked[key] = true;
     saveFailures();
     return false;
@@ -474,7 +536,7 @@ async function drain(onConverted) {
       console.log(`[convert] done: ${path.basename(job.file)}`);
       onConverted?.();
     } catch (e) {
-      if (e.retryLater) { console.warn(`[convert] ${path.basename(job.file)}: copy is in use, will retry.`); continue; }
+      if (e.retryLater) { console.warn(`[convert] ${path.basename(job.file)}: ${e.message?.includes('earlier') ? e.message : 'copy is in use'}, will retry.`); continue; }
       const msg = e.message || String(e);
       console.warn(`[convert] failed: ${path.basename(job.file)}: ${msg}`);
       failures[failureKey(job.file)] = { error: msg, at: Date.now() };
@@ -531,6 +593,7 @@ export async function startConverter({ dataDir, listCandidates, onConverted, onS
     retryDeletes();
     try {
       const candidates = await listCandidates();
+      cleanTemps(candidates);
       for (const c of candidates) {
         if (!needsConversion(c.file) || isTempFile(c.file)) continue;
         if (failures[failureKey(c.file)]) continue; // failed before; retried only if the file changes

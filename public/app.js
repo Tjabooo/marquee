@@ -524,12 +524,13 @@ function renderDownloads() {
 let pollTimer;
 function schedulePoll() {
   clearTimeout(pollTimer);
-  const delay = state.view === 'downloads' ? 2000 : state.view === 'library' ? 3000 : 15000;
+  const delay = state.view === 'downloads' ? 2000 : state.view === 'library' ? 3000 : state.view === 'activity' ? 10000 : 15000;
   pollTimer = setTimeout(async () => {
     if (!document.hidden) {
       const wasConverting = Boolean(state.convert?.current);
       await Promise.all([loadDownloads(), loadSessions(), state.view === 'library' ? loadConvert() : null]);
       if (state.view === 'downloads') renderDownloads();
+      if (state.view === 'activity') { await loadActivity(); if (state.view === 'activity') renderActivity(); }
       if (state.view === 'library') {
         // A conversion finished: refresh so the new MP4 appears.
         if (wasConverting && !state.convert?.current) { await loadLibrary(); renderLibrary(); } else renderConvertBanner();
@@ -1490,6 +1491,7 @@ async function applySync(f, session, shift) {
 // Covers unplayable audio, automatic timing fixes and manual sync corrections (target).
 async function watchAudio(f, session, target = null) {
   const token = audioWatch = {};
+  let videoFixing = false;
   const note = $('#player-note');
   note.hidden = true;
   let changed = false;
@@ -1503,12 +1505,26 @@ async function watchAudio(f, session, target = null) {
       syncBtn.hidden = false;
     }
     const pendingSync = target !== null && (a.sync?.applied !== target || a.job);
-    if (a.browserSafe && a.aligned && !pendingSync) {
-      if (changed) switchToFixedAudio(session, target !== null ? 'Audio sync corrected' : 'Audio fixed');
+    const videoOk = a.videoSafe !== false;
+    if (a.browserSafe && a.aligned && videoOk && !pendingSync) {
+      if (changed) switchToFixedAudio(session, target !== null ? 'Audio sync corrected' : videoFixing ? 'Ready to play' : 'Audio fixed');
       else note.hidden = true;
       return;
     }
     const progress = a.job === 'converting' ? ` ${Math.floor(a.percent ?? 0)}%.` : '';
+    if (!videoOk) {
+      // Video this browser can't decode (e.g. HEVC labelled hev1 in Safari): a compatible copy is being made.
+      videoFixing = true;
+      $('#player-error').hidden = true;
+      note.textContent = a.fixable
+        ? `This video is ${a.videoCodec}, which this browser can’t play. Making a version that plays here…${progress} It starts by itself when ready.`
+        : `This video is ${a.videoCodec}, which this browser can’t play. ${a.error ? `Marquee couldn’t convert it: ${a.error}` : 'It should still play on a TV.'}`;
+      note.hidden = false;
+      if (!a.fixable) return;
+      changed = true;
+      await new Promise((r) => setTimeout(r, 3000));
+      continue;
+    }
     if (!a.browserSafe && !a.fixable) {
       const name = CODEC_NAMES[a.codec] || String(a.codec).toUpperCase();
       note.textContent = `No sound? This file’s audio is ${name}, which this browser can’t play. `
@@ -1537,6 +1553,7 @@ function switchToFixedAudio(session, message) {
   }, { once: true });
   video.src = `${base}${base.includes('?') ? '&' : '?'}v=${Date.now()}`; // cache-busting URL
   $('#player-note').hidden = true;
+  $('#player-error').hidden = true;
   toast(message);
 }
 
@@ -1660,20 +1677,100 @@ video.addEventListener('pause', () => saveProgress(true));
 video.addEventListener('error', () => {
   if (!current) return;
   const err = $('#player-error');
-  err.textContent = 'This video can’t play in this browser. The server makes an MP4 copy of MKV files automatically; check the Library tab for progress, then try again.';
-  err.hidden = false;
+  err.textContent = 'This video can’t play in this browser yet. Marquee makes a version that plays here automatically; you can follow its progress in the Library tab.';
+  // When the note below the video says a version is being made, that note is the explanation.
+  err.hidden = !$('#player-note').hidden;
 });
 $('#player-close').addEventListener('click', closeTopOverlay);
 window.addEventListener('pagehide', () => saveProgress(true));
 
 // ---------- search box + tabs ----------
 const input = $('#q');
-const PLACEHOLDERS = { discover: 'Search films and shows', library: 'Filter your library', downloads: 'Filter downloads' };
+const PLACEHOLDERS = { discover: 'Search films and shows', library: 'Filter your library', downloads: 'Filter downloads', activity: 'Filter by person or title' };
 
 function renderView() {
   if (state.view === 'discover') renderDiscover();
   if (state.view === 'library') renderLibrary();
   if (state.view === 'downloads') renderDownloads();
+  if (state.view === 'activity') renderActivity();
+}
+
+// ---------- activity (server owner only) ----------
+// Who has been using Marquee and what they did, from the server's activity log.
+const ACTIVITY_TEXT = {
+  download: (d) => `started downloading ${d}`,
+  delete: (d) => `deleted ${d}`,
+  play: (d) => `watched ${d}`,
+  cast: (d) => { const [what, tv] = d.split(' → '); return tv ? `put ${what} on ${tv}` : `put ${d} on a TV`; },
+  stop: (d) => `stopped ${d}`,
+  subtitles: (d) => `got ${d}`,
+};
+const personName = (user) => (user.includes('@') ? user.split('@')[0] : user);
+const clock = (ms) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+function dayLabel(ms) {
+  const d = new Date(ms);
+  const today = new Date();
+  const yesterday = new Date(Date.now() - 86400000);
+  if (d.toDateString() === today.toDateString()) return 'Today';
+  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  return d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
+}
+function lastSeenText(ms) {
+  const min = (Date.now() - ms) / 60000;
+  if (min < 3) return 'Active now';
+  if (min < 60) return `Seen ${Math.round(min)} min ago`;
+  if (min < 24 * 60) return `Seen ${Math.round(min / 60)} h ago`;
+  return `Seen ${fmtAgo(ms)}`;
+}
+
+async function loadActivity() {
+  try { state.activity = await api('/api/activity'); state.activityError = null; } catch (err) { state.activityError = err.message; }
+}
+
+function renderActivity() {
+  const body = $('#activity-body');
+  if (state.activityError) { body.replaceChildren(notice('Couldn’t get activity', state.activityError)); return; }
+  if (!state.activity) return;
+  const q = norm(state.query);
+  const people = state.activity.people.filter((p) => !q || norm(`${p.user} ${p.device}`).includes(q));
+  const events = state.activity.events.filter((e) => !q || norm(`${e.user} ${e.detail} ${e.action}`).includes(q));
+  const out = [h('h3', { class: 'activity-head' }, 'People')];
+  out.push(people.length ? h('ul', { class: 'rows' }, people.map((p) => h('li', { class: 'row' },
+    h('span', { class: `activity-dot${Date.now() - p.at < 3 * 60000 ? ' is-on' : ''}`, 'aria-hidden': 'true' }),
+    h('span', { class: 'row-text' },
+      h('span', { class: 'row-title' }, p.user),
+      h('span', { class: 'row-meta' }, h('span', {}, lastSeenText(p.at)), p.device && h('span', {}, p.device))))))
+    : h('p', { class: 'muted' }, 'Nobody yet.'));
+  out.push(h('h3', { class: 'activity-head' }, 'What happened'));
+  if (!events.length) out.push(h('p', { class: 'muted' }, q ? 'Nothing matches.' : 'Nothing has happened yet.'));
+  let day = null;
+  let list = null;
+  for (const e of events) {
+    const label = dayLabel(e.at);
+    if (label !== day) {
+      day = label;
+      list = h('ul', { class: 'rows activity-list' });
+      out.push(h('p', { class: 'activity-day' }, label), list);
+    }
+    list.append(h('li', { class: 'row activity-row' },
+      h('span', { class: 'activity-time' }, clock(e.at)),
+      h('span', { class: 'row-text' },
+        h('span', { class: 'activity-text' }, h('strong', {}, personName(e.user)), ' ', (ACTIVITY_TEXT[e.action] || ((d) => `${e.action} ${d}`))(e.detail)),
+        h('span', { class: 'row-meta' }, h('span', {}, e.device)))));
+  }
+  body.replaceChildren(...out);
+}
+
+// Adds the Activity tab for the server's owner (ADMIN_EMAILS in .env).
+function enableActivityTab() {
+  if ($('#view-activity')) return;
+  $('#main').append(h('section', { id: 'view-activity', class: 'view', 'aria-labelledby': 'activity-heading', hidden: true },
+    h('h2', { class: 'view-heading', id: 'activity-heading' }, 'Activity'),
+    h('div', { id: 'activity-body' })));
+  const tab = h('button', { class: 'tab', 'data-view': 'activity' });
+  tab.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M3 19c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5"/><path d="M16 4.8a3.5 3.5 0 0 1 0 6.4M18 13.8c1.8.7 3 2.6 3 5.2"/></svg><span>Activity</span>';
+  tab.addEventListener('click', () => setView('activity'));
+  $('.tabs').append(tab);
 }
 
 input.addEventListener('input', () => {
@@ -1714,6 +1811,7 @@ async function setView(view) {
   renderView(); // render cached data, then refresh
   if (view === 'library') await Promise.all([loadLibrary(), loadConvert()]);
   if (view === 'downloads') await loadDownloads();
+  if (view === 'activity') await loadActivity();
   if (state.view === view) renderView();
   schedulePoll();
 }
@@ -1729,6 +1827,7 @@ $('#find-torrents').addEventListener('click', (e) => openTorrents({ query: state
     return;
   }
   $('#find-torrents').hidden = !state.status.torrents;
+  if (state.status.admin) enableActivityTab();
   await Promise.all([loadLibrary(), loadDownloads(), loadSessions()]);
   renderDiscover();
   schedulePoll();

@@ -9,10 +9,21 @@ if (-not (Get-ScheduledTask -TaskName 'Marquee' -ErrorAction SilentlyContinue)) 
 }
 
 Write-Host 'Stopping Marquee...'
+# Find Marquee and everything it started (ffmpeg conversions, Apple TV helpers) before stopping it,
+# so no conversion is left running on its own. Downloads are unaffected: qBittorrent keeps going.
+$all = @(Get-CimInstance Win32_Process)
+$nodes = @($all | Where-Object { $_.Name -eq 'node.exe' -and $_.CommandLine -match 'server\.js' })
+function Get-Descendants($parentId) {
+  foreach ($c in ($all | Where-Object { $_.ParentProcessId -eq $parentId })) { $c; Get-Descendants $c.ProcessId }
+}
+$helpers = @(foreach ($n in $nodes) { Get-Descendants $n.ProcessId })
+
 Stop-ScheduledTask -TaskName 'Marquee' -ErrorAction SilentlyContinue
-# Stopping the task can leave node.exe running.
-Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
-  Where-Object { $_.CommandLine -match 'server\.js' } |
+# Stopping the task can leave node.exe and its helpers running.
+foreach ($p in $nodes + $helpers) { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue }
+# Conversions orphaned by an earlier restart (they write *.marquee-tmp files).
+Get-CimInstance Win32_Process -Filter "Name='ffmpeg.exe'" |
+  Where-Object { $_.CommandLine -match 'marquee-tmp' } |
   ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 Start-Sleep -Seconds 2
 
