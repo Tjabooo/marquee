@@ -743,7 +743,7 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, { url: `/api/subs/file/${body.kind}/${encodeURIComponent(body.id)}/${lang}.vtt` });
   }
   if (p === '/api/subs/sync') {
-    // Timing check for a saved subtitle: GET for its state, POST { action: 'sync' | 'undo' }.
+    // Timing of a saved subtitle: GET for its state, POST { action: 'sync' | 'undo' | 'shift', seconds }.
     const body = req.method === 'POST' ? await readJson(req) : null;
     const kind = body ? body.kind : url.searchParams.get('kind');
     const id = body ? body.id : url.searchParams.get('id');
@@ -755,6 +755,11 @@ async function handleApi(req, res, url) {
     if (!body) return sendJson(res, 200, subsync.stateOf(srt));
     if (body.action === 'undo') return sendJson(res, 200, subsync.undoSync(srt));
     if (body.action === 'sync') return sendJson(res, 200, subsync.queueSync(srt, video));
+    if (body.action === 'shift') {
+      const seconds = Number(body.seconds);
+      if (!Number.isFinite(seconds) || seconds === 0 || Math.abs(seconds) > 60) throw new HttpError(400, 'Adjustment must be between -60 and 60 seconds.');
+      return sendJson(res, 200, subsync.nudge(srt, seconds));
+    }
     throw new HttpError(400, 'Unknown action.');
   }
   if ((m = p.match(/^\/api\/subs\/file\/(lib|dl)\/([A-Za-z0-9_-]+)\/([a-z]{2,3}(?:-[a-z]{2})?)\.(vtt|srt)$/))) {

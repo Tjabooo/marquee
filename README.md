@@ -227,7 +227,7 @@ Subtitles from OpenSubtitles are often made for a different release of the same 
 
 Both subtitle files are turned into on/off signals and compared at every offset up to ten minutes and for the common frame-rate ratios; the best match is applied only when it clearly beats every alternative, otherwise the file is left alone. Checking against a subtitle track takes a second; against the audio, roughly a minute for a feature film. Subtitles OpenSubtitles matched to your exact file are skipped.
 
-The subtitle menu in the player shows the result and has **Undo timing fix**; the original is kept in `cache/subsync/`. **Fix timing** runs the check on demand for subtitles that weren't checked automatically. A fix moves or stretches the whole file, so subtitles for a different cut of the film (extra or missing scenes) can't be fully corrected.
+The subtitle menu in the player shows the result and has **Undo timing fix**; the original is kept in `cache/subsync/`. **Fix timing** runs the check on demand for subtitles that weren't checked automatically. The **Subtitle offset** buttons (−1 s, −¼ s, +¼ s, +1 s) in the player's subtitle menu and in the TV remote move every line by hand; on a TV the new timing is sent over a moment after the last tap, restarting at the same spot. **Reset offset** puts the lines back. A fix moves or stretches the whole file, so subtitles for a different cut of the film (extra or missing scenes) can't be fully corrected.
 
 ### Browser copies of MP4s
 
@@ -299,7 +299,7 @@ The web client uses a JSON API that can also be scripted. `<kind>` is `lib` for 
 | `POST` | `/api/subs/fetch` | Download subtitles (`{ kind, id, lang }`) |
 | `GET` | `/api/subs/file/<kind>/<id>/<lang>.vtt` | Subtitles as WebVTT (`.srt` also available) |
 | `GET` | `/api/subs/sync` | Timing check state for saved subtitles (`kind`, `id`, `lang`) |
-| `POST` | `/api/subs/sync` | Fix or undo subtitle timing (`{ kind, id, lang, action: 'sync' \| 'undo' }`) |
+| `POST` | `/api/subs/sync` | Fix, undo or shift subtitle timing (`{ kind, id, lang, action: 'sync' \| 'undo' \| 'shift', seconds }`) |
 | `GET` | `/api/stream/<kind>/<id>` | Video stream with range support |
 | `GET` | `/api/play-link?kind=&id=&variant=` | Signed `/play/` link (`variant`: `browser` or `tv`) |
 | `GET` | `/play/...` | Video stream through a signed link; works without signing in |

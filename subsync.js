@@ -79,6 +79,7 @@ export function stateOf(srt) {
     state: e?.trusted ? 'trusted' : e?.state || null,
     offset: e?.offset ?? null,
     ratio: e?.ratio ?? null,
+    manual: e?.manual || 0,
     reference: e?.reference ?? null,
     error: e?.error ?? null,
     at: e?.at ?? null,
@@ -94,6 +95,34 @@ export function undoSync(srt) {
   if (e?.state !== 'synced' || !fs.existsSync(backup)) throw Object.assign(new Error('There’s no timing fix to undo.'), { status: 409 });
   fs.copyFileSync(backup, srt);
   registry[keyOf(srt)] = { path: srt, state: 'undone', stamp: stamp(srt), at: Date.now() };
+  save();
+  return stateOf(srt);
+}
+
+// Moves every line by `seconds` (the manual timing buttons). The file as it was before any change is
+// kept, so "Undo timing fix" always goes back to the original.
+export function nudge(srt, seconds) {
+  const e = entryFor(srt);
+  if (e?.state === 'queued' || e?.state === 'syncing') throw Object.assign(new Error('The timing is being checked right now. Try again in a moment.'), { status: 409 });
+  const backup = backupPath(srt);
+  const changed = e?.state === 'synced' && fs.existsSync(backup);
+  // Always recomputed from the original, so lines pushed before 0:00 come back when moved later again.
+  const original = decode(fs.readFileSync(changed ? backup : srt));
+  if (!changed) { fs.mkdirSync(backupDir, { recursive: true }); fs.writeFileSync(backup, original, 'utf8'); }
+  const auto = changed && e.offset != null ? e : null; // an automatic fix stays applied underneath
+  const manual = round((changed ? e.manual || 0 : 0) + seconds);
+  if (!auto && Math.abs(manual) < 0.001) { // back to the original
+    fs.copyFileSync(backup, srt);
+    forget(srt);
+    return stateOf(srt);
+  }
+  const tmp = `${srt}.subsync-tmp`;
+  fs.writeFileSync(tmp, retime(original, auto ? auto.ratio : 1, (auto ? auto.offset : 0) + manual), 'utf8');
+  fs.renameSync(tmp, srt);
+  registry[keyOf(srt)] = {
+    ...(auto || { offset: null, ratio: null, reference: null }),
+    path: srt, state: 'synced', manual, stamp: stamp(srt), at: Date.now(),
+  };
   save();
   return stateOf(srt);
 }

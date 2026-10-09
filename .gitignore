@@ -9,6 +9,7 @@ cache/
 .marquee-subsync.json
 .marquee-activity.jsonl
 .marquee-secret
+.marquee-subfiles.json
 *.subsync-tmp
 *.marquee-tmp.mp4
 

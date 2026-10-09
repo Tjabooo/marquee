@@ -710,3 +710,19 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .activity-text { display: block; line-height: 1.35; overflow-wrap: anywhere; }
 .activity-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--seat); border: 1px solid var(--line); }
 .activity-dot.is-on { background: #6fcf8f; border-color: #6fcf8f; box-shadow: 0 0 6px rgba(111, 207, 143, 0.7); }
+
+/* Subtitle offset buttons (player subtitle menu and TV remote) */
+.cc-nudge { display: grid; gap: 6px; padding: 4px 12px 8px; }
+.cc-nudge-label { font-size: 13px; font-weight: 600; color: var(--dust); }
+.cc-nudge-label b { color: var(--paper); font-variant-numeric: tabular-nums; }
+.cc-nudge-buttons { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.cc-nudge-buttons button {
+  min-height: 40px; padding: 0; font-weight: 700; font-variant-numeric: tabular-nums;
+  background: var(--seat); border: 1px solid var(--line); border-radius: 10px;
+}
+.cc-nudge-buttons button:active { background: var(--bulb); color: var(--velvet); }
+.cc-nudge-hint { font-size: 12px; color: var(--dust); }
+.cc-nudge-reset { justify-self: start; padding: 4px 0; font-size: 13px; font-weight: 600; color: var(--bulb); background: none; border: 0; }
+.remote-sync { margin-top: 12px; }
+.remote-sync .cc-nudge { padding: 0; }
+.remote-sync .remote-subs-note { margin-top: 6px; }

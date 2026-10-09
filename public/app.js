@@ -1035,6 +1035,7 @@ function openRemote(session, { replace = false } = {}) {
       r.subs = h('div', { class: 'remote-subs', hidden: true }),
       h('button', { class: 'stop-btn', onclick: stop }, 'Stop playing on the TV')));
 
+  r.sync = h('div', { class: 'remote-sync' });
   r.seek.addEventListener('pointerdown', () => { dragging = true; });
   r.seek.addEventListener('input', () => { dragging = true; r.pos.textContent = fmtTime(Number(r.seek.value)); });
   r.seek.addEventListener('change', () => {
@@ -1122,25 +1123,66 @@ function openRemote(session, { replace = false } = {}) {
       type: 'button', class: 'chip', 'aria-pressed': String((session.sub || null) === l.code),
       onclick: () => pickSub(l, chips, note, options),
     }, l.name)));
-    r.subs.replaceChildren(...[h('h3', {}, 'Subtitles'), data.languages.length ? chips : null, note].filter(Boolean));
+    r.subs.replaceChildren(...[h('h3', {}, 'Subtitles'), data.languages.length ? chips : null, note, r.sync].filter(Boolean));
+    subUi = { chips, note, options };
+    renderOffset();
   }
 
-  async function pickSub(l, chips, note, options) {
-    if ((session.sub || null) === l.code) return;
+  async function pickSub(l, chips, note, options, { reload = false } = {}) {
+    if (!reload && (session.sub || null) === l.code) return;
     chips.querySelectorAll('.chip').forEach((c) => { c.disabled = true; });
-    note.textContent = l.code ? `Getting ${l.name} subtitles and restarting on the TV…` : 'Restarting on the TV without subtitles…';
+    note.textContent = reload ? 'Sending the new subtitle timing to the TV…'
+      : l.code ? `Getting ${l.name} subtitles and restarting on the TV…` : 'Restarting on the TV without subtitles…';
     lastAction = Date.now() + 8000; // pause status polling while the TV reloads
     try {
       const { session: next } = await api(`/api/cast/${id}/subtitles`, jsonPost({ lang: l.code }));
       session.sub = next.sub;
       state.sessions = [next, ...state.sessions.filter((s) => s.deviceId !== next.deviceId)];
       chips.querySelectorAll('.chip').forEach((c, i) => c.setAttribute('aria-pressed', String((options[i].code || null) === (session.sub || null))));
-      note.textContent = l.code ? `${l.name} subtitles on. If they don’t appear, this TV may not support subtitle files over the network.` : '';
+      note.textContent = reload ? 'The TV has the new subtitle timing.'
+        : l.code ? `${l.name} subtitles on. If they don’t appear, this TV may not support subtitle files over the network.` : '';
     } catch (err) {
       note.textContent = err.message;
     } finally {
       chips.querySelectorAll('.chip').forEach((c) => { c.disabled = false; });
+      if (!reload) renderOffset();
     }
+  }
+
+  // Subtitle offset. The TV keeps the subtitle file it was given, so after the last tap the new
+  // timing is sent over by restarting at the same spot (the same way switching language works).
+  let subUi = null;
+  let offsetChain = Promise.resolve();
+  let applyTimer = null;
+  async function renderOffset() {
+    const lang = session.sub;
+    if (!lang || session.kind === 'airplay') { r.sync.replaceChildren(); return; }
+    let s;
+    try { s = await api(`/api/subs/sync?kind=${session.media.kind}&id=${encodeURIComponent(session.media.id)}&lang=${lang}`); } catch { r.sync.replaceChildren(); return; }
+    if (session.sub !== lang) return;
+    drawOffset(s, lang);
+  }
+  function drawOffset(s, lang, pending = false) {
+    r.sync.replaceChildren(...[
+      subSyncBusy(s) ? h('p', { class: 'muted remote-subs-note' }, 'Checking the timing…')
+        : nudgeRow(s.manual || 0, (n) => nudgeOnTv(lang, n)),
+      pending && h('p', { class: 'muted remote-subs-note' }, 'Updating the TV in a moment…'),
+    ].filter(Boolean));
+  }
+  function nudgeOnTv(lang, seconds) {
+    clearTimeout(applyTimer);
+    offsetChain = offsetChain.then(async () => {
+      try {
+        const s = await api('/api/subs/sync', jsonPost({ kind: session.media.kind, id: session.media.id, lang, action: 'shift', seconds }));
+        if (session.sub !== lang) return;
+        drawOffset(s, lang, true);
+        clearTimeout(applyTimer);
+        applyTimer = setTimeout(() => {
+          const l = subUi?.options.find((o) => o.code === lang);
+          if (l && session.sub === lang) pickSub(l, subUi.chips, subUi.note, subUi.options, { reload: true }).then(() => drawOffset(s, lang));
+        }, 1500);
+      } catch (err) { toast(err.message); }
+    });
   }
   render();
   loadSubs();
@@ -1329,22 +1371,55 @@ const SUB_SYNC_TEXT = {
   undone: 'Using the original timing.',
 };
 const subSyncBusy = (s) => s?.state === 'queued' || s?.state === 'syncing';
-const fmtSubShift = (s) => `${Math.abs(s).toFixed(1)} s ${s < 0 ? 'earlier' : 'later'}`;
+const fmtSubShift = (s) => `${Math.round(Math.abs(s) * 100) / 100} s ${s < 0 ? 'earlier' : 'later'}`;
+
+function subSyncText(s) {
+  if (s.state === 'failed') return `Timing check failed: ${s.error || 'unknown error'}`;
+  if (s.state !== 'synced') return SUB_SYNC_TEXT[s.state];
+  return s.offset != null
+    ? `Timing fixed: lines moved ${fmtSubShift(s.offset)}${s.ratio && s.ratio !== 1 ? ', adjusted for frame rate' : ''}.`
+    : null;
+}
+
+// Manual offset: − shows lines earlier (they come after the speech), + later (they come too soon).
+const NUDGES = [-1, -0.25, 0.25, 1];
+function nudgeRow(manual, onNudge) {
+  return h('div', { class: 'cc-nudge' },
+    h('span', { class: 'cc-nudge-label' }, 'Subtitle offset',
+      h('b', {}, manual ? ` ${manual > 0 ? '+' : '−'}${Math.round(Math.abs(manual) * 100) / 100} s` : ' 0 s')),
+    h('div', { class: 'cc-nudge-buttons' }, NUDGES.map((n) => h('button', {
+      type: 'button', 'aria-label': `Show subtitles ${Math.abs(n)} seconds ${n < 0 ? 'earlier' : 'later'}`, onclick: () => onNudge(n),
+    }, `${n < 0 ? '−' : '+'}${Math.abs(n) === 0.25 ? '¼' : Math.abs(n)} s`))),
+    h('span', { class: 'cc-nudge-hint' }, '− earlier · + later'),
+    manual ? h('button', { type: 'button', class: 'cc-nudge-reset', onclick: () => onNudge(-manual) }, 'Reset offset') : null);
+}
 
 function subSyncItems(f, session) {
   const s = ccSync;
-  if (!ccActive || !s || s.state === 'trusted') return [];
-  const text = s.state === 'synced'
-    ? `Timing fixed: lines moved ${fmtSubShift(s.offset)}${s.ratio && s.ratio !== 1 ? ', adjusted for frame rate' : ''}.`
-    : s.state === 'failed' ? `Timing check failed: ${s.error || 'unknown error'}` : SUB_SYNC_TEXT[s.state];
+  if (!ccActive || !s) return [];
+  const text = s.state === 'trusted' ? null : subSyncText(s);
   const lang = ccLangs.find((l) => l.code === ccActive);
   const action = (label, act) => h('button', { class: 'cc-item cc-action', onclick: () => subSyncAction(f, session, lang, act) }, label);
   return [
     h('div', { class: 'cc-divider', role: 'separator' }),
     text && h('p', { class: 'cc-message' }, text),
-    s.canUndo && action('Undo timing fix', 'undo'),
+    !subSyncBusy(s) && nudgeRow(s.manual || 0, (n) => subSyncNudge(f, session, lang, n)),
+    s.canUndo && s.offset != null && action('Undo timing fix', 'undo'),
     s.canSync && [null, 'exact', 'undone', 'failed'].includes(s.state) && action('Fix timing', 'sync'),
   ].filter(Boolean);
+}
+
+// Taps are applied one after another, so quick repeated taps all count.
+let nudgeChain = Promise.resolve();
+function subSyncNudge(f, session, l, seconds) {
+  nudgeChain = nudgeChain.then(async () => {
+    try {
+      ccSync = await api('/api/subs/sync', jsonPost({ kind: f.kind, id: mediaId(f), lang: l.code, action: 'shift', seconds }));
+      if (current !== session) return;
+      reloadSubTrack(l);
+      renderCcMenu(f, session);
+    } catch (err) { toast(err.message); }
+  });
 }
 
 async function subSyncAction(f, session, l, act) {
