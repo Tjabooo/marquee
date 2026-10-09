@@ -18,7 +18,7 @@ const TMP_TAG = '.marquee-tmp';
 // Downloaded MP4s are never modified (they may be seeding). If their audio isn't browser-compatible,
 // a fixed copy is written to the cache directory and served to browsers only.
 const FIX_EXT = new Set(['.mp4', '.m4v', '.mov']);
-const INTERVAL_MS = 30 * 1000;
+const INTERVAL_MS = 2 * 60 * 1000;
 
 const status = {
   enabled: false,
@@ -45,6 +45,56 @@ let currentFile = null;
 const queue = [];
 
 export const isTempFile = (name) => name.includes(TMP_TAG);
+
+// ---------- subtitle tracks -> sidecar .srt files ----------
+// Subtitles are saved beside the video as "<name>.<lang>.srt" (the format the subtitle menu
+// and TVs already use) instead of being embedded: TVs such as Samsung's refuse MP4s with
+// dozens of tracks as "unsupported", and releases often carry 30+ subtitle languages.
+const ISO3 = {
+  eng: 'en', swe: 'sv', dan: 'da', nor: 'no', nob: 'no', nno: 'no', fin: 'fi', ice: 'is', isl: 'is',
+  ger: 'de', deu: 'de', dut: 'nl', nld: 'nl', fre: 'fr', fra: 'fr', spa: 'es', ita: 'it', pol: 'pl',
+  cze: 'cs', ces: 'cs', slo: 'sk', slk: 'sk', hun: 'hu', rum: 'ro', ron: 'ro', gre: 'el', ell: 'el',
+  tur: 'tr', rus: 'ru', ukr: 'uk', bul: 'bg', hrv: 'hr', srp: 'sr', slv: 'sl', est: 'et', lav: 'lv',
+  lit: 'lt', ara: 'ar', heb: 'he', per: 'fa', fas: 'fa', hin: 'hi', tha: 'th', vie: 'vi', ind: 'id',
+  may: 'ms', msa: 'ms', jpn: 'ja', kor: 'ko',
+};
+
+function subLanguage(stream) {
+  const tag = String(stream.tags?.language || '').toLowerCase();
+  const title = String(stream.tags?.title || '');
+  if (tag === 'por' || tag === 'pt') return /bra[sz]il|\bbr\b|pt-br/i.test(title) ? 'pt-br' : 'pt-pt';
+  if (tag === 'chi' || tag === 'zho' || tag === 'zh') return /tradition|\btw\b|\bhk\b|cantonese/i.test(title) ? 'zh-tw' : 'zh-cn';
+  return ISO3[tag] || (/^[a-z]{2}$/.test(tag) ? tag : null);
+}
+
+// Sidecar files to write for a source file; existing ones (e.g. downloaded earlier) are kept.
+function plannedSidecars(file, subs) {
+  const stem = path.join(path.dirname(file), path.basename(file, path.extname(file)));
+  const isForced = (s) => s.disposition?.forced || /forced/i.test(s.tags?.title || '');
+  const isSdh = (s) => s.disposition?.hearing_impaired || /\bsdh\b|hearing|\bcc\b/i.test(s.tags?.title || '');
+  const used = new Set();
+  const out = [];
+  // Regular tracks first so they get the plain "<lang>.srt" name; forced-only tracks are skipped.
+  const ordered = subs.filter((s) => !isForced(s)).sort((a, b) => isSdh(a) - isSdh(b));
+  for (const s of ordered) {
+    const lang = subLanguage(s);
+    if (!lang) continue;
+    let name = `${stem}.${lang}.srt`;
+    if (used.has(name)) {
+      const sdh = `${stem}.${lang}.sdh.srt`;
+      if (isSdh(s) && !used.has(sdh)) name = sdh;
+      else {
+        let n = 2;
+        while (used.has(`${stem}.${lang}.${n}.srt`)) n++;
+        name = `${stem}.${lang}.${n}.srt`;
+      }
+    }
+    used.add(name);
+    if (fs.existsSync(name)) continue;
+    out.push({ index: s.index, target: name, tmp: name.replace(/\.srt$/, `${TMP_TAG}.srt`) });
+  }
+  return out;
+}
 export const needsConversion = (file) => CONVERT_EXT.has(path.extname(file).toLowerCase());
 export const twinPath = (file) => path.join(path.dirname(file), `${path.basename(file, path.extname(file))}.mp4`);
 // Source file an MP4 copy was converted from, if any.
@@ -189,7 +239,10 @@ async function probe(file) {
   return JSON.parse(out);
 }
 
-function plan(input, output, info, encoder, shift = 0) {
+// safeAudio: re-encode E-AC-3 instead of copying it. Some E-AC-3 tracks (notably Dolby Atmos,
+// which carries a dependent substream) can't be written into MP4 by ffmpeg and make the
+// muxer fail at the very end with "Error writing trailer: Invalid data found".
+function plan(input, output, info, encoder, shift = 0, safeAudio = false, sidecars = []) {
   const streams = info.streams || [];
   const video = streams.find((s) => s.codec_type === 'video' && !s.disposition?.attached_pic);
   if (!video) throw new Error('No video stream found.');
@@ -212,7 +265,6 @@ function plan(input, output, info, encoder, shift = 0) {
   args.push('-i', input, '-map', `0:${video.index}`);
   if (main) args.push('-map', `0:${main.index}`);
   for (const a of audios) if (a !== main || keepMain) args.push('-map', `0:${a.index}`);
-  for (const s of subs) args.push('-map', `0:${s.index}`);
 
   let reencode = false;
   const tenBit = /10|12/.test(video.pix_fmt || '');
@@ -239,14 +291,17 @@ function plan(input, output, info, encoder, shift = 0) {
   audios.forEach((a) => {
     if (a === main && !keepMain) return;
     const i = out++;
-    if (AUDIO_COPY.has(a.codec_name)) args.push(`-c:a:${i}`, 'copy');
+    if (safeAudio && a.codec_name === 'eac3') {
+      // Plain Dolby Digital Plus keeps the surround channels; only the Atmos height data is lost.
+      args.push(`-c:a:${i}`, 'eac3', `-b:a:${i}`, (a.channels || 2) > 2 ? '640k' : '224k');
+    } else if (AUDIO_COPY.has(a.codec_name)) args.push(`-c:a:${i}`, 'copy');
     else args.push(`-c:a:${i}`, 'aac', `-b:a:${i}`, (a.channels || 2) > 2 ? '384k' : '192k');
   });
   // Only the first audio track is marked default.
   for (let i = 0; i < out; i++) args.push(`-disposition:a:${i}`, i === 0 ? 'default' : '0');
-  if (subs.length) args.push('-c:s', 'mov_text');
 
   args.push('-avoid_negative_ts', 'disabled', '-movflags', '+faststart', '-progress', 'pipe:1', '-nostats', '-f', 'mp4', output);
+  for (const sc of sidecars) args.push('-map', `0:${sc.index}`, '-c:s', 'srt', '-f', 'srt', sc.tmp);
   return { args, reencode, duration: Number(info.format?.duration) || Number(video.duration) || null };
 }
 
@@ -264,8 +319,11 @@ async function convert(job) {
   const info = await probe(file);
   const key = failureKey(file);
   const shift = syncShift[key] || 0;
+  let safeAudio = false;
+  const sidecars = plannedSidecars(file, (info.streams || []).filter((st) => st.codec_type === 'subtitle' && TEXT_SUBS.has(st.codec_name)));
+  const dropSidecarTemps = () => sidecars.forEach((sc) => fs.rmSync(sc.tmp, { force: true }));
   const attempt = async (encoder) => {
-    const p = plan(file, tmp, info, encoder, shift);
+    const p = plan(file, tmp, info, encoder, shift, safeAudio, sidecars);
     const started = Date.now();
     status.current = { name, mode: p.reencode ? 'Re-encoding' : job.fix ? 'Fixing audio' : 'Repackaging', percent: 0, speed: null, eta: null };
     let buf = '';
@@ -295,20 +353,36 @@ async function convert(job) {
   let encoder = nvencBroken ? 'x264' : 'nvenc';
   const needsEncode = plan(file, tmp, info, encoder).reencode;
   try {
-    await attempt(encoder);
-  } catch (e) {
-    // NVENC unavailable: fall back to x264 for this and all later jobs.
-    if (encoder === 'nvenc' && needsEncode) {
-      console.warn(`[convert] GPU encoding failed (${e.message}); using the CPU instead.`);
-      nvencBroken = true;
-      encoder = 'x264';
-      status.encoder = 'x264';
-      fs.rmSync(tmp, { force: true });
+    try {
       await attempt(encoder);
-    } else {
+    } catch (e) {
       fs.rmSync(tmp, { force: true });
-      throw e;
+      // NVENC unavailable: fall back to x264 for this and all later jobs.
+      if (encoder === 'nvenc' && needsEncode) {
+        console.warn(`[convert] GPU encoding failed (${e.message}); using the CPU instead.`);
+        nvencBroken = true;
+        encoder = 'x264';
+        status.encoder = 'x264';
+        await attempt(encoder);
+      } else if (/trailer|invalid data/i.test(e.message)
+        && (info.streams || []).some((st) => st.codec_type === 'audio' && st.codec_name === 'eac3')) {
+        console.warn(`[convert] ${name}: E-AC-3 audio couldn't be copied (${e.message}); re-encoding it instead.`);
+        safeAudio = true;
+        await attempt(encoder);
+      } else {
+        throw e;
+      }
     }
+  } catch (e) {
+    fs.rmSync(tmp, { force: true });
+    dropSidecarTemps();
+    throw e;
+  }
+  for (const sc of sidecars) {
+    try {
+      if (fs.existsSync(sc.target) || !fs.statSync(sc.tmp).size) fs.rmSync(sc.tmp, { force: true });
+      else fs.renameSync(sc.tmp, sc.target);
+    } catch { fs.rmSync(sc.tmp, { force: true }); }
   }
   try {
     fs.renameSync(tmp, output); // overwrites the previous copy on redo
@@ -319,6 +393,7 @@ async function convert(job) {
     throw e;
   }
   audioCache.clear();
+  delete failures[key]; // an earlier failure no longer applies
   syncApplied[key] = shift;
   saveFailures();
   if (job.deleteOriginal && !job.fix) fs.rmSync(file, { force: true });
