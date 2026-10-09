@@ -153,6 +153,8 @@ The TV fetches the video itself and can't sign in to Cloudflare Access, so the p
 
 ### Smart TVs (DLNA)
 
+Each phone or browser only sees the remote for the TVs it started, so several people can cast to different TVs at once. The TV list shows when someone else is watching a TV, has a button for that TV's remote, and asks for a second tap before taking the TV over.
+
 Most DLNA TVs are discovered automatically; no setup is needed. If yours doesn't appear, add its device description URL (the `LOCATION` it advertises over UPnP) to `DLNA_DEVICES`.
 
 Subtitle support over DLNA varies by manufacturer. Marquee advertises subtitles in the formats used by Samsung, LG and Sony.

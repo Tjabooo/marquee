@@ -697,3 +697,5 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
   }
   .player video::cue { font-size: 1.15em; }
 }
+
+.device-remote { margin: 8px 0 4px 72px; }

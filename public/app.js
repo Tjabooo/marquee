@@ -34,8 +34,18 @@ const ICONS = {
 };
 const icon = (name) => { const s = h('span'); s.innerHTML = ICONS[name]; return s.firstChild; };
 
+// A random ID for this browser, so each phone sees its own TV remotes.
+const CLIENT_ID = (() => {
+  const make = () => Array.from({ length: 4 }, () => Math.random().toString(36).slice(2, 10)).join('');
+  try {
+    let id = localStorage.getItem('marquee:client');
+    if (!id) { id = make(); localStorage.setItem('marquee:client', id); }
+    return id;
+  } catch { return make(); }
+})();
+
 async function api(path, opts = {}) {
-  const r = await fetch(path, opts);
+  const r = await fetch(path, { ...opts, headers: { ...opts.headers, 'X-Marquee-Client': CLIENT_ID } });
   let data = {};
   try { data = await r.json(); } catch { /* non-JSON */ }
   if (!r.ok) throw new Error(data.error || `The server responded with ${r.status}.`);
@@ -669,17 +679,28 @@ function openPicker(file, opener) {
 
   function deviceRow(d) {
     const status = h('span', { class: 'device-status' });
+    // A TV that's already playing also gets a button for its remote (yours, or to stop someone else's).
+    const remote = d.session && h('button', { type: 'button', class: 'chip device-remote', onclick: () => openRemote(d.session, { replace: true }) },
+      d.session.mine ? 'Open remote' : 'Open its remote');
     const btn = h('button', { class: 'device', onclick: () => start(d, btn, status) },
       h('span', { class: 'device-icon' }, icon('tv')),
       h('span', { class: 'row-text' },
         h('span', { class: 'row-title' }, d.name),
         h('span', { class: 'row-meta' }, h('span', {}, d.kind === 'airplay' ? 'Apple TV' : (d.model || 'Smart TV')),
-          d.playing && h('span', {}, 'Playing something now')),
+          d.session ? h('span', {}, d.session.mine ? `Playing ${d.session.title}` : 'Someone else is watching')
+            : d.playing && h('span', {}, 'Playing something now')),
         status));
-    return h('li', {}, btn);
+    return h('li', {}, btn, remote);
   }
 
   async function start(d, btn, status) {
+    // Someone else's TV: ask for a second tap before taking it over.
+    if (d.session && !d.session.mine && !btn.dataset.confirm) {
+      btn.dataset.confirm = '1';
+      status.className = 'device-status is-error';
+      status.textContent = `Someone is watching ${d.session.title} on this TV. Tap again to play here instead.`;
+      return;
+    }
     btn.disabled = true;
     status.className = 'device-status';
     status.textContent = 'Starting on the TV…';
@@ -966,7 +987,7 @@ function openTorrents({ query = '', type = 'all', label = null, opener } = {}) {
 
 // ---------- casting: remote control ----------
 async function loadSessions() {
-  try { state.sessions = (await api('/api/cast/sessions')).sessions; } catch { /* keep last known */ }
+  try { state.sessions = (await api('/api/cast/sessions')).sessions.filter((s) => s.mine !== false); } catch { /* keep last known */ }
   renderNowbar();
 }
 

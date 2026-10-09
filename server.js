@@ -518,6 +518,18 @@ async function sendVideo(req, res, file, { captionUrl } = {}) {
 }
 
 // ---------- casting ----------
+// Each browser sends a random ID (X-Marquee-Client), so the remote and "now playing" bar only show the
+// TVs that browser started. Pages loaded before this existed send no ID; they're told apart by their
+// Cloudflare Access login and address instead. Anyone can still pick any TV from the TV list.
+const castOwners = new Map(); // deviceId -> who started what's playing
+function clientOf(req) {
+  const id = String(req.headers['x-marquee-client'] || '').replace(/[^\w-]/g, '').slice(0, 64);
+  if (id) return id;
+  const who = req.headers['cf-access-authenticated-user-email'] || '';
+  const where = req.headers['cf-connecting-ip'] || req.socket.remoteAddress || '';
+  return `anon:${who}|${where}`;
+}
+const isMine = (req, deviceId) => castOwners.get(deviceId) === clientOf(req);
 async function resolveMedia(kind, id, subLang = null) {
   const file = converter.preferConverted(await sourceFile(kind, id));
   let stat;
@@ -635,10 +647,18 @@ async function handleApi(req, res, url) {
   }
   if (p === '/api/cast/devices') {
     if (!(await castAllowed(req))) return sendJson(res, 200, { devices: [], notes: [], away: true });
-    if (url.searchParams.get('refresh')) return sendJson(res, 200, await cast.discover());
-    return sendJson(res, 200, { devices: cast.knownDevices(), notes: [] });
+    const data = url.searchParams.get('refresh') ? await cast.discover() : { devices: cast.knownDevices(), notes: [] };
+    // What each TV is playing, and whether it was started from this device.
+    const devices = data.devices.map((d) => {
+      const s = cast.getSession(d.id);
+      return s ? { ...d, session: { ...s, mine: isMine(req, d.id) } } : d;
+    });
+    return sendJson(res, 200, { ...data, devices });
   }
-  if (p === '/api/cast/sessions') return sendJson(res, 200, { sessions: cast.listSessions() });
+  if (p === '/api/cast/sessions') {
+    // Only this device's own casts, so even a page that doesn't filter (an older cached copy) shows nothing else.
+    return sendJson(res, 200, { sessions: cast.listSessions().filter((s) => isMine(req, s.deviceId)).map((s) => ({ ...s, mine: true })) });
+  }
   if (p === '/api/cast/play' && req.method === 'POST') {
     if (!(await castAllowed(req))) {
       throw new HttpError(403, 'You’re away from home, so the TVs there aren’t available. Play it on this device instead.');
@@ -646,7 +666,10 @@ async function handleApi(req, res, url) {
     const body = await readJson(req);
     const sub = body.sub && subtitles.validLang(body.sub) ? String(body.sub).toLowerCase() : null;
     const media = await resolveMedia(body.kind, body.id, sub);
-    return sendJson(res, 200, { session: await cast.castTo(String(body.deviceId || ''), media) });
+    const session = await cast.castTo(String(body.deviceId || ''), media);
+    castOwners.set(session.deviceId, clientOf(req));
+    console.log(`[cast] ${session.title} on ${session.deviceName}, started by ${clientOf(req).slice(0, 12)}`);
+    return sendJson(res, 200, { session: { ...session, mine: true } });
   }
   if ((m = p.match(/^\/api\/cast\/([\w-]+)\/subtitles$/)) && req.method === 'POST') {
     // DLNA can't swap subtitles mid-playback: restart with the new track and seek back.
@@ -782,6 +805,7 @@ async function serveStatic(res, pathname) {
   res.writeHead(200, {
     'Content-Type': MIME[path.extname(full).toLowerCase()] || 'application/octet-stream',
     'Cache-Control': 'no-cache',
+    'CDN-Cache-Control': 'no-store', // keeps Cloudflare from serving an old copy after an update
   });
   res.end(data);
 }
