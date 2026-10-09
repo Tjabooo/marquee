@@ -12,6 +12,7 @@ import * as cast from './cast.js';
 import * as converter from './convert.js';
 import * as torrents from './torrents.js';
 import * as subtitles from './subtitles.js';
+import * as subsync from './subsync.js';
 import { isHomeRequest, describeRequest } from './network.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -42,7 +43,15 @@ function lanAddress() {
 }
 const LAN_IP = lanAddress();
 cast.initCasting({ lanIp: LAN_IP });
-subtitles.initSubtitles({ dataDir: ROOT });
+subsync.initSubsync({ dataDir: ROOT, audioShift: (video) => converter.syncState(video).shift });
+subtitles.initSubtitles({
+  dataDir: ROOT,
+  // Downloaded subtitles get their timing checked in the background, unless they were made for this exact file.
+  onDownload: (video, srt, { exact }) => {
+    if (exact) subsync.markExact(srt);
+    else if (subsync.autoSyncEnabled()) subsync.queueSync(srt, video);
+  },
+});
 
 const VIDEO_EXT = new Set(['.mp4', '.m4v', '.mov', '.mkv', '.webm', '.avi']);
 const MIME = {
@@ -682,6 +691,21 @@ async function handleApi(req, res, url) {
     await subtitles.ensureSubtitle(file, infoFor(file), lang);
     return sendJson(res, 200, { url: `/api/subs/file/${body.kind}/${encodeURIComponent(body.id)}/${lang}.vtt` });
   }
+  if (p === '/api/subs/sync') {
+    // Timing check for a saved subtitle: GET for its state, POST { action: 'sync' | 'undo' }.
+    const body = req.method === 'POST' ? await readJson(req) : null;
+    const kind = body ? body.kind : url.searchParams.get('kind');
+    const id = body ? body.id : url.searchParams.get('id');
+    const lang = String((body ? body.lang : url.searchParams.get('lang')) || '').toLowerCase();
+    if (!subtitles.validLang(lang)) throw new HttpError(400, 'Unknown language.');
+    const video = converter.preferConverted(await sourceFile(kind, String(id || '')));
+    const srt = subtitles.findSidecar(video, lang);
+    if (!srt) throw new HttpError(404, 'Those subtitles aren’t on the server.');
+    if (!body) return sendJson(res, 200, subsync.stateOf(srt));
+    if (body.action === 'undo') return sendJson(res, 200, subsync.undoSync(srt));
+    if (body.action === 'sync') return sendJson(res, 200, subsync.queueSync(srt, video));
+    throw new HttpError(400, 'Unknown action.');
+  }
   if ((m = p.match(/^\/api\/subs\/file\/(lib|dl)\/([A-Za-z0-9_-]+)\/([a-z]{2,3}(?:-[a-z]{2})?)\.(vtt|srt)$/))) {
     const file = converter.preferConverted(await sourceFile(m[1], m[2]));
     const text = await subtitles.readSubtitle(file, m[3]);
@@ -771,7 +795,7 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://localhost');
     const allowed = req.method === 'GET' || req.method === 'HEAD'
-      || (req.method === 'POST' && (url.pathname.startsWith('/api/cast/') || url.pathname === '/api/downloads/add' || url.pathname === '/api/subs/fetch' || url.pathname === '/api/library/delete' || /^\/api\/media\/\w+\/[\w-]+\/sync$/.test(url.pathname)));
+      || (req.method === 'POST' && (url.pathname.startsWith('/api/cast/') || url.pathname === '/api/downloads/add' || url.pathname === '/api/subs/fetch' || url.pathname === '/api/subs/sync' || url.pathname === '/api/library/delete' || /^\/api\/media\/\w+\/[\w-]+\/sync$/.test(url.pathname)));
     if (!allowed) throw new HttpError(405, 'Method not allowed.');
     if (url.pathname.startsWith('/api/')) await handleApi(req, res, url);
     else if (url.pathname.startsWith('/play/')) await handlePlay(req, res, url);
@@ -868,6 +892,7 @@ function extrasFor(file) {
 function removeFile(file) {
   try {
     fs.rmSync(file, { force: true });
+    if (file.toLowerCase().endsWith('.srt')) subsync.forget(file);
   } catch (e) {
     if (/EBUSY|EPERM|EACCES/.test(e.code || '')) {
       throw new HttpError(409, `Windows says ${path.basename(file)} is in use. Stop playing it (here or on a TV) and try again.`);
@@ -955,6 +980,7 @@ setInterval(checkSubtitleWants, 2 * 60 * 1000);
 
 converter.startConverter({
   dataDir: ROOT,
+  onSidecar: (srt) => subsync.markTrusted(srt), // extracted from the video: already in sync
   listCandidates: conversionCandidates,
   onConverted: () => { libraryCache.at = 0; },
 });
@@ -965,6 +991,6 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`  Library:   ${MEDIA_DIR || 'off (add MEDIA_DIR to .env)'}`);
   console.log(`  Downloads: ${QBIT_URL || 'off (add QBIT_URL to .env)'}`);
   console.log(`  Torrents:  ${torrents.torrentsEnabled() ? 'search on (1337x + The Pirate Bay)' : 'off (TORRENTS=off)'}`);
-  console.log(`  Subtitles: ${subtitles.subtitlesConfigured() ? 'OpenSubtitles on' : 'off (add OPENSUBTITLES_API_KEY to .env)'}`);
+  console.log(`  Subtitles: ${subtitles.subtitlesConfigured() ? 'OpenSubtitles on' : 'off (add OPENSUBTITLES_API_KEY to .env)'}${subsync.autoSyncEnabled() ? ', timing auto-fix on' : ''}`);
   console.log(`  TVs will stream from: http://${LAN_IP}:${PORT} (set SERVER_IP in .env if this is wrong)`);
 });

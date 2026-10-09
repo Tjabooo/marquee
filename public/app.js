@@ -1267,6 +1267,8 @@ video.addEventListener('webkitendfullscreen', () => {
 function clearSubTracks() {
   video.querySelectorAll('track').forEach((t) => t.remove());
   ccActive = null;
+  ccSync = null;
+  clearTimeout(ccSyncTimer);
 }
 function closeCcMenu() { ccMenu.hidden = true; ccBtn.setAttribute('aria-expanded', 'false'); }
 ccBtn.addEventListener('click', (e) => {
@@ -1286,8 +1288,80 @@ function renderCcMenu(f, session, message) {
       role: 'menuitemradio', class: 'cc-item', 'aria-checked': String(ccActive === l.code),
       onclick: () => pickPlayerSub(f, session, l),
     }, l.name)),
-    ...(message ? [h('p', { class: 'cc-message' }, message)] : []));
+    ...(message ? [h('p', { class: 'cc-message' }, message)] : []),
+    ...subSyncItems(f, session));
   ccBtn.classList.toggle('is-on', Boolean(ccActive));
+}
+
+// ---- subtitle timing ----
+// The server lines downloaded subtitles up with the film in the background. While that runs the
+// menu says so, and when the file changes the track is reloaded in place.
+let ccSync = null;
+let ccSyncTimer = null;
+const SUB_SYNC_TEXT = {
+  queued: 'Checking the timing…',
+  syncing: 'Checking the timing…',
+  ok: 'Timing checked: already in sync.',
+  unsure: 'Couldn’t check the timing automatically.',
+  exact: 'Made for this exact file.',
+  undone: 'Using the original timing.',
+};
+const subSyncBusy = (s) => s?.state === 'queued' || s?.state === 'syncing';
+const fmtSubShift = (s) => `${Math.abs(s).toFixed(1)} s ${s < 0 ? 'earlier' : 'later'}`;
+
+function subSyncItems(f, session) {
+  const s = ccSync;
+  if (!ccActive || !s || s.state === 'trusted') return [];
+  const text = s.state === 'synced'
+    ? `Timing fixed: lines moved ${fmtSubShift(s.offset)}${s.ratio && s.ratio !== 1 ? ', adjusted for frame rate' : ''}.`
+    : s.state === 'failed' ? `Timing check failed: ${s.error || 'unknown error'}` : SUB_SYNC_TEXT[s.state];
+  const lang = ccLangs.find((l) => l.code === ccActive);
+  const action = (label, act) => h('button', { class: 'cc-item cc-action', onclick: () => subSyncAction(f, session, lang, act) }, label);
+  return [
+    h('div', { class: 'cc-divider', role: 'separator' }),
+    text && h('p', { class: 'cc-message' }, text),
+    s.canUndo && action('Undo timing fix', 'undo'),
+    s.canSync && [null, 'exact', 'undone', 'failed'].includes(s.state) && action('Fix timing', 'sync'),
+  ].filter(Boolean);
+}
+
+async function subSyncAction(f, session, l, act) {
+  try {
+    ccSync = await api('/api/subs/sync', jsonPost({ kind: f.kind, id: mediaId(f), lang: l.code, action: act }));
+    if (current !== session) return;
+    if (act === 'undo') { reloadSubTrack(l); toast('Back to the original subtitle timing'); }
+    renderCcMenu(f, session);
+    if (subSyncBusy(ccSync)) watchSubSync(f, session, l, true);
+  } catch (err) { toast(err.message); }
+}
+
+async function watchSubSync(f, session, l, wasBusy = false) {
+  clearTimeout(ccSyncTimer);
+  let s;
+  try { s = await api(`/api/subs/sync?kind=${f.kind}&id=${encodeURIComponent(mediaId(f))}&lang=${l.code}`); } catch { return; }
+  if (current !== session || ccActive !== l.code) return;
+  ccSync = s;
+  if (subSyncBusy(s)) {
+    ccSyncTimer = setTimeout(() => watchSubSync(f, session, l, true), 3000);
+  } else if (wasBusy && s.state === 'synced') {
+    reloadSubTrack(l);
+    toast(`Subtitle timing fixed (${fmtSubShift(s.offset)})`);
+  } else if (wasBusy && s.state === 'failed') {
+    toast('Couldn’t check the subtitle timing');
+  }
+  renderCcMenu(f, session);
+}
+
+// Swaps the track for a fresh copy of the same file.
+function reloadSubTrack(l) {
+  const old = video.querySelector(`track[srclang="${l.code}"]`);
+  if (!old) return;
+  const src = `${old.getAttribute('src').split('?')[0]}?v=${Date.now()}`;
+  const track = h('track', { kind: 'subtitles', srclang: l.code, label: l.name, src, default: true });
+  old.remove();
+  video.append(track);
+  track.track.mode = 'showing';
+  track.addEventListener('load', () => { track.track.mode = 'showing'; });
 }
 
 async function setupPlayerSubs(f, session) {
@@ -1325,6 +1399,7 @@ async function pickPlayerSub(f, session, l, { quiet = false } = {}) {
     l.saved = true;
     renderCcMenu(f, session);
     if (!quiet) toast(`${l.name} subtitles on`);
+    watchSubSync(f, session, l);
   } catch (err) {
     renderCcMenu(f, session, err.message);
     if (!quiet) toast(err.message);

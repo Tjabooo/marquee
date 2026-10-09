@@ -38,6 +38,7 @@ let syncApplied = {};  // source key -> correction baked into the current copy
 const CHECK_VERSION = 'v2|'; // bump to re-check files after the audio checks change
 const SYNC_TOLERANCE = 0.04; // seconds; below one video frame
 let onConvertedHook = null;
+let onSidecarHook = null;
 let fixDir = null;     // cache directory for audio-fixed copies
 let nvencBroken = false;
 let running = false;
@@ -381,7 +382,7 @@ async function convert(job) {
   for (const sc of sidecars) {
     try {
       if (fs.existsSync(sc.target) || !fs.statSync(sc.tmp).size) fs.rmSync(sc.tmp, { force: true });
-      else fs.renameSync(sc.tmp, sc.target);
+      else { fs.renameSync(sc.tmp, sc.target); onSidecarHook?.(sc.target); }
     } catch { fs.rmSync(sc.tmp, { force: true }); }
   }
   try {
@@ -396,7 +397,31 @@ async function convert(job) {
   delete failures[key]; // an earlier failure no longer applies
   syncApplied[key] = shift;
   saveFailures();
-  if (job.deleteOriginal && !job.fix) fs.rmSync(file, { force: true });
+  if (job.deleteOriginal && !job.fix) removeOriginal(file);
+}
+
+// Deletes an original after its MP4 copy is made. Windows refuses while something has the file open
+// (playback, antivirus, Explorer previews), so a locked file is retried on later scans instead of
+// counting as a failed conversion.
+let pendingDeletes = [];
+function removeOriginal(file) {
+  try {
+    fs.rmSync(file, { force: true });
+    pendingDeletes = pendingDeletes.filter((f) => f !== file);
+  } catch (e) {
+    if (!/EBUSY|EPERM|EACCES/.test(e.code || '')) { console.warn(`[convert] couldn’t delete ${path.basename(file)}: ${e.message}`); return; }
+    if (!pendingDeletes.includes(file)) {
+      pendingDeletes.push(file);
+      console.warn(`[convert] ${path.basename(file)} is in use; it will be deleted once it's free.`);
+    }
+  }
+  saveFailures();
+}
+function retryDeletes() {
+  for (const file of [...pendingDeletes]) {
+    if (!fs.existsSync(file) || !fs.existsSync(twinPath(file))) pendingDeletes = pendingDeletes.filter((f) => f !== file);
+    else if (file !== currentFile) removeOriginal(file);
+  }
 }
 
 const failureKey = (file) => {
@@ -404,7 +429,7 @@ const failureKey = (file) => {
 };
 
 function saveFailures() {
-  try { fs.writeFileSync(stateFile, JSON.stringify({ failures, audioChecked, syncShift, syncApplied }, null, 2)); } catch { /* best effort */ }
+  try { fs.writeFileSync(stateFile, JSON.stringify({ failures, audioChecked, syncShift, syncApplied, pendingDeletes }, null, 2)); } catch { /* best effort */ }
 }
 
 // Removes cached copies whose source file no longer exists or has changed.
@@ -464,7 +489,8 @@ async function drain(onConverted) {
 }
 
 // listCandidates(): Promise<[{ file, deleteOriginal }]>
-export async function startConverter({ dataDir, listCandidates, onConverted }) {
+export async function startConverter({ dataDir, listCandidates, onConverted, onSidecar }) {
+  onSidecarHook = onSidecar || null;
   if ((process.env.CONVERT || 'on').toLowerCase() === 'off') {
     status.reason = 'Turned off (CONVERT=off in .env).';
     return;
@@ -487,6 +513,14 @@ export async function startConverter({ dataDir, listCandidates, onConverted }) {
       audioChecked = Object.fromEntries(Object.entries(saved.audioChecked || {}).filter(([k]) => k.startsWith(CHECK_VERSION)));
       syncShift = saved.syncShift || {};
       syncApplied = saved.syncApplied || {};
+      pendingDeletes = saved.pendingDeletes || [];
+      // Earlier versions recorded a locked original as a failed conversion although its copy was made.
+      for (const [key, f] of Object.entries(failures)) {
+        const file = key.split('|')[0];
+        if (!/EBUSY|resource busy|locked/i.test(f.error || '') || !fs.existsSync(twinPath(file))) continue;
+        delete failures[key];
+        if (fs.existsSync(file) && !pendingDeletes.includes(file)) pendingDeletes.push(file);
+      }
     } else failures = saved;
   } catch { failures = {}; }
   onConvertedHook = onConverted;
@@ -494,6 +528,7 @@ export async function startConverter({ dataDir, listCandidates, onConverted }) {
   status.reason = null;
 
   const tick = async () => {
+    retryDeletes();
     try {
       const candidates = await listCandidates();
       for (const c of candidates) {

@@ -561,6 +561,9 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .cc-item[aria-checked="true"]::before { background: var(--bulb); border-color: var(--bulb); box-shadow: 0 0 6px rgba(244, 193, 82, 0.8); }
 .cc-item:hover, .cc-item:focus-visible { background: var(--seat); }
 .cc-message { margin: 6px 12px 8px; font-size: 13px; color: var(--dust); }
+.cc-divider { height: 1px; margin: 6px 8px; background: var(--line); }
+.cc-action { color: var(--bulb); font-weight: 600; }
+.cc-action::before { display: none; }
 .player video::cue { font-family: var(--body); background: rgba(0, 0, 0, 0.6); }
 .player-note {
   margin: 0 var(--gutter) 8px; padding: 10px 14px;

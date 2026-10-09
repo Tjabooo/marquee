@@ -142,7 +142,7 @@ export function localLanguages(file) {
   return found;
 }
 
-function findSidecar(file, lang) {
+export function findSidecar(file, lang) {
   const exact = sidecarPath(file, lang);
   if (fs.existsSync(exact)) return exact;
   const prefix = `${path.basename(file, path.extname(file))}.${lang}.`.toLowerCase();
@@ -246,6 +246,8 @@ async function download(file, info, lang) {
   const out = sidecarPath(file, lang);
   await fs.promises.writeFile(out, text, 'utf8');
   console.log(`[subtitles] saved ${path.basename(out)} (${dl.remaining ?? '?'} downloads left today)`);
+  // Lets the timing check run; an exact file-hash match was made for this very release.
+  try { onDownloaded?.(file, out, { exact: Boolean(best.attributes.moviehash_match) }); } catch { /* best effort */ }
   return out;
 }
 
@@ -273,9 +275,11 @@ export function srtToVtt(srt) {
 
 // ---------- deferred downloads ----------
 let wantsFile = null;
+let onDownloaded = null;
 let wants = {}; // infohash -> { name, langs: { en: 'waiting' | 'ready' | 'missing' | 'error' }, at }
 
-export function initSubtitles({ dataDir }) {
+export function initSubtitles({ dataDir, onDownload }) {
+  onDownloaded = onDownload || null;
   wantsFile = path.join(dataDir, '.marquee-subs.json');
   try { wants = JSON.parse(fs.readFileSync(wantsFile, 'utf8')); } catch { wants = {}; }
 }

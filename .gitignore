@@ -6,7 +6,10 @@ logs/
 cache/
 .marquee-convert.json
 .marquee-subs.json
+.marquee-subsync.json
+.marquee-subfiles.json
 .marquee-secret
+*.subsync-tmp
 *.marquee-tmp.mp4
 
 # Dependencies and environments

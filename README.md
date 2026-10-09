@@ -10,7 +10,7 @@ Marquee is a single Node.js process with no dependencies, served as a mobile-fir
 - **Library**: every video in your media folder, grouped by title with season and episode detection. Remembers where you stopped watching.
 - **Torrent search**: searches The Pirate Bay and 1337x in parallel, ranked by seeders, with quality filters (4K, 1080p, 720p) and cinema recordings flagged. One tap sends a result to qBittorrent.
 - **Downloads**: live qBittorrent progress, speed and time remaining.
-- **Subtitles**: pick a language in the player or TV remote and Marquee fetches the best match from OpenSubtitles, preferring subtitles timed for your exact file. Subtitles can also be requested when starting a download and are fetched automatically when it finishes.
+- **Subtitles**: pick a language in the player or TV remote and Marquee fetches the best match from OpenSubtitles, preferring subtitles timed for your exact file. Downloaded subtitles that weren't made for your exact file have their timing checked and fixed automatically. Subtitles can also be requested when starting a download and are fetched automatically when it finishes.
 - **Casting**: play on DLNA smart TVs (Samsung, LG, Sony and others) and Apple TV, with a full-screen remote for play/pause, seeking, volume and subtitles.
 - **Automatic conversion**: MKV, AVI, WebM and similar files get an MP4 copy that plays on iPhone and Apple TV. Streams are copied where possible; video is re-encoded on an NVIDIA GPU (NVENC) or CPU only when needed.
 - **Browser audio fix**: Chrome and Firefox can't decode Dolby (AC3/E-AC3) or DTS. Marquee adds a stereo AAC track so these files play with sound, while TVs still receive the original surround audio.
@@ -86,6 +86,7 @@ All settings live in `.env`. Changes take effect after a restart.
 | `OPENSUBTITLES_API_KEY` | | Enables subtitles. |
 | `OPENSUBTITLES_USER` / `OPENSUBTITLES_PASS` | | Optional account login; raises the daily download limit from 5 to 20. |
 | `SUB_LANGS` | `en,sv,da,...` | Languages offered, in display order. Codes follow OpenSubtitles (`en`, `pt-br`, `zh-cn`, ...). |
+| `SUBSYNC` | `on` | Check and fix the timing of downloaded subtitles automatically. `off` leaves them as downloaded; the player's **Fix timing** button still works. Needs ffmpeg. |
 
 ### Casting
 
@@ -203,11 +204,23 @@ Videos are streamed with HTTP range requests, so seeking works in every browser 
 
 ### Conversion
 
-The converter scans the library and finished downloads every two minutes. Any MKV, AVI, WebM, WMV, FLV, TS or MPEG file gets an MP4 copy next to it; once that exists, the library lists the copy instead. H.264 and HEVC video are copied without re-encoding; other codecs are re-encoded. Text subtitles are carried over and image-based subtitles are dropped.
+The converter scans the library and finished downloads every two minutes. Any MKV, AVI, WebM, WMV, FLV, TS or MPEG file gets an MP4 copy next to it; once that exists, the library lists the copy instead. H.264 and HEVC video are copied without re-encoding; other codecs are re-encoded. Text subtitles are saved beside the copy as `.srt` files (some TVs refuse MP4s with many subtitle tracks) and image-based subtitles are dropped.
 
 ### Browser audio
 
 Output files start with a stereo AAC track, followed by the original tracks, so browsers play them with sound and receivers still get surround. MP4 files downloaded as-is are never modified because qBittorrent may be seeding them; if their audio isn't browser-compatible, a fixed copy is written to `AUDIO_FIX_DIR` and served only to browsers. When you open such a file, it moves to the front of the queue and the player switches to the fixed copy when it's ready.
+
+### Subtitle timing
+
+Subtitles from OpenSubtitles are often made for a different release of the same film, so they can start a few seconds early or late, or slowly drift when the release runs at a different frame rate (23.976 vs 25 fps). After a download, Marquee lines the file up in the background against the first of these it finds:
+
+1. a text subtitle track inside the video (or the MKV it was converted from),
+2. a subtitle file Marquee extracted from such a track,
+3. the film's audio, by finding where people are talking.
+
+Both subtitle files are turned into on/off signals and compared at every offset up to ten minutes and for the common frame-rate ratios; the best match is applied only when it clearly beats every alternative, otherwise the file is left alone. Checking against a subtitle track takes a second; against the audio, roughly a minute for a feature film. Subtitles OpenSubtitles matched to your exact file are skipped.
+
+The subtitle menu in the player shows the result and has **Undo timing fix**; the original is kept in `cache/subsync/`. **Fix timing** runs the check on demand for subtitles that weren't checked automatically. A fix moves or stretches the whole file, so subtitles for a different cut of the film (extra or missing scenes) can't be fully corrected.
 
 ### Deletion
 
@@ -221,6 +234,7 @@ marquee/
 ├── env.js                Loads .env before other modules
 ├── torrents.js           The Pirate Bay and 1337x search
 ├── subtitles.js          OpenSubtitles client and local subtitle files
+├── subsync.js            Automatic subtitle timing
 ├── convert.js            Background ffmpeg conversion and audio fixes
 ├── cast.js               DLNA and Apple TV casting
 ├── network.js            Home-network detection for casting
@@ -241,6 +255,8 @@ Created at runtime and excluded from Git:
 | `.env` | Your configuration and credentials |
 | `.marquee-convert.json` | Conversion failures and audio checks |
 | `.marquee-subs.json` | Subtitles waiting for downloads to finish |
+| `.marquee-subsync.json` | Subtitle timing results |
+| `cache/subsync/` | Subtitles as they were before a timing fix |
 | `.marquee-secret` | Key for signed `/play/` links |
 | `cache/audio/` | Audio-fixed copies of downloaded MP4s |
 | `logs/` | Output from the auto-start task |
@@ -264,6 +280,8 @@ The web client uses a JSON API that can also be scripted. `<kind>` is `lib` for 
 | `GET` | `/api/subs/langs` | Subtitle languages for a file (`kind`, `id`) or title (`q`, `type`) |
 | `POST` | `/api/subs/fetch` | Download subtitles (`{ kind, id, lang }`) |
 | `GET` | `/api/subs/file/<kind>/<id>/<lang>.vtt` | Subtitles as WebVTT (`.srt` also available) |
+| `GET` | `/api/subs/sync` | Timing check state for saved subtitles (`kind`, `id`, `lang`) |
+| `POST` | `/api/subs/sync` | Fix or undo subtitle timing (`{ kind, id, lang, action: 'sync' \| 'undo' }`) |
 | `GET` | `/api/stream/<kind>/<id>` | Video stream with range support |
 | `GET` | `/api/play-link?kind=&id=&variant=` | Signed `/play/` link (`variant`: `browser` or `tv`) |
 | `GET` | `/play/...` | Video stream through a signed link; works without signing in |
