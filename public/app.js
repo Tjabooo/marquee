@@ -163,7 +163,9 @@ function fileRow(f) {
     f.done && h('div', { class: 'row-actions' },
       f.kind === 'lib' && h('button', { class: 'cast-btn del-btn', 'aria-label': `Delete ${title}`, title: 'Delete', onclick: (e) => openDelete(f, e.currentTarget) }, icon('trash')),
       h('button', { class: 'cast-btn', 'aria-label': `Play ${title} on a TV`, title: 'Play on TV', onclick: (e) => openPicker(f, e.currentTarget) }, icon('tv')),
-      h('button', { class: 'play-btn round', 'aria-label': `Play ${title} here`, onclick: () => openPlayer(f) }, icon('play'))));
+      f.converting
+        ? h('button', { class: 'play-btn round is-disabled', 'aria-disabled': 'true', title: 'Cannot play while converting', 'aria-label': `${title}: cannot play while converting`, onclick: () => toast('Cannot play while converting') }, icon('play'))
+        : h('button', { class: 'play-btn round', 'aria-label': `Play ${title} here`, onclick: () => openPlayer(f) }, icon('play'))));
 }
 
 // ---------- Discover ----------
@@ -459,12 +461,73 @@ function makeDlCard(d) {
         refs.state = h('div', { class: 'dl-state' })),
       refs.actions = h('div', { class: 'row-actions' },
         refs.cast = h('button', { class: 'cast-btn', title: 'Play on TV', onclick: () => openPicker({ ...refs.data, kind: 'dl', key: refs.data.hash }, refs.cast) }, icon('tv')),
-        refs.play = h('button', { class: 'play-btn', onclick: () => openPlayer({ ...refs.data, kind: 'dl', key: refs.data.hash }) },
-          icon('play'), 'Play'))),
+        refs.play = h('button', { class: 'play-btn', onclick: () => {
+          if (refs.data.converting) { toast('Cannot play while converting'); return; }
+          openPlayer({ ...refs.data, kind: 'dl', key: refs.data.hash });
+        } }, icon('play'), 'Play'))),
     refs.bar = h('div', { class: 'bulbs', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100' }, h('i')),
-    refs.stats = h('div', { class: 'dl-stats' }));
+    h('div', { class: 'dl-foot' },
+      refs.stats = h('div', { class: 'dl-stats' }),
+      h('div', { class: 'dl-controls' },
+        refs.pause = h('button', { type: 'button', class: 'chip dl-ctl', onclick: () => togglePause(refs.data, refs.pause) }),
+        refs.del = h('button', { type: 'button', class: 'chip dl-ctl', onclick: (e) => openDeleteDownload(refs.data, e.currentTarget) }, 'Delete'))));
   el._refs = refs;
   return el;
+}
+
+const isPaused = (d) => /^(paused|stopped)/.test(d.state || '');
+
+async function togglePause(d, btn) {
+  const resume = isPaused(d);
+  btn.disabled = true;
+  try {
+    await api(`/api/downloads/${d.hash}/${resume ? 'resume' : 'pause'}`, jsonPost({}));
+    d.state = resume ? 'downloading' : 'pausedDL'; // shown right away; the next refresh has qBittorrent's own state
+    updateDlCard(dlCards.get(d.hash), d);
+    toast(resume ? 'Download resumed' : 'Download paused');
+  } catch (err) { toast(err.message); } finally { btn.disabled = false; }
+}
+
+function openDeleteDownload(d, opener) {
+  const body = $('#picker-body');
+  const status = h('p', { class: 'device-status', role: 'status' });
+  const label = [d.title, episodeLabel(d), d.year && !d.season ? `(${d.year})` : null].filter(Boolean).join(' ');
+  const run = async (files, btn) => {
+    body.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+    btn.textContent = 'Deleting…';
+    try {
+      await api(`/api/downloads/${d.hash}/delete`, jsonPost({ files }));
+      closeTopOverlay();
+      toast(files ? 'Download and files deleted' : 'Removed from downloads; files kept');
+      state.downloads = state.downloads.filter((x) => x.hash !== d.hash);
+      if (state.view === 'downloads') renderDownloads();
+      setTimeout(async () => { await Promise.all([loadLibrary(), loadDownloads()]); renderView(); }, 4000);
+    } catch (err) {
+      body.querySelectorAll('button').forEach((b) => { b.disabled = false; });
+      btn.textContent = btn.dataset.label;
+      status.className = 'device-status is-error';
+      status.textContent = err.message;
+    }
+  };
+  const button = (text, cls, files) => {
+    const b = h('button', { class: cls, 'data-label': text }, text);
+    b.addEventListener('click', () => run(files, b));
+    return b;
+  };
+  const cancel = h('button', { class: 'del-cancel', onclick: () => closeTopOverlay() }, 'Keep it');
+  body.replaceChildren(
+    h('h2', { id: 'picker-title' }, d.done ? 'Delete this download?' : 'Cancel this download?'),
+    h('p', { class: 'del-name' }, label),
+    h('p', { class: 'muted' }, d.done
+      ? `Removes it from qBittorrent, so it stops seeding, and deletes its files (${fmtBytes(d.size)}). This can’t be undone.`
+      : `Stops the download and deletes what has been downloaded so far (${Math.floor(d.progress * 100)}% of ${fmtBytes(d.size)}).`),
+    h('div', { class: 'del-actions' },
+      button(d.done ? 'Delete download and files' : 'Cancel and delete', 'del-confirm', true),
+      button('Remove from list, keep files', 'del-confirm del-secondary', false),
+      cancel),
+    status);
+  pushOverlay(showSheet($('#picker'), $('#picker-backdrop'), () => opener?.focus({ preventScroll: true })));
+  cancel.focus();
 }
 
 function updateDlCard(el, d) {
@@ -487,8 +550,15 @@ function updateDlCard(el, d) {
   const subs = (d.subs || []).map((x) => h('span', { class: `sub-state sub-${x.state}` }, `${x.name} ${SUB_STATE[x.state] || ''}`));
   const stats = d.done
     ? [fmtBytes(d.size), ...subs]
-    : [h('strong', {}, `${pct}%`), `of ${fmtBytes(d.size)}`, d.speed > 0 && `${fmtBytes(d.speed)}/s`, fmtEta(d.eta), ...subs];
+    : [h('strong', {}, `${pct}%`), `of ${fmtBytes(d.size)}`, !isPaused(d) && d.speed > 0 && `${fmtBytes(d.speed)}/s`, !isPaused(d) && fmtEta(d.eta), ...subs];
   r.stats.replaceChildren(...stats.filter(Boolean).map((s) => (s instanceof Node ? s : h('span', {}, s))));
+  r.pause.hidden = d.done;
+  r.del.hidden = d.done; // finished downloads are deleted from the Library
+  r.play.classList.toggle('is-disabled', Boolean(d.converting));
+  r.play.setAttribute('aria-disabled', String(Boolean(d.converting)));
+  r.play.title = d.converting ? 'Cannot play while converting' : '';
+  r.pause.textContent = isPaused(d) ? 'Resume' : 'Pause';
+  r.pause.setAttribute('aria-label', `${isPaused(d) ? 'Resume' : 'Pause'} ${d.title}`);
 }
 
 function renderDownloads() {
@@ -534,13 +604,14 @@ function schedulePoll() {
   const delay = state.view === 'downloads' ? 2000 : state.view === 'library' ? 3000 : state.view === 'activity' ? 10000 : 15000;
   pollTimer = setTimeout(async () => {
     if (!document.hidden) {
-      const wasConverting = Boolean(state.convert?.current);
+      const before = state.convert?.current?.name;
       await Promise.all([loadDownloads(), loadSessions(), state.view === 'library' ? loadConvert() : null]);
       if (state.view === 'downloads') renderDownloads();
       if (state.view === 'activity') { await loadActivity(); if (state.view === 'activity') renderActivity(); }
       if (state.view === 'library') {
         // A conversion finished: refresh so the new MP4 appears.
-        if (wasConverting && !state.convert?.current) { await loadLibrary(); renderLibrary(); } else renderConvertBanner();
+        // A conversion started or finished: refresh so Play is disabled / the new MP4 appears.
+        if (before !== state.convert?.current?.name) { await loadLibrary(); renderLibrary(); } else renderConvertBanner();
       }
     }
     schedulePoll();
@@ -1557,7 +1628,8 @@ const CODEC_MIME = { ac3: 'ac-3', eac3: 'ec-3', opus: 'opus', flac: 'flac', vorb
 const browserPlays = (codec) => Boolean(CODEC_MIME[codec] && video.canPlayType(`audio/mp4; codecs="${CODEC_MIME[codec]}"`));
 
 // Extra codecs this browser can decode, reported to the server.
-const extraPlayable = () => Object.keys(CODEC_MIME).filter(browserPlays).join(',');
+const playsHevc = () => Boolean(video.canPlayType('video/mp4; codecs="hvc1.1.6.L93.B0"'));
+const extraPlayable = () => [...Object.keys(CODEC_MIME).filter(browserPlays), playsHevc() && 'hevc'].filter(Boolean).join(',');
 
 // ---- audio sync ----
 const syncBtn = $('#sync-btn');
@@ -2202,6 +2274,8 @@ function renderView() {
 const ACTIVITY_TEXT = {
   download: (d) => `started downloading ${d}`,
   delete: (d) => `deleted ${d}`,
+  pause: (d) => `paused the download of ${d}`,
+  resume: (d) => `resumed the download of ${d}`,
   play: (d) => `watched ${d}`,
   cast: (d) => { const [what, tv] = d.split(' → '); return tv ? `put ${what} on ${tv}` : `put ${d} on a TV`; },
   stop: (d) => `stopped ${d}`,

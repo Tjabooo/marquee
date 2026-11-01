@@ -124,7 +124,12 @@ const canFix = (file) => FIX_EXT.has(path.extname(file).toLowerCase()) && !isTem
 export function preferConverted(file, { browser = false } = {}) {
   if (needsConversion(file)) {
     const twin = twinPath(file);
-    return fs.existsSync(twin) ? twin : file;
+    if (!fs.existsSync(twin)) return file;
+    if (browser) { // an H.264 browser copy of the MP4 copy, made for browsers without HEVC
+      const fixed = fixPath(twin);
+      if (fixed && fs.existsSync(fixed)) return fixed;
+    }
+    return twin;
   }
   if (canFix(file) && (browser || syncShift[failureKey(file)])) { // TVs too when a manual correction exists
     const fixed = fixPath(file);
@@ -177,7 +182,9 @@ export async function probeVideo(file) {
   videoCache.set(key, out);
   return out;
 }
-export const videoBrowserSafe = (v) => !v || (v.codec === 'h264' && !v.tenBit) || (v.codec === 'hevc' && v.tag === 'hvc1');
+// hevc: whether the browser asking can decode HEVC at all (Firefox usually can't).
+export const videoBrowserSafe = (v, { hevc = true } = {}) => !v || (v.codec === 'h264' && !v.tenBit) || (hevc && v.codec === 'hevc' && v.tag === 'hvc1');
+export const convertingFile = () => currentFile;
 export const VIDEO_NAMES = { hevc: 'HEVC (H.265)', h264: 'H.264', av1: 'AV1', vp9: 'VP9', mpeg4: 'MPEG-4' };
 
 // The job that rebuilds a file's browser copy: a redo for converted files, a fix copy for downloaded MP4s.
@@ -203,6 +210,16 @@ function runFirst(job) {
 
 // Moves a file whose audio won't play correctly in browsers to the front of the queue.
 // Returns { fixable, state: 'converting' | 'queued', percent, error }.
+// HEVC plays in Safari and in Chrome/Edge on most PCs, but not in Firefox. For a browser that can't
+// play it, an H.264 browser copy is made of the file that's actually streamed (the MP4 copy, or the
+// downloaded MP4). TVs keep getting the original.
+export function requestBrowserVideo(file) {
+  if (!status.enabled) return { fixable: false, error: status.reason };
+  const target = needsConversion(file) ? twinPath(file) : file;
+  if (!canFix(target) || !fs.existsSync(target)) return { fixable: false };
+  return runFirst({ file: target, fix: true, h264: true });
+}
+
 export function requestBrowserAudio(file) {
   if (!status.enabled) return { fixable: false, error: status.reason };
   const job = browserJob(file);
@@ -272,7 +289,7 @@ async function probe(file) {
 // safeAudio: re-encode E-AC-3 instead of copying it. Some E-AC-3 tracks (notably Dolby Atmos,
 // which carries a dependent substream) can't be written into MP4 by ffmpeg and make the
 // muxer fail at the very end with "Error writing trailer: Invalid data found".
-function plan(input, output, info, encoder, shift = 0, safeAudio = false, sidecars = []) {
+function plan(input, output, info, encoder, shift = 0, safeAudio = false, sidecars = [], forceH264 = false) {
   const streams = info.streams || [];
   const video = streams.find((s) => s.codec_type === 'video' && !s.disposition?.attached_pic);
   if (!video) throw new Error('No video stream found.');
@@ -300,7 +317,7 @@ function plan(input, output, info, encoder, shift = 0, safeAudio = false, sideca
   const tenBit = /10|12/.test(video.pix_fmt || '');
   if (video.codec_name === 'h264' && !tenBit) {
     args.push('-c:v', 'copy');
-  } else if (video.codec_name === 'hevc') {
+  } else if (video.codec_name === 'hevc' && !forceH264) {
     args.push('-c:v', 'copy', '-tag:v', 'hvc1'); // hvc1 tag required by Apple players
   } else {
     reencode = true;
@@ -359,7 +376,7 @@ async function convert(job) {
   const sidecars = plannedSidecars(file, (info.streams || []).filter((st) => st.codec_type === 'subtitle' && TEXT_SUBS.has(st.codec_name)));
   const dropSidecarTemps = () => sidecars.forEach((sc) => fs.rmSync(sc.tmp, { force: true }));
   const attempt = async (encoder) => {
-    const p = plan(file, tmp, info, encoder, shift, safeAudio, sidecars);
+    const p = plan(file, tmp, info, encoder, shift, safeAudio, sidecars, Boolean(job.h264));
     const started = Date.now();
     status.current = { name, mode: p.reencode ? 'Re-encoding' : job.fix ? 'Making a browser copy' : 'Repackaging', percent: 0, speed: null, eta: null };
     let buf = '';
@@ -387,7 +404,7 @@ async function convert(job) {
   };
 
   let encoder = nvencBroken ? 'x264' : 'nvenc';
-  const needsEncode = plan(file, tmp, info, encoder).reencode;
+  const needsEncode = plan(file, tmp, info, encoder, 0, false, [], Boolean(job.h264)).reencode;
   try {
     try {
       await attempt(encoder);
@@ -606,6 +623,11 @@ export async function startConverter({ dataDir, listCandidates, onConverted, onS
       }
       // Downloaded MP4s with browser-incompatible audio.
       const keep = new Set();
+      for (const c of candidates) { // H.264 browser copies of MP4 copies
+        const twin = needsConversion(c.file) && twinPath(c.file);
+        const fixed = twin && fixPath(twin);
+        if (fixed) keep.add(path.basename(fixed));
+      }
       for (const c of candidates) {
         if (!canFix(c.file) || originalFor(c.file)) continue;
         const fixed = fixPath(c.file);

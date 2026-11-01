@@ -395,8 +395,16 @@ async function listDownloads() {
     size: t.size,
     state: t.state,
     done: t.progress >= 1,
+    converting: convertingIn(t),
     subs: subtitles.subtitleWants(t.hash),
   }));
+}
+
+// True while the converter is making the MP4 copy of a video from this download.
+function convertingIn(t) {
+  const file = converter.convertingFile();
+  if (!file || !converter.needsConversion(file) || !t.content_path) return false;
+  return samePath(file, t.content_path) || isInside(file, t.content_path);
 }
 
 async function downloadSource(hash) {
@@ -625,7 +633,11 @@ async function handleApi(req, res, url) {
   if (p === '/api/library') {
     const items = await scanLibrary();
     if (!items) throw new HttpError(503, 'No media folder is set up. Add MEDIA_DIR to .env and restart.');
-    return sendJson(res, 200, { items: items.map(({ full, ...rest }) => rest) });
+    // A video whose MP4 copy is being made can't be played yet (the player disables Play).
+    const converting = converter.convertingFile();
+    return sendJson(res, 200, {
+      items: items.map(({ full, ...rest }) => ({ ...rest, converting: Boolean(converting) && converting === full && converter.needsConversion(full) })),
+    });
   }
   if (p === '/api/downloads/add' && req.method === 'POST') {
     if (/application\/json/i.test(req.headers['content-type'] || '')) {
@@ -657,6 +669,19 @@ async function handleApi(req, res, url) {
   }
   if (p === '/api/downloads') {
     return sendJson(res, 200, { items: await listDownloads() });
+  }
+  if ((m = p.match(/^\/api\/downloads\/([a-f0-9]{40}|[a-f0-9]{64})\/(pause|resume|delete)$/i)) && req.method === 'POST') {
+    const body = await readJson(req).catch(() => ({}));
+    const [t] = await qbit(`/api/v2/torrents/info?hashes=${m[1]}`);
+    if (!t) throw new HttpError(404, 'That download no longer exists.');
+    if (m[2] === 'delete') {
+      await deleteDownload(t, body.files !== false);
+      activity.record(req, 'delete', `${t.name}${body.files === false ? ' (download only, files kept)' : ''}`);
+    } else {
+      await setPaused(t.hash, m[2] === 'pause');
+      activity.record(req, m[2], t.name);
+    }
+    return sendJson(res, 200, { ok: true });
   }
   // ---- casting ----
   if (p === '/api/play-link') {
@@ -782,14 +807,17 @@ async function handleApi(req, res, url) {
     let vid = null;
     try { [tracks, vid] = await Promise.all([converter.probeAudio(served), converter.probeVideo(served)]); } catch { /* unreadable: say nothing */ }
     if (!tracks) return sendJson(res, 200, { known: false });
-    const videoSafe = converter.videoBrowserSafe(vid);
-    const main = tracks[0]?.codec || null;
-    // Extra codecs the client reports it can decode (e.g. Edge with Dolby).
+    // Extra codecs the client reports it can decode (e.g. Edge with Dolby, Chrome with HEVC).
     const plays = new Set((url.searchParams.get('plays') || '').split(',').filter(Boolean));
+    const videoSafe = converter.videoBrowserSafe(vid, { hevc: plays.has('hevc') });
+    const main = tracks[0]?.codec || null;
     const browserSafe = !main || converter.BROWSER_AUDIO.has(main) || plays.has(main);
     const aligned = converter.isAligned(tracks);
     // Unplayable video or audio, or out-of-sync audio: move this file to the front of the conversion queue.
-    const fix = browserSafe && aligned && videoSafe ? {} : converter.requestBrowserAudio(source);
+    // HEVC in a browser without HEVC (Firefox) needs an H.264 copy; everything else goes through the usual browser copy.
+    const fix = browserSafe && aligned && videoSafe ? {}
+      : !videoSafe && vid?.codec === 'hevc' && !plays.has('hevc') ? converter.requestBrowserVideo(source)
+        : converter.requestBrowserAudio(source);
     const sync = converter.syncState(source);
     return sendJson(res, 200, {
       known: true, codec: main, tracks, browserSafe, aligned,
@@ -859,7 +887,7 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://localhost');
     const allowed = req.method === 'GET' || req.method === 'HEAD'
-      || (req.method === 'POST' && (url.pathname.startsWith('/api/cast/') || url.pathname === '/api/downloads/add' || url.pathname === '/api/subs/fetch' || url.pathname === '/api/subs/sync' || url.pathname === '/api/library/delete' || /^\/api\/media\/\w+\/[\w-]+\/sync$/.test(url.pathname)));
+      || (req.method === 'POST' && (url.pathname.startsWith('/api/cast/') || url.pathname === '/api/downloads/add' || url.pathname === '/api/subs/fetch' || url.pathname === '/api/subs/sync' || url.pathname === '/api/library/delete' || /^\/api\/downloads\/\w+\/(pause|resume|delete)$/.test(url.pathname) || /^\/api\/media\/\w+\/[\w-]+\/sync$/.test(url.pathname)));
     if (!allowed) throw new HttpError(405, 'Method not allowed.');
     if (url.pathname.startsWith('/api/')) await handleApi(req, res, url);
     else if (url.pathname.startsWith('/play/')) await handlePlay(req, res, url);
@@ -874,23 +902,30 @@ const server = http.createServer(async (req, res) => {
 
 // Video files for the converter: the library plus finished downloads.
 // Files owned by qBittorrent are never deleted after conversion, since they may still be seeding.
+// Only finished files are converted: a torrent that's still downloading (or paused, checking or
+// being moved) is skipped entirely, including when qBittorrent saves into the library folder.
+const BUSY_STATES = /^(checking|moving|metaDL|forcedMetaDL|allocating)/;
 async function conversionCandidates() {
-  const torrentFiles = [];
+  const torrentFiles = [];   // finished video files owned by qBittorrent
+  const unfinished = [];     // every file of a torrent that isn't complete yet
   let qbitReachable = !QBIT_URL;
   if (QBIT_URL) {
     try {
-      for (const t of await qbit('/api/v2/torrents/info?filter=completed')) {
+      for (const t of await qbit('/api/v2/torrents/info')) {
         const files = await qbit(`/api/v2/torrents/files?hash=${t.hash}`);
+        const complete = t.progress >= 1 && !BUSY_STATES.test(t.state || '');
         for (const f of files) {
-          if (f.progress < 1 || /\bsample\b/i.test(f.name)) continue;
-          if (!VIDEO_EXT.has(path.extname(f.name).toLowerCase())) continue;
-          torrentFiles.push(path.join(t.save_path, f.name));
+          const full = path.join(t.save_path, f.name);
+          if (!complete || f.progress < 1) { if (f.priority !== 0) unfinished.push(full); continue; }
+          if (/\bsample\b/i.test(f.name) || !VIDEO_EXT.has(path.extname(f.name).toLowerCase())) continue;
+          torrentFiles.push(full);
         }
       }
       qbitReachable = true;
     } catch { /* retried next round */ }
   }
   const isTorrentFile = (file) => torrentFiles.some((t) => samePath(t, file));
+  const isUnfinished = (file) => unfinished.some((t) => samePath(t, file));
 
   const list = torrentFiles.map((file) => ({ file, deleteOriginal: false }));
   if (MEDIA_DIR) {
@@ -899,10 +934,16 @@ async function conversionCandidates() {
     // Without qBittorrent's file list there is no way to tell what it owns, so nothing is deleted.
     const deleteOriginal = qbitReachable && (process.env.CONVERT_DELETE_ORIGINAL || 'off').toLowerCase() === 'on';
     for (const i of libraryCache.all || []) {
-      if (!isTorrentFile(i.full)) list.push({ file: i.full, deleteOriginal });
+      if (isTorrentFile(i.full) || isUnfinished(i.full)) continue;
+      // Also skip anything still being written (copied in, or downloaded by another program).
+      if (recentlyChanged(i.full)) continue;
+      list.push({ file: i.full, deleteOriginal });
     }
   }
   return list;
+}
+function recentlyChanged(file) {
+  try { return Date.now() - fs.statSync(file).mtimeMs < 2 * 60 * 1000; } catch { return true; }
 }
 
 // ---------- deletion ----------
@@ -1027,6 +1068,36 @@ async function deleteMedia(id, scope) {
   // qBittorrent deletes asynchronously; clean up afterwards.
   setTimeout(() => { removeEmptyFolders(path.dirname(original)); libraryCache.at = 0; }, 4000);
   console.log(`[library] deleted ${wholeTorrent ? `torrent "${torrent.name}"` : path.basename(original)}`);
+}
+
+// Pause or resume a download. qBittorrent 5 calls these stop/start; older versions pause/resume.
+async function setPaused(hash, paused) {
+  const body = () => new URLSearchParams({ hashes: hash });
+  try {
+    await qbitRequest(`/api/v2/torrents/${paused ? 'stop' : 'start'}`, { method: 'POST', body: body() });
+  } catch (e) {
+    if (e.status !== 502) throw e;
+    await qbitRequest(`/api/v2/torrents/${paused ? 'pause' : 'resume'}`, { method: 'POST', body: body() });
+  }
+}
+
+// Removes a download from qBittorrent, with its files (and Marquee's copies and subtitles) unless keepFiles.
+async function deleteDownload(t, withFiles) {
+  if (withFiles) {
+    const files = await qbit(`/api/v2/torrents/files?hash=${t.hash}`);
+    const videos = files.filter((f) => isVideo(f.name)).map((f) => path.join(t.save_path, f.name));
+    if (videos.some((v) => converter.isBusy(v))) throw new HttpError(409, 'A file from this download is being converted right now. Try again when that finishes.');
+    for (const v of videos) {
+      for (const x of extrasFor(v)) removeFile(x);
+      converter.forget(v);
+    }
+  }
+  await qbitRequest('/api/v2/torrents/delete', {
+    method: 'POST', body: new URLSearchParams({ hashes: t.hash, deleteFiles: withFiles ? 'true' : 'false' }),
+  });
+  libraryCache.at = 0;
+  if (withFiles && t.content_path) setTimeout(() => { removeEmptyFolders(path.dirname(t.content_path)); libraryCache.at = 0; }, 4000);
+  console.log(`[downloads] removed "${t.name}"${withFiles ? ' and its files' : ''}`);
 }
 
 // Fetches subtitles requested at download time once each torrent completes.

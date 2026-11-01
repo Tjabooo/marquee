@@ -181,7 +181,8 @@ main {
 }
 .shelf-items {
   display: grid; grid-auto-flow: column; grid-auto-columns: 124px; gap: 12px;
-  margin: 0 calc(-1 * var(--gutter)); padding: 0 var(--gutter);
+  /* 4px of room above and below so the hover outline isn't clipped by the scrolling row */
+  margin: -4px calc(-1 * var(--gutter)); padding: 4px var(--gutter);
   list-style: none; overflow-x: auto; scroll-snap-type: x proximity; scroll-padding: 0 var(--gutter); scrollbar-width: none;
 }
 .shelf-items::-webkit-scrollbar { display: none; }
@@ -902,3 +903,11 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .remote-sync { margin-top: 12px; }
 .remote-sync .cc-nudge { padding: 0; }
 .remote-sync .remote-subs-note { margin-top: 6px; }
+
+/* Download card controls */
+.dl-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; }
+.dl-controls { display: flex; gap: 6px; margin-left: auto; }
+.dl-ctl { height: 30px; padding: 0 12px; font-size: 13px; }
+.dl-ctl:disabled { opacity: 0.5; }
+
+.play-btn.is-disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(1); }
