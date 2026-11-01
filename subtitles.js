@@ -264,12 +264,20 @@ export async function readSubtitle(file, lang) {
   return decodeText(await fs.promises.readFile(p));
 }
 
-// SRT to WebVTT: header, dotted timestamps, ASS override tags removed.
+// SRT to WebVTT: header, dotted timestamps, ASS override tags removed. Lines tagged {\an7}–{\an9}
+// (signs and captions placed at the top of the picture) keep that position as a `line:0` cue setting.
 export function srtToVtt(srt) {
   const body = srt
-    .replace(/\{\\[^}]*\}/g, '')
-    .replace(/(\d{1,2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2')
-    .replace(/^\s+/, '');
+    .replace(/^\s+/, '')
+    .split(/\n\s*\n/)
+    .map((cue) => {
+      const top = /\{\\an[789]\}/.test(cue);
+      return cue
+        .replace(/\{\\[^}]*\}/g, '')
+        .replace(/(\d{1,2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2')
+        .replace(/^(.*-->\s*\S+).*$/m, top ? '$1 line:0' : '$1');
+    })
+    .join('\n\n');
   return `WEBVTT\n\n${body}`;
 }
 

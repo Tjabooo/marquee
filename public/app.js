@@ -31,6 +31,13 @@ const ICONS = {
   download: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>',
   check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
   volume: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6"/></svg>',
+  volumeHigh: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11"/></svg>',
+  muted: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M16 9.5l5 5M21 9.5l-5 5"/></svg>',
+  back10: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M6.5 3v3.9h3.9"/><text x="12.2" y="15.2" text-anchor="middle">10</text></svg>',
+  fwd10: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M17.5 3v3.9h-3.9"/><text x="11.8" y="15.2" text-anchor="middle">10</text></svg>',
+  fullscreen: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>',
+  fullscreenExit: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>',
+  pip: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><rect class="fill" x="12" y="11.5" width="6.5" height="5" rx="1"/></svg>',
 };
 const icon = (name) => { const s = h('span'); s.innerHTML = ICONS[name]; return s.firstChild; };
 
@@ -562,6 +569,9 @@ document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
   if (!ccMenu.hidden) { closeCcMenu(); ccBtn.focus(); return; }
   if (!syncMenu.hidden) { closeSyncMenu(); syncBtn.focus(); return; }
+  if (!helpEl.hidden) { helpEl.hidden = true; return; }
+  if (fsElement()) { toggleFullscreen(); return; }
+  if (Date.now() - fsExitedAt < 500) return; // that Escape just took the player out of fullscreen
   closeTopOverlay();
 });
 
@@ -1307,32 +1317,69 @@ const ccMenu = $('#cc-menu');
 let ccLangs = [];
 let ccActive = null;
 
+// Subtitles are drawn by the page (#player-subs) rather than the browser, so they stay inside the
+// picture and move up out of the way while the controls are showing. The track runs in 'hidden'
+// mode for that: its cues load and change, but the browser draws nothing. Where the page can't
+// draw (iOS's own fullscreen player, picture-in-picture) the browser draws them instead.
+const subsEl = $('#player-subs');
+let nativeSubs = false;
+let subTrack = null;
+
+function applySubModes() {
+  subTrack = null;
+  for (const t of video.textTracks) {
+    if (t.kind !== 'subtitles') continue;
+    const on = Boolean(ccActive) && t.language === ccActive;
+    t.mode = on ? (nativeSubs ? 'showing' : 'hidden') : 'disabled';
+    if (on && !nativeSubs) subTrack = t;
+  }
+  if (subTrack) subTrack.oncuechange = renderCues;
+  renderCues();
+}
+
+// Cues placed at the top of the picture ({\an8} in the SRT, `line:0` in the VTT) stay at the top.
+const cueAtTop = (c) => typeof c.line === 'number' && (c.snapToLines ? c.line >= 0 : c.line < 50);
+
+function renderCues() {
+  const [top, bottom] = subsEl.children;
+  const cues = subTrack?.activeCues ? [...subTrack.activeCues] : [];
+  const draw = (list) => list.map((c) => {
+    const text = h('span');
+    if (typeof c.getCueAsHTML === 'function') text.append(c.getCueAsHTML()); // <i>, <b> and friends; never parsed as page HTML
+    else text.textContent = c.text;
+    return h('div', { class: 'sub-cue' }, text);
+  });
+  top.replaceChildren(...draw(cues.filter(cueAtTop)));
+  bottom.replaceChildren(...draw(cues.filter((c) => !cueAtTop(c))));
+}
+
 // iOS's own fullscreen player picks captions itself and often lands on "Auto", which hides
 // subtitles in your own language. Re-select ours when it opens, and mirror any change the
 // viewer makes there back to the CC button when it closes.
-function showActiveSub() {
-  for (const t of video.textTracks) {
-    if (t.kind === 'subtitles') t.mode = ccActive && t.language === ccActive ? 'showing' : 'disabled';
-  }
-}
 video.addEventListener('webkitbeginfullscreen', () => {
-  showActiveSub();
-  setTimeout(showActiveSub, 500); // again, after the native player has applied its own choice
+  nativeSubs = true;
+  applySubModes();
+  setTimeout(applySubModes, 500); // again, after the native player has applied its own choice
 });
 video.addEventListener('webkitendfullscreen', () => {
   const showing = [...video.textTracks].find((t) => t.kind === 'subtitles' && t.mode === 'showing');
   ccActive = showing ? showing.language : null;
+  nativeSubs = false;
+  applySubModes();
   ccBtn.classList.toggle('is-on', Boolean(ccActive));
-  ccMenu.querySelectorAll('.cc-item').forEach((b, i) => {
+  ccMenu.querySelectorAll('.cc-item[role="menuitemradio"]').forEach((b, i) => {
     b.setAttribute('aria-checked', String(i === 0 ? !ccActive : ccLangs[i - 1]?.code === ccActive));
   });
 });
+video.addEventListener('enterpictureinpicture', () => { nativeSubs = true; applySubModes(); });
+video.addEventListener('leavepictureinpicture', () => { nativeSubs = false; applySubModes(); });
 
 function clearSubTracks() {
   video.querySelectorAll('track').forEach((t) => t.remove());
   ccActive = null;
   ccSync = null;
   clearTimeout(ccSyncTimer);
+  applySubModes();
 }
 function closeCcMenu() { ccMenu.hidden = true; ccBtn.setAttribute('aria-expanded', 'false'); }
 ccBtn.addEventListener('click', (e) => {
@@ -1353,6 +1400,7 @@ function renderCcMenu(f, session, message) {
       onclick: () => pickPlayerSub(f, session, l),
     }, l.name)),
     ...(message ? [h('p', { class: 'cc-message' }, message)] : []),
+    ...(ccActive ? [h('div', { class: 'cc-divider', role: 'separator' }), subSizeRow()] : []),
     ...subSyncItems(f, session));
   ccBtn.classList.toggle('is-on', Boolean(ccActive));
 }
@@ -1457,8 +1505,8 @@ function reloadSubTrack(l) {
   const track = h('track', { kind: 'subtitles', srclang: l.code, label: l.name, src, default: true });
   old.remove();
   video.append(track);
-  track.track.mode = 'showing';
-  track.addEventListener('load', () => { track.track.mode = 'showing'; });
+  applySubModes();
+  track.addEventListener('load', applySubModes);
 }
 
 async function setupPlayerSubs(f, session) {
@@ -1490,9 +1538,9 @@ async function pickPlayerSub(f, session, l, { quiet = false } = {}) {
     if (current !== session) return;
     const track = h('track', { kind: 'subtitles', srclang: l.code, label: l.name, src: url, default: true });
     video.append(track);
-    track.track.mode = 'showing';
-    track.addEventListener('load', () => { track.track.mode = 'showing'; });
     ccActive = l.code;
+    applySubModes();
+    track.addEventListener('load', applySubModes);
     l.saved = true;
     renderCcMenu(f, session);
     if (!quiet) toast(`${l.name} subtitles on`);
@@ -1650,23 +1698,392 @@ landscapeQuery.addEventListener('change', (e) => {
   toast('Tip: open Marquee from your Home Screen for fullscreen without Safari’s bar');
 });
 
-// Theater mode (phone sideways): the top bar shows on a tap and hides 3 s into playback,
-// like the video's own controls. Stays up while paused or while a menu is open.
+// ---- controls ----
+// Marquee's own controls instead of the browser's, so they look the same everywhere, work from
+// the keyboard, and the subtitles know where they are. They show on mouse movement or a tap and
+// fade out 3 s into playback; they stay up while paused, while a menu is open or under the mouse.
 const playerEl = $('#player');
+const stage = $('#player-stage');
+const controlsEl = $('#player-controls');
+const seekRow = $('.seek-row');
+const seekEl = $('#seek');
+const seekTip = $('#seek-tip');
+const playBtns = [$('#pc-play'), $('.pc-big-play')];
+const muteBtn = $('#pc-mute');
+const volInput = $('#pc-vol');
+const fsBtn = $('#pc-fs');
+const pipBtn = $('#pc-pip');
+const timeEl = $('#pc-time');
+const durEl = $('#pc-duration');
+const osdEl = $('#player-osd');
+const spinner = $('#player-spinner');
+const helpEl = $('#player-help');
+
+const menuOpen = () => !ccMenu.hidden || !syncMenu.hidden || !helpEl.hidden;
+let lastPointer = 'mouse';
+let overControls = false;
 let uiTimer = null;
-function showPlayerUi() {
-  playerEl.classList.add('ui-visible');
-  clearTimeout(uiTimer);
-  if (video.paused) return;
-  uiTimer = setTimeout(() => {
-    if (!ccMenu.hidden || !syncMenu.hidden) return showPlayerUi();
-    playerEl.classList.remove('ui-visible');
-  }, 3000);
+
+function setUi(on) {
+  if (playerEl.classList.contains('ui-visible') === on) return;
+  playerEl.classList.toggle('ui-visible', on);
+  layoutSubs();
 }
-playerEl.addEventListener('touchstart', showPlayerUi, { passive: true });
-playerEl.addEventListener('click', showPlayerUi);
+function showPlayerUi() {
+  setUi(true);
+  clearTimeout(uiTimer);
+  if (!video.paused) uiTimer = setTimeout(hidePlayerUi, 3000);
+}
+function hidePlayerUi() {
+  if (video.paused) return;
+  if (menuOpen() || overControls || seeking != null) { showPlayerUi(); return; }
+  setUi(false);
+}
+playerEl.addEventListener('pointerdown', (e) => { lastPointer = e.pointerType; }, true);
+playerEl.addEventListener('pointermove', (e) => { if (e.pointerType === 'mouse') showPlayerUi(); });
+controlsEl.addEventListener('pointerenter', (e) => { overControls = e.pointerType === 'mouse'; });
+controlsEl.addEventListener('pointerleave', () => { overControls = false; });
 video.addEventListener('play', showPlayerUi);
 video.addEventListener('pause', showPlayerUi);
+
+// Mouse: click to play or pause, double-click for fullscreen. Touch: a tap shows or hides the
+// controls, and a double tap on the left or right third skips 10 s (more taps keep skipping).
+let lastTap = { at: 0, side: 0, uiWas: false, skipped: false };
+stage.addEventListener('click', (e) => {
+  if (menuOpen()) return; // this click only closes the menu
+  if (lastPointer === 'mouse') { togglePlay(true); showPlayerUi(); return; }
+  const r = stage.getBoundingClientRect();
+  const x = (e.clientX - r.left) / r.width;
+  const side = x < 1 / 3 ? -1 : x > 2 / 3 ? 1 : 0;
+  const now = Date.now();
+  if (side && side === lastTap.side && now - lastTap.at < 350) {
+    if (!lastTap.skipped) setUi(lastTap.uiWas); // undo what the first tap did to the controls
+    lastTap = { ...lastTap, at: now, skipped: true };
+    skip(10 * side);
+    return;
+  }
+  lastTap = { at: now, side, uiWas: playerEl.classList.contains('ui-visible'), skipped: false };
+  if (lastTap.uiWas) { clearTimeout(uiTimer); setUi(false); } else showPlayerUi();
+});
+stage.addEventListener('dblclick', () => { if (lastPointer === 'mouse') toggleFullscreen(); });
+
+// Feedback in the middle of the picture: "+10 s", "Volume 40%", a play or pause symbol.
+let osdTimer = null;
+function osd(content) {
+  osdEl.replaceChildren(h('span', {}, content));
+  osdEl.classList.remove('show');
+  void osdEl.offsetWidth; // restart the animation
+  osdEl.classList.add('show');
+  clearTimeout(osdTimer);
+  osdTimer = setTimeout(() => osdEl.classList.remove('show'), 700);
+}
+
+function togglePlay(feedback = false) {
+  const play = video.paused || video.ended;
+  if (play) video.play().catch(() => {}); else video.pause();
+  if (feedback) osd(icon(play ? 'play' : 'pause'));
+}
+function updatePlayState() {
+  const playing = !video.paused && !video.ended;
+  for (const b of playBtns) {
+    b.replaceChildren(icon(playing ? 'pause' : 'play'));
+    b.setAttribute('aria-label', playing ? 'Pause (Space)' : 'Play (Space)');
+  }
+  playerEl.classList.toggle('is-paused', !playing);
+}
+for (const ev of ['play', 'pause', 'ended', 'emptied']) video.addEventListener(ev, updatePlayState);
+for (const b of playBtns) b.addEventListener('click', () => togglePlay());
+
+// Repeated skips in the same direction add up in the feedback: "+30 s".
+let skipTotal = 0;
+let skipAt = 0;
+function skip(seconds) {
+  if (!isFinite(video.duration) || !video.duration) return;
+  const now = Date.now();
+  skipTotal = now - skipAt < 1000 && Math.sign(skipTotal) === Math.sign(seconds) ? skipTotal + seconds : seconds;
+  skipAt = now;
+  video.currentTime = Math.min(Math.max(video.currentTime + seconds, 0), video.duration - 0.5);
+  osd(`${skipTotal < 0 ? '−' : '+'}${Math.abs(skipTotal)} s`);
+  updateTime();
+}
+playerEl.querySelectorAll('.pc-skip').forEach((b) => b.replaceChildren(icon(Number(b.dataset.skip) < 0 ? 'back10' : 'fwd10')));
+playerEl.querySelectorAll('.pc-skip').forEach((b) => b.addEventListener('click', () => { skip(Number(b.dataset.skip)); showPlayerUi(); }));
+
+// ---- time and seek bar ----
+let seeking = null; // where the seek bar is being dragged to, in seconds
+let showRemaining = false;
+try { showRemaining = localStorage.getItem('player:remaining') === '1'; } catch { /* blocked */ }
+
+function updateTime() {
+  const d = isFinite(video.duration) ? video.duration : 0;
+  const t = seeking ?? video.currentTime;
+  seekEl.style.setProperty('--pos', `${d ? (t / d) * 100 : 0}%`);
+  timeEl.textContent = fmtTime(t);
+  durEl.textContent = !d ? '–:––' : showRemaining ? `−${fmtTime(d - t)}` : fmtTime(d);
+  seekEl.setAttribute('aria-valuemax', String(Math.floor(d)));
+  seekEl.setAttribute('aria-valuenow', String(Math.floor(t)));
+  seekEl.setAttribute('aria-valuetext', d ? `${fmtTime(t)} of ${fmtTime(d)}` : fmtTime(t));
+}
+function updateBuffer() {
+  const d = video.duration;
+  let end = 0;
+  for (let i = 0; i < video.buffered.length; i++) {
+    if (video.buffered.start(i) <= video.currentTime + 1) end = Math.max(end, video.buffered.end(i));
+  }
+  seekEl.style.setProperty('--buf', d && isFinite(d) ? `${(end / d) * 100}%` : '0%');
+}
+for (const ev of ['timeupdate', 'durationchange', 'loadedmetadata', 'emptied', 'seeking']) video.addEventListener(ev, updateTime);
+for (const ev of ['progress', 'timeupdate', 'emptied']) video.addEventListener(ev, updateBuffer);
+durEl.addEventListener('click', () => {
+  showRemaining = !showRemaining;
+  try { localStorage.setItem('player:remaining', showRemaining ? '1' : ''); } catch { /* blocked */ }
+  durEl.title = showRemaining ? 'Show duration' : 'Show time remaining';
+  updateTime();
+});
+
+const seekTimeAt = (x) => {
+  const r = seekEl.getBoundingClientRect();
+  return Math.min(Math.max((x - r.left) / r.width, 0), 1) * (video.duration || 0);
+};
+function showSeekTip(x) {
+  const r = seekEl.getBoundingClientRect();
+  seekTip.textContent = fmtTime(seekTimeAt(x));
+  seekTip.hidden = false;
+  const half = seekTip.offsetWidth / 2;
+  seekTip.style.left = `${Math.min(Math.max(x - r.left, half), r.width - half)}px`;
+}
+seekEl.addEventListener('pointerdown', (e) => {
+  if (!isFinite(video.duration) || !video.duration) return;
+  seekEl.setPointerCapture(e.pointerId);
+  seeking = seekTimeAt(e.clientX);
+  seekEl.classList.add('is-dragging');
+  showSeekTip(e.clientX);
+  updateTime();
+});
+seekEl.addEventListener('pointermove', (e) => {
+  if (seeking != null) { seeking = seekTimeAt(e.clientX); updateTime(); }
+  if (seeking != null || e.pointerType === 'mouse') showSeekTip(e.clientX);
+});
+function endSeek(apply) {
+  if (seeking == null) return;
+  if (apply) video.currentTime = seeking;
+  seeking = null;
+  seekEl.classList.remove('is-dragging');
+  seekTip.hidden = true;
+  updateTime();
+  showPlayerUi();
+}
+seekEl.addEventListener('pointerup', () => endSeek(true));
+seekEl.addEventListener('pointercancel', () => endSeek(false));
+seekEl.addEventListener('pointerleave', () => { if (seeking == null) seekTip.hidden = true; });
+
+// ---- volume ----
+// iOS ignores volume set by a page (the side buttons are the volume), so it only gets mute.
+const canSetVolume = (() => { const v = document.createElement('video'); v.volume = 0.5; return v.volume === 0.5; })();
+volInput.hidden = !canSetVolume;
+try {
+  const v = Number(localStorage.getItem('player:volume'));
+  if (canSetVolume && localStorage.getItem('player:volume') !== null && v >= 0 && v <= 1) video.volume = v;
+  video.muted = localStorage.getItem('player:muted') === '1';
+} catch { /* blocked */ }
+
+function updateVolume() {
+  const level = video.muted ? 0 : video.volume;
+  muteBtn.replaceChildren(icon(level === 0 ? 'muted' : level < 0.5 ? 'volume' : 'volumeHigh'));
+  muteBtn.setAttribute('aria-label', video.muted ? 'Unmute (M)' : 'Mute (M)');
+  if (document.activeElement !== volInput) volInput.value = String(level);
+  volInput.style.setProperty('--val', `${level * 100}%`);
+  try {
+    localStorage.setItem('player:volume', String(video.volume));
+    localStorage.setItem('player:muted', video.muted ? '1' : '');
+  } catch { /* blocked */ }
+}
+video.addEventListener('volumechange', updateVolume);
+updateVolume();
+function setVolume(v) {
+  video.volume = Math.round(Math.min(Math.max(v, 0), 1) * 100) / 100;
+  video.muted = video.volume === 0;
+}
+function toggleMute() {
+  if (video.muted && video.volume === 0) video.volume = 0.5; // unmuting at zero would stay silent
+  video.muted = !video.muted;
+  osd(video.muted ? 'Muted' : `Volume ${Math.round(video.volume * 100)}%`);
+}
+muteBtn.addEventListener('click', toggleMute);
+volInput.addEventListener('input', () => setVolume(Number(volInput.value)));
+
+// ---- fullscreen and picture-in-picture ----
+// The whole player goes fullscreen, so the controls and subtitles come along. iPhones can only
+// make the video itself fullscreen, which opens iOS's own player.
+const fsElement = () => document.fullscreenElement || document.webkitFullscreenElement;
+let fsExitedAt = 0;
+fsBtn.hidden = !playerEl.requestFullscreen && !playerEl.webkitRequestFullscreen && !video.webkitEnterFullscreen;
+function toggleFullscreen() {
+  if (fsElement()) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
+  if (playerEl.requestFullscreen) {
+    playerEl.requestFullscreen({ navigationUI: 'hide' }).then(() => {
+      // Phones: turn to landscape for widescreen films (works where the browser allows it).
+      if (lastPointer !== 'mouse' && video.videoWidth > video.videoHeight) screen.orientation?.lock?.('landscape').catch(() => {});
+    }, () => {});
+  } else if (playerEl.webkitRequestFullscreen) playerEl.webkitRequestFullscreen();
+  else try { video.webkitEnterFullscreen(); } catch { /* not ready yet */ }
+}
+function updateFullscreen() {
+  const on = Boolean(fsElement());
+  if (!on) fsExitedAt = Date.now();
+  fsBtn.replaceChildren(icon(on ? 'fullscreenExit' : 'fullscreen'));
+  fsBtn.setAttribute('aria-label', on ? 'Exit fullscreen (F)' : 'Fullscreen (F)');
+  layoutSubs();
+}
+document.addEventListener('fullscreenchange', updateFullscreen);
+document.addEventListener('webkitfullscreenchange', updateFullscreen);
+updateFullscreen();
+fsBtn.addEventListener('click', toggleFullscreen);
+
+pipBtn.hidden = !document.pictureInPictureEnabled;
+pipBtn.replaceChildren(icon('pip'));
+function togglePip() {
+  if (!document.pictureInPictureEnabled || !video.currentSrc) return;
+  (document.pictureInPictureElement ? document.exitPictureInPicture() : video.requestPictureInPicture()).catch(() => {});
+}
+pipBtn.addEventListener('click', togglePip);
+
+// Buffering: a spinner, after a short wait so quick seeks don't flash it.
+let spinTimer = null;
+function setSpinner(on) {
+  clearTimeout(spinTimer);
+  if (on) spinTimer = setTimeout(() => { spinner.hidden = false; }, 300);
+  else spinner.hidden = true;
+}
+video.addEventListener('waiting', () => setSpinner(true));
+for (const ev of ['playing', 'canplay', 'pause', 'emptied', 'error']) video.addEventListener(ev, () => setSpinner(false));
+
+// ---- subtitle layout ----
+// The subtitle layer covers the picture itself, not the black bars around it, and its text is
+// sized to the picture. While the controls or the title bar are showing, the lines move just far
+// enough to clear them, and slide back when they fade.
+const SUB_SIZES = [['S', 0.8, 'Small'], ['M', 1, 'Medium'], ['L', 1.25, 'Large'], ['XL', 1.55, 'Extra large']];
+let subSize = 1;
+try { subSize = Number(localStorage.getItem('subs:size')) || 1; } catch { /* blocked */ }
+
+function layoutSubs() {
+  if (playerEl.hidden) return;
+  const box = stage.getBoundingClientRect();
+  const vr = video.getBoundingClientRect();
+  let { left, top, width, height } = vr;
+  if (video.videoWidth && video.videoHeight) {
+    const scale = Math.min(vr.width / video.videoWidth, vr.height / video.videoHeight);
+    width = video.videoWidth * scale;
+    height = video.videoHeight * scale;
+    left += (vr.width - width) / 2;
+    top += (vr.height - height) / 2;
+  }
+  // A phone held upright shows a short strip of picture with empty black above and below: when
+  // three lines fit between the picture and the controls, the dialogue goes there instead of over
+  // the picture. (The controls take up their space even while faded, so this doesn't jump around.)
+  const below = seekRow.getBoundingClientRect().top - 10 - (top + height);
+  const sizeOver = Math.min(Math.max(height * 0.05, 15), 52) * subSize; // ~1/20 of the picture's height
+  const sizeUnder = Math.min(Math.max(width * 0.045, 15), 26) * subSize;
+  const outside = below >= sizeUnder * 1.25 * 3 + sizeUnder; // three lines and a gap
+  subsEl.classList.toggle('subs-below', outside);
+  Object.assign(subsEl.style, {
+    left: `${left - box.left}px`, top: `${top - box.top}px`, width: `${width}px`, height: `${height}px`,
+    fontSize: `${outside ? sizeUnder : sizeOver}px`,
+  });
+  let lift = 0;
+  let drop = 0;
+  if (playerEl.classList.contains('ui-visible')) {
+    // Measured from the controls themselves, not the fade behind them.
+    const gap = height * 0.05; // where lines sit without the controls: 5% in from the edge
+    lift = Math.max(0, top + height - gap - (seekRow.getBoundingClientRect().top - 10));
+    drop = Math.max(0, $('#player-close').getBoundingClientRect().bottom + 10 - (top + gap));
+  }
+  subsEl.style.setProperty('--lift', `${lift}px`);
+  subsEl.style.setProperty('--drop', `${drop}px`);
+}
+new ResizeObserver(layoutSubs).observe(stage);
+video.addEventListener('loadedmetadata', layoutSubs);
+
+function setSubSize(v) {
+  subSize = v;
+  try { localStorage.setItem('subs:size', String(v)); } catch { /* blocked */ }
+  ccMenu.querySelectorAll('.cc-size button').forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.size) === v)));
+  layoutSubs();
+}
+function subSizeRow() {
+  return h('div', { class: 'cc-nudge cc-size' },
+    h('span', { class: 'cc-nudge-label' }, 'Size'),
+    h('div', { class: 'cc-nudge-buttons' }, SUB_SIZES.map(([label, v, name]) => h('button', {
+      type: 'button', 'data-size': v, 'aria-label': `${name} subtitles`, 'aria-pressed': String(subSize === v), onclick: () => setSubSize(v),
+    }, label))));
+}
+
+// C turns subtitles off, or back on in the language used last.
+let lastSubLang = null;
+function toggleSubs() {
+  if (!current || ccBtn.hidden) return;
+  if (ccActive) {
+    lastSubLang = ccActive;
+    pickPlayerSub(current, current, { code: null, name: 'Off' }, { quiet: true });
+    osd('Subtitles off');
+    return;
+  }
+  let pref = lastSubLang;
+  try { pref ||= localStorage.getItem('subs:lang'); } catch { /* blocked */ }
+  const l = ccLangs.find((x) => x.code === pref) || ccLangs.find((x) => x.saved) || ccLangs[0];
+  if (l) pickPlayerSub(current, current, l);
+}
+
+// ---- keyboard ----
+const SHORTCUTS = [
+  ['Space or K', 'Play or pause'],
+  ['← →', 'Back or forward 5 s'],
+  ['J L', 'Back or forward 10 s'],
+  ['↑ ↓', 'Volume'],
+  ['M', 'Mute'],
+  ['F', 'Fullscreen'],
+  ['C', 'Subtitles on or off'],
+  ['P', 'Picture in picture'],
+  ['0 – 9', 'Jump to 0% – 90%'],
+  ['?', 'These shortcuts'],
+];
+function toggleHelp() {
+  if (helpEl.hidden) {
+    helpEl.replaceChildren(
+      h('p', { class: 'help-title' }, 'Keyboard shortcuts'),
+      h('dl', {}, SHORTCUTS.map(([keys, what]) => h('div', {}, h('dt', {}, keys), h('dd', {}, what)))));
+  }
+  helpEl.hidden = !helpEl.hidden;
+}
+document.addEventListener('click', (e) => { if (!helpEl.hidden && !helpEl.contains(e.target)) helpEl.hidden = true; });
+
+const seekToFraction = (f) => { if (isFinite(video.duration)) { video.currentTime = video.duration * f; updateTime(); } };
+const nudgeVolume = (d) => {
+  if (!canSetVolume) return;
+  setVolume((video.muted ? 0 : video.volume) + d);
+  osd(`Volume ${Math.round(video.volume * 100)}%`);
+};
+const PLAYER_KEYS = {
+  ' ': () => togglePlay(true), k: () => togglePlay(true),
+  ArrowLeft: () => skip(-5), ArrowRight: () => skip(5), j: () => skip(-10), l: () => skip(10),
+  ArrowUp: () => nudgeVolume(0.05), ArrowDown: () => nudgeVolume(-0.05),
+  m: toggleMute, f: toggleFullscreen, c: toggleSubs, p: togglePip, '?': toggleHelp,
+  Home: () => seekToFraction(0), End: () => seekToFraction(0.999),
+};
+// Keys typed into a menu or a text field are left alone.
+const playerKeyTarget = (e) => !playerEl.hidden && !e.ctrlKey && !e.metaKey && !e.altKey
+  && !e.target.closest?.('.cc-menu') && !e.target.matches?.('input:not([type="range"]), textarea, select');
+document.addEventListener('keydown', (e) => {
+  if (!playerKeyTarget(e)) return;
+  if (e.key === 'Tab') { showPlayerUi(); return; } // hidden controls can't take focus
+  const key = e.key === '/' && e.shiftKey ? '?' : e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  const run = PLAYER_KEYS[key] ?? (/^[0-9]$/.test(key) ? () => seekToFraction(Number(key) / 10) : null);
+  if (!run) return;
+  e.preventDefault(); // also keeps Space from pressing whichever button has focus
+  run();
+  if (key !== '?') showPlayerUi();
+});
+document.addEventListener('keyup', (e) => { if (e.key === ' ' && playerKeyTarget(e)) e.preventDefault(); });
 
 async function openPlayer(f, opts = {}) {
   let src = null; // signed link to the browser version (audio-fixed copy when one exists)
@@ -1678,26 +2095,35 @@ async function openPlayer(f, opts = {}) {
   err.hidden = true;
   $('#player').hidden = false;
   document.body.style.overflow = 'hidden';
+  document.body.classList.add('in-player');
   $('#player-close').focus({ preventScroll: true });
 
   setTheme('#000000');
+  updatePlayState();
+  updateTime();
   showPlayerUi();
+  setSpinner(true);
   (opts.replace ? swapTopOverlay : pushOverlay)(() => {
     setTheme(PAGE_THEME);
     saveProgress(true);
     video.pause();
+    if (fsElement()) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {});
     resetCasting();
     clearSubTracks();
     closeCcMenu();
     ccBtn.hidden = true;
     closeSyncMenu();
     syncBtn.hidden = true;
+    helpEl.hidden = true;
+    endSeek(false);
     audioWatch = null;
     $('#player-note').hidden = true;
     video.removeAttribute('src');
     video.load(); // stops the network stream
     $('#player').hidden = true;
     document.body.style.overflow = '';
+    document.body.classList.remove('in-player');
     current = null;
     opener?.focus?.({ preventScroll: true });
     if (state.view === 'library') renderLibrary(); // refresh watched bars
@@ -1717,6 +2143,7 @@ async function openPlayer(f, opts = {}) {
     r.body?.cancel();
   } catch (e) {
     if (current !== session) return;
+    setSpinner(false);
     err.textContent = e.message;
     err.hidden = false;
     return;
@@ -1728,8 +2155,8 @@ async function openPlayer(f, opts = {}) {
   if (opts.castHint && canCastFromBrowser) {
     const note = $('#player-note');
     note.textContent = hasAirPlay
-      ? 'Tap the AirPlay button at the top to pick a TV. No button means there’s no AirPlay TV on this network.'
-      : 'Tap the cast button at the top to pick a TV. No button means there’s no Chromecast on this network.';
+      ? 'Tap the AirPlay button in the controls below to pick a TV. No button means there’s no AirPlay TV on this network.'
+      : 'Tap the cast button in the controls below to pick a TV. No button means there’s no Chromecast on this network.';
     note.hidden = false;
     airplayBtn.classList.add('is-hint');
   }

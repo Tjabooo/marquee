@@ -349,21 +349,209 @@ main {
 .muted { color: var(--dust); margin: 0; }
 
 /* ---------- player ---------- */
+/* The picture fills the screen; the title bar, the controls and the big buttons in the middle
+   float over it and fade out during playback (.ui-visible brings them back). */
 .player {
   position: fixed; inset: 0; z-index: 60;
-  display: flex; flex-direction: column;
+  overflow: hidden;
   background: #000;
-  padding: var(--safe-top) 0 var(--safe-bottom);
+  --pad-x: max(16px, env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));
 }
-.player-bar { display: flex; align-items: center; gap: 10px; padding: 8px var(--gutter); }
-.player-title { flex: 1; min-width: 0; margin: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.player video { flex: 1; min-height: 0; width: 100%; background: #000; }
+.player:not(.ui-visible) { cursor: none; }
+.player-stage { position: absolute; top: var(--safe-top); bottom: var(--safe-bottom); left: 0; right: 0; touch-action: manipulation; }
+.player video { display: block; width: 100%; height: 100%; object-fit: contain; background: #000; }
+
+.player-bar, .player-controls, .player-center { z-index: 2; transition: opacity 0.25s ease, visibility 0s; }
+.player:not(.ui-visible) :is(.player-bar, .player-controls, .player-center) {
+  opacity: 0; visibility: hidden;
+  transition: opacity 0.4s ease, visibility 0s 0.4s;
+}
+.player-bar {
+  position: absolute; top: 0; left: 0; right: 0;
+  display: flex; align-items: center; gap: 10px;
+  padding: calc(var(--safe-top) + 10px) var(--pad-x) 36px;
+  background: linear-gradient(rgba(0, 0, 0, 0.75), transparent);
+  pointer-events: none;
+}
+.player-bar > * { pointer-events: auto; }
+.player-bar .icon-btn { background: rgba(246, 234, 223, 0.1); }
+.player-title {
+  flex: 1; min-width: 0; margin: 0;
+  font: 700 17px/1.3 var(--display);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+}
 .player-error {
-  position: absolute; left: var(--gutter); right: var(--gutter); top: 45%;
-  margin: 0; padding: 16px;
+  position: absolute; z-index: 3; left: var(--gutter); right: var(--gutter); top: 45%;
+  max-width: 560px; margin: 0 auto; padding: 16px;
   text-align: center;
   background: var(--curtain); border-radius: 14px;
 }
+
+/* Bottom: seek bar, then a row of buttons */
+.player-controls {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  padding: 48px var(--pad-x) calc(var(--safe-bottom) + 8px);
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
+  pointer-events: none;
+}
+.player-controls > * { pointer-events: auto; }
+.seek-row { display: flex; align-items: center; gap: 12px; }
+.pc-time {
+  flex: none; min-width: 4.5ch; padding: 4px 0;
+  font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--paper);
+  background: none; border: 0;
+}
+.pc-duration { text-align: right; }
+.seek {
+  position: relative; flex: 1;
+  height: 28px; display: flex; align-items: center;
+  cursor: pointer; touch-action: none;
+  --pos: 0%; --buf: 0%;
+}
+.seek:focus-visible { outline: none; }
+.seek-track {
+  position: relative; width: 100%; height: 4px; overflow: hidden;
+  background: rgba(246, 234, 223, 0.22); border-radius: 2px;
+  transition: height 0.15s ease;
+}
+.seek:focus-visible .seek-track { outline: 2px solid var(--bulb); outline-offset: 4px; }
+.seek-buffer, .seek-fill { position: absolute; top: 0; bottom: 0; left: 0; }
+.seek-buffer { width: var(--buf); background: rgba(246, 234, 223, 0.3); }
+.seek-fill { width: var(--pos); background: var(--bulb); }
+.seek-thumb {
+  position: absolute; left: var(--pos); top: 50%;
+  width: 14px; height: 14px; margin: -7px 0 0 -7px;
+  background: var(--bulb); border-radius: 50%;
+  box-shadow: 0 0 8px rgba(244, 193, 82, 0.8);
+  transform: scale(0); transition: transform 0.15s ease;
+  pointer-events: none;
+}
+.seek:hover .seek-track, .seek.is-dragging .seek-track, .seek:focus-visible .seek-track { height: 6px; }
+.seek:hover .seek-thumb, .seek.is-dragging .seek-thumb, .seek:focus-visible .seek-thumb { transform: scale(1); }
+.seek-tip {
+  position: absolute; bottom: calc(100% + 4px);
+  padding: 3px 8px;
+  font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums;
+  color: var(--velvet); background: var(--paper); border-radius: 6px;
+  transform: translateX(-50%); white-space: nowrap; pointer-events: none;
+}
+
+.pc-row { position: relative; display: flex; align-items: center; gap: 2px; margin: 2px -10px 0; }
+.pc-spacer { flex: 1; }
+.pc-btn {
+  flex: none; width: 44px; height: 44px;
+  display: grid; place-items: center;
+  color: var(--paper); background: none;
+  border: 0; border-radius: 50%;
+}
+.pc-btn svg { width: 24px; height: 24px; }
+.pc-btn svg text { font: 700 7px var(--body); fill: currentColor; stroke: none; }
+.pc-btn svg .fill { fill: currentColor; stroke: none; }
+.pc-play svg, .pc-big-play svg, .player-osd svg { fill: currentColor; stroke: none; }
+.pc-btn:active { transform: scale(0.94); }
+
+.pc-volume { display: flex; align-items: center; }
+#pc-vol {
+  width: 0; height: 4px; margin: 0; opacity: 0;
+  -webkit-appearance: none; appearance: none;
+  background: linear-gradient(to right, var(--paper) var(--val, 100%), rgba(246, 234, 223, 0.25) var(--val, 100%));
+  border-radius: 2px; cursor: pointer;
+  transition: width 0.2s ease, opacity 0.2s ease, margin 0.2s ease;
+}
+.pc-volume:hover #pc-vol, .pc-volume:focus-within #pc-vol { width: 84px; margin-right: 8px; opacity: 1; }
+#pc-vol::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; background: var(--paper); border: 0; border-radius: 50%; }
+#pc-vol::-moz-range-thumb { width: 12px; height: 12px; background: var(--paper); border: 0; border-radius: 50%; }
+
+/* Middle: play/pause and ±10 s on touch screens; with a mouse, just a play button while paused */
+.player-center {
+  position: absolute; left: 0; right: 0; top: 50%;
+  display: flex; align-items: center; justify-content: center; gap: clamp(28px, 12vw, 80px);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+.player-center .pc-btn { width: 60px; height: 60px; pointer-events: auto; background: rgba(0, 0, 0, 0.45); }
+.player-center .pc-btn svg { width: 30px; height: 30px; }
+.player-center .pc-big-play { width: 76px; height: 76px; color: var(--velvet); background: var(--bulb); box-shadow: 0 0 24px rgba(244, 193, 82, 0.35); }
+.player-center .pc-big-play svg { width: 34px; height: 34px; }
+@media (hover: hover) and (pointer: fine) {
+  .player-center .pc-skip { display: none; }
+  .player:not(.is-paused) .player-center { display: none; }
+  .pc-btn:hover { background: rgba(246, 234, 223, 0.12); }
+  .player-center .pc-big-play:hover { background: var(--bulb); transform: scale(1.05); }
+}
+@media (pointer: coarse) {
+  .pc-row .pc-play, .pc-row .pc-skip { display: none; }
+  .seek-thumb { transform: scale(1); }
+}
+
+/* Feedback in the middle ("+10 s", "Volume 40%"), and the buffering ring around the play button */
+.player-osd {
+  position: absolute; z-index: 1; left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0; pointer-events: none;
+}
+.player-osd.show { opacity: 1; animation: osd 0.7s ease-out forwards; }
+.player-osd > span {
+  display: flex; align-items: center; justify-content: center;
+  min-width: 76px; height: 76px; padding: 0 22px;
+  font: 700 20px/1 var(--display); font-variant-numeric: tabular-nums; white-space: nowrap;
+  color: var(--paper); background: rgba(0, 0, 0, 0.6); border-radius: 38px;
+}
+.player-osd svg { width: 32px; height: 32px; }
+@keyframes osd {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
+  15%, 65% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.05); }
+}
+.player-spinner {
+  position: absolute; z-index: 1; left: 50%; top: 50%;
+  width: 96px; height: 96px; margin: -48px 0 0 -48px;
+  border: 3px solid rgba(246, 234, 223, 0.15); border-top-color: var(--bulb); border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+  pointer-events: none;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Subtitles: a layer the size of the picture (placed by layoutSubs in app.js). --lift and --drop
+   move the lines clear of the controls and the title bar while those are showing. */
+.player-subs { position: absolute; z-index: 1; pointer-events: none; line-height: 1.25; --lift: 0px; --drop: 0px; }
+.subs-top, .subs-bottom {
+  position: absolute; left: 4%; right: 4%;
+  display: flex; flex-direction: column; align-items: center; gap: 0.15em;
+  text-align: center;
+  transition: transform 0.3s ease;
+}
+.subs-bottom { bottom: 5%; transform: translateY(calc(-1 * var(--lift))); }
+.subs-top { top: 5%; transform: translateY(var(--drop)); }
+/* Upright phone: dialogue in the empty space under the picture, where it never covers anything */
+.player-subs.subs-below .subs-bottom { top: 100%; bottom: auto; margin-top: 0.6em; transform: none; }
+.sub-cue { max-width: 100%; white-space: pre-line; }
+.sub-cue > span {
+  padding: 0.04em 0.35em;
+  font-family: var(--body); font-weight: 600; color: #fff;
+  background: rgba(0, 0, 0, 0.6); border-radius: 0.2em;
+  -webkit-box-decoration-break: clone; box-decoration-break: clone;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+/* Keyboard shortcuts (?) */
+.player-help {
+  position: absolute; z-index: 4; left: 50%; top: 50%;
+  width: min(380px, calc(100% - 32px)); max-height: calc(100% - 32px); overflow-y: auto;
+  padding: 18px 20px;
+  background: var(--curtain); border: 1px solid var(--line); border-radius: 16px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+  transform: translate(-50%, -50%);
+}
+.help-title { margin: 0 0 12px; font: 700 17px/1.3 var(--display); }
+.player-help dl { display: grid; gap: 8px; margin: 0; }
+.player-help dl div { display: flex; justify-content: space-between; gap: 16px; }
+.player-help dt { font-weight: 700; color: var(--bulb); white-space: nowrap; }
+.player-help dd { margin: 0; color: var(--dust); text-align: right; }
+
+/* Toasts go to the top while the player is open, away from the controls */
+body.in-player .toast { top: calc(var(--safe-top) + 72px); bottom: auto !important; }
 
 .convert-banner { margin-bottom: 12px; border: 1px solid var(--line); }
 .convert-banner .row-title { white-space: normal; overflow-wrap: anywhere; }
@@ -537,11 +725,10 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .skeleton-row { height: 76px; animation: pulse 1.4s ease-in-out infinite; }
 
 /* ---------- subtitles + sound ---------- */
-.player-bar { position: relative; }
-.cc-btn { flex: none; background: rgba(246, 234, 223, 0.08); }
-.cc-btn.is-on { color: var(--velvet); background: var(--bulb); }
+.cc-btn.is-on, .cc-btn.is-on:hover { color: var(--velvet); background: var(--bulb); }
+/* Menus open upwards from the control row */
 .cc-menu {
-  position: absolute; top: calc(100% + 4px); right: var(--gutter); z-index: 3;
+  position: absolute; bottom: calc(100% + 8px); right: 4px; z-index: 3;
   width: min(260px, calc(100vw - 32px)); max-height: 60dvh; overflow-y: auto;
   padding: 6px;
   background: var(--curtain); border: 1px solid var(--line); border-radius: 14px;
@@ -566,7 +753,8 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .cc-action::before { display: none; }
 .player video::cue { font-family: var(--body); background: rgba(0, 0, 0, 0.6); }
 .player-note {
-  margin: 0 var(--gutter) 8px; padding: 10px 14px;
+  position: absolute; z-index: 3; left: var(--pad-x); right: var(--pad-x); top: calc(var(--safe-top) + 64px);
+  max-width: 560px; margin: 0 auto; padding: 10px 14px;
   font-size: 14px; line-height: 1.4;
   color: var(--paper); background: var(--curtain);
   border-left: 3px solid var(--bulb); border-radius: 10px;
@@ -678,23 +866,11 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 /* Phone turned sideways: the video fills the screen with nothing on top, so screen
    mirroring to a TV shows just the film. Turn the phone back (or swipe back) to leave. */
 @media (orientation: landscape) and (max-height: 600px) and (pointer: coarse) {
-  .player { padding: 0; }
   .player-note { display: none !important; }
-  /* The bar floats over the video: it appears on a tap and fades out while the film plays. */
-  .player-bar {
-    position: absolute; top: 0; left: 0; right: 0; z-index: 2;
-    padding: 10px max(env(safe-area-inset-left, 0px), 16px) 24px max(env(safe-area-inset-right, 0px), 16px);
-    background: linear-gradient(rgba(0, 0, 0, 0.7), transparent);
-    transition: opacity 0.3s ease;
-  }
-  .player:not(.ui-visible) .player-bar { opacity: 0; pointer-events: none; }
-  /* Keep the video's controls out of the bottom edge: in Safari, a tap there brings
-     back its own toolbar. The strip below is black, so it doesn't show on the TV. */
-  .player video {
-    position: absolute; top: 0; left: 0;
-    width: 100%; height: calc(100% - max(env(safe-area-inset-bottom, 0px), 16px));
-    object-fit: contain;
-  }
+  .player-stage { top: 0; bottom: 0; }
+  .player-bar { padding-top: 10px; }
+  /* Keep the controls off the bottom edge: in Safari, a tap there brings back its own toolbar. */
+  .player-controls { padding-bottom: calc(max(env(safe-area-inset-bottom, 0px), 16px) + 6px); }
   .player video::cue { font-size: 1.15em; }
 }
 
