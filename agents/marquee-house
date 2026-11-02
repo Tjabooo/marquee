@@ -1,0 +1,88 @@
+#!/bin/bash
+# marquee-house: report this Linux machine's health to Marquee's House tab.
+#
+#   marquee-house setup URL TOKEN   once, at home: saves the server address + HOUSE_TOKEN and
+#                                   remembers this network's router (by MAC) as "home"
+#   marquee-house report            send a report (marquee-house.timer, every 5 min)
+#   marquee-house status            JSON for a waybar custom module (house dot + issues tooltip)
+#   marquee-house json              print the report without sending it
+#
+# Reports only go out on the home network: the router's MAC must match the one saved by setup,
+# so the token is never sent to some other network's 192.168.x.y. Away from home the status
+# module hides itself. Needs: bash, curl, jq, iproute2. Nothing here needs root.
+set -u
+CONF=${XDG_CONFIG_HOME:-$HOME/.config}/marquee-house.env
+STATE=${XDG_STATE_HOME:-$HOME/.local/state}/marquee-house
+MARQUEE_URL="" HOUSE_TOKEN="" HOME_GW_MAC=""
+[[ -r $CONF ]] && . "$CONF"
+
+gw_mac() {
+  local gw; gw=$(ip route show default 2>/dev/null | awk '{print $3; exit}')
+  [[ -n $gw ]] && ip neigh show "$gw" 2>/dev/null | awk '{print tolower($5); exit}'
+}
+at_home() { [[ -n $MARQUEE_URL && -n $HOUSE_TOKEN && -n $HOME_GW_MAC && "$(gw_mac)" == "$HOME_GW_MAC" ]]; }
+
+collect() {
+  local host kind os kernel up load cpus mt ma upd bkp bat sb failed disks
+  host=$(</proc/sys/kernel/hostname)
+  kind=desktop; [[ -d /sys/class/power_supply/BAT0 || -d /sys/class/power_supply/BAT1 ]] && kind=laptop
+  os=$(. /etc/os-release 2>/dev/null; echo "${NAME:-Linux}")
+  kernel=$(uname -r)
+  read -r up _ < /proc/uptime
+  read -r load _ < /proc/loadavg
+  cpus=$(nproc)
+  mt=$(awk '/^MemTotal:/{print $2*1024}' /proc/meminfo)
+  ma=$(awk '/^MemAvailable:/{print $2*1024}' /proc/meminfo)
+  # pending updates: the waybar counters' caches (laptop: neon, desktop: ember); never runs checkupdates
+  upd=null
+  for f in "${XDG_RUNTIME_DIR:-/tmp}/neon-updates" "${XDG_RUNTIME_DIR:-/tmp}/ember-updates"; do
+    [[ -r $f ]] && { upd=$(<"$f"); break; }
+  done
+  [[ $upd =~ ^[0-9]+$ ]] || upd=null
+  # last backup: whatever backs this machine up writes `date +%s` here when it succeeds
+  bkp=null; [[ -r $STATE/last-backup ]] && bkp=$(<"$STATE/last-backup")
+  [[ $bkp =~ ^[0-9]+$ ]] || bkp=null
+  bat=null
+  for b in /sys/class/power_supply/BAT*; do
+    [[ -r $b/capacity ]] && { bat=$(jq -nc --argjson p "$(<"$b/capacity")" --arg s "$(<"$b/status")" '{pct:$p,status:$s}'); break; }
+  done
+  sb=null
+  if command -v mokutil >/dev/null; then mokutil --sb-state 2>/dev/null | grep -qi 'enabled' && sb=true || sb=false; fi
+  failed=$( { systemctl --failed --plain --no-legend 2>/dev/null | awk '{print $1}'
+              systemctl --user --failed --plain --no-legend 2>/dev/null | awk '{print "user:"$1}'; } | jq -Rsc 'split("\n")|map(select(length>0))')
+  disks=$(df -B1 --output=target,size,used -t ext4 -t btrfs -t xfs -t f2fs -t vfat -t zfs 2>/dev/null | tail -n +2 |
+          jq -Rsc 'split("\n")|map(select(length>0)|split(" ")|map(select(length>0))|{mount:.[0],size:(.[1]|tonumber),used:(.[2]|tonumber)})')
+  jq -nc --arg host "$host" --arg kind "$kind" --arg os "$os" --arg kernel "$kernel" \
+    --argjson uptime "${up%.*}" --argjson load "$load" --argjson cpus "$cpus" \
+    --argjson mt "$mt" --argjson ma "$ma" --argjson updates "$upd" --argjson last_backup "$bkp" \
+    --argjson battery "$bat" --argjson secure_boot "$sb" --argjson failed "$failed" --argjson disks "$disks" \
+    '{host:$host,kind:$kind,os:$os,kernel:$kernel,uptime:$uptime,load:$load,cpus:$cpus,mem:{total:$mt,avail:$ma},
+      updates:$updates,last_backup:$last_backup,battery:$battery,secure_boot:$secure_boot,failed:$failed,disks:$disks}'
+}
+
+case ${1:-report} in
+  setup)
+    [[ $# -eq 3 ]] || { echo "usage: marquee-house setup http://SERVER:8080 HOUSE_TOKEN" >&2; exit 2; }
+    mac=$(gw_mac); [[ -n $mac ]] || { echo "no default route: connect to the home network first" >&2; exit 1; }
+    mkdir -p "$(dirname "$CONF")"; umask 077
+    printf 'MARQUEE_URL=%s\nHOUSE_TOKEN=%s\nHOME_GW_MAC=%s\n' "${2%/}" "$3" "$mac" > "$CONF"
+    echo "saved $CONF (home = router $mac)"
+    . "$CONF"; exec "$0" report ;;
+  json) collect ;;
+  report)
+    at_home || exit 0
+    # a server that's down or doesn't know the token yet is logged, not a failed unit (which the next
+    # report would then flag as an issue about itself)
+    out=$(collect | curl -sS --max-time 8 -w '\n%{http_code}' -X POST -H "X-Marquee-Token: $HOUSE_TOKEN" \
+      -H 'Content-Type: application/json' --data-binary @- "$MARQUEE_URL/api/house/report" 2>&1)
+    code=${out##*$'\n'}
+    [[ $code == 200 ]] || echo "report not accepted (HTTP ${code:-none}): ${out%$'\n'*}" >&2
+    exit 0 ;;
+  status)
+    at_home || { echo '{"text":""}'; exit 0; }
+    s=$(curl -fsS --max-time 4 -H "X-Marquee-Token: $HOUSE_TOKEN" "$MARQUEE_URL/api/house/summary" 2>/dev/null) ||
+      { echo '{"text":"󰋜","class":"down","tooltip":"House: Marquee isn'"'"'t answering"}'; exit 0; }
+    jq -c 'if .ok then {text:"󰋜",class:"ok",tooltip:("House: all fine\n" + (.machines|join(" · ")))}
+           else {text:("󰋜 " + (.issues|length|tostring)),class:"issues",tooltip:("House\n" + (.issues|map("• " + .)|join("\n")))} end' <<<"$s" ;;
+  *) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac

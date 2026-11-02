@@ -1,0 +1,10 @@
+[Unit]
+Description=Report to Marquee's House tab every 5 minutes (only on the home network)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+RandomizedDelaySec=30s
+
+[Install]
+WantedBy=timers.target

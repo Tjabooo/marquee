@@ -14,6 +14,9 @@ Marquee is a single Node.js process with no dependencies, served as a mobile-fir
 - **Casting**: play on DLNA smart TVs (Samsung, LG, Sony and others) and Apple TV, with a full-screen remote for play/pause, seeking, volume and subtitles.
 - **Automatic conversion**: MKV, AVI, WebM and similar files get an MP4 copy that plays on iPhone and Apple TV. Streams are copied where possible; video is re-encoded on an NVIDIA GPU (NVENC) or CPU only when needed.
 - **Browser audio fix**: Chrome and Firefox can't decode Dolby (AC3/E-AC3) or DTS. Marquee adds a stereo AAC track so these files play with sound, while TVs still receive the original surround audio.
+- **House** (owner only): the server's disks, qBittorrent, FlareSolverr and AdGuard Home at a glance, plus the Linux machines at home (disk space, failed services, updates, battery, Secure Boot, backups), with anything that needs a look listed at the top.
+- **Clips** (owner only): game clips synced from a PC, grouped by game. **Share** gives a clip a public link that embeds and plays in Discord; sharing makes a Discord-friendly H.264 copy (all audio tracks mixed into one) and unsharing kills the link.
+- **Discord embeds**: shared clips show up as playable videos, and `/c/` is an invite card for Marquee itself.
 - **Library management**: delete films, single episodes or whole torrents. Files are removed through qBittorrent, together with any copies and subtitles Marquee created.
 
 ## Requirements
@@ -58,7 +61,8 @@ All settings live in `.env`. Changes take effect after a restart.
 | --- | --- | --- |
 | `PORT` | `8080` | Port for the web app. |
 | `SERVER_IP` | auto | LAN address TVs use to stream from the server. Set it if the address printed at startup is wrong. |
-| `ADMIN_EMAILS` | | Cloudflare Access emails that see the Activity tab, comma-separated. |
+| `ADMIN_EMAILS` | | Cloudflare Access emails that see the Activity, House and Clips tabs, comma-separated. |
+| `PUBLIC_URL` | from the request | Public address used in share links and Discord embeds, e.g. `https://marquee.example.com`. |
 
 ### Metadata and library
 
@@ -99,6 +103,15 @@ All settings live in `.env`. Changes take effect after a restart.
 | `STREAM_SECRET` | generated | Key for signing `/play/` links. Generated into `.marquee-secret` on first run if empty. |
 | `ATVSCRIPT` | `atvscript` | Full path to pyatv's `atvscript` if it isn't on `PATH`. |
 | `ATV_HOSTS` | | Apple TV IP addresses to query directly if discovery fails. |
+
+### House and clips
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `HOUSE_TOKEN` | | Shared secret for `agents/marquee-house`. Leave empty to turn machine reports off; the House tab still shows the server. |
+| `ADGUARD_URL` | | AdGuard Home's web address, e.g. `http://localhost:3000`, for protection state and query stats. Without it House only checks that something answers DNS on port 53. |
+| `ADGUARD_USER` / `ADGUARD_PASS` | | AdGuard Home login. |
+| `CLIPS_DIR` | | Folder the clips are synced to, e.g. `D:\Clips` (the share behind the desktop's `/mnt/magi-clips`). Leave empty to hide the Clips tab. |
 
 ### Conversion
 
@@ -168,6 +181,30 @@ atvremote wizard      # pair once with each Apple TV
 ```
 
 If the server runs as a scheduled task and can't find `atvscript`, set its full path in `ATVSCRIPT`. AirPlay can't display external subtitle files, so subtitles are available on Apple TV only through the phone or browser player.
+
+### House: reports from your Linux machines
+
+`agents/marquee-house` is a small bash script for each Linux machine at home (needs `curl` and `jq`). It reports disk space, failed services, pending updates (from the waybar update counter's cache), battery, Secure Boot state and the last backup, and only talks to the server on the home network: setup remembers the router's MAC address and nothing is sent anywhere else. On the server, the reports are only accepted with `HOUSE_TOKEN` **and** straight from the LAN; requests through Cloudflare are refused even with the token.
+
+```bash
+# on each machine, at home (HOUSE_TOKEN = the same value as in the server's .env)
+install -m755 agents/marquee-house ~/.local/bin/
+install -m644 agents/marquee-house.{service,timer} ~/.config/systemd/user/
+marquee-house setup http://<server-ip>:8080 <HOUSE_TOKEN>
+systemctl --user enable --now marquee-house.timer
+```
+
+For a status-bar dot, `marquee-house status` prints waybar JSON (`"return-type": "json"`); it hides itself away from home.
+
+### Clips and Discord share links
+
+Set `CLIPS_DIR` and the owner gets a **Clips** tab. Shared clips live under `/c/<token>`: a page with the video, the video itself and a thumbnail. For those links to work for everyone (and for Discord to embed them), let `/c/` past Cloudflare Access, the same way as `/play/`:
+
+1. Cloudflare Zero Trust → **Access → Applications → Add an application → Self-hosted**.
+2. Application domain: your Marquee hostname, path `c`.
+3. Policy: action **Bypass**, include **Everyone**. Access applies the most specific path, so the rest of Marquee stays behind your login.
+
+Only shared clips and the invite card are reachable there. Links are 96-bit random tokens, unknown or unshared tokens get a 404, and unsharing deletes the shared copy. `https://<your-host>/c/` on its own is an invite card for Marquee: paste that in Discord to get an embed of the site itself, and anyone who clicks it is sent on to the normal (protected) app.
 
 ### FlareSolverr
 
@@ -254,6 +291,10 @@ marquee/
 ├── cast.js               DLNA and Apple TV casting
 ├── network.js            Home-network detection for casting
 ├── activity.js           Activity log
+├── house.js              House tab: server health + reports from home machines
+├── clips.js              Clips tab, share links and their public pages (/c/)
+├── agents/
+│   └── marquee-house     Health reporter for Linux machines (+ systemd service/timer)
 ├── public/
 │   ├── index.html
 │   ├── app.js            Web client
@@ -277,6 +318,9 @@ Created at runtime and excluded from Git:
 | `.marquee-secret` | Key for signed `/play/` links |
 | `cache/audio/` | Audio-fixed copies of downloaded MP4s |
 | `logs/` | Output from the auto-start task |
+| `.marquee-house.json` | Latest report from each home machine |
+| `.marquee-shares.json` | Shared clips (token → clip) |
+| `cache/clips/` | Clip thumbnails and the Discord-friendly copies of shared clips |
 
 ## API
 
@@ -306,12 +350,21 @@ The web client uses a JSON API that can also be scripted. `<kind>` is `lib` for 
 | `GET` | `/api/cast/devices`, `/api/cast/sessions` | TVs and what's playing |
 | `GET` | `/api/network` | Whether the request is from the home network, for troubleshooting |
 | `POST` | `/api/cast/play` | Start playback on a TV |
+| `GET` | `/api/house` | Server health and home machines (`ADMIN_EMAILS` only) |
+| `POST` | `/api/house/report` | A machine's report (`X-Marquee-Token`, home network only) |
+| `GET` | `/api/house/summary` | Issues only, for status bars (`X-Marquee-Token`, home network only) |
+| `GET` | `/api/clips` | Clips and their share state (`ADMIN_EMAILS` only) |
+| `GET` | `/api/clips/<id>/thumb.jpg`, `/api/clips/<id>/video` | Thumbnail and video (`ADMIN_EMAILS` only) |
+| `POST` | `/api/clips/<id>/share`, `/api/clips/<id>/unshare` | Create or remove a public link (`ADMIN_EMAILS` only) |
+| `GET` | `/c/`, `/c/<token>`, `/c/<token>/video.mp4`, `/c/<token>/thumb.jpg` | Public: invite card and shared clips, with OpenGraph tags for Discord |
 
 ## Security
 
 Marquee has no user accounts or authentication. Anyone who can reach the server can browse, download and **delete** files. Run it only on a trusted home network and do not expose its port to the internet. For remote access, use a VPN such as WireGuard or Tailscale.
 
 Keep `.env` private: it contains your API keys and passwords, and it is excluded by `.gitignore`.
+
+`/c/` is public by design (see *Clips and Discord share links*): it serves only clips you shared and the invite card, nothing else. House reports need `HOUSE_TOKEN` and are refused when they arrive through Cloudflare.
 
 ## Troubleshooting
 

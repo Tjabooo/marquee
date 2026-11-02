@@ -601,13 +601,16 @@ function renderDownloads() {
 let pollTimer;
 function schedulePoll() {
   clearTimeout(pollTimer);
-  const delay = state.view === 'downloads' ? 2000 : state.view === 'library' ? 3000 : state.view === 'activity' ? 10000 : 15000;
+  const clipsBusy = state.view === 'clips' && state.clips?.clips?.some((c) => c.share && !c.share.ready && !c.share.error);
+  const delay = state.view === 'downloads' ? 2000 : state.view === 'library' || clipsBusy ? 3000 : ['activity', 'house'].includes(state.view) ? 10000 : 15000;
   pollTimer = setTimeout(async () => {
     if (!document.hidden) {
       const before = state.convert?.current?.name;
       await Promise.all([loadDownloads(), loadSessions(), state.view === 'library' ? loadConvert() : null]);
       if (state.view === 'downloads') renderDownloads();
       if (state.view === 'activity') { await loadActivity(); if (state.view === 'activity') renderActivity(); }
+      if (state.view === 'house') { await loadHouse(); if (state.view === 'house') renderHouse(); }
+      if (state.view === 'clips' && clipsBusy) { await loadClips(); if (state.view === 'clips') renderClips(); }
       if (state.view === 'library') {
         // A conversion finished: refresh so the new MP4 appears.
         // A conversion started or finished: refresh so Play is disabled / the new MP4 appears.
@@ -2260,13 +2263,15 @@ window.addEventListener('pagehide', () => saveProgress(true));
 
 // ---------- search box + tabs ----------
 const input = $('#q');
-const PLACEHOLDERS = { discover: 'Search films and shows', library: 'Filter your library', downloads: 'Filter downloads', activity: 'Filter by person or title' };
+const PLACEHOLDERS = { discover: 'Search films and shows', library: 'Filter your library', downloads: 'Filter downloads', activity: 'Filter by person or title', house: 'Filter machines', clips: 'Filter by game or name' };
 
 function renderView() {
   if (state.view === 'discover') renderDiscover();
   if (state.view === 'library') renderLibrary();
   if (state.view === 'downloads') renderDownloads();
   if (state.view === 'activity') renderActivity();
+  if (state.view === 'house') renderHouse();
+  if (state.view === 'clips') renderClips();
 }
 
 // ---------- activity (server owner only) ----------
@@ -2280,6 +2285,8 @@ const ACTIVITY_TEXT = {
   cast: (d) => { const [what, tv] = d.split(' → '); return tv ? `put ${what} on ${tv}` : `put ${d} on a TV`; },
   stop: (d) => `stopped ${d}`,
   subtitles: (d) => `got ${d}`,
+  share: (d) => `shared the clip ${d}`,
+  unshare: (d) => `stopped sharing ${d}`,
 };
 const personName = (user) => (user.includes('@') ? user.split('@')[0] : user);
 const clock = (ms) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
@@ -2337,6 +2344,168 @@ function renderActivity() {
   body.replaceChildren(...out);
 }
 
+// ---------- house (server owner only) ----------
+// The home server's own health plus the machines that report in (laptop, desktop): house.js.
+async function loadHouse() {
+  try { state.house = await api('/api/house'); state.houseError = null; } catch (err) { state.houseError = err.message; }
+}
+
+function meter(used, size) {
+  const pct = size ? Math.round((100 * used) / size) : 0;
+  return h('span', { class: `meter${pct >= 90 ? ' is-full' : ''}`, title: `${pct} % used` }, h('i', { style: `width:${pct}%` }));
+}
+const ago = (ms) => {
+  const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+  if (s < 90) return 'just now';
+  if (s < 5400) return `${Math.round(s / 60)} min ago`;
+  if (s < 129600) return `${Math.round(s / 3600)} h ago`;
+  return `${Math.round(s / 86400)} days ago`;
+};
+const upFor = (secs) => (secs >= 86400 ? `up ${Math.floor(secs / 86400)} d ${Math.floor((secs % 86400) / 3600)} h` : `up ${Math.floor(secs / 3600)} h ${Math.floor((secs % 3600) / 60)} min`);
+function diskRows(disks, label = (d) => d.label || d.mount) {
+  return disks.map((d) => h('div', { class: 'house-disk' },
+    h('span', { class: 'house-disk-name' }, label(d)),
+    meter(d.used, d.size),
+    h('span', { class: 'house-disk-free' }, `${fmtBytes(d.size - d.used)} free`)));
+}
+
+function renderHouse() {
+  const body = $('#house-body');
+  if (state.houseError) { body.replaceChildren(notice('Couldn’t check the house', state.houseError, () => loadHouse().then(renderHouse))); return; }
+  const r = state.house;
+  if (!r) return;
+  const q = norm(state.query);
+  const out = [];
+  out.push(r.issues.length
+    ? h('div', { class: 'house-status has-issues' },
+      h('strong', {}, r.issues.length === 1 ? '1 thing needs a look' : `${r.issues.length} things need a look`),
+      h('ul', {}, r.issues.map((i) => h('li', {}, i))))
+    : h('div', { class: 'house-status' }, h('strong', {}, 'Everything’s fine'), h('span', { class: 'muted' }, ` · checked ${clock(r.checkedAt)}`)));
+
+  const sv = r.server;
+  if (!q || norm(`server ${sv.name}`).includes(q)) {
+    out.push(h('h3', { class: 'activity-head' }, 'Server'));
+    out.push(h('div', { class: 'house-card' },
+      h('div', { class: 'house-card-head' },
+        h('span', { class: 'row-title' }, sv.name),
+        h('span', { class: 'row-meta' }, h('span', {}, upFor(sv.uptime)), sv.cpu != null && h('span', {}, `CPU ${sv.cpu} %`),
+          h('span', {}, `RAM ${fmtBytes(sv.mem.total - sv.mem.avail)} / ${fmtBytes(sv.mem.total)}`))),
+      diskRows(sv.disks),
+      h('ul', { class: 'house-services' }, sv.services.map((x) => h('li', {},
+        h('span', { class: `activity-dot${x.ok ? ' is-on' : ' is-bad'}`, 'aria-hidden': 'true' }),
+        h('span', { class: 'house-svc-name' }, x.name), h('span', { class: 'muted' }, x.detail))))));
+  }
+
+  out.push(h('h3', { class: 'activity-head' }, 'Machines'));
+  const machines = r.machines.filter((m) => !q || norm(`${m.host} ${m.kind} ${m.os}`).includes(q));
+  if (!r.agents) out.push(h('p', { class: 'muted' }, 'Set HOUSE_TOKEN in .env and run agents/marquee-house on each machine to see them here.'));
+  else if (!machines.length) out.push(h('p', { class: 'muted' }, q ? 'Nothing matches.' : 'No machine has reported yet.'));
+  for (const m of machines) {
+    const meta = [m.kind, m.os, m.kernel, m.uptime != null && upFor(m.uptime),
+      m.battery && `battery ${m.battery.pct} %${m.battery.status && m.battery.status !== 'Unknown' ? ` (${m.battery.status.toLowerCase()})` : ''}`,
+      m.updates ? `${m.updates} updates` : m.updates === 0 && 'up to date',
+      m.secureBoot != null && `Secure Boot ${m.secureBoot ? 'on' : 'OFF'}`,
+      m.lastBackup ? `backup ${ago(m.lastBackup * 1000)}` : 'no backups'].filter(Boolean);
+    out.push(h('div', { class: `house-card${m.away ? ' is-away' : ''}` },
+      h('div', { class: 'house-card-head' },
+        h('span', { class: `activity-dot${m.away ? '' : m.issues.length ? ' is-bad' : ' is-on'}`, 'aria-hidden': 'true' }),
+        h('span', { class: 'row-title' }, m.host),
+        h('span', { class: 'muted house-seen' }, m.away ? `away · last seen ${ago(m.at)}` : `reported ${ago(m.at)}`)),
+      h('div', { class: 'row-meta' }, meta.map((t) => h('span', {}, t))),
+      diskRows(m.disks, (d) => d.mount),
+      m.failed.length > 0 && h('p', { class: 'house-failed' }, `Failed: ${m.failed.join(', ')}`)));
+  }
+  body.replaceChildren(...out);
+}
+
+// ---------- clips (server owner only) ----------
+// Game clips from the desktop (clips.js). Sharing makes a public /c/ link that embeds in Discord.
+async function loadClips() {
+  try { state.clips = await api('/api/clips'); state.clipsError = null; } catch (err) { state.clipsError = err.message; }
+}
+
+async function shareClip(c, btn) {
+  btn.disabled = true;
+  try {
+    const r = await api(`/api/clips/${c.id}/share`, { method: 'POST' });
+    c.share = r;
+    c.shareUrl = r.url;
+    if (r.ready) await copyLink(r.url);
+    else toast('Preparing a Discord-friendly copy… the link is ready in a minute.');
+  } catch (err) { toast(err.message); }
+  await loadClips();
+  renderClips();
+}
+async function copyLink(url) {
+  try { await navigator.clipboard.writeText(url); toast('Link copied: paste it in Discord'); } catch { prompt('Copy this link', url); }
+}
+async function unshareClip(c) {
+  try { await api(`/api/clips/${c.id}/unshare`, { method: 'POST' }); toast('Link removed'); } catch (err) { toast(err.message); }
+  await loadClips();
+  renderClips();
+}
+
+function clipCard(c) {
+  const when = new Date(c.mtime).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
+  const thumb = h('button', { class: 'clip-thumb', 'aria-label': `Play ${c.title}` },
+    h('img', { src: `/api/clips/${c.id}/thumb.jpg`, alt: '', loading: 'lazy' }));
+  thumb.insertAdjacentHTML('beforeend', `<span class="clip-play">${ICONS.play}</span>`);
+  thumb.addEventListener('click', () => {
+    thumb.replaceWith(h('video', { class: 'clip-video', src: `/api/clips/${c.id}/video`, controls: true, autoplay: true, playsinline: true }));
+  });
+  const s = c.share;
+  const link = s && `${location.origin}/c/${s.token}`;
+  let actions;
+  if (!s) actions = [h('button', { class: 'retry', onclick: (e) => shareClip(c, e.currentTarget) }, 'Share')];
+  else if (s.error) actions = [h('span', { class: 'muted' }, `Couldn’t prepare it: ${s.error}`), h('button', { class: 'retry', onclick: (e) => shareClip(c, e.currentTarget) }, 'Try again')];
+  else if (!s.ready) actions = [h('span', { class: 'muted clip-working' }, 'Preparing for Discord…')];
+  else actions = [h('button', { class: 'retry', onclick: () => copyLink(link) }, 'Copy link')];
+  if (s) actions.push(h('button', { class: 'icon-btn clip-unshare', 'aria-label': 'Stop sharing', title: 'Stop sharing (the link stops working)', onclick: () => unshareClip(c) }));
+  const card = h('li', { class: 'clip' }, thumb,
+    h('div', { class: 'clip-text' },
+      h('div', { class: 'row-title' }, c.title),
+      h('div', { class: 'row-meta' }, h('span', {}, c.game), h('span', {}, when), h('span', {}, fmtBytes(c.size)), s?.ready && h('span', { class: 'clip-shared' }, 'shared'))),
+    h('div', { class: 'clip-actions' }, actions));
+  const un = $('.clip-unshare', card);
+  if (un) un.innerHTML = ICONS.trash;
+  return card;
+}
+
+function renderClips() {
+  const body = $('#clips-body');
+  if (state.clipsError) { body.replaceChildren(notice('Couldn’t load clips', state.clipsError, () => loadClips().then(renderClips))); return; }
+  if (!state.clips) return;
+  if (!state.clips.configured) { body.replaceChildren(notice('No clips folder', 'Set CLIPS_DIR in .env to the folder your desktop syncs clips to.')); return; }
+  const q = norm(state.query);
+  const list = state.clips.clips.filter((c) => !q || norm(`${c.title} ${c.game}`).includes(q));
+  if (!list.length) { body.replaceChildren(h('p', { class: 'muted' }, q ? 'Nothing matches.' : 'No clips yet.')); return; }
+  const out = [];
+  let game = null;
+  let grid = null;
+  for (const c of [...list].sort((a, b) => a.game.localeCompare(b.game) || b.mtime - a.mtime)) {
+    if (c.game !== game) {
+      game = c.game;
+      grid = h('ul', { class: 'clip-grid' });
+      out.push(h('h3', { class: 'activity-head' }, game), grid);
+    }
+    grid.append(clipCard(c));
+  }
+  body.replaceChildren(...out);
+}
+
+function addAdminTab(view, label, iconSvg) {
+  if ($(`#view-${view}`)) return;
+  $('#main').append(h('section', { id: `view-${view}`, class: 'view', 'aria-labelledby': `${view}-heading`, hidden: true },
+    h('h2', { class: 'view-heading', id: `${view}-heading` }, label),
+    h('div', { id: `${view}-body` })));
+  const tab = h('button', { class: 'tab', 'data-view': view });
+  tab.innerHTML = `${iconSvg}<span>${label}</span>`;
+  tab.addEventListener('click', () => setView(view));
+  $('.tabs').append(tab);
+}
+const enableHouseTab = () => addAdminTab('house', 'House', '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 11 12 4l8.5 7"/><path d="M5.5 9.5V20h13V9.5"/><path d="M10 20v-5h4v5"/></svg>');
+const enableClipsTab = () => addAdminTab('clips', 'Clips', '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5.5" width="18" height="13" rx="2"/><path d="M10 9.5v5l4.5-2.5z"/></svg>');
+
 // Adds the Activity tab for the server's owner (ADMIN_EMAILS in .env).
 function enableActivityTab() {
   if ($('#view-activity')) return;
@@ -2388,6 +2557,8 @@ async function setView(view) {
   if (view === 'library') await Promise.all([loadLibrary(), loadConvert()]);
   if (view === 'downloads') await loadDownloads();
   if (view === 'activity') await loadActivity();
+  if (view === 'house') await loadHouse();
+  if (view === 'clips') await loadClips();
   if (state.view === view) renderView();
   schedulePoll();
 }
@@ -2403,7 +2574,8 @@ $('#find-torrents').addEventListener('click', (e) => openTorrents({ query: state
     return;
   }
   $('#find-torrents').hidden = !state.status.torrents;
-  if (state.status.admin) enableActivityTab();
+  if (state.status.admin) { enableActivityTab(); enableHouseTab(); }
+  if (state.status.clips) enableClipsTab();
   await Promise.all([loadLibrary(), loadDownloads(), loadSessions()]);
   renderDiscover();
   schedulePoll();

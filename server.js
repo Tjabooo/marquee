@@ -14,6 +14,8 @@ import * as torrents from './torrents.js';
 import * as subtitles from './subtitles.js';
 import * as subsync from './subsync.js';
 import * as activity from './activity.js';
+import * as house from './house.js';
+import * as clips from './clips.js';
 import { isHomeRequest, describeRequest } from './network.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -44,6 +46,13 @@ function lanAddress() {
 }
 const LAN_IP = lanAddress();
 activity.initActivity({ dataDir: ROOT });
+house.initHouse({
+  dataDir: ROOT,
+  mediaDir: MEDIA_DIR,
+  clipsDir: process.env.CLIPS_DIR ? path.resolve(process.env.CLIPS_DIR) : null,
+  qbitCheck: QBIT_URL ? async () => (await qbitRequest('/api/v2/app/version')).ok : null,
+});
+clips.initClips({ dataDir: ROOT, getEncoder: () => converter.converterStatus().encoder });
 cast.initCasting({ lanIp: LAN_IP });
 subsync.initSubsync({ dataDir: ROOT, audioShift: (video) => converter.syncState(video).shift });
 subtitles.initSubtitles({
@@ -589,7 +598,46 @@ function titleOf(file) {
 async function handleApi(req, res, url) {
   const p = url.pathname;
   let m;
+
+  // House reports from the laptop/desktop (token + home network only; see house.js). Handled before
+  // activity.seen() so the machines don't show up as people in the Activity tab.
+  if (p === '/api/house/report') {
+    if (!house.agentAllowed(req)) throw new HttpError(403, 'Not allowed.');
+    house.acceptReport(req, await readJson(req));
+    return sendJson(res, 200, { ok: true });
+  }
+  if (p === '/api/house/summary') {
+    if (!house.agentAllowed(req) && !activity.isAdmin(req)) throw new HttpError(403, 'Not allowed.');
+    return sendJson(res, 200, await house.houseSummary());
+  }
+
   activity.seen(req);
+
+  if (p === '/api/house') {
+    if (!activity.isAdmin(req)) throw new HttpError(403, 'Only the server’s owner can see the house.');
+    return sendJson(res, 200, await house.houseReport());
+  }
+  if (p === '/api/clips' || p.startsWith('/api/clips/')) {
+    if (!activity.isAdmin(req)) throw new HttpError(403, 'Only the server’s owner can see clips.');
+    if (p === '/api/clips') return sendJson(res, 200, await clips.listClips());
+    if ((m = p.match(/^\/api\/clips\/([\w-]{16})\/thumb\.jpg$/))) {
+      const data = await fs.promises.readFile(await clips.thumbnail(m[1]));
+      res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, max-age=86400' });
+      return res.end(data);
+    }
+    if ((m = p.match(/^\/api\/clips\/([\w-]{16})\/video$/))) return sendVideo(req, res, await clips.clipFile(m[1]));
+    if ((m = p.match(/^\/api\/clips\/([\w-]{16})\/(share|unshare)$/)) && req.method === 'POST') {
+      if (m[2] === 'unshare') {
+        const r = await clips.unshare(m[1]);
+        activity.record(req, 'unshare', r.title);
+        return sendJson(res, 200, r);
+      }
+      const r = await clips.share(m[1]);
+      activity.record(req, 'share', r.title, { quietMs: 60000 });
+      return sendJson(res, 200, { ...r, url: `${clips.baseUrl(req)}/c/${r.token}` });
+    }
+    throw new HttpError(404, 'Unknown clips route.');
+  }
 
   if (p === '/api/activity') {
     if (!activity.isAdmin(req)) throw new HttpError(403, 'Only the server’s owner can see activity.');
@@ -603,6 +651,7 @@ async function handleApi(req, res, url) {
       subtitles: subtitles.subtitlesConfigured(),
       casting: await castAllowed(req),
       admin: activity.isAdmin(req),
+      clips: activity.isAdmin(req) && clips.clipsConfigured(),
     });
   }
   if (p === '/api/convert') return sendJson(res, 200, converter.converterStatus());
@@ -887,10 +936,15 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://localhost');
     const allowed = req.method === 'GET' || req.method === 'HEAD'
-      || (req.method === 'POST' && (url.pathname.startsWith('/api/cast/') || url.pathname === '/api/downloads/add' || url.pathname === '/api/subs/fetch' || url.pathname === '/api/subs/sync' || url.pathname === '/api/library/delete' || /^\/api\/downloads\/\w+\/(pause|resume|delete)$/.test(url.pathname) || /^\/api\/media\/\w+\/[\w-]+\/sync$/.test(url.pathname)));
+      || (req.method === 'POST' && (url.pathname.startsWith('/api/cast/') || url.pathname === '/api/downloads/add' || url.pathname === '/api/subs/fetch' || url.pathname === '/api/subs/sync' || url.pathname === '/api/library/delete' || /^\/api\/downloads\/\w+\/(pause|resume|delete)$/.test(url.pathname) || /^\/api\/media\/\w+\/[\w-]+\/sync$/.test(url.pathname)
+        || url.pathname === '/api/house/report' || /^\/api\/clips\/[\w-]+\/(share|unshare)$/.test(url.pathname)));
     if (!allowed) throw new HttpError(405, 'Method not allowed.');
     if (url.pathname.startsWith('/api/')) await handleApi(req, res, url);
     else if (url.pathname.startsWith('/play/')) await handlePlay(req, res, url);
+    // Public: shared clips and the Marquee invite card (bypassed in Cloudflare Access; see README)
+    else if (url.pathname === '/c' || url.pathname.startsWith('/c/')) {
+      if (!(await clips.handlePublic(req, res, url, { sendVideo }))) throw new HttpError(404, 'Not found.');
+    }
     else await serveStatic(res, url.pathname);
   } catch (err) {
     const status = err.status || 500;
