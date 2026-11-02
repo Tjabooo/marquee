@@ -147,8 +147,17 @@ function localFiles() {
 }
 const sameTitle = (t) => {
   const n = norm(t.title);
-  return (f) => (t.type === 'tv' && f.show && f.show === `tv-${t.id}`) || (t.type !== 'tv' && f.tmdbId && f.tmdbId === t.id) || (norm(f.title) === n &&
-    (t.type === 'tv' || !f.year || !t.year || Math.abs(f.year - t.year) <= 1));
+  return (f) => {
+    if (t.type !== 'tv') {
+      if (f.season != null || f.show || f.movieAmbiguous) return false;
+      // A different (or unresolved) ID must never fall through to a title/year guess.
+      if (t.id != null) return f.tmdbId != null && Number(f.tmdbId) === Number(t.id);
+      return norm(f.title) === n && (!f.year || !t.year || f.year === t.year);
+    }
+    if (f.tmdbId && f.season == null) return false;
+    if (f.show?.startsWith('tv-')) return f.show === `tv-${t.id}`;
+    return f.season != null && norm(f.title) === n;
+  };
 };
 const byEpisode = (a, b) => (a.season ?? 0) - (b.season ?? 0) || (a.episode ?? 0) - (b.episode ?? 0);
 function matchesFor(t) {
@@ -398,12 +407,29 @@ function heroSlide(t) {
         h('p', { class: 'hero-overview' }, t.overview))));
 }
 
+function carousel(title, list, seeAll = null) {
+  const move = (direction) => list.scrollBy({ left: direction * Math.max(160, list.clientWidth * 0.85),
+    behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
+  const prev = h('button', { type: 'button', class: 'carousel-arrow', disabled: true, 'aria-label': `Previous in ${title}`, onclick: () => move(-1) }, icon('back'));
+  const next = h('button', { type: 'button', class: 'carousel-arrow next', 'aria-label': `Next in ${title}`, onclick: () => move(1) }, icon('back'));
+  const update = () => {
+    prev.disabled = list.scrollLeft <= 2;
+    next.disabled = list.scrollLeft + list.clientWidth >= list.scrollWidth - 2;
+  };
+  list.addEventListener('scroll', update, { passive: true });
+  const section = h('section', { class: 'shelf carousel', 'aria-label': title },
+    h('div', { class: 'shelf-head' }, h('h3', {}, title),
+      h('div', { class: 'carousel-controls' }, seeAll, prev, next)), list);
+  const observer = new ResizeObserver(update);
+  observer.observe(list);
+  searchCtrl?.signal.addEventListener('abort', () => observer.disconnect(), { once: true });
+  requestAnimationFrame(update);
+  return section;
+}
+
 function row(r) {
-  return h('section', { class: 'shelf', 'aria-label': r.title },
-    h('div', { class: 'shelf-head' },
-      h('h3', {}, r.title),
-      h('button', { class: 'see-all', onclick: () => { disc.list = { key: r.key, title: r.title }; window.scrollTo({ top: 0 }); renderDiscover(); } }, 'See all')),
-    h('ul', { class: 'shelf-items' }, r.items.map(titleCard)));
+  return carousel(r.title, h('ul', { class: 'shelf-items', tabindex: '0', 'aria-label': r.title }, r.items.map(titleCard)),
+    h('button', { class: 'see-all', onclick: () => { disc.list = { key: r.key, title: r.title }; window.scrollTo({ top: 0 }); renderDiscover(); } }, 'See all'));
 }
 
 // Paged grid for a genre or a "See all" list, with a Load more button.
@@ -496,7 +522,7 @@ async function renderDiscover() {
   try {
     const data = await cachedApi(`/api/discover/home?type=${disc.type}`, signal);
     content.replaceChildren(...[
-      data.featured.length && h('ul', { class: 'hero', 'aria-label': 'Featured' }, data.featured.map(heroSlide)),
+      data.featured.length && carousel('Trending this week', h('ul', { class: 'hero', tabindex: '0', 'aria-label': 'Trending this week' }, data.featured.map(heroSlide))),
       ...data.rows.map(row),
     ].filter(Boolean));
   } catch (err) {
@@ -570,7 +596,7 @@ function renderLibrary() {
   const q = norm(state.query);
   const showsById = new Map(state.libraryShows.map((x) => [x.id, x]));
   const isShow = (f) => Boolean(f.show && showsById.get(f.show)) || f.season != null;
-  const items = state.library.filter((f) => (!q || norm(f.title).includes(q) || norm(f.file).includes(q)
+  const items = state.library.filter((f) => (!q || norm(f.title).includes(q) || norm(f.filmTitle).includes(q) || norm(f.file).includes(q)
     || norm(showsById.get(f.show)?.title).includes(q) || norm(f.episodeName).includes(q))
     && (state.libFilter === 'all' || (state.libFilter === 'tv') === isShow(f)));
   const filters = segmented(LIB_FILTERS, state.libFilter, (v) => { state.libFilter = v; renderLibrary(); }, 'Show');
@@ -598,7 +624,7 @@ function renderLibrary() {
     const byShow = new Map();
     for (const f of items.filter((x) => (x.source || 'existing') === source)) {
       const show = f.show && showsById.get(f.show);
-      if (!show) { entries.push({ name: f.title, files: [f] }); continue; }
+      if (!show) { entries.push({ name: f.filmTitle || f.title, files: [f] }); continue; }
       if (!byShow.has(show.id)) { const e = { show, name: show.title, files: [] }; byShow.set(show.id, e); entries.push(e); }
       byShow.get(show.id).files.push(f);
     }
@@ -653,7 +679,7 @@ function libraryEntries(items) {
   const entries = [];
   for (const f of items) {
     const show = shows.get(f.show);
-    if (!show) { entries.push({ name: f.title, files: [f] }); continue; }
+    if (!show) { entries.push({ name: f.filmTitle || f.title, files: [f] }); continue; }
     if (!grouped.has(show.id)) {
       const entry = { show, name: show.title, files: [] };
       grouped.set(show.id, entry);
@@ -682,7 +708,7 @@ function libraryCard(entry, keep = false) {
   const { show, files, name } = entry;
   const f = files[0];
   const seasons = [...new Set(files.map((f) => f.season))];
-  const subtitle = entry.subtitle || (show
+  const subtitle = entry.subtitle || (f.movieAmbiguous ? 'Film needs identifying' : show
     ? `${seasons.length === 1 ? seasonName(seasons[0]) : plural(seasons.length, 'season')} · ${plural(episodeCount(files), 'episode')}`
     : [f.year, f.season != null ? episodeLabel(f) : 'Film'].filter(Boolean).join(' · '));
   const poster = entry.poster || show?.poster || f.poster;
@@ -747,16 +773,60 @@ function renderFilm() {
   $('#sheet-body').replaceChildren(
     h('div', { class: `sheet-hero${f.backdrop ? '' : ' no-image'}`, style: f.backdrop ? `background-image:url("${f.backdrop}")` : null }),
     h('div', { class: 'sheet-content' },
-      h('h2', { id: 'sheet-title' }, f.title),
+      h('h2', { id: 'sheet-title' }, f.filmTitle || f.title),
       h('ul', { class: 'facts' }, [f.year, f.season != null ? episodeLabel(f) : 'Film', f.rating && `★ ${f.rating}`, f.format?.toUpperCase(), fmtBytes(f.size)]
         .filter(Boolean).map((text) => h('li', {}, text))),
       keepBar([f], renderFilm),
+      f.movieAmbiguous && h('p', { class: 'identity-note' }, state.me?.isOwner
+        ? 'Several films match this filename. Choose “Identify film” to select the right one.'
+        : 'Several films match this filename. The server’s owner can identify this file.'),
       h('div', { class: 'library-film-actions' },
         h('button', { class: 'play-btn', disabled: f.converting, onclick: () => openPlayer(file) }, icon('play'),
           f.converting ? 'Converting…' : partlyWatched(progress) ? `Resume at ${fmtTime(progress.time)}` : 'Play'),
         h('button', { class: 'chip', onclick: (e) => openPicker(file, e.currentTarget) }, icon('tv'), 'Play on TV'),
-        h('button', { class: 'chip', onclick: (e) => openDelete(file, e.currentTarget) }, icon('trash'), 'Delete')),
+        h('button', { class: 'chip', onclick: (e) => openDelete(file, e.currentTarget) }, icon('trash'), 'Delete'),
+        state.me?.isOwner && h('button', { class: 'chip', onclick: (e) => openFilmIdentity(f, e.currentTarget) }, 'Identify film')),
       f.overview && h('p', { class: 'overview' }, f.overview)));
+}
+
+function openFilmIdentity(f, opener) {
+  let closed = false;
+  let request = 0;
+  const list = h('ul', { class: 'rows identity-results' });
+  const status = h('p', { class: 'muted', role: 'status' });
+  const input = h('input', { type: 'search', 'aria-label': 'Film title', value: f.title });
+  const form = h('form', { class: 'identity-search', onsubmit: (e) => { e.preventDefault(); search(); } }, input,
+    h('button', { class: 'chip', type: 'submit' }, 'Search'));
+  const draw = (results) => {
+    list.replaceChildren(...results.map((t) => h('li', {}, h('button', { class: 'row identity-result', type: 'button', onclick: async (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      try {
+        await api('/api/library/identify', jsonPost({ id: f.id, tmdbId: t.id }));
+        if (!closed) closeTopOverlay();
+        await loadLibrary();
+        if (state.view === 'library') renderLibrary();
+        toast('Film identified');
+      } catch (err) { status.textContent = err.message; btn.disabled = false; }
+    } },
+    t.poster && h('img', { src: t.poster, alt: '', loading: 'lazy' }),
+    h('span', { class: 'row-text' }, h('span', { class: 'row-title' }, t.title),
+      h('span', { class: 'row-meta' }, t.releaseDate || t.year || 'Release date unknown'),
+      h('span', { class: 'identity-overview' }, t.overview || 'No description available.'))))));
+    status.textContent = results.length ? 'Choose the poster and description that match your film.' : 'No films found. Try a different title.';
+  };
+  async function search() {
+    const currentRequest = ++request;
+    status.textContent = 'Searching…';
+    try {
+      const data = await api(`/api/library/identify?id=${encodeURIComponent(f.id)}&q=${encodeURIComponent(input.value.trim())}`);
+      if (!closed && currentRequest === request) draw(data.results);
+    } catch (err) { if (!closed && currentRequest === request) status.textContent = err.message; }
+  }
+  $('#picker-body').replaceChildren(h('h2', { id: 'picker-title' }, 'Identify film'),
+    h('p', { class: 'muted' }, `File: ${f.file}`), form, status, list);
+  pushOverlay(showSheet($('#picker'), $('#picker-backdrop'), () => { closed = true; opener?.focus({ preventScroll: true }); }));
+  if (f.filmCandidates?.length) draw(f.filmCandidates); else search();
 }
 
 // The show sheet: seasons as poster cards (TMDB's poster for each season), then a season's episodes.
@@ -1118,6 +1188,7 @@ function renderDetails(t) {
     onclick: (e) => openTorrents({
       query: isTv ? t.title : [t.title, t.year].filter(Boolean).join(' '),
       type: isTv ? 'tv' : 'movie',
+      movieId: !isTv ? t.id : null,
       label: t.title,
       opener: e.currentTarget,
     }),
@@ -1461,7 +1532,7 @@ async function sendToQbit(link, extra = {}) {
   loadDownloads().then(() => { if (state.view === 'downloads') renderDownloads(); });
 }
 
-function openTorrents({ query = '', type = 'all', label = null, opener } = {}) {
+function openTorrents({ query = '', type = 'all', label = null, movieId = null, opener } = {}) {
   let results = [];
   let filter = prefs().quality || 'all'; // Settings → preferred quality
   let ctrl;
@@ -1681,7 +1752,9 @@ function openTorrents({ query = '', type = 'all', label = null, opener } = {}) {
       status.textContent = '';
       try {
         const sub = subRow.hidden ? '' : subSelect.value;
-        await sendToQbit(await magnetOf(t), sub ? { subs: [sub], name: t.name } : {});
+        // Only carry the selected film while searching its original title; free searches can be anything.
+        await sendToQbit(await magnetOf(t), { name: t.name, ...(sub ? { subs: [sub] } : {}),
+          ...(movieId && input.value.trim() === query.trim() ? { movieId } : {}) });
         added.add(t.id);
         markAdded();
         const subName = sub && subSelect.selectedOptions[0]?.textContent;
@@ -2176,7 +2249,7 @@ function subSyncItems(f, session) {
     text && h('p', { class: 'cc-message' }, text),
     !subSyncBusy(s) && nudgeRow(s.manual || 0, (n) => subSyncNudge(f, session, lang, n)),
     s.canUndo && s.offset != null && action('Undo timing fix', 'undo'),
-    s.canSync && [null, 'exact', 'undone', 'failed'].includes(s.state) && action('Fix timing', 'sync'),
+    s.canSync && action(['synced', 'ok', 'unsure'].includes(s.state) ? 'Check timing again' : 'Fix timing', 'sync'),
   ].filter(Boolean);
 }
 
@@ -2211,9 +2284,9 @@ async function watchSubSync(f, session, l, wasBusy = false) {
   ccSync = s;
   if (subSyncBusy(s)) {
     ccSyncTimer = setTimeout(() => watchSubSync(f, session, l, true), 3000);
-  } else if (wasBusy && s.state === 'synced') {
+  } else if (wasBusy && ['synced', 'ok'].includes(s.state)) {
     reloadSubTrack(l);
-    toast(`Subtitle timing fixed (${fmtSubShift(s.offset)})`);
+    toast(s.state === 'ok' ? 'Subtitle timing checked' : `Subtitle timing fixed (${fmtSubShift(s.offset)})`);
   } else if (wasBusy && s.state === 'failed') {
     toast('Couldn’t check the subtitle timing');
   }

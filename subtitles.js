@@ -97,8 +97,9 @@ function query(params) {
 function searchParams(info, extra = {}) {
   const episode = info.season != null || Boolean(info.tv);
   return {
-    query: info.title,
-    year: episode ? null : info.year,
+    query: info.tmdbId && !episode ? null : info.title,
+    tmdb_id: !episode ? info.tmdbId : null,
+    year: episode || info.tmdbId ? null : info.year,
     season_number: episode ? info.season : null,
     episode_number: episode ? info.episode : null,
     type: episode ? 'episode' : 'movie',
@@ -199,15 +200,42 @@ export async function languagesForTitle(info) {
 // ---------- download ----------
 const tokens = (s) => new Set(String(s || '').toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 1));
 
-function score(sub, fileTokens) {
+const releaseSource = (s) => /blu[ ._-]?ray|b[dr]rip/i.test(s) ? 'bluray'
+  : /web[ ._-]?(?:dl|rip)|webrip/i.test(s) ? 'web' : /hdtv|pdtv|dsr/i.test(s) ? 'tv' : /dvd/i.test(s) ? 'dvd' : null;
+
+function score(sub, fileTokens, videoName, subtitleName) {
   const a = sub.attributes || {};
   let n = Math.log10((a.download_count || 0) + 1) * 10;
-  if (a.moviehash_match) n += 1000;                           // exact release match
+  if (a.moviehash_match === true) n += 1000;                  // exact release match
   if (a.ai_translated || a.machine_translated) n -= 300;
   if (a.hearing_impaired) n -= 5;                             // prefer regular subtitles
   if (a.foreign_parts_only) n -= 500;
-  for (const t of tokens(a.release)) if (fileTokens.has(t)) n += 15; // shared release tokens
+  for (const t of tokens(`${a.release || ''} ${subtitleName || ''}`)) if (fileTokens.has(t)) n += 15;
+  const videoSource = releaseSource(videoName);
+  const subSource = releaseSource(`${a.release || ''} ${subtitleName || ''}`);
+  if (videoSource && subSource) n += videoSource === subSource ? 80 : -120;
   return n;
+}
+
+// Multi-file uploads can contain an entire season; select the matching file, not just the first one.
+export function selectSubtitle(results, file, info, lang) {
+  const name = path.basename(file);
+  const fileTokens = tokens(name);
+  const sameEpisode = (season, episode) => (info.season == null || season == null || Number(season) === info.season)
+    && (info.episode == null || episode == null || Number(episode) === info.episode);
+  const candidates = [];
+  for (const sub of results) {
+    const a = sub.attributes || {};
+    if (String(a.language || '').toLowerCase() !== lang || !sameEpisode(a.feature_details?.season_number, a.feature_details?.episode_number)) continue;
+    if (info.tmdbId && a.feature_details?.tmdb_id && Number(a.feature_details.tmdb_id) !== Number(info.tmdbId)) continue;
+    for (const entry of a.files || []) {
+      const ep = /\bs(\d{1,2})e(\d{1,3})\b/i.exec(entry.file_name || '');
+      if (ep && !sameEpisode(ep[1], ep[2])) continue;
+      if (entry.file_id) candidates.push({ sub, entry, score: score(sub, fileTokens, name, entry.file_name) });
+    }
+  }
+  candidates.sort((a, b) => b.score - a.score);
+  return candidates[0] || null;
 }
 
 const inflight = new Map();
@@ -225,18 +253,16 @@ export function ensureSubtitle(file, info, lang) {
 }
 
 async function download(file, info, lang) {
-  const hash = await movieHash(file).catch(() => null);
+  // Remuxing/re-encoding changes the hash; the original release is much more likely to be indexed.
+  const hash = await movieHash(info.hashFile || file).catch(() => null);
   let data = await osFetch(query(searchParams(info, { languages: lang, moviehash: hash })));
   if (!data.data?.length && hash) data = await osFetch(query(searchParams(info, { languages: lang })));
-  const fileTokens = tokens(path.basename(file));
-  const best = (data.data || [])
-    .filter((s) => String(s.attributes?.language || '').toLowerCase() === lang && s.attributes?.files?.length)
-    .sort((a, b) => score(b, fileTokens) - score(a, fileTokens))[0];
+  const best = selectSubtitle(data.data || [], file, info, lang);
   const name = LANG_NAMES[lang];
   if (!best) throw fail(404, `OpenSubtitles has no ${name} subtitles for this.`);
 
   await login().catch((e) => console.warn(`[subtitles] ${e.message} Continuing without login.`));
-  const dl = await osFetch('/download', { method: 'POST', body: { file_id: best.attributes.files[0].file_id } });
+  const dl = await osFetch('/download', { method: 'POST', body: { file_id: best.entry.file_id } });
   if (!dl.link) throw fail(502, 'OpenSubtitles didn’t return a download link.');
   let r;
   try { r = await fetch(dl.link, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(20000) }); } catch {
@@ -249,7 +275,7 @@ async function download(file, info, lang) {
   await fs.promises.writeFile(out, text, 'utf8');
   console.log(`[subtitles] saved ${path.basename(out)} (${dl.remaining ?? '?'} downloads left today)`);
   // Lets the timing check run; an exact file-hash match was made for this very release.
-  try { onDownloaded?.(file, out, { exact: Boolean(best.attributes.moviehash_match) }); } catch { /* best effort */ }
+  try { onDownloaded?.(file, out, { exact: best.sub.attributes.moviehash_match === true }); } catch { /* best effort */ }
   return out;
 }
 

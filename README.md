@@ -8,6 +8,7 @@ Marquee is a single Node.js process with no dependencies, served as a mobile-fir
 
 - **Accounts**: everyone who signs in through Cloudflare Access gets their own Marquee, with no extra login: their own library, watch progress that follows them between devices, colours and preferences. See [Accounts](#accounts).
 - **Discover**: trending titles, search, posters and descriptions from TMDB. Titles in your library are marked **In your library**; titles someone else already has on the server are marked **On server** and can be added to your library with one tap instead of being downloaded again.
+- **Film identity**: availability follows the film's TMDB ID. If two films share a title and year, the owner can open **Library → film → Identify film** and choose by poster, release date and description. That choice is saved for that file alone. Downloads started from a film's details remember the selected identity, too. Discover carousels have previous/next arrows as well as touch scrolling.
 - **Library**: poster covers for films and shows, with **Continue watching** and **Leaving soon** shelves, then your downloads, titles added from the server and your collection. Filter by films or shows. Open a title to play, resume or **Keep 7 more days**; shows have a keep-all button above their seasons as well as individual episode controls.
 - **Torrent search**: searches The Pirate Bay and 1337x in parallel, ranked by seeders, with quality filters (4K, 1080p, 720p) and cinema recordings flagged. One tap sends a result to qBittorrent. Searching for a season (“South Park S18”) adds **Get all episodes**: Marquee finds the best torrent for every aired episode and downloads them all, for when there's no good complete-season torrent.
 - **Downloads**: live qBittorrent progress, speed and time remaining, for your own downloads (the owner can switch to everyone's).
@@ -306,13 +307,15 @@ Output files start with a stereo AAC track, followed by the original tracks, so 
 
 Subtitles from OpenSubtitles are often made for a different release of the same film, so they can start a few seconds early or late, or slowly drift when the release runs at a different frame rate (23.976 vs 25 fps). After a download, Marquee lines the file up in the background against the first of these it finds:
 
-1. a text subtitle track inside the video (or the MKV it was converted from),
+1. a subtitle track inside the video (or the MKV it was converted from), including the display/clear timings of PGS/DVD bitmap captions,
 2. a subtitle file Marquee extracted from such a track,
 3. the film's audio, by finding where people are talking.
 
 Both subtitle files are turned into on/off signals and compared at every offset up to ten minutes and for the common frame-rate ratios; the best match is applied only when it clearly beats every alternative, otherwise the file is left alone. Checking against a subtitle track takes a second; against the audio, roughly a minute for a feature film. Subtitles OpenSubtitles matched to your exact file are skipped.
 
 The subtitle menu in the player shows the result and has **Undo timing fix**; the original is kept in `cache/subsync/`. **Fix timing** runs the check on demand for subtitles that weren't checked automatically. The **Subtitle offset** buttons (−1 s, −¼ s, +¼ s, +1 s) in the player's subtitle menu and in the TV remote move every line by hand; on a TV the new timing is sent over a moment after the last tap, restarting at the same spot. **Reset offset** puts the lines back. A fix moves or stretches the whole file, so subtitles for a different cut of the film (extra or missing scenes) can't be fully corrected.
+
+Subtitle selection uses the original release's file hash when a converted copy is being played, prefers the matching BluRay/WEB/TV source, and checks episode numbers when choosing a file from a multi-file upload. Identified films are searched by TMDB ID. Existing automatic results are revisited once with the bitmap-aware engine when subtitles are opened; manual offsets and undone fixes are preserved. **Check timing again** is also available after an uncertain result. Bitmap timing requires the original file to still exist; it aligns text subtitles but does not turn subtitle pictures into text. A weak match is left unchanged.
 
 ### Browser copies of MP4s
 
@@ -420,6 +423,7 @@ The web client uses a JSON API that can also be scripted. `<kind>` is `lib` for 
 | `GET` | `/api/library` | Your library (`items`, with `expiresAt`), and what else is on the server (`server`) |
 | `POST` | `/api/library/add` | Add videos already on the server to your library (`{ ids }`) |
 | `POST` | `/api/library/extend` | Keep videos longer (`{ ids }`) |
+| `GET`, `POST` | `/api/library/identify` | Owner only: search film candidates (`?id=&q=`) or assign a TMDB identity to one file (`{ id, tmdbId }`) |
 | `GET` | `/api/library/delete-info?id=` | What deleting an item would remove, and how many others have it |
 | `POST` | `/api/library/delete` | Remove from your library; deletes the file or torrent when nobody else has it (`{ id, scope: "file" \| "torrent", everyone? }`) |
 | `GET`, `POST` | `/api/me` | You and your settings (`{ name?, theme?, subLang?, quality?, startView?, librarySort? }`) |
@@ -428,7 +432,7 @@ The web client uses a JSON API that can also be scripted. `<kind>` is `lib` for 
 | `GET` | `/api/admin/users` | Everyone who has used Marquee, with their library size (`ADMIN_EMAILS` only) |
 | `POST` | `/api/admin/users/<id>` | `{ canDownload?, keep? }` (`ADMIN_EMAILS` only) |
 | `GET` | `/api/downloads` | Your qBittorrent downloads (`?all=1`: everyone's, owner only) |
-| `POST` | `/api/downloads/add` | Add a magnet or `.torrent` URL (`{ link, subs? }`) |
+| `POST` | `/api/downloads/add` | Add a magnet or `.torrent` URL (`{ link, subs?, movieId? }`); `movieId` carries the selected TMDB film identity |
 | `POST` | `/api/downloads/season` | Get a whole season episode by episode (`{ query: "South Park S18", quality?, subs? }`), returns `{ id }` |
 | `GET` | `/api/downloads/season/:id` | That job's progress: added, already here, not found |
 | `GET` | `/api/torrents/search?q=&type=` | Torrent search (`type`: `movie`, `tv` or `all`) |

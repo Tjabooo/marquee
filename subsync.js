@@ -24,6 +24,8 @@ const MAX_SHIFT = 600;       // largest correction considered, seconds
 const MIN_CUES = 40;         // fewer cues than this can't be aligned reliably
 const RATIOS = [1, 25 / (24000 / 1001), (24000 / 1001) / 25, 24 / (24000 / 1001), (24000 / 1001) / 24, 25 / 24, 24 / 25];
 const TEXT_SUBS = new Set(['subrip', 'srt', 'ass', 'ssa', 'mov_text', 'webvtt', 'text']);
+const BITMAP_SUBS = new Set(['hdmv_pgs_subtitle', 'dvd_subtitle', 'dvb_subtitle', 'xsub']);
+const ENGINE_VERSION = 2; // Revisit old audio-only guesses now that bitmap timing is available.
 
 let registryFile = null;
 let backupDir = null;
@@ -36,6 +38,13 @@ const save = () => { try { fs.writeFileSync(registryFile, JSON.stringify(registr
 const stamp = (p) => { try { const s = fs.statSync(p); return `${s.size}:${Math.floor(s.mtimeMs)}`; } catch { return null; } };
 
 export const autoSyncEnabled = () => AUTO;
+
+// Existing downloads deserve the improved timing check too, without overriding a manual choice.
+export function ensureSync(srt, video) {
+  const e = entryFor(srt);
+  if (AUTO && !e?.trusted && !['exact', 'undone'].includes(e?.state) && !e?.manual && e?.version !== ENGINE_VERSION) return queueSync(srt, video);
+  return stateOf(srt);
+}
 
 export function initSubsync({ dataDir, audioShift } = {}) {
   registryFile = path.join(dataDir, '.marquee-subsync.json');
@@ -148,7 +157,7 @@ export function queueSync(srt, video) {
   // Re-checking a file that was already fixed starts again from the original.
   const fromBackup = e?.state === 'synced' && fs.existsSync(backupPath(srt));
   registry[k] = { path: srt, video, state: 'queued', at: Date.now() };
-  queue.push({ srt, video, fromBackup, prior: fromBackup ? { offset: e.offset, ratio: e.ratio, reference: e.reference } : null });
+  queue.push({ srt, video, fromBackup, prior: fromBackup ? { offset: e.offset, ratio: e.ratio, reference: e.reference, manual: e.manual || 0 } : null });
   save();
   drain();
   return stateOf(srt);
@@ -164,12 +173,12 @@ async function drain() {
       registry[k] = { ...registry[k], state: 'syncing' };
       try {
         const result = await syncFile(srt, video, fromBackup, prior);
-        registry[k] = { path: srt, ...result, stamp: stamp(srt), at: Date.now() };
+        registry[k] = { path: srt, ...result, version: ENGINE_VERSION, stamp: stamp(srt), at: Date.now() };
         const what = result.state === 'synced' ? `shifted ${fmt(result.offset)}${result.ratio !== 1 ? `, rate ×${result.ratio.toFixed(4)}` : ''}`
           : result.state === 'ok' ? 'already in sync' : 'no confident match, left unchanged';
         console.log(`[subsync] ${path.basename(srt)}: ${what} (reference: ${result.reference || 'none'})`);
       } catch (err) {
-        registry[k] = { path: srt, video, state: 'failed', error: err.message, stamp: stamp(srt), at: Date.now() };
+        registry[k] = { path: srt, video, state: 'failed', version: ENGINE_VERSION, error: err.message, stamp: stamp(srt), at: Date.now() };
         console.warn(`[subsync] ${path.basename(srt)}: ${err.message}`);
       }
       save();
@@ -305,15 +314,24 @@ async function subtitleReferences(srt, video, lang) {
   if (original && original !== video) files.push(original);
   for (const file of files) {
     const info = await probe(file);
-    const subs = (info?.streams || []).filter((s) => s.codec_type === 'subtitle' && TEXT_SUBS.has(s.codec_name)
+    const subs = (info?.streams || []).filter((s) => s.codec_type === 'subtitle' && (TEXT_SUBS.has(s.codec_name) || BITMAP_SUBS.has(s.codec_name))
       && !s.disposition?.forced && !/forced/i.test(s.tags?.title || ''));
     // Same language first, then English, then the rest; full subtitles before SDH.
     const rank = (s) => (sameLang(s.tags?.language, lang) ? 0 : sameLang(s.tags?.language, 'en') ? 1 : 2) * 2
       + (s.disposition?.hearing_impaired || /sdh|hearing/i.test(s.tags?.title || '') ? 1 : 0);
     for (const s of subs.sort((a, b) => rank(a) - rank(b)).slice(0, 2)) {
       refs.push({
-        label: `embedded ${s.tags?.language || ''} track`.replace(/\s+/g, ' '),
-        load: async () => parseCues(decode(await run(FFMPEG, ['-v', 'error', '-i', file, '-map', `0:${s.index}`, '-f', 'srt', 'pipe:1']))),
+        label: `embedded ${s.tags?.language || ''}${BITMAP_SUBS.has(s.codec_name) ? ' bitmap' : ''} track`.replace(/\s+/g, ' '),
+        load: async () => {
+          if (TEXT_SUBS.has(s.codec_name)) return parseCues(decode(await run(FFMPEG, ['-v', 'error', '-i', file, '-map', `0:${s.index}`, '-f', 'srt', 'pipe:1'])));
+          // PGS/DVD captions are pictures, but their display/clear times are still exact references.
+          // Read just those times: no OCR, additional subtitle download or video re-encode is needed.
+          const data = JSON.parse((await run(FFPROBE, ['-v', 'error', '-select_streams', String(s.index), '-show_frames',
+            '-show_entries', 'subtitle=pts_time,start_display_time,end_display_time,num_rects', '-of', 'json', file],
+          { maxBytes: 8 * 1024 * 1024, timeoutMs: 120000 })).toString());
+          const picture = info.streams.find((v) => v.codec_type === 'video' && !v.disposition?.attached_pic);
+          return bitmapCues(data.frames || [], Number(picture?.start_time) || 0);
+        },
       });
     }
   }
@@ -328,6 +346,28 @@ async function subtitleReferences(srt, video, lang) {
     refs.push({ label: `extracted ${e.slice(stem.length + 1, -4)} subtitles`, load: async () => parseCues(decode(await fs.promises.readFile(full))) });
   }
   return refs;
+}
+
+// Bitmap decoders often report an indefinite end (UINT32_MAX); the next clear/display ends it.
+export function bitmapCues(frames, videoStart = 0) {
+  const cues = [];
+  let pending = null;
+  for (const frame of frames) {
+    const pts = Number(frame.pts_time);
+    if (!Number.isFinite(pts)) continue;
+    const start = pts + (Number(frame.start_display_time) || 0) / 1000 - videoStart;
+    if (pending) {
+      const end = Math.min(start, pending.end);
+      if (end > Math.max(0, pending.start) && end - pending.start < 60) cues.push({ start: Math.max(0, pending.start), end });
+      pending = null;
+    }
+    if (Number(frame.num_rects) > 0) {
+      const duration = Number(frame.end_display_time);
+      pending = { start, end: Number.isFinite(duration) && duration < 3600000 ? pts + duration / 1000 - videoStart : Infinity };
+    }
+  }
+  if (pending && Number.isFinite(pending.end) && pending.end > Math.max(0, pending.start) && pending.end - pending.start < 60) cues.push({ start: Math.max(0, pending.start), end: pending.end });
+  return cues;
 }
 
 // The MKV/AVI an MP4 copy was made from, when it's still there.

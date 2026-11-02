@@ -1241,3 +1241,32 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
   .library-shelf .shelf-items { grid-auto-columns: 132px; gap: 12px; }
   .library-keep-bar .play-btn { width: 100%; }
 }
+
+/* Discover carousels keep touch scrolling and expose the same movement to mouse and keyboard. */
+.carousel-controls { display: flex; align-items: center; gap: 8px; flex: none; }
+.carousel-controls .see-all { margin-right: 6px; }
+.carousel-arrow {
+  display: grid; place-items: center; width: 38px; height: 38px; padding: 0;
+  background: var(--curtain); color: var(--paper); border: 1px solid var(--line); border-radius: 50%;
+}
+.carousel-arrow svg { width: 18px; height: 18px; }
+.carousel-arrow.next svg { transform: rotate(180deg); }
+.carousel-arrow:disabled { opacity: 0.3; cursor: default; }
+.carousel .shelf-head { align-items: center; }
+.carousel .hero { margin-bottom: 0; }
+.identity-note { margin: 0 0 16px; padding: 12px; border-radius: 12px; background: var(--seat); color: var(--paper); }
+.identity-search { display: flex; gap: 8px; margin: 16px 0 10px; }
+.identity-search input { flex: 1; min-width: 0; height: 42px; padding: 0 12px; background: var(--seat); border: 1px solid var(--line); border-radius: 10px; }
+.identity-search .chip { height: 42px; }
+.identity-results { margin-top: 14px; }
+.identity-result { width: 100%; text-align: left; color: var(--paper); border: 1px solid transparent; }
+.identity-result:disabled { opacity: 0.5; }
+.identity-result img { width: 60px; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 7px; flex: none; }
+.identity-result .row-title, .identity-overview { display: block; }
+.identity-overview { margin-top: 6px; color: var(--dust); font-size: 13px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+@media (max-width: 420px) {
+  .carousel .shelf-head { gap: 6px; }
+  .carousel .shelf-head h3 { font-size: 16px; }
+  .carousel-controls { gap: 5px; }
+  .carousel-arrow { width: 34px; height: 34px; }
+}

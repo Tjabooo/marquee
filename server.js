@@ -392,7 +392,7 @@ const qbit = async (endpoint) => (await qbitRequest(endpoint)).json();
 
 // Adds a magnet link, .torrent URL or uploaded .torrent file. `user` is who it's for: the torrent is
 // tagged marquee-u<id> (and a magnet's infohash recorded) so it lands in their library when it finishes.
-async function addDownload({ link, file, user = null, name = '' }) {
+async function addDownload({ link, file, user = null, name = '', film = null }) {
   const form = new FormData();
   if (user) {
     form.append('tags', accounts.tagFor(user.id));
@@ -413,6 +413,7 @@ async function addDownload({ link, file, user = null, name = '' }) {
   if (r.status === 415 || /^fails/i.test(text)) {
     throw new HttpError(400, file ? 'qBittorrent couldn’t read that .torrent file.' : 'qBittorrent couldn’t use that link.');
   }
+  if (film && link) shows.rememberFilmDownload(accounts.magnetHash(link), film);
 }
 
 // Episodes of a show's season that are already here: in the library, or in qBittorrent (an episode,
@@ -467,6 +468,7 @@ async function listDownloads(user, all = false) {
   const owned = torrents.map((t) => [t, torrentOwner(t)]).filter(([, owner]) => all || owner === user.id);
   return owned.map(([t, owner]) => ({
     hash: t.hash,
+    tmdbId: shows.filmDownload(t.hash)?.id || null,
     owner: all ? nameOf(owner) : undefined,
     mine: owner === user.id,
     name: t.name,
@@ -565,7 +567,11 @@ async function handlePlay(req, res, url) {
 }
 
 // Title, year and episode used for subtitle searches.
-const infoFor = (file) => parseFile(file);
+const infoFor = (file) => {
+  const parsed = parseFile(file);
+  const film = parsed.season == null ? shows.knownFilm(accounts.mediaKey(file), parsed.title, parsed.year) : null;
+  return { ...parsed, tmdbId: film?.id || null, hashFile: converter.originalFor(file) || file };
+};
 
 // ---------- streaming (HTTP range requests) ----------
 async function sendVideo(req, res, file, { captionUrl } = {}) {
@@ -632,7 +638,8 @@ async function resolveMedia(kind, id, subLang = null) {
   const episode = info.season != null ? `S${String(info.season).padStart(2, '0')} E${String(info.episode).padStart(2, '0')}` : null;
   let subUrl = null;
   if (subLang) {
-    await subtitles.ensureSubtitle(file, infoFor(file), subLang);
+    const srt = await subtitles.ensureSubtitle(file, infoFor(file), subLang);
+    subsync.ensureSync(srt, file);
     subUrl = `http://${LAN_IP}:${PORT}/api/subs/file/${kind}/${id}/${subLang}.srt`;
   }
   return {
@@ -907,7 +914,7 @@ async function handleApi(req, res, url) {
     const tmdbOn = Boolean(TMDB_TOKEN || TMDB_KEY);
     const [{ shows: showList, showOf }, filmOf] = await Promise.all([
       shows.groupShows(items, tmdbOn ? tmdb : null),
-      shows.filmInfo(items, tmdbOn ? tmdb : null), // posters for films
+      shows.filmInfo(items.map((i) => ({ ...i, mediaKey: accounts.mediaKey(i.full) })), tmdbOn ? tmdb : null),
     ]);
     // `items` is this person's library, with when each video gets deleted. `server` is everything
     // else on the server (no word on whose it is), so search can offer to add it instead of downloading
@@ -934,6 +941,24 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, { items: own, server, shows: showList.filter((s) => myShows.has(s.id)) });
   }
   // Add videos already on the server to your library (no copy is made).
+  if (p === '/api/library/identify') {
+    if (!user.isOwner) throw new HttpError(403, 'Only the server’s owner can change a film’s identity.');
+    if (!['GET', 'POST'].includes(req.method)) throw new HttpError(405, 'Use GET or POST.');
+    const body = req.method === 'POST' ? await readJson(req) : null;
+    const id = String(body?.id || url.searchParams.get('id') || '');
+    const item = (await scanLibrary() || []).find((i) => i.id === id && i.season == null);
+    if (!item) throw new HttpError(404, 'That film is no longer in the library.');
+    if (!body) {
+      const q = String(url.searchParams.get('q') || item.title).trim().slice(0, 150);
+      const result = await tmdb('/search/movie', { query: q, include_adult: 'false' });
+      return sendJson(res, 200, { results: (result.results || []).map((r) => ({ ...mapTitle(r, 'movie'), releaseDate: r.release_date || null })) });
+    }
+    const tmdbId = Number(body.tmdbId);
+    if (!Number.isSafeInteger(tmdbId) || tmdbId <= 0) throw new HttpError(400, 'Choose a film from the results.');
+    const details = await tmdb(`/movie/${tmdbId}`);
+    shows.identifyFilm(accounts.mediaKey(item.full), details);
+    return sendJson(res, 200, { ok: true });
+  }
   if (p === '/api/library/add' && req.method === 'POST') {
     const ids = [].concat((await readJson(req)).ids || []).map(String).slice(0, 500);
     let added = 0;
@@ -962,7 +987,13 @@ async function handleApi(req, res, url) {
       const dn = /[?&]dn=([^&]+)/.exec(String(body.link || ''))?.[1];
       let name = String(body.name || '');
       if (!name && dn) { try { name = decodeURIComponent(dn.replace(/\+/g, ' ')); } catch { name = dn; } }
-      await addDownload({ link: body.link, user, name });
+      let film = null;
+      if (body.movieId != null) {
+        const id = Number(body.movieId);
+        if (!Number.isSafeInteger(id) || id <= 0) throw new HttpError(400, 'Invalid film identity.');
+        film = await tmdb(`/movie/${id}`);
+      }
+      await addDownload({ link: body.link, user, name, film });
       activity.record(req, 'download', name || 'a torrent link');
       // Subtitles chosen in torrent search are fetched when the download completes.
       if (Array.isArray(body.subs) && body.subs.length) {
@@ -1106,7 +1137,8 @@ async function handleApi(req, res, url) {
     const body = await readJson(req);
     const lang = String(body.lang || '').toLowerCase();
     const file = converter.preferConverted(await sourceFile(body.kind, body.id));
-    await subtitles.ensureSubtitle(file, infoFor(file), lang);
+    const srt = await subtitles.ensureSubtitle(file, infoFor(file), lang);
+    subsync.ensureSync(srt, file);
     activity.record(req, 'subtitles', `${subtitles.LANG_NAMES[lang] || lang} subtitles for ${titleOf(file)}`, { quietMs: 24 * 3600 * 1000 });
     return sendJson(res, 200, { url: `/api/subs/file/${body.kind}/${encodeURIComponent(body.id)}/${lang}.vtt` });
   }
@@ -1258,7 +1290,7 @@ const server = http.createServer(async (req, res) => {
       || (req.method === 'POST' && (url.pathname.startsWith('/api/cast/') || url.pathname === '/api/downloads/add' || url.pathname === '/api/downloads/season' || url.pathname === '/api/subs/fetch' || url.pathname === '/api/subs/sync' || url.pathname === '/api/library/delete' || /^\/api\/downloads\/\w+\/(pause|resume|delete)$/.test(url.pathname) || /^\/api\/media\/\w+\/[\w-]+\/sync$/.test(url.pathname)
         || /^\/api\/house\/(report|boot|power)$/.test(url.pathname) || /^\/api\/clips\/[\w-]+\/(share|unshare|delete|trim)$/.test(url.pathname)
         || /^\/api\/access\/(invite|remove|invite\/\w+\/revoke)$/.test(url.pathname) || /^\/c\/i\/[\w-]+\/?$/.test(url.pathname)
-        || /^\/api\/(me|me\/progress|library\/add|library\/extend|admin\/settings|admin\/users\/\d+)$/.test(url.pathname)));
+        || /^\/api\/(me|me\/progress|library\/add|library\/extend|library\/identify|admin\/settings|admin\/users\/\d+)$/.test(url.pathname)));
     if (!allowed) throw new HttpError(405, 'Method not allowed.');
     if (url.pathname.startsWith('/api/')) await handleApi(req, res, url);
     else if (url.pathname.startsWith('/play/')) await handlePlay(req, res, url);
@@ -1549,6 +1581,8 @@ async function claimFiles() {
           if (f.priority === 0 || !isVideo(full)) continue;
           // On the first run, what's already downloaded counts as being there before accounts.
           accounts.addEntry(row.user_id, accounts.mediaKey(full), first ? 'existing' : 'download');
+          const film = shows.filmDownload(t.hash);
+          if (film && parseFile(full).season == null) shows.identifyFilm(accounts.mediaKey(full), film);
         }
         accounts.markClaimed(t.hash);
         if (row.user_id && !first) console.log(`[accounts] "${t.name}" is in ${accounts.userById(row.user_id)?.name}’s library`);
