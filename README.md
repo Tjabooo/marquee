@@ -352,6 +352,8 @@ There's no separate login. Cloudflare Access adds the signed-in email to every r
 
 ### Activity
 
+The name chosen in **Settings → Profile** is the default person label in Activity, the access list, download ownership and Watch Together. Activity resolves names when read, so a profile rename also updates older events; email addresses remain searchable and are shown secondarily in the owner's People/access lists. Active watch rooms receive profile-name changes immediately and refresh them on heartbeat/rejoin.
+
 City and country appear beside the OS/browser for people and events, using Cloudflare's `CF-IPCity` and `CF-IPCountry` headers. In the domain's Cloudflare dashboard, go to **Rules → Settings → Managed Transforms** and enable **Add visitor location headers**. Location is approximate (VPNs and mobile carriers can change it), not GPS. No external IP lookup service is called. Old events and direct LAN visits have no inferred location; country-only headers still show the country.
 
 The **Activity** tab shows who has been using Marquee and what they did: downloads started, films watched in the browser, casts to TVs, subtitles fetched and deletions. People are identified by the email they log in to Cloudflare Access with, plus the device and browser; visits through the server's local address show up as "Home network". The tab is only shown to the emails listed in `ADMIN_EMAILS`, and only through the Cloudflare address, since local visits have no email. The last 2,000 entries are kept in `.marquee-activity.jsonl`. Logins themselves (who signed in, when, from where) are in the Cloudflare Zero Trust dashboard under **Logs → Access**.

@@ -119,6 +119,11 @@ test('film identification API requires owner access and changes only the selecte
       const byte = await fetch(`http://127.0.0.1:${port}${link.url}`, { headers: { Range: 'bytes=0-0' } });
       assert.equal(byte.status, 206); await byte.arrayBuffer();
       assert.equal((await request('/api/library', undefined, 'member@test.local')).items.length, 0);
+      await request('/api/me', { name: 'Dad' });
+      assert.equal((await request(`${base}/preview`)).host, 'Dad', 'Profile names update an open room immediately');
+      const activity = await request('/api/activity');
+      assert.equal(activity.people.find((p) => p.user === 'owner@test.local').name, 'Dad');
+      assert.ok(activity.events.filter((e) => e.user === 'owner@test.local').every((e) => e.name === 'Dad'), 'Past activity uses the current display name');
       await request(`${base}/leave`, { clientId: hostClient });
       const remaining = await request(`${base}/heartbeat`, { clientId: guestClient, ready: true }, 'member@test.local');
       assert.equal(remaining.host, guestClient); assert.equal(remaining.intentPlaying, false);

@@ -2032,13 +2032,14 @@ function renderParty() {
   if (!party) return;
   updatePlayState();
   const room = party.state;
-  const host = room.members.find((m) => m.id === room.host)?.name || 'Host';
+  const hostMember = room.members.find((m) => m.id === room.host);
+  const host = hostMember ? personName(hostMember) : 'Host';
   const status = !party.connected || !party.online ? 'Reconnecting — playback paused'
     : party.blocked ? 'Press Play to join playback'
       : room.waitingFor.length ? `Waiting for ${room.waitingFor.join(', ')}`
         : room.playing ? `Watching together · ${room.members.length} viewers` : party.isHost ? 'You’re hosting — press Play when everyone is ready' : `Paused · ${host} controls playback`;
   if ($('#watch-status').textContent !== status) $('#watch-status').textContent = status;
-  const members = room.members.map((m) => `${m.name}${m.id === room.host ? ' (host)' : ''}${!m.ready || m.buffering || m.blocked ? ' · getting ready' : ''}`).join(' / ');
+  const members = room.members.map((m) => `${personName(m)}${m.id === room.host ? ' (host)' : ''}${!m.ready || m.buffering || m.blocked ? ' · getting ready' : ''}`).join(' / ');
   if ($('#watch-members').textContent !== members) $('#watch-members').textContent = members;
   $('#watch-members').title = members;
   $('#watch-ready').hidden = !party.blocked;
@@ -3423,7 +3424,8 @@ const ACTIVITY_TEXT = {
   settings: (d) => `changed the server rules (${d})`,
   permission: (d) => `changed a permission: ${d}`,
 };
-const personName = (user) => (user.includes('@') ? user.split('@')[0] : user);
+const personName = (person) => typeof person === 'string' ? person.split('@')[0]
+  : person.name || String(person.user || 'Viewer').split('@')[0];
 const clock = (ms) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 function dayLabel(ms) {
   const d = new Date(ms);
@@ -3499,17 +3501,19 @@ function accessSection() {
   if (a.error) out.push(h('p', { class: 'muted' }, `Couldn’t read the access list: ${a.error}`));
   else if (a.members) {
     const q = norm(state.query);
-    const list = a.members.filter((e) => !q || norm(e).includes(q));
+    const list = a.members.filter((e) => !q || norm(`${e} ${a.names?.[e] || ''}`).includes(q));
     out.push(h('p', { class: 'activity-day' }, `${a.members.length} ${a.members.length === 1 ? 'person' : 'people'} can sign in`));
     out.push(h('ul', { class: 'rows' }, list.map((email) => {
       const owner = (a.owners || []).includes(email);
+      const name = a.names?.[email] || personName(email);
       return h('li', { class: 'row' },
-        h('span', { class: 'row-text' }, h('span', { class: 'row-title' }, email), owner && h('span', { class: 'row-meta' }, h('span', {}, 'owner'))),
+        h('span', { class: 'row-text' }, h('span', { class: 'row-title' }, name),
+          h('span', { class: 'row-meta' }, h('span', {}, email), owner && h('span', {}, 'owner'))),
         !owner && h('span', { class: 'row-actions' }, h('button', {
           class: 'retry',
           onclick: (e) => {
             const b = e.currentTarget;
-            if (b.dataset.sure) return accessAction('/api/access/remove', { email }, `${email} can’t sign in any more`);
+            if (b.dataset.sure) return accessAction('/api/access/remove', { email }, `${name} can’t sign in any more`);
             b.dataset.sure = '1';
             b.textContent = 'Sure?';
             setTimeout(() => { b.textContent = 'Remove'; delete b.dataset.sure; }, 4000);
@@ -3525,15 +3529,15 @@ function renderActivity() {
   if (state.activityError) { body.replaceChildren(notice('Couldn’t get activity', state.activityError)); return; }
   if (!state.activity) return;
   const q = norm(state.query);
-  const people = state.activity.people.filter((p) => !q || norm(`${p.user} ${activityDevice(p)}`).includes(q));
-  const events = state.activity.events.filter((e) => !q || norm(`${e.user} ${e.detail} ${e.action} ${activityDevice(e)}`).includes(q));
+  const people = state.activity.people.filter((p) => !q || norm(`${p.user} ${personName(p)} ${activityDevice(p)}`).includes(q));
+  const events = state.activity.events.filter((e) => !q || norm(`${e.user} ${personName(e)} ${e.subjectName || ''} ${e.detail} ${e.action} ${activityDevice(e)}`).includes(q));
   const out = [...accessSection(), h('h3', { class: 'activity-head' }, 'People'),
     h('p', { class: 'muted activity-location-note' }, 'Locations are approximate. City names require Cloudflare’s “Add visitor location headers” Managed Transform.')];
   out.push(people.length ? h('ul', { class: 'rows' }, people.map((p) => h('li', { class: 'row' },
     h('span', { class: `activity-dot${Date.now() - p.at < 3 * 60000 ? ' is-on' : ''}`, 'aria-hidden': 'true' }),
     h('span', { class: 'row-text' },
-      h('span', { class: 'row-title' }, p.user),
-      h('span', { class: 'row-meta' }, h('span', {}, lastSeenText(p.at)), h('span', {}, activityDevice(p)))))))
+      h('span', { class: 'row-title', title: p.user }, personName(p)),
+      h('span', { class: 'row-meta' }, p.user.includes('@') && h('span', {}, p.user), h('span', {}, lastSeenText(p.at)), h('span', {}, activityDevice(p)))))))
     : h('p', { class: 'muted' }, 'Nobody yet.'));
   out.push(h('h3', { class: 'activity-head' }, 'What happened'));
   if (!events.length) out.push(h('p', { class: 'muted' }, q ? 'Nothing matches.' : 'Nothing has happened yet.'));
@@ -3549,7 +3553,7 @@ function renderActivity() {
     list.append(h('li', { class: 'row activity-row' },
       h('span', { class: 'activity-time' }, clock(e.at)),
       h('span', { class: 'row-text' },
-        h('span', { class: 'activity-text' }, h('strong', {}, personName(e.user)), ' ', (ACTIVITY_TEXT[e.action] || ((d) => `${e.action} ${d}`))(e.detail)),
+        h('span', { class: 'activity-text' }, h('strong', { title: e.user }, personName(e)), ' ', (ACTIVITY_TEXT[e.action] || ((d) => `${e.action} ${d}`))(e.subjectName || e.detail)),
         h('span', { class: 'row-meta' }, h('span', {}, activityDevice(e))))));
   }
   body.replaceChildren(...out);

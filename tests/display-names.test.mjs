@@ -1,0 +1,54 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import * as accounts from '../accounts.js';
+import * as activity from '../activity.js';
+import { WatchRooms } from '../watch.js';
+
+test('Activity resolves current account names for past events without changing email identity', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'marquee-names-'));
+  accounts.initAccounts({ dataDir: dir, adminEmails: [], mediaDir: null });
+  activity.initActivity({ dataDir: dir, nameForUser: accounts.displayNameFor });
+  const req = { headers: { 'cf-access-authenticated-user-email': 'dad@example.test' } };
+  const user = accounts.userFor(req);
+  const dad = accounts.updateMe(user, { name: 'Dad' });
+  activity.seen(req); activity.record(req, 'play', 'Movie');
+  assert.equal(activity.report().people[0].name, 'Dad');
+  assert.equal(activity.report().events[0].name, 'Dad');
+  accounts.updateMe(dad, { name: 'Captain Dad' });
+  const result = activity.report();
+  assert.equal(result.people[0].name, 'Captain Dad');
+  assert.equal(result.events[0].name, 'Captain Dad');
+  assert.equal(result.events[0].user, 'dad@example.test');
+  activity.initActivity({ dataDir: dir, nameForUser: accounts.displayNameFor });
+  assert.equal(activity.report().events[0].name, 'Captain Dad', 'Historical logs resolve names after restart too');
+  const before = accounts.listUsers().length;
+  assert.equal(accounts.displayNameFor('unknown@example.test'), 'unknown');
+  assert.equal(accounts.displayNameFor('Marquee'), 'Marquee');
+  assert.equal(accounts.displayNameFor('Home network'), 'Home network');
+  assert.equal(accounts.listUsers().length, before, 'Resolving names never creates users');
+  activity.record(req, 'revoke', 'dad@example.test');
+  assert.equal(activity.report().events[0].subjectName, 'Captain Dad');
+});
+
+test('Watch Together updates names in existing rooms, on heartbeat and on rejoin', () => {
+  const rooms = new WatchRooms();
+  const user = { id: 1, name: 'Dad' };
+  const client = 'dad-client-12345678';
+  const created = rooms.create(user, { kind: 'lib', id: 'movie', mediaKey: 'movie' }, client, 15);
+  const notifications = [];
+  rooms.subscribe(created.token, user, client, (s) => notifications.push(s));
+  rooms.renameUser({ ...user, name: 'Captain Dad' });
+  let state = notifications.at(-1);
+  assert.equal(state.members[0].name, 'Captain Dad');
+  assert.equal(rooms.preview(created.token).host, 'Captain Dad');
+  assert.equal(state.position, 15);
+  state = rooms.heartbeat(created.token, { ...user, name: 'Grandpa' }, client, { ready: true });
+  assert.equal(state.members[0].name, 'Grandpa');
+  state = rooms.join(created.token, { ...user, name: 'Dad again' }, client);
+  assert.equal(state.members[0].name, 'Dad again');
+  assert.equal(state.members.length, 1);
+  assert.equal('email' in state.members[0], false, 'Room participants only receive display names');
+});

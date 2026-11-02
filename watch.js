@@ -48,6 +48,7 @@ export class WatchRooms {
     if (!existing) room.members.set(client, { id: client, userId: user.id, name: String(user.name || 'Viewer').slice(0, 80),
       ready: false, buffering: false, blocked: false, rtt: 0, seen: this.now(), streams: new Set() });
     room.members.get(client).seen = this.now();
+    room.members.get(client).name = String(user.name || 'Viewer').slice(0, 80);
     if (!room.members.has(room.host)) room.host = client;
     this.changed(room);
     return this.snapshot(room);
@@ -101,7 +102,7 @@ export class WatchRooms {
     const room = this.room(token);
     const member = this.member(room, user, client);
     member.seen = this.now(); room.touched = this.now();
-    const next = { ready: status.ready === true, buffering: status.buffering === true, blocked: status.blocked === true };
+    const next = { name: String(user.name || 'Viewer').slice(0, 80), ready: status.ready === true, buffering: status.buffering === true, blocked: status.blocked === true };
     const changed = Object.keys(next).some((k) => member[k] !== next[k]);
     Object.assign(member, next);
     if (Number.isFinite(status.rtt)) member.rtt = Math.max(0, Math.min(2000, status.rtt));
@@ -144,4 +145,14 @@ export class WatchRooms {
   }
 
   protects(mediaKey) { return [...this.rooms.values()].some((r) => r.media.mediaKey === mediaKey && r.members.size > 0); }
+
+  renameUser(user) {
+    for (const room of this.rooms.values()) {
+      let changed = false;
+      for (const member of room.members.values()) if (member.userId === user.id && member.name !== user.name) {
+        member.name = user.name; changed = true;
+      }
+      if (changed) this.changed(room);
+    }
+  }
 }

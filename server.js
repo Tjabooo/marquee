@@ -52,7 +52,7 @@ function lanAddress() {
 const LAN_IP = lanAddress();
 const watchRooms = new WatchRooms();
 setInterval(() => watchRooms.cleanup(), 3000).unref();
-activity.initActivity({ dataDir: ROOT });
+activity.initActivity({ dataDir: ROOT, nameForUser: accounts.displayNameFor });
 accounts.initAccounts({ dataDir: ROOT, adminEmails: activity.adminEmails(), mediaDir: MEDIA_DIR });
 house.initHouse({
   dataDir: ROOT,
@@ -788,6 +788,7 @@ async function handleApi(req, res, url) {
   if (p === '/api/me') {
     if (req.method === 'POST') {
       const next = accounts.updateMe(user, await readJson(req));
+      watchRooms.renameUser(next);
       return sendJson(res, 200, { me: accounts.publicUser(next) });
     }
     return sendJson(res, 200, { me: accounts.publicUser(user) });
@@ -851,7 +852,8 @@ async function handleApi(req, res, url) {
       let members = null;
       let error = null;
       try { members = await invites.members(); } catch (e) { error = e.message; }
-      return sendJson(res, 200, { configured: true, members, error, owners: activity.adminEmails(), invites: invites.listInvites() });
+      const names = Object.fromEntries((members || []).map((email) => [email, accounts.displayNameFor(email)]));
+      return sendJson(res, 200, { configured: true, members, names, error, owners: activity.adminEmails(), invites: invites.listInvites() });
     }
     if (p === '/api/access/invite' && req.method === 'POST') {
       const { note } = await readJson(req);

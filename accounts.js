@@ -152,6 +152,14 @@ export const choices = () => ({ retention: RETENTION_CHOICES, extend: EXTEND_CHO
 
 // ---------- users ----------
 const emailOf = (req) => String(req.headers['cf-access-authenticated-user-email'] || '').trim().toLowerCase() || HOME;
+const fallbackName = (identity) => identity === HOME || identity === 'Home network' ? 'Home network' : String(identity).split('@')[0];
+
+// One source for person labels. Looking up an old log entry must never create an account.
+export function displayNameFor(identity) {
+  const raw = String(identity || '').trim();
+  const key = raw === 'Home network' ? HOME : raw.toLowerCase();
+  return db?.prepare('SELECT name FROM users WHERE email = ?').get(key)?.name || fallbackName(raw);
+}
 
 function rowToUser(r) {
   let settings = {};
@@ -160,7 +168,7 @@ function rowToUser(r) {
   return {
     id: r.id,
     email: r.email,
-    name: r.name || (r.email === HOME ? 'Home network' : r.email.split('@')[0]),
+    name: r.name || fallbackName(r.email),
     isOwner,
     // the owner can always download; others as the owner allows
     canDownload: isOwner || Boolean(r.can_download),
