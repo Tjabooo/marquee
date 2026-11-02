@@ -1,11 +1,12 @@
 // Invites: the owner makes a one-time link, sends it to someone, they open it and enter the email
-// they'll sign in with. Marquee adds that email to a Cloudflare Access group (the one Marquee's
-// Access policy allows), then sends them to Marquee, where Cloudflare's login page lets them pick
-// any login method you've enabled (one-time email code, Google, ...). From then on they just sign in.
+// they'll sign in with. Marquee adds that email to a Zero Trust email list (Reusable components →
+// Lists) that Marquee's Access policy allows ("Emails in list"), then sends them to Marquee, where
+// Cloudflare's login page lets them pick any login method you've enabled (one-time email code,
+// Google, ...). From then on they just sign in.
 //
-// Needs, in .env: CF_API_TOKEN (permission "Access: Organizations, Identity Providers, and Groups:
-// Edit"), CF_ACCOUNT_ID and CF_ACCESS_GROUP_ID. Invite pages live under /c/i/, so the same
-// Cloudflare Access bypass as shared clips covers them. Links are single use and expire.
+// Needs, in .env: CF_API_TOKEN (permission "Zero Trust: Edit"), CF_ACCOUNT_ID and CF_ACCESS_LIST_ID.
+// Invite pages live under /c/i/, so the same Cloudflare Access bypass as shared clips covers them.
+// Links are single use and expire.
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -14,7 +15,7 @@ import { esc, page, baseUrl } from './clips.js';
 const CF_API = (process.env.CF_API_BASE || 'https://api.cloudflare.com/client/v4').replace(/\/+$/, '');
 const CF_TOKEN = process.env.CF_API_TOKEN || '';
 const CF_ACCOUNT = process.env.CF_ACCOUNT_ID || '';
-const CF_GROUP = process.env.CF_ACCESS_GROUP_ID || '';
+const CF_LIST = process.env.CF_ACCESS_LIST_ID || '';
 const INVITE_DAYS = Math.max(1, Number(process.env.INVITE_DAYS) || 7);
 const EMAIL = /^[^\s@<>"']{1,64}@[^\s@<>"']+\.[^\s@<>"']{2,}$/;
 
@@ -28,13 +29,13 @@ export function initInvites({ dataDir, onEvent }) {
   try { invites = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { invites = {}; }
   record = onEvent || record;
 }
-export const invitesConfigured = () => Boolean(CF_TOKEN && CF_ACCOUNT && CF_GROUP);
+export const invitesConfigured = () => Boolean(CF_TOKEN && CF_ACCOUNT && CF_LIST);
 const save = () => { try { fs.writeFileSync(file, JSON.stringify(invites, null, 1)); } catch { /* memory only */ } };
 const httpError = (status, message) => Object.assign(new Error(message), { status });
 
-// ---------- Cloudflare Access group ----------
-async function cf(method, body) {
-  const r = await fetch(`${CF_API}/accounts/${CF_ACCOUNT}/access/groups/${CF_GROUP}`, {
+// ---------- Cloudflare Zero Trust email list ----------
+async function cf(method, suffix = '', body) {
+  const r = await fetch(`${CF_API}/accounts/${CF_ACCOUNT}/gateway/lists/${CF_LIST}${suffix}`, {
     method,
     headers: { Authorization: `Bearer ${CF_TOKEN}`, 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined,
@@ -48,25 +49,23 @@ async function cf(method, body) {
   }
   return data.result;
 }
-const emailsOf = (group) => (group.include || []).map((rule) => rule.email?.email).filter(Boolean).map((e) => e.toLowerCase());
 
 export async function members() {
-  return emailsOf(await cf('GET'));
+  const items = (await cf('GET', '/items?per_page=1000')) || [];
+  return items.map((i) => String(i.value || '').toLowerCase()).filter(Boolean);
 }
-
-// Read-modify-write of the group's include list, keeping every other rule in it as it was.
-async function changeMembers(fn) {
-  const group = await cf('GET');
-  const include = fn(group.include || []);
-  await cf('PUT', { name: group.name, include, exclude: group.exclude || [], require: group.require || [] });
-  return emailsOf({ include });
+// Single-item append / remove: nothing else in the list is touched.
+async function addMember(email) {
+  if ((await members()).includes(email)) return;
+  await cf('PATCH', '', { append: [{ value: email, description: 'Marquee invite' }] });
 }
-const addMember = (email) => changeMembers((inc) => (emailsOf({ include: inc }).includes(email) ? inc : [...inc, { email: { email } }]));
-export const removeMember = (email, admins = []) => {
+export async function removeMember(email, admins = []) {
   email = String(email || '').toLowerCase();
   if (admins.includes(email)) throw httpError(400, 'Owners (ADMIN_EMAILS) can’t be removed here.');
-  return changeMembers((inc) => inc.filter((rule) => rule.email?.email?.toLowerCase() !== email));
-};
+  const actual = ((await cf('GET', '/items?per_page=1000')) || []).map((i) => i.value).find((v) => String(v).toLowerCase() === email);
+  if (actual) await cf('PATCH', '', { remove: [actual] });
+  return members();
+}
 
 // ---------- invites (owner side) ----------
 const state = (inv) => (inv.usedAt ? 'used' : inv.expires < Date.now() ? 'expired' : 'open');

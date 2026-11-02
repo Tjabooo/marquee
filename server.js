@@ -619,7 +619,7 @@ async function handleApi(req, res, url) {
     if (!activity.isAdmin(req)) throw new HttpError(403, 'Only the server’s owner can see the house.');
     return sendJson(res, 200, await house.houseReport());
   }
-  // Who has access (the Cloudflare Access group) and invite links: owner only.
+  // Who has access (the Zero Trust email list) and invite links: owner only.
   if (p === '/api/access' || p.startsWith('/api/access/')) {
     if (!activity.isAdmin(req)) throw new HttpError(403, 'Only the server’s owner can manage access.');
     if (p === '/api/access') {

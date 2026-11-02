@@ -2314,7 +2314,7 @@ async function loadActivity() {
   try { state.access = await api('/api/access'); } catch (err) { state.access = { configured: true, error: err.message, invites: [] }; }
 }
 
-// ---------- access: who may sign in (Cloudflare Access group) + invite links ----------
+// ---------- access: who may sign in (Zero Trust email list) + invite links ----------
 async function makeInvite(btn) {
   const note = $('#invite-note')?.value.trim() || '';
   btn.disabled = true;
@@ -2344,7 +2344,7 @@ function accessSection() {
   if (!a) return [];
   const out = [h('h3', { class: 'activity-head' }, 'Access')];
   if (!a.configured) {
-    out.push(h('p', { class: 'muted' }, 'Set CF_API_TOKEN, CF_ACCOUNT_ID and CF_ACCESS_GROUP_ID in .env to invite people from here (see the README).'));
+    out.push(h('p', { class: 'muted' }, 'Set CF_API_TOKEN, CF_ACCOUNT_ID and CF_ACCESS_LIST_ID in .env to invite people from here (see the README).'));
     return out;
   }
   const noteInput = h('input', { id: 'invite-note', class: 'invite-note', type: 'text', maxlength: '60', placeholder: 'Who’s it for?' });

@@ -16,7 +16,7 @@ Marquee is a single Node.js process with no dependencies, served as a mobile-fir
 - **Browser audio fix**: Chrome and Firefox can't decode Dolby (AC3/E-AC3) or DTS. Marquee adds a stereo AAC track so these files play with sound, while TVs still receive the original surround audio.
 - **House** (owner only): the server's disks, qBittorrent, FlareSolverr and AdGuard Home at a glance, plus the Linux machines at home (disk space, failed services, updates, battery, Secure Boot, backups), with anything that needs a look listed at the top.
 - **Clips** (owner only): game clips synced from a PC, grouped by game. **Share** gives a clip a public link that embeds and plays in Discord; sharing makes a Discord-friendly H.264 copy (all audio tracks mixed into one) and unsharing kills the link.
-- **Invites** (owner only): make a one-time link, send it, and the person enters their email and is added to your Cloudflare Access group, so they can sign in from then on (Google, a one-time email code, whatever you've enabled). Who has access is listed in the Activity tab, with a Remove button.
+- **Invites** (owner only): make a one-time link, send it, and the person enters their email and is added to the Cloudflare email list your Access policy allows, so they can sign in from then on (Google, a one-time email code, whatever you've enabled). Who has access is listed in the Activity tab, with a Remove button.
 - **Discord embeds**: shared clips show up as playable videos, and `/c/` is an invite card for Marquee itself.
 - **Library management**: delete films, single episodes or whole torrents. Files are removed through qBittorrent, together with any copies and subtitles Marquee created.
 
@@ -112,8 +112,8 @@ All settings live in `.env`. Changes take effect after a restart.
 | `HOUSE_TOKEN` | | Shared secret for `agents/marquee-house`. Leave empty to turn machine reports off; the House tab still shows the server. |
 | `ADGUARD_URL` | | AdGuard Home's web address, e.g. `http://localhost:3000`, for protection state and query stats. Without it House only checks that something answers DNS on port 53. |
 | `ADGUARD_USER` / `ADGUARD_PASS` | | AdGuard Home login. |
-| `CF_API_TOKEN` | | Cloudflare API token for invites, permission *Access: Organizations, Identity Providers, and Groups → Edit*. |
-| `CF_ACCOUNT_ID` / `CF_ACCESS_GROUP_ID` | | The Cloudflare account and the Access group your Marquee policy allows. |
+| `CF_API_TOKEN` | | Cloudflare API token for invites, permission *Account · Zero Trust → Edit*. |
+| `CF_ACCOUNT_ID` / `CF_ACCESS_LIST_ID` | | The Cloudflare account and the email list your Marquee policy allows. |
 | `INVITE_DAYS` | `7` | How long an unused invite link works. |
 | `CLIPS_DIR` | | Folder the clips are synced to, e.g. `D:\Clips` (the share behind the desktop's `/mnt/magi-clips`). Leave empty to hide the Clips tab. |
 
@@ -210,17 +210,17 @@ Set `CLIPS_DIR` and the owner gets a **Clips** tab. Shared clips live under `/c/
 
 Invite links (`/c/i/<token>`) are covered by the same rule. Only shared clips, open invites and the invite card are reachable there. Links are 96-bit random tokens, unknown or unshared tokens get a 404, and unsharing deletes the shared copy. `https://<your-host>/c/` on its own is an invite card for Marquee: paste that in Discord to get an embed of the site itself, and anyone who clicks it is sent on to the normal (protected) app.
 
-### Invites (Cloudflare Access group)
+### Invites (Zero Trust email list)
 
-Invites add people to a Cloudflare Access **group**; your Marquee application's policy allows that group.
+Invites add people to a Zero Trust **email list**; your Marquee application's policy allows everyone in it.
 
-1. Zero Trust → **Access → Access groups → Add a group**, e.g. *Marquee users*. Include → **Emails**: everyone who already has access (yourself included). Save, and copy the group's ID (shown in the group's details / its URL).
-2. Zero Trust → **Access → Applications** → your Marquee app → its **Allow** policy → Include → **Access groups: Marquee users** (instead of, or as well as, the individual emails).
-3. Cloudflare dashboard → **My Profile → API Tokens → Create Token → Custom token**: permission **Account · Access: Organizations, Identity Providers, and Groups · Edit**, limited to your account.
-4. `.env`: `CF_API_TOKEN`, `CF_ACCOUNT_ID` (dashboard → any domain → Overview, right column) and `CF_ACCESS_GROUP_ID`. Restart Marquee.
+1. Zero Trust → **Reusable components → Lists → Create list**: name *Marquee users*, type **Emails**, and add everyone who already has access (yourself included). Save, and copy the list's **ID** (its details page / URL).
+2. Zero Trust → **Access controls → Applications** → your Marquee app → its **Allow** policy → Include → **Emails in list** (the selector may be called *Email list*) → *Marquee users*. Your existing email rules can stay.
+3. Cloudflare dashboard → **My Profile → API Tokens → Create Token → Custom token**: permission **Account · Zero Trust · Edit**, limited to your account.
+4. `.env`: `CF_API_TOKEN`, `CF_ACCOUNT_ID` (dashboard → any domain → Overview, right column) and `CF_ACCESS_LIST_ID`. Restart Marquee.
 5. The `/c/` bypass above must be in place: the invite page has to open for someone who can't sign in yet.
 
-In the Activity tab: **Invite someone** (optionally with a note such as "for Leo") copies a link. It works once and expires after `INVITE_DAYS`. The person opens it, enters the email they'll sign in with and is sent to Marquee, where Cloudflare's login page lets them pick a login method; with *One-time PIN* enabled anyone with an email address can sign in, and Google etc. work when the account uses that same address. Everyone with access is listed with a **Remove** button; owners (`ADMIN_EMAILS`) can't be removed there. Other rules in the group (domains, IdP groups) are left untouched.
+In the Activity tab: **Invite someone** (optionally with a note such as "for Leo") copies a link. It works once and expires after `INVITE_DAYS`. The person opens it, enters the email they'll sign in with and is sent to Marquee, where Cloudflare's login page lets them pick a login method; with *One-time PIN* enabled anyone with an email address can sign in, and Google etc. work when the account uses that same address. Everyone with access is listed with a **Remove** button; owners (`ADMIN_EMAILS`) can't be removed there. Only the one address is added or removed; nothing else in the list or the policy changes.
 
 ### FlareSolverr
 
@@ -309,7 +309,7 @@ marquee/
 ├── activity.js           Activity log
 ├── house.js              House tab: server health + reports from home machines
 ├── clips.js              Clips tab, share links and their public pages (/c/)
-├── invites.js            Invite links → Cloudflare Access group (/c/i/)
+├── invites.js            Invite links → Zero Trust email list (/c/i/)
 ├── agents/
 │   └── marquee-house     Health reporter for Linux machines (+ systemd service/timer)
 ├── public/
@@ -385,7 +385,7 @@ Marquee has no user accounts or authentication. Anyone who can reach the server 
 
 Keep `.env` private: it contains your API keys and passwords, and it is excluded by `.gitignore`.
 
-`/c/` is public by design (see *Clips and Discord share links*): it serves only clips you shared, open invite links and the invite card, nothing else. An invite link lets whoever has it add one email to your Access group, once; send it privately. House reports need `HOUSE_TOKEN` and are refused when they arrive through Cloudflare.
+`/c/` is public by design (see *Clips and Discord share links*): it serves only clips you shared, open invite links and the invite card, nothing else. An invite link lets whoever has it add one email to your access list, once; send it privately. House reports need `HOUSE_TOKEN` and are refused when they arrive through Cloudflare.
 
 ## Troubleshooting
 
