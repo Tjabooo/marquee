@@ -18,6 +18,7 @@ import * as house from './house.js';
 import * as clips from './clips.js';
 import * as invites from './invites.js';
 import * as shows from './shows.js';
+import * as season from './season.js';
 import { isHomeRequest, describeRequest } from './network.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -405,6 +406,26 @@ async function addDownload({ link, file }) {
   if (r.status === 415 || /^fails/i.test(text)) {
     throw new HttpError(400, file ? 'qBittorrent couldn’t read that .torrent file.' : 'qBittorrent couldn’t use that link.');
   }
+}
+
+// Episodes of a show's season that are already here: in the library, or in qBittorrent (an episode,
+// or a season pack, which counts as every episode).
+async function haveEpisodes(key, seasonNo) {
+  const have = new Set();
+  await scanLibrary();
+  for (const i of libraryCache.all || []) {
+    if (i.season === seasonNo && i.episode != null && shows.showKey(i.title) === key) have.add(i.episode);
+  }
+  let list = [];
+  try { list = await qbit('/api/v2/torrents/info'); } catch { /* qBittorrent down: library only */ }
+  for (const t of list) {
+    const n = parseName(t.name);
+    if (shows.showKey(n.title) !== key) continue;
+    if (n.season === seasonNo && n.episode != null) have.add(n.episode);
+    const pack = new RegExp(`\\bS0?${seasonNo}\\b(?!\\s?E\\d)|\\bseason\\s?0?${seasonNo}\\b`, 'i').test(t.name.replace(/[._]+/g, ' '));
+    if (n.season == null && pack) for (let e = 1; e <= 99; e++) have.add(e);
+  }
+  return have;
 }
 
 async function readRaw(req, limit) {
@@ -825,6 +846,30 @@ async function handleApi(req, res, url) {
     }
     return sendJson(res, 200, { ok: true });
   }
+  // ---- a whole season, episode by episode (see season.js) ----
+  if (p === '/api/downloads/season' && req.method === 'POST') {
+    if (!QBIT_URL) throw new HttpError(503, 'Downloads aren’t connected. Add QBIT_URL to .env and restart.');
+    const body = await readJson(req);
+    const want = season.parseSeasonQuery(body.query);
+    if (!want) throw new HttpError(400, 'Search for a show and a season, like “South Park S18”.');
+    const id = season.startSeasonJob({
+      ...want,
+      quality: String(body.quality || ''),
+      subs: Array.isArray(body.subs) ? body.subs.map(String).slice(0, 3) : [],
+    }, {
+      parseName, tmdb: TMDB_TOKEN || TMDB_KEY ? tmdb : null, seasonEpisodes: shows.seasonEpisodes,
+      searchTorrents: torrents.searchTorrents, magnetFor1337x: torrents.magnetFor1337x,
+      addDownload, wantSubtitles: (link, subs, name) => { subtitles.wantSubtitles(link, subs, name); setTimeout(checkSubtitleWants, 30_000); },
+      haveEpisodes, log: (msg) => console.log(msg),
+    });
+    activity.record(req, 'download', `${want.title} season ${want.season}, episode by episode`);
+    return sendJson(res, 200, { id });
+  }
+  if ((m = p.match(/^\/api\/downloads\/season\/([a-f0-9]{12})$/))) {
+    const job = season.seasonJob(m[1]);
+    if (!job) throw new HttpError(404, 'That season download is no longer tracked.');
+    return sendJson(res, 200, job);
+  }
   // ---- torrent search ----
   if (p === '/api/torrents/search') {
     return sendJson(res, 200, await torrents.searchTorrents(url.searchParams.get('q'), url.searchParams.get('type')));
@@ -1054,7 +1099,7 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://localhost');
     const allowed = req.method === 'GET' || req.method === 'HEAD'
-      || (req.method === 'POST' && (url.pathname.startsWith('/api/cast/') || url.pathname === '/api/downloads/add' || url.pathname === '/api/subs/fetch' || url.pathname === '/api/subs/sync' || url.pathname === '/api/library/delete' || /^\/api\/downloads\/\w+\/(pause|resume|delete)$/.test(url.pathname) || /^\/api\/media\/\w+\/[\w-]+\/sync$/.test(url.pathname)
+      || (req.method === 'POST' && (url.pathname.startsWith('/api/cast/') || url.pathname === '/api/downloads/add' || url.pathname === '/api/downloads/season' || url.pathname === '/api/subs/fetch' || url.pathname === '/api/subs/sync' || url.pathname === '/api/library/delete' || /^\/api\/downloads\/\w+\/(pause|resume|delete)$/.test(url.pathname) || /^\/api\/media\/\w+\/[\w-]+\/sync$/.test(url.pathname)
         || /^\/api\/house\/(report|boot|power)$/.test(url.pathname) || /^\/api\/clips\/[\w-]+\/(share|unshare|delete|trim)$/.test(url.pathname)
         || /^\/api\/access\/(invite|remove|invite\/\w+\/revoke)$/.test(url.pathname) || /^\/c\/i\/[\w-]+\/?$/.test(url.pathname)));
     if (!allowed) throw new HttpError(405, 'Method not allowed.');

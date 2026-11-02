@@ -1015,3 +1015,15 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .season-head { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
 .season-head .season-poster { flex: none; width: 76px; }
 .season-head h3 { margin: 0 0 4px; }
+
+/* Torrent search: whole season, episode by episode */
+.season-dl-wrap:empty { display: none; }
+.season-dl-wrap { margin-bottom: 10px; }
+.season-dl { background: var(--seat); align-items: center; }
+.season-dl.is-main { border: 1px solid var(--bulb); }
+.season-dl .row-title { white-space: normal; }
+.season-dl-status:not(:empty) { margin-top: 6px; color: var(--paper); }
+.season-dl-btn { flex: none; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.season-dl-btn.play-btn { height: 40px; padding: 0 14px; border-radius: 12px; color: var(--velvet); background: var(--bulb); font-weight: 700; }
+.season-dl-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.4; }
+.season-dl-btn.play-btn.is-added { color: var(--bulb); background: var(--bulb-dim); }

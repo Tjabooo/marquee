@@ -213,3 +213,25 @@ export async function groupShows(items, tmdb, { wait = 2500 } = {}) {
   }
   return { shows, showOf };
 }
+
+// A season's episodes from TMDB for downloading it episode by episode: [{ episode, name, aired }]
+// (aired false for episodes with a future or unknown air date). null when TMDB doesn't know the show.
+export async function seasonEpisodes(title, year, season, tmdb) {
+  const key = showKey(title);
+  if (!key || !tmdb) return null;
+  const id = await lookupName(key, title, year, tmdb);
+  if (!id) return null;
+  let d;
+  try { d = await tmdb(`/tv/${id}/season/${season}`); } catch { return { id, title, episodes: [] }; }
+  const today = new Date().toISOString().slice(0, 10);
+  const show = cache.shows[id];
+  return {
+    id,
+    title: show?.title || title,
+    episodes: (d.episodes || []).map((e) => ({
+      episode: e.episode_number,
+      name: e.name || null,
+      aired: Boolean(e.air_date) && e.air_date <= today,
+    })),
+  };
+}

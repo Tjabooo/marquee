@@ -995,6 +995,13 @@ async function copyText(text) {
   return ok;
 }
 
+// "South Park S18", "South Park season 18" -> { title, season } (same rule as the server's season.js).
+function parseSeasonQuery(q) {
+  const m = /^(.*?)[\s.]+(?:s(\d{1,2})|season[\s.]*(\d{1,2}))(?:[\s.]+(?:complete|full))?[\s.]*$/i.exec(String(q || '').trim());
+  if (!m || !m[1].trim()) return null;
+  return { title: m[1].replace(/[._]+/g, ' ').replace(/\(?(19|20)\d{2}\)?\s*$/, '').trim(), season: Number(m[2] || m[3]) };
+}
+
 async function magnetOf(t) {
   if (t.magnet) return t.magnet;
   t.magnet = (await api(`/api/torrents/magnet?ref=${encodeURIComponent(t.ref)}`)).magnet;
@@ -1028,7 +1035,9 @@ function openTorrents({ query = '', type = 'all', label = null, opener } = {}) {
       },
     }, text)));
   const info = h('p', { class: 'muted tor-info', role: 'status' });
+  const seasonBox = h('div', { class: 'season-dl-wrap' });
   const list = h('ul', { class: 'rows tor-list' });
+  let closed = false;
   // Subtitle language fetched automatically when the download completes.
   const subSelect = h('select', { class: 'sub-select', id: 'tor-sub' });
   const subRow = h('div', { class: 'tor-subs', hidden: true },
@@ -1060,8 +1069,8 @@ function openTorrents({ query = '', type = 'all', label = null, opener } = {}) {
   $('#picker-body').replaceChildren(...[
     h('h2', { id: 'picker-title' }, 'Find a download'),
     label && h('p', { class: 'muted picker-sub' }, label),
-    form, subRow, chips, info, list].filter(Boolean));
-  pushOverlay(showSheet($('#picker'), $('#picker-backdrop'), () => { ctrl?.abort(); opener?.focus({ preventScroll: true }); }));
+    form, subRow, chips, info, seasonBox, list].filter(Boolean));
+  pushOverlay(showSheet($('#picker'), $('#picker-backdrop'), () => { closed = true; ctrl?.abort(); opener?.focus({ preventScroll: true }); }));
 
   form.addEventListener('submit', (e) => { e.preventDefault(); input.blur(); run(); });
 
@@ -1069,6 +1078,7 @@ function openTorrents({ query = '', type = 'all', label = null, opener } = {}) {
     const q = input.value.trim();
     ctrl?.abort();
     if (/^magnet:\?/i.test(q)) return addPastedMagnet(q);
+    seasonBox.replaceChildren();
     if (q.length < 2) { results = []; list.replaceChildren(); info.textContent = 'Type a title to search 1337x and The Pirate Bay.'; return; }
     ctrl = new AbortController();
     const { signal } = ctrl;
@@ -1078,6 +1088,7 @@ function openTorrents({ query = '', type = 'all', label = null, opener } = {}) {
       const data = await api(`/api/torrents/search?q=${encodeURIComponent(q)}&type=${type}`, { signal });
       results = data.results;
       renderList(data.problems);
+      renderSeasonBox(q);
       loadSubLangs(q);
     } catch (err) {
       if (err.name === 'AbortError') return;
@@ -1117,6 +1128,73 @@ function openTorrents({ query = '', type = 'all', label = null, opener } = {}) {
       return;
     }
     list.replaceChildren(...shown.map(torrentRow));
+  }
+
+  // A season search ("South Park S18"): offer to get the whole season one episode at a time. It's
+  // the main suggestion when no complete-season torrent has enough seeders, a quiet extra otherwise.
+  function renderSeasonBox(q) {
+    seasonBox.replaceChildren();
+    const want = parseSeasonQuery(q);
+    if (!want || type === 'movie' || !state.status.downloads) return;
+    const packRe = new RegExp(`\\bS0?${want.season}\\b(?!\\s?E\\d)|\\bseason\\s?0?${want.season}\\b`, 'i');
+    const goodPack = results.some((r) => !r.cam && r.seeders >= 10 && norm(r.name).includes(norm(want.title))
+      && packRe.test(r.name.replace(/[._]+/g, ' ')) && !/\bS\d{1,2}\s?E\d{1,3}\b/i.test(r.name.replace(/[._]+/g, ' ')));
+    const status = h('div', { class: 'row-meta season-dl-status', role: 'status' });
+    const btn = h('button', { class: goodPack ? 'chip season-dl-btn' : 'play-btn season-dl-btn', onclick: go },
+      icon('download'), 'Get all episodes');
+    seasonBox.append(h('div', { class: `row season-dl${goodPack ? '' : ' is-main'}` },
+      h('div', { class: 'row-text' },
+        h('div', { class: 'row-title' }, goodPack ? `Or get season ${want.season} episode by episode` : `No complete season ${want.season} with enough seeders`),
+        h('div', { class: 'row-meta' }, h('span', {}, 'Marquee finds the best torrent for each episode and downloads them all.')),
+        status),
+      h('div', { class: 'row-actions' }, btn)));
+
+    async function go() {
+      btn.disabled = true;
+      btn.replaceChildren('Starting…');
+      const sub = subRow.hidden ? '' : subSelect.value;
+      const quality = ['2160p', '1080p', '720p'].includes(filter) ? filter : '';
+      let job;
+      try {
+        job = await api('/api/downloads/season', jsonPost({ query: q, quality, subs: sub ? [sub] : [] }));
+      } catch (err) {
+        btn.disabled = false;
+        btn.replaceChildren(icon('download'), 'Get all episodes');
+        status.textContent = err.message;
+        return;
+      }
+      btn.replaceChildren('Working…');
+      while (!closed) {
+        let j;
+        try { j = await api(`/api/downloads/season/${job.id}`); } catch (err) { status.textContent = err.message; break; }
+        const eps = (list) => list.map((e) => `E${pad2(e)}`).join(', ');
+        if (j.state === 'running') {
+          status.textContent = [j.step, j.added.length && `${j.added.length} added so far`].filter(Boolean).join(' · ');
+          await new Promise((r) => setTimeout(r, 1500));
+          continue;
+        }
+        if (j.state === 'failed') {
+          status.textContent = `Stopped: ${j.error}`;
+          btn.disabled = false;
+          btn.replaceChildren(icon('download'), 'Try again');
+          break;
+        }
+        const n = j.added.reduce((sum, a) => sum + a.episodes.length, 0);
+        status.textContent = [
+          n ? `Added ${plural(n, 'episode')}` : j.step || 'Nothing new to add',
+          j.have.length && `${j.have.length} already here`,
+          j.missing.length && `not found: ${eps(j.missing)}`,
+          j.upcoming && `${j.upcoming} not aired yet`,
+        ].filter(Boolean).join(' · ');
+        btn.classList.add('is-added');
+        btn.replaceChildren(icon('check'), n ? 'Added' : 'Done');
+        if (n) {
+          toast(`${j.title} season ${j.season}: ${plural(n, 'episode')} added to Downloads`);
+          loadDownloads().then(() => { if (state.view === 'downloads') renderDownloads(); });
+        }
+        break;
+      }
+    }
   }
 
   function torrentRow(t) {

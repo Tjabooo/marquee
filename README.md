@@ -8,7 +8,7 @@ Marquee is a single Node.js process with no dependencies, served as a mobile-fir
 
 - **Discover**: trending titles, search, posters and descriptions from TMDB, with titles you already have marked as on the server.
 - **Library**: every video in your media folder. Episodes are grouped into one entry per show: open it, pick a season (each with its own TMDB poster) and see that season's episodes with their names, even when they came from different releases. Remembers where you stopped watching.
-- **Torrent search**: searches The Pirate Bay and 1337x in parallel, ranked by seeders, with quality filters (4K, 1080p, 720p) and cinema recordings flagged. One tap sends a result to qBittorrent.
+- **Torrent search**: searches The Pirate Bay and 1337x in parallel, ranked by seeders, with quality filters (4K, 1080p, 720p) and cinema recordings flagged. One tap sends a result to qBittorrent. Searching for a season (“South Park S18”) adds **Get all episodes**: Marquee finds the best torrent for every aired episode and downloads them all, for when there's no good complete-season torrent.
 - **Downloads**: live qBittorrent progress, speed and time remaining.
 - **Subtitles**: pick a language in the player or TV remote and Marquee fetches the best match from OpenSubtitles, preferring subtitles timed for your exact file. Downloaded subtitles that weren't made for your exact file have their timing checked and fixed automatically. Subtitles can also be requested when starting a download and are fetched automatically when it finishes.
 - **Casting**: play on DLNA smart TVs (Samsung, LG, Sony and others) and Apple TV, with a full-screen remote for play/pause, seeking, volume and subtitles.
@@ -317,6 +317,10 @@ Downloaded MP4s are never modified, since qBittorrent may still be seeding them.
 
 HEVC episodes keep their HEVC video in the MP4 copy: that's lossless and quick, and TVs, iPhones, Safari and Chrome play it. Firefox (and browsers built on it, like Zen) can't, so those get an H.264 copy, which takes a minute or two per episode. When that happens, the next episodes of the show (`PREPARE_NEXT_EPISODES`, default 2) get their copies made in the background, so the next one starts right away.
 
+### A whole season, episode by episode
+
+When a torrent search looks like a season (`South Park S18`, `South Park season 18`), the results start with **Get all episodes**. It's highlighted when no complete-season torrent has at least 10 seeders, and a quiet extra otherwise. One tap starts a background job: TMDB says which episodes have aired, episodes already in the library or in qBittorrent (singly or in a season pack) are skipped, and every other episode is searched on its own. The pick for each episode is a release of the same show (loose name match, as in the library) for exactly that season and episode, never a cinema recording, with at least one seeder; among those with 5+ seeders, the quality filter you chose wins (otherwise 1080p, then 720p, 4K, SD), then the most seeders. Multi-episode releases (`S18E03E04`) count for every episode they hold. The card shows progress and finishes with what was added, what was already there and what couldn't be found. Without TMDB, episodes are tried in order until two in a row aren't found. The subtitle language picked above the results is requested for every episode.
+
 ### Shows in the library
 
 Episodes are recognised from `S01E05`, `S01E01E02`, `1x05` and `Season 1 Episode 5` in the file name. A file named only `S02E05.mkv` takes the show's name from its folder (`The Bear (2022)/Season 2/`). Episodes are grouped into one show when their names match loosely (case, punctuation and a leading "The" are ignored) or when TMDB resolves them to the same show, so episodes from different releases end up together. TMDB supplies the show's and each season's poster and the episode names; lookups are cached in `.marquee-shows.json` (found shows for 30 days, refreshed weekly for new seasons; unknown names are retried daily). Without TMDB, shows are still grouped by name.
@@ -344,6 +348,7 @@ marquee/
 ├── subsync.js            Automatic subtitle timing
 ├── convert.js            Background ffmpeg conversion and audio fixes
 ├── shows.js              Groups episodes into shows and seasons (TMDB posters, episode names)
+├── season.js             Whole-season downloads, one episode at a time
 ├── cast.js               DLNA and Apple TV casting
 ├── network.js            Home-network detection for casting
 ├── activity.js           Activity log
@@ -398,6 +403,8 @@ The web client uses a JSON API that can also be scripted. `<kind>` is `lib` for 
 | `POST` | `/api/library/delete` | Delete a file or torrent (`{ id, scope: "file" \| "torrent" }`) |
 | `GET` | `/api/downloads` | qBittorrent downloads |
 | `POST` | `/api/downloads/add` | Add a magnet or `.torrent` URL (`{ link, subs? }`) |
+| `POST` | `/api/downloads/season` | Get a whole season episode by episode (`{ query: "South Park S18", quality?, subs? }`), returns `{ id }` |
+| `GET` | `/api/downloads/season/:id` | That job's progress: added, already here, not found |
 | `GET` | `/api/torrents/search?q=&type=` | Torrent search (`type`: `movie`, `tv` or `all`) |
 | `GET` | `/api/torrents/magnet?ref=` | Magnet link for a 1337x result |
 | `GET` | `/api/convert` | Conversion progress |
