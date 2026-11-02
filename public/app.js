@@ -2610,9 +2610,10 @@ function clipCard(c) {
   const link = s && `${location.origin}/c/${s.token}`;
   let actions;
   if (!s) actions = [h('button', { class: 'retry', onclick: (e) => shareClip(c, e.currentTarget) }, 'Share')];
-  else if (s.error) actions = [h('span', { class: 'muted' }, `Couldn’t prepare it: ${s.error}`), h('button', { class: 'retry', onclick: (e) => shareClip(c, e.currentTarget) }, 'Try again')];
+  else if (s.error) actions = [h('span', { class: 'muted clip-error' }, `Couldn’t prepare it: ${s.error}`), h('button', { class: 'retry', onclick: (e) => shareClip(c, e.currentTarget) }, 'Try again')];
   else if (!s.ready) actions = [h('span', { class: 'muted clip-working' }, 'Preparing for Discord…')];
-  else actions = [h('button', { class: 'retry', onclick: () => copyLink(link) }, 'Copy link')];
+  // the label hides on narrow cards (style.css), leaving the copy icon; aria-label keeps the name
+  else actions = [h('button', { class: 'retry clip-copy', 'aria-label': 'Copy link', title: 'Copy link', onclick: () => copyLink(link) }, icon('copy'), h('span', { class: 'clip-btn-label' }, 'Copy link'))];
   if (s) actions.push(h('button', { class: 'icon-btn clip-unshare', 'aria-label': 'Stop sharing', title: 'Stop sharing (the link stops working)', onclick: () => unshareClip(c) }));
   // two taps: the first turns the bin into "Delete?", the second deletes (it waits 30 days in .deleted)
   const del = h('button', {

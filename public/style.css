@@ -939,7 +939,7 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
   display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px;
   margin: 0 0 8px; padding: 0; list-style: none;
 }
-.clip { display: flex; flex-direction: column; background: var(--curtain); border-radius: 14px; overflow: hidden; }
+.clip { display: flex; flex-direction: column; background: var(--curtain); border-radius: 14px; overflow: hidden; container-type: inline-size; }
 .clip-thumb { position: relative; display: block; width: 100%; aspect-ratio: 16 / 9; padding: 0; border: 0; background: var(--seat); cursor: pointer; }
 .clip-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .clip-play {
@@ -950,9 +950,22 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .clip-play svg { width: 24px; height: 24px; fill: currentColor; margin-left: 3px; }
 .clip-video { width: 100%; aspect-ratio: 16 / 9; background: #000; display: block; }
 .clip-text { padding: 10px 12px 0; }
-.clip-actions { display: flex; align-items: center; gap: 8px; padding: 10px 12px 12px; margin-top: auto; }
-.clip-actions .retry { flex: 1; margin: 0; }
+.clip-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px 12px; margin-top: auto; }
+/* The text button shares the row with up to three 44px icon buttons, so it shrinks instead of
+   wrapping its label onto a second line inside the 44px pill. */
+.clip-actions .retry {
+  flex: 1 1 0; min-width: 0; margin: 0; padding: 0 14px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  white-space: nowrap; overflow: hidden;
+}
+.clip-actions .retry svg { flex: none; width: 18px; height: 18px; }
+.clip-actions .icon-btn { flex: none; }
+.clip-btn-label { overflow: hidden; text-overflow: ellipsis; }
+/* Narrow card, or "Delete?" taking extra room: Copy link shows just its icon. */
+@container (max-width: 299px) { .clip-copy .clip-btn-label { display: none; } }
+.clip-actions:has(.is-sure) .clip-copy .clip-btn-label { display: none; }
 .clip-working { flex: 1; font-size: 14px; }
+.clip-error { flex-basis: 100%; font-size: 14px; }
 .clip-shared { color: var(--bulb); font-weight: 600; }
 
 /* ---------- Access + invites (Activity tab, owner only) ---------- */
@@ -965,7 +978,7 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .invite-note:focus { outline: 2px solid var(--bulb); border-color: transparent; }
 .invite-hint { margin: 8px 0 12px; font-size: 13px; }
 
-.clip-delete.is-sure { width: auto; padding: 0 14px; border-radius: 999px; font-weight: 700; color: var(--velvet); background: var(--alert); }
+.clip-delete.is-sure { width: auto; padding: 0 14px; white-space: nowrap; border-radius: 999px; font-weight: 700; color: var(--velvet); background: var(--alert); }
 
 /* clip trimmer (in the bottom sheet) */
 .trim-video { display: block; width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: 12px; margin: 4px 0 12px; }
