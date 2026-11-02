@@ -296,7 +296,12 @@ async function adguard() {
   }
   const headers = ADGUARD_USER ? { Authorization: `Basic ${Buffer.from(`${ADGUARD_USER}:${ADGUARD_PASS}`).toString('base64')}` } : {};
   try {
-    const st = await (await fetch(`${ADGUARD_URL}/control/status`, { headers, signal: timeout(3000) })).json();
+    const r = await fetch(`${ADGUARD_URL}/control/status`, { headers, signal: timeout(3000) });
+    // A refused login is an answer: say so, rather than "no answer" (AdGuard always asks for one)
+    if (r.status === 401 || r.status === 403) {
+      return { name: 'AdGuard Home', ok: false, detail: ADGUARD_USER ? 'login refused: check ADGUARD_USER / ADGUARD_PASS' : 'needs its login: set ADGUARD_USER and ADGUARD_PASS in .env' };
+    }
+    const st = await r.json();
     let detail = st.protection_enabled ? 'protection on' : 'protection OFF';
     try {
       const s = await (await fetch(`${ADGUARD_URL}/control/stats`, { headers, signal: timeout(3000) })).json();

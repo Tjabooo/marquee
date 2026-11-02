@@ -1277,6 +1277,8 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
   color: var(--paper); background: var(--curtain); border: 1px solid var(--line); border-radius: 999px;
 }
 .watch-start:disabled { opacity: 0.5; }
+/* The only labelled pill among round icon buttons: clear space on both sides keeps it from crowding subtitles */
+.pc-row .watch-start { margin: 0 14px 0 8px; }
 .watch-bar {
   position: relative; z-index: 4; margin: 0 0 12px;
   display: flex; align-items: center; justify-content: space-between; gap: 10px 18px; flex-wrap: wrap;
@@ -1294,6 +1296,7 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .party-guest .seek { opacity: 0.6; }
 @media (max-width: 420px) {
   .watch-start { font-size: 12px; padding: 8px 10px; }
+  .pc-row .watch-start { margin: 0 8px 0 4px; }
   .in-party .player-title { font-size: 14px; }
 }
 .watch-description #watch-members { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }

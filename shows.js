@@ -257,6 +257,13 @@ export function rememberFilmDownload(hash, details) {
   save();
 }
 export const filmDownload = (hash) => cache.filmDownloads[String(hash).toLowerCase()] || null;
+
+// A show's cached details by name, without asking TMDB (link previews must answer fast).
+export function knownShow(title, year) {
+  const key = showKey(title);
+  const id = cache.names[`${key}|${year || ''}`]?.id ?? cache.names[`${key}|`]?.id;
+  return id ? cache.shows[id] || null : null;
+}
 export function knownFilm(key, title, year) {
   const explicit = cache.filmFiles[key];
   if (explicit) return explicit;

@@ -22,6 +22,7 @@ import * as season from './season.js';
 import * as recommend from './recommend.js';
 import * as accounts from './accounts.js';
 import { WatchRooms } from './watch.js';
+import { handleWatchPage } from './watch-page.js';
 import { isHomeRequest, describeRequest } from './network.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -52,6 +53,12 @@ function lanAddress() {
 }
 const LAN_IP = lanAddress();
 const watchRooms = new WatchRooms();
+// Artwork for a room's link preview, from the TMDB cache only (Discord's crawler doesn't wait long).
+function watchArtwork(media) {
+  const art = media.season == null ? shows.knownFilm(media.mediaKey, media.title, media.year) : shows.knownShow(media.title, media.year);
+  const image = art?.backdrop || art?.poster;
+  return image ? { image } : null;
+}
 setInterval(() => watchRooms.cleanup(), 3000).unref();
 activity.initActivity({ dataDir: ROOT, nameForUser: accounts.displayNameFor });
 accounts.initAccounts({ dataDir: ROOT, adminEmails: activity.adminEmails(), mediaDir: MEDIA_DIR });
@@ -1369,7 +1376,8 @@ const server = http.createServer(async (req, res) => {
     else if (url.pathname.startsWith('/play/')) await handlePlay(req, res, url);
     // Public: shared clips and the Marquee invite card (bypassed in Cloudflare Access; see README)
     else if (url.pathname === '/c' || url.pathname.startsWith('/c/')) {
-      if (!(await invites.handlePublic(req, res, url)) && !(await clips.handlePublic(req, res, url, { sendVideo }))) throw new HttpError(404, 'Not found.');
+      if (!handleWatchPage(req, res, url, { rooms: watchRooms, artwork: watchArtwork })
+        && !(await invites.handlePublic(req, res, url)) && !(await clips.handlePublic(req, res, url, { sendVideo }))) throw new HttpError(404, 'Not found.');
     }
     else await serveStatic(res, url.pathname);
   } catch (err) {

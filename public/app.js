@@ -2236,7 +2236,8 @@ $('#watch-hide').addEventListener('click', () => { setWatchPanel(false); $('#wat
 document.addEventListener('click', (event) => { if (watchPanelOpen && !event.target.closest?.('#watch-bar, #watch-btn')) setWatchPanel(false); });
 $('#watch-ready').addEventListener('click', () => party?.unlock());
 $('#watch-copy').addEventListener('click', () => {
-  if (party) copyWithToast(`${location.origin}/?watch=${party.state.token}`, 'Watch-room invite copied. Everyone uses their usual Marquee sign-in.');
+  // /c/w/ shows a preview in Discord and other chats, then forwards to /?watch=
+  if (party) copyWithToast(`${location.origin}/c/w/${party.state.token}`, 'Watch-room invite copied. Everyone uses their usual Marquee sign-in.');
 });
 $('#watch-leave').addEventListener('click', () => { leaveWatchRoom(); video.pause(); toast('Left the watch room'); });
 document.addEventListener('visibilitychange', () => { if (!document.hidden && party) { party.clock().then(() => party?.pulse()).catch(() => {}); } });
