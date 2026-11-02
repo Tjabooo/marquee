@@ -139,15 +139,6 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
       </button>
       <p class="player-title" id="player-title"></p>
-      <button class="watch-start" id="watch-btn" type="button">Watch together</button>
-    </div>
-    <div class="watch-bar" id="watch-bar" hidden>
-      <div class="watch-description"><strong id="watch-status" role="status"></strong><span id="watch-members"></span><small>Subtitles and volume are just for you.</small></div>
-      <div class="watch-actions">
-        <button class="chip" id="watch-ready" type="button" hidden>Ready to watch</button>
-        <button class="chip" id="watch-copy" type="button">Copy invite</button>
-        <button class="chip" id="watch-leave" type="button">Leave room</button>
-      </div>
     </div>
     <p class="player-note" id="player-note" role="status" hidden></p>
     <!-- Big buttons in the middle: play/pause and ±10 s on touch screens, play while paused elsewhere -->
@@ -157,6 +148,15 @@
       <button class="pc-btn pc-skip" data-skip="10" aria-label="Forward 10 seconds (L)"></button>
     </div>
     <div class="player-controls" id="player-controls">
+      <div class="watch-bar" id="watch-bar" role="region" aria-label="Watch Together room" hidden>
+        <div class="watch-description"><strong id="watch-status" role="status"></strong><span id="watch-members"></span><small>Subtitles and volume are just for you.</small></div>
+        <div class="watch-actions">
+          <button class="chip" id="watch-ready" type="button" hidden>Ready to watch</button>
+          <button class="chip" id="watch-copy" type="button">Copy invite</button>
+          <button class="chip" id="watch-leave" type="button">Leave room</button>
+          <button class="chip" id="watch-hide" type="button">Hide</button>
+        </div>
+      </div>
       <div class="seek-row">
         <span class="pc-time" id="pc-time">0:00</span>
         <div class="seek" id="seek" role="slider" tabindex="0" aria-label="Seek" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0">
@@ -178,6 +178,7 @@
           <input type="range" id="pc-vol" min="0" max="1" step="0.05" value="1" aria-label="Volume">
         </div>
         <span class="pc-spacer"></span>
+        <button class="watch-start" id="watch-btn" type="button" aria-controls="watch-bar" aria-expanded="false">Watch together</button>
         <button class="pc-btn cc-btn" id="cc-btn" aria-label="Subtitles (C)" aria-haspopup="menu" aria-expanded="false" hidden>
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M10.5 10.2a2 2 0 1 0 0 3.6M17 10.2a2 2 0 1 0 0 3.6"/></svg>
         </button>

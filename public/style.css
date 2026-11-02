@@ -1278,7 +1278,7 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 }
 .watch-start:disabled { opacity: 0.5; }
 .watch-bar {
-  position: absolute; z-index: 4; top: calc(var(--safe-top) + 62px); left: var(--gutter); right: var(--gutter);
+  position: relative; z-index: 4; margin: 0 0 12px;
   display: flex; align-items: center; justify-content: space-between; gap: 10px 18px; flex-wrap: wrap;
   padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px;
   background: var(--curtain); color: var(--paper); transition: opacity 0.2s;
@@ -1290,7 +1290,7 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .watch-actions .chip { color: var(--paper); font-size: 12px; height: 36px; padding: 0 11px; }
 .watch-actions #watch-ready { color: var(--on-bulb); background: var(--bulb); border-color: var(--bulb); }
 .player:not(.ui-visible) .watch-bar { opacity: 0; visibility: hidden; pointer-events: none; }
-.party-guest :is(.pc-play, .pc-skip, .pc-big-play) { opacity: 0.35; cursor: default; }
+.party-guest :is(.pc-play, .pc-skip, .pc-big-play):disabled { opacity: 0.35; cursor: default; }
 .party-guest .seek { opacity: 0.6; }
 @media (max-width: 420px) {
   .watch-start { font-size: 12px; padding: 8px 10px; }
