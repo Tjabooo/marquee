@@ -6,19 +6,30 @@
 #   marquee-house report            send a report (marquee-house.timer, every 5 min)
 #   marquee-house status            JSON for a waybar custom module (house dot + issues tooltip)
 #   marquee-house json              print the report without sending it
+#   marquee-house boot              root, dual-boot machines (marquee-house-boot.timer, every 30 s):
+#                                   tells Marquee this machine's GRUB menu and network card so the
+#                                   House tab can wake it, and restarts into another system when
+#                                   asked (grub-reboot). Turns Wake-on-LAN on for the wired card.
 #
 # Reports only go out on the home network: the router's MAC must match the one saved by setup,
 # so the token is never sent to some other network's 192.168.x.y. Away from home the status
-# module hides itself. Needs: bash, curl, jq, iproute2. Nothing here needs root.
+# module hides itself. Needs: bash, curl, jq, iproute2 (+ ethtool and grub for `boot`).
+# Only `boot` needs root; it reads MARQUEE_HOUSE_CONF (/etc/marquee-house.env in its unit).
 set -u
-CONF=${XDG_CONFIG_HOME:-$HOME/.config}/marquee-house.env
+CONF=${MARQUEE_HOUSE_CONF:-${XDG_CONFIG_HOME:-$HOME/.config}/marquee-house.env}
 STATE=${XDG_STATE_HOME:-$HOME/.local/state}/marquee-house
 MARQUEE_URL="" HOUSE_TOKEN="" HOME_GW_MAC=""
 [[ -r $CONF ]] && . "$CONF"
 
 gw_mac() {
-  local gw; gw=$(ip route show default 2>/dev/null | awk '{print $3; exit}')
-  [[ -n $gw ]] && ip neigh show "$gw" 2>/dev/null | awk '{print tolower($5); exit}'
+  local gw mac; gw=$(ip route show default 2>/dev/null | awk '{print $3; exit}')
+  [[ -n $gw ]] || return 0
+  mac=$(ip neigh show "$gw" 2>/dev/null | awk '/lladdr/{print tolower($5); exit}')
+  if [[ -z $mac ]]; then  # just booted: nothing has talked to the router yet
+    ping -c1 -W1 "$gw" >/dev/null 2>&1
+    mac=$(ip neigh show "$gw" 2>/dev/null | awk '/lladdr/{print tolower($5); exit}')
+  fi
+  echo "$mac"
 }
 at_home() { [[ -n $MARQUEE_URL && -n $HOUSE_TOKEN && -n $HOME_GW_MAC && "$(gw_mac)" == "$HOME_GW_MAC" ]]; }
 
@@ -60,6 +71,113 @@ collect() {
       updates:$updates,last_backup:$last_backup,battery:$battery,secure_boot:$secure_boot,failed:$failed,disks:$disks}'
 }
 
+# ---------- boot: wake into / restart into another system (see house.js, "power") ----------
+# Top-level GRUB items in menu order (submenus too, for GRUB_DEFAULT=<index>): kind<TAB>title<TAB>id
+grub_items() {
+  local cfg=/boot/grub/grub.cfg q="[\"']" nq="[^\"']" line id
+  [[ -r $cfg ]] || return 0
+  local re_head="^(menuentry|submenu)[[:space:]]+${q}(${nq}*)${q}" re_id="menuentry_id_option[[:space:]]+${q}(${nq}*)${q}"
+  while IFS= read -r line; do
+    [[ $line =~ $re_head ]] || continue
+    local kind=${BASH_REMATCH[1]} title=${BASH_REMATCH[2]}
+    id=""; [[ $line =~ $re_id ]] && id=${BASH_REMATCH[1]}
+    printf '%s\t%s\t%s\n' "$kind" "$title" "$id"
+  done < <(grep -E '^(menuentry|submenu)[[:space:]]' "$cfg")
+}
+
+# The boot menu as JSON: [{title, os, current}]. "current" is this system's own entry (10_linux
+# names it gnulinux-simple-<root UUID>); firmware setup and memtest are left out.
+boot_entries() {
+  local uuid; uuid=$(findmnt -no UUID / 2>/dev/null)
+  grub_items | awk -F'\t' -v uuid="$uuid" '
+    $1 != "menuentry" { next }
+    $3 == "uefi-firmware" || tolower($2) ~ /uefi firmware|memtest|system setup/ { next }
+    { os = tolower($2) ~ /windows/ ? "windows" : "other"; cur = 0
+      if (uuid != "" && index($3, uuid) && $3 ~ /^gnulinux/) { os = "linux"; cur = 1 }
+      n++; t[n] = $2; o[n] = os; c[n] = cur; if (cur) found = 1
+      if (!first && $3 ~ /^gnulinux/) first = n }
+    END { if (!found && first) { o[first] = "linux"; c[first] = 1 }
+          for (i = 1; i <= n; i++) printf "%s\t%s\t%s\n", t[i], o[i], c[i] }' |
+    jq -Rsc 'split("\n") | map(select(length > 0) | split("\t") | {title: .[0], os: .[1], current: (.[2] == "1")})'
+}
+
+# Title of the entry GRUB starts when nobody picks one (GRUB_DEFAULT: index, title, id or "saved").
+boot_default() {
+  local def; def=$(sed -nE "s/^GRUB_DEFAULT=[\"']?([^\"']*)[\"']?.*/\1/p" /etc/default/grub 2>/dev/null | tail -n1)
+  [[ $def == saved ]] && def=$(grub-editenv list 2>/dev/null | sed -n 's/^saved_entry=//p')
+  def=${def:-0}; def=${def%%>*}
+  grub_items | awk -F'\t' -v d="$def" 'd ~ /^[0-9]+$/ { if (NR - 1 == d) { print $2; exit } next } $2 == d || $3 == d { print $2; exit }'
+}
+
+# The wired card Wake-on-LAN uses (first physical Ethernet card, one that's up preferred), or the
+# default route's card when there is none. Prints: iface<TAB>wired(true|false)
+wake_nic() {
+  local d n up="" any=""
+  for d in /sys/class/net/*; do
+    n=${d##*/}
+    [[ -e $d/device && ! -e $d/wireless && ! -e $d/phy80211 && $(<"$d/type") == 1 ]] || continue
+    [[ -z $any ]] && any=$n
+    [[ -z $up && $(<"$d/operstate") == up ]] && up=$n
+  done
+  n=${up:-$any}
+  if [[ -n $n ]]; then printf '%s\ttrue\n' "$n"
+  else printf '%s\tfalse\n' "$(ip route show default 2>/dev/null | awk '{print $5; exit}')"; fi
+}
+
+# Wake-on flags of $1 after making sure magic packets ("g") are on, if the card supports them.
+# Empty when ethtool isn't installed (Wake-on-LAN state unknown).
+wake_on() {
+  command -v ethtool >/dev/null || return 0
+  local out sup cur
+  out=$(ethtool "$1" 2>/dev/null) || return 0
+  sup=$(awk -F': *' '/Supports Wake-on:/{print $2; exit}' <<<"$out")
+  cur=$(awk -F': *' '/^[[:space:]]*Wake-on:/{print $2; exit}' <<<"$out")
+  if [[ $sup == *g* && $cur != *g* ]] && ethtool -s "$1" wol g 2>/dev/null; then
+    cur=$(ethtool "$1" 2>/dev/null | awk -F': *' '/^[[:space:]]*Wake-on:/{print $2; exit}')
+  fi
+  echo "$cur"
+}
+
+boot() {
+  [[ $EUID -eq 0 ]] || { echo "marquee-house boot needs root (it runs ethtool and grub-reboot)" >&2; exit 1; }
+  command -v ethtool >/dev/null || echo "ethtool isn't installed: Wake-on-LAN can't be checked or turned on" >&2
+  # right after boot the network can take a moment: retry for up to ~40 s before giving up until the next timer run
+  local up tries=0
+  read -r up _ < /proc/uptime
+  until at_home; do
+    (( ${up%.*} < 180 && tries++ < 20 )) || exit 0
+    sleep 2
+  done
+  local nic wired mac wol entries def body out code reply reboot entry
+  IFS=$'\t' read -r nic wired < <(wake_nic)
+  mac=""; [[ -n $nic && -r /sys/class/net/$nic/address ]] && mac=$(<"/sys/class/net/$nic/address")
+  wol=""; [[ $wired == true ]] && wol=$(wake_on "$nic")
+  entries=$(boot_entries); [[ -n $entries ]] || entries='[]'
+  def=$(boot_default)
+  read -r up _ < /proc/uptime
+  body=$(jq -nc --arg host "$(</proc/sys/kernel/hostname)" --arg iface "$nic" --argjson wired "${wired:-false}" \
+    --arg mac "$mac" --arg wol "$wol" --argjson entries "$entries" --arg def "$def" --argjson uptime "${up%.*}" \
+    '{host:$host,iface:$iface,wired:$wired,mac:$mac,wol:(if $wol == "" then null else $wol end),
+      entries:$entries,default:(if $def == "" then null else $def end),uptime:$uptime}')
+  out=$(curl -sS --max-time 8 -w '\n%{http_code}' -X POST -H "X-Marquee-Token: $HOUSE_TOKEN" \
+    -H 'Content-Type: application/json' --data-binary "$body" "$MARQUEE_URL/api/house/boot" 2>&1)
+  code=${out##*$'\n'}; reply=${out%$'\n'*}
+  [[ $code == 200 ]] || { echo "boot poll not accepted (HTTP ${code:-none}): $reply" >&2; exit 0; }
+  reboot=$(jq -r '.reboot // false' <<<"$reply" 2>/dev/null)
+  [[ $reboot == true ]] || exit 0
+  entry=$(jq -r '.entry // empty' <<<"$reply")
+  if [[ -n $entry ]]; then
+    # only ever an entry from this machine's own menu
+    jq -e --arg e "$entry" 'any(.[]; .title == $e)' <<<"$entries" >/dev/null ||
+      { echo "Marquee asked for \"$entry\", which isn't on this boot menu" >&2; exit 1; }
+    grub-reboot "$entry" || { echo "grub-reboot \"$entry\" failed" >&2; exit 1; }
+    echo "Marquee: restarting into $entry"
+  else
+    echo "Marquee: restarting"
+  fi
+  systemctl reboot
+}
+
 case ${1:-report} in
   setup)
     [[ $# -eq 3 ]] || { echo "usage: marquee-house setup http://SERVER:8080 HOUSE_TOKEN" >&2; exit 2; }
@@ -84,5 +202,6 @@ case ${1:-report} in
       { echo '{"text":"󰋜","class":"down","tooltip":"House: Marquee isn'"'"'t answering"}'; exit 0; }
     jq -c 'if .ok then {text:"󰋜",class:"ok",tooltip:("House: all fine\n" + (.machines|join(" · ")))}
            else {text:("󰋜 " + (.issues|length|tostring)),class:"issues",tooltip:("House\n" + (.issues|map("• " + .)|join("\n")))} end' <<<"$s" ;;
-  *) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+  boot) boot ;;
+  *) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac

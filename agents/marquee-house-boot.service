@@ -1,0 +1,9 @@
+[Unit]
+Description=Ask Marquee whether to restart into another system (House tab: wake / restart into)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+Environment=MARQUEE_HOUSE_CONF=/etc/marquee-house.env
+ExecStart=/usr/local/bin/marquee-house boot

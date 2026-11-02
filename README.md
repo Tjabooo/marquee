@@ -14,7 +14,7 @@ Marquee is a single Node.js process with no dependencies, served as a mobile-fir
 - **Casting**: play on DLNA smart TVs (Samsung, LG, Sony and others) and Apple TV, with a full-screen remote for play/pause, seeking, volume and subtitles.
 - **Automatic conversion**: MKV, AVI, WebM and similar files get an MP4 copy that plays on iPhone and Apple TV. Streams are copied where possible; video is re-encoded on an NVIDIA GPU (NVENC) or CPU only when needed.
 - **Browser audio fix**: Chrome and Firefox can't decode Dolby (AC3/E-AC3) or DTS. Marquee adds a stereo AAC track so these files play with sound, while TVs still receive the original surround audio.
-- **House** (owner only): the server's disks, qBittorrent, FlareSolverr and AdGuard Home at a glance, plus the Linux machines at home (disk space, failed services, updates, battery, Secure Boot, backups), with anything that needs a look listed at the top.
+- **House** (owner only): the server's disks, qBittorrent, FlareSolverr and AdGuard Home at a glance, plus the Linux machines at home (disk space, failed services, updates, battery, Secure Boot, backups), with anything that needs a look listed at the top. **Power** turns a dual-boot PC on (Wake-on-LAN) into the system you pick, or restarts it into another one.
 - **Clips** (owner only): game clips synced from a PC, grouped by game. **Share** gives a clip a public link that embeds and plays in Discord; sharing makes a Discord-friendly H.264 copy (all audio tracks mixed into one) and unsharing kills the link. **Delete** (two taps) removes a clip: it waits 30 days in a hidden `.deleted` folder before it's gone for good. **Trim** cuts a clip without re-encoding (ffmpeg stream copy: identical quality, every audio track kept, no GPU needed); the start snaps to the nearest keyframe before the chosen point, which the trimmer shows, and the result goes to `Trimmed Clips/<Game>/`.
 - **Invites** (owner only): make a one-time link, send it, and the person enters their email and is added to the Cloudflare email list your Access policy allows, so they can sign in from then on (Google, a one-time email code, whatever you've enabled). Who has access is listed in the Activity tab, with a Remove button.
 - **Discord embeds**: shared clips show up as playable videos, and `/c/` is an invite card for Marquee itself.
@@ -115,6 +115,7 @@ All settings live in `.env`. Changes take effect after a restart.
 | `CF_API_TOKEN` | | Cloudflare API token for invites, permission *Account · Zero Trust → Edit*. |
 | `CF_ACCOUNT_ID` / `CF_ACCESS_LIST_ID` | | The Cloudflare account and the email list your Marquee policy allows. |
 | `INVITE_DAYS` | `7` | How long an unused invite link works. |
+| `WOL_BROADCAST` | | Extra addresses for Wake-on-LAN packets, comma-separated. Only needed if waking doesn't work: the server already sends to its own network's broadcast address and `255.255.255.255`. |
 | `CLIPS_DIR` | | Folder the clips are synced to, e.g. `D:\Clips` (the share behind the desktop's `/mnt/magi-clips`). Leave empty to hide the Clips tab. |
 
 ### Conversion
@@ -199,6 +200,32 @@ systemctl --user enable --now marquee-house.timer
 ```
 
 For a status-bar dot, `marquee-house status` prints waybar JSON (`"return-type": "json"`); it hides itself away from home.
+
+### House: turn the PC on, and pick Linux or Windows
+
+The **Power** section of the House tab wakes a dual-boot (GRUB) PC with Wake-on-LAN and boots it into the system you tap, or restarts it into another one while it's on.
+
+A PC that's off can't be told what to boot, so Linux decides on the way up. GRUB always starts Linux. `marquee-house boot`, a root timer on the PC, asks the server right after boot (and every 30 s after that) whether a different system was picked. If one was, it sets GRUB's one-shot next entry with `grub-reboot`, the same thing a "reboot to Windows" menu does, and restarts. Waking into Windows therefore passes through Linux for a few seconds. The same check carries **Restart into…** while the PC is on, tells the server the PC's MAC address and boot menu, and switches Wake-on-LAN on for the wired network card on every boot.
+
+On the PC (Arch, at home, with the user agent above already set up):
+
+```bash
+sudo pacman -S --needed ethtool
+sudo install -m755 agents/marquee-house /usr/local/bin/
+sudo install -m600 ~/.config/marquee-house.env /etc/marquee-house.env
+sudo install -m644 agents/marquee-house-boot.{service,timer} /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now marquee-house-boot.timer
+```
+
+The PC shows up under **Power** within 30 seconds. It also needs:
+
+- **A network cable.** Wake-on-LAN almost never works over Wi-Fi from a powered-off PC.
+- **Wake-on-LAN on in the BIOS/UEFI**, often called *Wake on LAN*, *Power On By PCI-E* or *Resume by PCI-E device*. Turn off *ErP Ready* / *Deep Sleep*: it cuts power to the network card when the PC is off.
+- **GRUB starting Linux by default** (`GRUB_DEFAULT=0`, or `saved` with Linux saved). The card warns you if it doesn't.
+- **On Windows:** Fast Startup off (*Control Panel → Power Options → Choose what the power buttons do*), and in *Device Manager → network adapter → Properties*: *Advanced → Wake on Magic Packet* (and *Shutdown Wake-On-Lan*, if present) enabled, *Power Management → Allow this device to wake the computer* ticked. Windows sets up the card for the next wake whenever it's the one that shuts down.
+
+While the PC is in Windows, Marquee sees it as "Off, or in Windows": Windows doesn't run the agent, so it can't be restarted from Marquee.
 
 ### Clips and Discord share links
 
@@ -311,7 +338,8 @@ marquee/
 ├── clips.js              Clips tab, share links and their public pages (/c/)
 ├── invites.js            Invite links → Zero Trust email list (/c/i/)
 ├── agents/
-│   └── marquee-house     Health reporter for Linux machines (+ systemd service/timer)
+│   ├── marquee-house     Health reporter for Linux machines (+ systemd service/timer)
+│   └── marquee-house-boot.{service,timer}   Root timer for `marquee-house boot` (wake / restart into)
 ├── public/
 │   ├── index.html
 │   ├── app.js            Web client
@@ -336,6 +364,7 @@ Created at runtime and excluded from Git:
 | `cache/audio/` | Audio-fixed copies of downloaded MP4s |
 | `logs/` | Output from the auto-start task |
 | `.marquee-house.json` | Latest report from each home machine |
+| `.marquee-power.json` | Each dual-boot machine's MAC address and boot menu, for waking it |
 | `.marquee-shares.json` | Shared clips (token → clip) |
 | `.marquee-invites.json` | Invite links and who used them |
 | `cache/clips/` | Clip thumbnails and the Discord-friendly copies of shared clips |
@@ -372,6 +401,8 @@ The web client uses a JSON API that can also be scripted. `<kind>` is `lib` for 
 | `GET` | `/api/house` | Server health and home machines (`ADMIN_EMAILS` only) |
 | `POST` | `/api/house/report` | A machine's report (`X-Marquee-Token`, home network only) |
 | `GET` | `/api/house/summary` | Issues only, for status bars (`X-Marquee-Token`, home network only) |
+| `POST` | `/api/house/boot` | A dual-boot machine's boot menu and network card; the reply says whether to restart, and into what (`X-Marquee-Token`, home network only) |
+| `POST` | `/api/house/power` | `{ host, action: "wake" \| "restart", entry? }`: wake a machine into a boot entry, or restart it (`ADMIN_EMAILS` only) |
 | `GET` | `/api/clips` | Clips and their share state (`ADMIN_EMAILS` only) |
 | `GET` | `/api/clips/<id>/thumb.jpg`, `/api/clips/<id>/video` | Thumbnail and video (`ADMIN_EMAILS` only) |
 | `POST` | `/api/clips/<id>/share`, `/api/clips/<id>/unshare` | Create or remove a public link (`ADMIN_EMAILS` only) |
@@ -389,7 +420,7 @@ Marquee has no user accounts or authentication. Anyone who can reach the server 
 
 Keep `.env` private: it contains your API keys and passwords, and it is excluded by `.gitignore`.
 
-`/c/` is public by design (see *Clips and Discord share links*): it serves only clips you shared, open invite links and the invite card, nothing else. An invite link lets whoever has it add one email to your access list, once; send it privately. House reports need `HOUSE_TOKEN` and are refused when they arrive through Cloudflare.
+`/c/` is public by design (see *Clips and Discord share links*): it serves only clips you shared, open invite links and the invite card, nothing else. An invite link lets whoever has it add one email to your access list, once; send it privately. House reports and boot checks need `HOUSE_TOKEN` and are refused when they arrive through Cloudflare. A boot check only ever restarts into an entry from the PC's own GRUB menu.
 
 ## Troubleshooting
 

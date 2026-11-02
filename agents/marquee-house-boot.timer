@@ -1,0 +1,10 @@
+[Unit]
+Description=Check with Marquee right after boot, then every 30 seconds (only on the home network)
+
+[Timer]
+OnBootSec=1s
+OnUnitActiveSec=30s
+AccuracySec=2s
+
+[Install]
+WantedBy=timers.target

@@ -933,6 +933,11 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .house-svc-name { font-weight: 600; }
 .house-services .muted { font-size: 13px; }
 .house-failed { margin: 0; font-size: 13px; color: var(--alert); }
+.power-sub { margin: -4px 0 0; font-size: 13px; }
+.power-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.power-actions .retry { margin: 0; flex: 1 1 auto; white-space: nowrap; }
+.power-actions .retry.is-primary { color: var(--velvet); background: var(--bulb); border-color: var(--bulb); }
+.power-actions .retry.is-sure { color: var(--velvet); background: var(--alert); border-color: var(--alert); font-weight: 700; }
 
 /* ---------- Clips (server owner only) ---------- */
 .clip-grid {

@@ -612,12 +612,25 @@ async function handleApi(req, res, url) {
     if (!house.agentAllowed(req) && !activity.isAdmin(req)) throw new HttpError(403, 'Not allowed.');
     return sendJson(res, 200, await house.houseSummary());
   }
+  // `marquee-house boot` (root, on a dual-boot machine): reports its boot menu + network card and
+  // gets back whether to restart, and into what (house.js, "power").
+  if (p === '/api/house/boot' && req.method === 'POST') {
+    if (!house.agentAllowed(req)) throw new HttpError(403, 'Not allowed.');
+    return sendJson(res, 200, house.bootPoll(req, await readJson(req)));
+  }
 
   activity.seen(req);
 
   if (p === '/api/house') {
     if (!activity.isAdmin(req)) throw new HttpError(403, 'Only the server’s owner can see the house.');
     return sendJson(res, 200, await house.houseReport());
+  }
+  if (p === '/api/house/power' && req.method === 'POST') {
+    if (!activity.isAdmin(req)) throw new HttpError(403, 'Only the server’s owner can turn machines on.');
+    const { host, action, entry } = await readJson(req);
+    const r = await house.powerAction(String(host || ''), String(action || ''), entry == null ? null : String(entry));
+    activity.record(req, action === 'wake' ? 'wake' : 'restart', r.detail);
+    return sendJson(res, 200, { ok: true, message: r.message });
   }
   // Who has access (the Zero Trust email list) and invite links: owner only.
   if (p === '/api/access' || p.startsWith('/api/access/')) {
@@ -979,7 +992,7 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost');
     const allowed = req.method === 'GET' || req.method === 'HEAD'
       || (req.method === 'POST' && (url.pathname.startsWith('/api/cast/') || url.pathname === '/api/downloads/add' || url.pathname === '/api/subs/fetch' || url.pathname === '/api/subs/sync' || url.pathname === '/api/library/delete' || /^\/api\/downloads\/\w+\/(pause|resume|delete)$/.test(url.pathname) || /^\/api\/media\/\w+\/[\w-]+\/sync$/.test(url.pathname)
-        || url.pathname === '/api/house/report' || /^\/api\/clips\/[\w-]+\/(share|unshare|delete|trim)$/.test(url.pathname)
+        || /^\/api\/house\/(report|boot|power)$/.test(url.pathname) || /^\/api\/clips\/[\w-]+\/(share|unshare|delete|trim)$/.test(url.pathname)
         || /^\/api\/access\/(invite|remove|invite\/\w+\/revoke)$/.test(url.pathname) || /^\/c\/i\/[\w-]+\/?$/.test(url.pathname)));
     if (!allowed) throw new HttpError(405, 'Method not allowed.');
     if (url.pathname.startsWith('/api/')) await handleApi(req, res, url);

@@ -602,7 +602,8 @@ let pollTimer;
 function schedulePoll() {
   clearTimeout(pollTimer);
   const clipsBusy = state.view === 'clips' && state.clips?.clips?.some((c) => c.share && !c.share.ready && !c.share.error);
-  const delay = state.view === 'downloads' ? 2000 : state.view === 'library' || clipsBusy ? 3000 : ['activity', 'house'].includes(state.view) ? 10000 : 15000;
+  const powerBusy = state.view === 'house' && state.house?.power?.some((pw) => pw.pending);
+  const delay = state.view === 'downloads' ? 2000 : state.view === 'library' || clipsBusy || powerBusy ? 3000 : ['activity', 'house'].includes(state.view) ? 10000 : 15000;
   pollTimer = setTimeout(async () => {
     if (!document.hidden) {
       const before = state.convert?.current?.name;
@@ -2291,6 +2292,8 @@ const ACTIVITY_TEXT = {
   joined: (d) => `joined Marquee (${d})`,
   revoke: (d) => `removed ${d}’s access`,
   unshare: (d) => `stopped sharing ${d}`,
+  wake: (d) => `woke ${d}`,
+  restart: (d) => `restarted ${d}`,
 };
 const personName = (user) => (user.includes('@') ? user.split('@')[0] : user);
 const clock = (ms) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
@@ -2475,6 +2478,12 @@ function renderHouse() {
         h('span', { class: 'house-svc-name' }, x.name), h('span', { class: 'muted' }, x.detail))))));
   }
 
+  const powered = (r.power || []).filter((pw) => !q || norm(`power ${pw.host} ${pw.entries.map((e) => e.label).join(' ')}`).includes(q));
+  if (powered.length) {
+    out.push(h('h3', { class: 'activity-head' }, 'Power'));
+    for (const pw of powered) out.push(powerCard(pw));
+  }
+
   out.push(h('h3', { class: 'activity-head' }, 'Machines'));
   const machines = r.machines.filter((m) => !q || norm(`${m.host} ${m.kind} ${m.os}`).includes(q));
   if (!r.agents) out.push(h('p', { class: 'muted' }, 'Set HOUSE_TOKEN in .env and run agents/marquee-house on each machine to see them here.'));
@@ -2495,6 +2504,59 @@ function renderHouse() {
       m.failed.length > 0 && h('p', { class: 'house-failed' }, `Failed: ${m.failed.join(', ')}`)));
   }
   body.replaceChildren(...out);
+}
+
+// Wake a dual-boot machine into the system you pick, or restart it into another one (house.js,
+// "power"). Waking into Windows boots Linux first, which hands over to Windows within a few seconds.
+function powerCard(pw) {
+  const p = pw.pending;
+  const status = p
+    ? (p.action === 'wake' ? `Waking up${p.label ? ` into ${p.label}` : ''}…` : `Restarting${p.label ? ` into ${p.label}` : ''}…`)
+    : pw.on ? `On · ${pw.os || 'Linux'}` : 'Off, or in Windows';
+  const sub = !pw.on && !p && (pw.last?.entry && pw.last.at > pw.seen - 120000
+    ? `Last started into ${pw.last.label} from Marquee ${ago(pw.last.at)}`
+    : `Linux last answered ${ago(pw.seen)}`);
+  const linuxFirst = [...pw.entries].sort((a, b) => (a.os === 'linux' ? 0 : 1) - (b.os === 'linux' ? 0 : 1));
+  let buttons;
+  if (pw.on) {
+    // restarting is disruptive (a game might be running): two taps, like deleting a clip
+    const sure = (label, entry) => h('button', {
+      type: 'button', class: 'retry', disabled: Boolean(p),
+      onclick: (e) => {
+        const b = e.currentTarget;
+        if (b.dataset.sure) { doPower(pw.host, 'restart', entry, b); return; }
+        b.dataset.sure = '1';
+        b.classList.add('is-sure');
+        b.textContent = 'Tap again to restart';
+        setTimeout(() => { if (b.isConnected && !b.disabled) { delete b.dataset.sure; b.classList.remove('is-sure'); b.textContent = label; } }, 4000);
+      },
+    }, label);
+    buttons = [...linuxFirst.filter((e) => !e.current).map((e) => sure(`Restart into ${e.label}`, e.title)), sure('Restart', null)];
+  } else {
+    buttons = linuxFirst.map((e) => h('button', {
+      type: 'button', class: `retry${e.os === 'linux' ? ' is-primary' : ''}`, disabled: !pw.canWake || p?.action === 'wake',
+      onclick: (ev) => doPower(pw.host, 'wake', e.title, ev.currentTarget),
+    }, `Start ${e.label}`));
+    if (!buttons.length) buttons = [h('button', { type: 'button', class: 'retry is-primary', disabled: !pw.canWake, onclick: (ev) => doPower(pw.host, 'wake', null, ev.currentTarget) }, 'Turn on')];
+  }
+  return h('div', { class: 'house-card power-card' },
+    h('div', { class: 'house-card-head' },
+      h('span', { class: `activity-dot${pw.on ? ' is-on' : ''}`, 'aria-hidden': 'true' }),
+      h('span', { class: 'row-title' }, pw.host),
+      h('span', { class: 'muted house-seen' }, status)),
+    sub && h('p', { class: 'muted power-sub' }, sub),
+    h('div', { class: 'power-actions' }, buttons),
+    pw.notes.map((n) => h('p', { class: 'house-failed' }, n)));
+}
+
+async function doPower(host, action, entry, btn) {
+  btn.disabled = true;
+  try {
+    const r = await api('/api/house/power', jsonPost({ host, action, entry }));
+    toast(r.message);
+  } catch (err) { toast(err.message); }
+  await loadHouse();
+  if (state.view === 'house') renderHouse();
 }
 
 // ---------- clips (server owner only) ----------

@@ -11,6 +11,7 @@ cache/
 .marquee-secret
 .marquee-subfiles.json
 .marquee-house.json
+.marquee-power.json
 .marquee-shares.json
 .marquee-invites.json
 *.subsync-tmp
