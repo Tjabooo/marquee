@@ -1,10 +1,10 @@
 [Unit]
-Description=Report to Marquee's House tab every 5 minutes (only on the home network)
+Description=Check every 30 s and report to Marquee's House tab when failed services change, else every 5 min (home network only)
 
 [Timer]
 OnBootSec=2min
-OnUnitActiveSec=5min
-RandomizedDelaySec=30s
+OnUnitActiveSec=30s
+AccuracySec=2s
 
 [Install]
 WantedBy=timers.target
