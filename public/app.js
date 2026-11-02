@@ -2515,12 +2515,21 @@ async function shareClip(c, btn) {
   renderClips();
 }
 const copyLink = (url) => copyWithToast(url, 'Link copied: paste it in Discord');
+async function deleteClip(c) {
+  try {
+    await api(`/api/clips/${c.id}/delete`, { method: 'POST' });
+    toast(`Deleted ${c.title}`);
+  } catch (err) { toast(err.message); }
+  await loadClips();
+  renderClips();
+}
 async function unshareClip(c) {
   try { await api(`/api/clips/${c.id}/unshare`, { method: 'POST' }); toast('Link removed'); } catch (err) { toast(err.message); }
   await loadClips();
   renderClips();
 }
 
+const UNLINK_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 14.5 7.8 16.2a3 3 0 0 1-4.2-4.2l2.6-2.6a3 3 0 0 1 4.2 0M14.5 9.5l1.7-1.7a3 3 0 0 1 4.2 4.2l-2.6 2.6a3 3 0 0 1-4.2 0M4 4l16 16"/></svg>';
 function clipCard(c) {
   const when = new Date(c.mtime).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
   const thumb = h('button', { class: 'clip-thumb', 'aria-label': `Play ${c.title}` },
@@ -2537,13 +2546,27 @@ function clipCard(c) {
   else if (!s.ready) actions = [h('span', { class: 'muted clip-working' }, 'Preparing for Discord…')];
   else actions = [h('button', { class: 'retry', onclick: () => copyLink(link) }, 'Copy link')];
   if (s) actions.push(h('button', { class: 'icon-btn clip-unshare', 'aria-label': 'Stop sharing', title: 'Stop sharing (the link stops working)', onclick: () => unshareClip(c) }));
+  // two taps: the first turns the bin into "Delete?", the second deletes (it waits 30 days in .deleted)
+  const del = h('button', {
+    class: 'icon-btn clip-delete', 'aria-label': `Delete ${c.title}`, title: 'Delete clip',
+    onclick: (e) => {
+      const b = e.currentTarget;
+      if (b.dataset.sure) { b.disabled = true; deleteClip(c); return; }
+      b.dataset.sure = '1';
+      b.classList.add('is-sure');
+      b.textContent = 'Delete?';
+      setTimeout(() => { if (b.isConnected && !b.disabled) { delete b.dataset.sure; b.classList.remove('is-sure'); b.innerHTML = ICONS.trash; } }, 4000);
+    },
+  });
+  actions.push(del);
   const card = h('li', { class: 'clip' }, thumb,
     h('div', { class: 'clip-text' },
       h('div', { class: 'row-title' }, c.title),
       h('div', { class: 'row-meta' }, h('span', {}, c.game), h('span', {}, when), h('span', {}, fmtBytes(c.size)), s?.ready && h('span', { class: 'clip-shared' }, 'shared'))),
     h('div', { class: 'clip-actions' }, actions));
   const un = $('.clip-unshare', card);
-  if (un) un.innerHTML = ICONS.trash;
+  if (un) un.innerHTML = UNLINK_ICON;
+  $('.clip-delete', card).innerHTML = ICONS.trash;
   return card;
 }
 

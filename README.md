@@ -15,7 +15,7 @@ Marquee is a single Node.js process with no dependencies, served as a mobile-fir
 - **Automatic conversion**: MKV, AVI, WebM and similar files get an MP4 copy that plays on iPhone and Apple TV. Streams are copied where possible; video is re-encoded on an NVIDIA GPU (NVENC) or CPU only when needed.
 - **Browser audio fix**: Chrome and Firefox can't decode Dolby (AC3/E-AC3) or DTS. Marquee adds a stereo AAC track so these files play with sound, while TVs still receive the original surround audio.
 - **House** (owner only): the server's disks, qBittorrent, FlareSolverr and AdGuard Home at a glance, plus the Linux machines at home (disk space, failed services, updates, battery, Secure Boot, backups), with anything that needs a look listed at the top.
-- **Clips** (owner only): game clips synced from a PC, grouped by game. **Share** gives a clip a public link that embeds and plays in Discord; sharing makes a Discord-friendly H.264 copy (all audio tracks mixed into one) and unsharing kills the link.
+- **Clips** (owner only): game clips synced from a PC, grouped by game. **Share** gives a clip a public link that embeds and plays in Discord; sharing makes a Discord-friendly H.264 copy (all audio tracks mixed into one) and unsharing kills the link. **Delete** (two taps) removes a clip: it waits 30 days in a hidden `.deleted` folder before it's gone for good.
 - **Invites** (owner only): make a one-time link, send it, and the person enters their email and is added to the Cloudflare email list your Access policy allows, so they can sign in from then on (Google, a one-time email code, whatever you've enabled). Who has access is listed in the Activity tab, with a Remove button.
 - **Discord embeds**: shared clips show up as playable videos, and `/c/` is an invite card for Marquee itself.
 - **Library management**: delete films, single episodes or whole torrents. Files are removed through qBittorrent, together with any copies and subtitles Marquee created.
@@ -339,6 +339,7 @@ Created at runtime and excluded from Git:
 | `.marquee-shares.json` | Shared clips (token → clip) |
 | `.marquee-invites.json` | Invite links and who used them |
 | `cache/clips/` | Clip thumbnails and the Discord-friendly copies of shared clips |
+| `CLIPS_DIR/.deleted/` | Deleted clips, erased automatically after 30 days (move a file back out to restore it) |
 
 ## API
 
@@ -374,6 +375,7 @@ The web client uses a JSON API that can also be scripted. `<kind>` is `lib` for 
 | `GET` | `/api/clips` | Clips and their share state (`ADMIN_EMAILS` only) |
 | `GET` | `/api/clips/<id>/thumb.jpg`, `/api/clips/<id>/video` | Thumbnail and video (`ADMIN_EMAILS` only) |
 | `POST` | `/api/clips/<id>/share`, `/api/clips/<id>/unshare` | Create or remove a public link (`ADMIN_EMAILS` only) |
+| `POST` | `/api/clips/<id>/delete` | Delete a clip: link and copies removed, file moved to `CLIPS_DIR/.deleted/` for 30 days (`ADMIN_EMAILS` only) |
 | `GET` | `/api/access` | Who can sign in + invite links (`ADMIN_EMAILS` only) |
 | `POST` | `/api/access/invite`, `/api/access/invite/<id>/revoke`, `/api/access/remove` | Make or cancel an invite, remove someone's access (`ADMIN_EMAILS` only) |
 | `GET`, `POST` | `/c/i/<token>` | Public: the invite page and its email form |

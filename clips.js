@@ -19,6 +19,7 @@ const FFMPEG = process.env.FFMPEG || 'ffmpeg';
 const FFPROBE = process.env.FFPROBE || 'ffprobe';
 const EXT = new Set(['.mp4', '.mov', '.mkv', '.webm']);
 const SCAN_MS = 30 * 1000;
+const TRASH_DAYS = 30;       // deleted clips wait in CLIPS_DIR/.deleted this long before they're gone for good
 
 let cacheDir = null;
 let sharesFile = null;
@@ -72,6 +73,7 @@ const titleOf = (rel) => path.basename(rel, path.extname(rel)).replace(/[_]+/g, 
 
 export async function scan(force = false) {
   if (!CLIPS_DIR) return [];
+  purgeTrash();
   if (!force && Date.now() - scanned.at < SCAN_MS) return scanned.list;
   const files = await walk(CLIPS_DIR);
   scanned = {
@@ -200,6 +202,32 @@ export async function unshare(id) {
   saveShares();
   await fs.promises.rm(sharePath(c.id), { force: true });
   return { ok: true, title: c.title };
+}
+
+// Delete: the share link and its copy go, the thumbnail goes, and the clip itself moves to
+// CLIPS_DIR/.deleted/ (skipped by the scan, like every dot-folder) where it's erased after
+// TRASH_DAYS. Same drive, so it's a rename: instant, and recoverable until then.
+const trashDir = () => path.join(CLIPS_DIR, '.deleted');
+export async function deleteClip(id) {
+  const c = await byId(id);
+  await unshare(id);
+  await fs.promises.rm(path.join(cacheDir, 'thumbs', `${id}.jpg`), { force: true });
+  await fs.promises.mkdir(trashDir(), { recursive: true });
+  const dest = path.join(trashDir(), `${Date.now()}--${c.rel.replace(/[\\/]/g, '__')}`);
+  await fs.promises.rename(fullPath(c.rel), dest);
+  scanned.at = 0; // next scan starts fresh
+  return { ok: true, title: c.title };
+}
+
+let purgedAt = 0;
+function purgeTrash() {
+  if (Date.now() - purgedAt < 3600 * 1000) return;
+  purgedAt = Date.now();
+  fs.promises.readdir(trashDir()).then((names) => Promise.all(names.map((n) => {
+    const at = Number(n.split('--')[0]);
+    if (at && Date.now() - at > TRASH_DAYS * 86400000) return fs.promises.rm(path.join(trashDir(), n), { force: true });
+    return null;
+  }))).catch(() => { /* no trash yet */ });
 }
 
 // ---------- public share pages (/c/...) ----------
