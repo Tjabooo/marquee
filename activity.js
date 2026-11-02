@@ -21,7 +21,7 @@ export function initActivity({ dataDir }) {
       try { return JSON.parse(l); } catch { return null; }
     }).filter(Boolean);
   } catch { events = []; }
-  for (const e of events) lastSeen.set(e.user, { at: e.at, device: e.device });
+  for (const e of events) lastSeen.set(e.user, { at: e.at, device: e.device, location: e.location || null });
 }
 
 export const adminsConfigured = () => ADMINS.length > 0;
@@ -44,9 +44,22 @@ function deviceOf(req) {
   return browser ? `${os} · ${browser}` : os;
 }
 
+// Approximate IP location supplied by Cloudflare. Never send visitor IPs to a lookup service.
+export function locationOf(req) {
+  if (!req.headers['cf-connecting-ip'] || !req.headers['cf-ray']) return null;
+  const raw = String(req.headers['cf-ipcity'] || '');
+  let city = Buffer.from(raw, 'latin1').toString('utf8');
+  if (city.includes('\uFFFD')) city = raw;
+  try { city = decodeURIComponent(city); } catch { /* already decoded */ }
+  city = city.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 100);
+  const country = String(req.headers['cf-ipcountry'] || '').toUpperCase();
+  const validCountry = /^[A-Z]{2}$/.test(country) && country !== 'XX' ? country : null;
+  return city || validCountry ? { city: city || null, country: validCountry } : null;
+}
+
 // Called for every API request.
 export function seen(req) {
-  lastSeen.set(userOf(req), { at: Date.now(), device: deviceOf(req) });
+  lastSeen.set(userOf(req), { at: Date.now(), device: deviceOf(req), location: locationOf(req) });
 }
 
 // action: download | delete | play | cast | stop | subtitles. Repeats of the same thing by the same
@@ -58,7 +71,7 @@ export function record(req, action, detail, { quietMs = 0, user: who = null } = 
   if (quietMs && Date.now() - (recentKeys.get(key) || 0) < quietMs) return;
   recentKeys.set(key, Date.now());
   if (recentKeys.size > 500) recentKeys.delete(recentKeys.keys().next().value);
-  const entry = { at: Date.now(), user, device: deviceOf(req), action, detail: String(detail || '').slice(0, 300) };
+  const entry = { at: Date.now(), user, device: deviceOf(req), location: locationOf(req), action, detail: String(detail || '').slice(0, 300) };
   events.push(entry);
   if (events.length > KEEP) events = events.slice(-KEEP);
   console.log(`[activity] ${user} (${entry.device}): ${action} ${entry.detail}`);

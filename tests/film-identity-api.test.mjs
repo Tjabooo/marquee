@@ -74,6 +74,56 @@ test('film identification API requires owner access and changes only the selecte
     await request('/api/downloads/add', { link: `magnet:?xt=urn:btih:${'a'.repeat(40)}`, name: 'Verity.2026.1080p', movieId: movies[0].id });
     const downloads = await request('/api/downloads');
     assert.equal(downloads.items[0].tmdbId, movies[0].id, 'Download carries the selected catalogue identity');
+
+    // Two separately authenticated viewers on real HTTP/SSE connections, with no browser or media
+    // mutation. The guest can stream this room's title without exposing their private library.
+    const hostClient = 'host-viewer-123456', guestClient = 'guest-viewer-123456';
+    const room = await request('/api/watch', { id: one.id, clientId: hostClient, position: 30 });
+    const base = `/api/watch/${room.token}`;
+    await request(`${base}/play-link?clientId=${guestClient}`, undefined, 'member@test.local', 403);
+    await request(`${base}/join`, { clientId: guestClient }, 'member@test.local');
+    const streams = [];
+    const events = async (client, email) => {
+      const response = await fetch(`http://127.0.0.1:${port}${base}/events?clientId=${client}`, { headers: { 'cf-access-authenticated-user-email': email } });
+      assert.match(response.headers.get('content-type'), /text\/event-stream/);
+      assert.match(response.headers.get('cache-control'), /no-transform/);
+      const reader = response.body.getReader(); streams.push(reader);
+      let buffer = '';
+      return async (revision) => {
+        while (true) {
+          let end;
+          while ((end = buffer.indexOf('\n\n')) !== -1) {
+            const line = buffer.slice(0, end); buffer = buffer.slice(end + 2);
+            if (!line.startsWith('data: ')) continue;
+            const state = JSON.parse(line.slice(6));
+            if (state.revision >= revision) return state;
+          }
+          const next = await reader.read(); assert.equal(next.done, false); buffer += new TextDecoder().decode(next.value);
+        }
+      };
+    };
+    try {
+      const hostEvents = await events(hostClient, 'owner@test.local');
+      const guestEvents = await events(guestClient, 'member@test.local');
+      await request(`${base}/heartbeat`, { clientId: hostClient, ready: true, rtt: 50 });
+      await request(`${base}/heartbeat`, { clientId: guestClient, ready: true, rtt: 80 }, 'member@test.local');
+      const playing = await request(`${base}/control`, { clientId: hostClient, action: 'play', position: 30 });
+      assert.equal(playing.playing, true); assert.ok(playing.at > playing.serverNow);
+      assert.equal((await hostEvents(playing.revision)).position, 30);
+      assert.equal((await guestEvents(playing.revision)).position, 30);
+      await request(`${base}/control`, { clientId: guestClient, action: 'seek', position: 99 }, 'member@test.local', 403);
+      const buffering = await request(`${base}/heartbeat`, { clientId: guestClient, ready: true, buffering: true }, 'member@test.local');
+      assert.equal(buffering.playing, false); assert.equal((await hostEvents(buffering.revision)).playing, false);
+      const link = await request(`${base}/play-link?clientId=${guestClient}`, undefined, 'member@test.local');
+      assert.ok(link.url.startsWith('/play/lib/'));
+      const byte = await fetch(`http://127.0.0.1:${port}${link.url}`, { headers: { Range: 'bytes=0-0' } });
+      assert.equal(byte.status, 206); await byte.arrayBuffer();
+      assert.equal((await request('/api/library', undefined, 'member@test.local')).items.length, 0);
+      await request(`${base}/leave`, { clientId: hostClient });
+      const remaining = await request(`${base}/heartbeat`, { clientId: guestClient, ready: true }, 'member@test.local');
+      assert.equal(remaining.host, guestClient); assert.equal(remaining.intentPlaying, false);
+      await request(`${base}/leave`, { clientId: guestClient }, 'member@test.local');
+    } finally { await Promise.all(streams.map((s) => s.cancel().catch(() => {}))); }
   } finally {
     child.kill();
     mock.closeAllConnections();

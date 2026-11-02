@@ -33,7 +33,7 @@
 <body>
   <header class="top">
     <div class="top-inner">
-      <h1 class="wordmark">Marquee</h1>
+      <h1 class="wordmark"><a href="/" id="home-link" aria-label="Marquee — Discover">Marquee</a></h1>
       <form class="search" role="search" id="search-form">
         <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
         <label class="sr-only" for="q">Search</label>
@@ -139,6 +139,15 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
       </button>
       <p class="player-title" id="player-title"></p>
+      <button class="watch-start" id="watch-btn" type="button">Watch together</button>
+    </div>
+    <div class="watch-bar" id="watch-bar" hidden>
+      <div class="watch-description"><strong id="watch-status" role="status"></strong><span id="watch-members"></span><small>Subtitles and volume are just for you.</small></div>
+      <div class="watch-actions">
+        <button class="chip" id="watch-ready" type="button" hidden>Ready to watch</button>
+        <button class="chip" id="watch-copy" type="button">Copy invite</button>
+        <button class="chip" id="watch-leave" type="button">Leave room</button>
+      </div>
     </div>
     <p class="player-note" id="player-note" role="status" hidden></p>
     <!-- Big buttons in the middle: play/pause and ±10 s on touch screens, play while paused elsewhere -->

@@ -10,6 +10,7 @@ Marquee is a single Node.js process with no dependencies, served as a mobile-fir
 - **Discover**: trending titles, search, posters and descriptions from TMDB. Titles in your library are marked **In your library**; titles someone else already has on the server are marked **On server** and can be added to your library with one tap instead of being downloaded again.
 - **Film identity**: availability follows the film's TMDB ID. If two films share a title and year, the owner can open **Library → film → Identify film** and choose by poster, release date and description. That choice is saved for that file alone. Downloads started from a film's details remember the selected identity, too. Discover carousels have previous/next arrows as well as touch scrolling.
 - **Library**: poster covers for films and shows, with **Continue watching** and **Leaving soon** shelves, then your downloads, titles added from the server and your collection. Filter by films or shows. Open a title to play, resume or **Keep 7 more days**; shows have a keep-all button above their seasons as well as individual episode controls.
+- **Watch Together**: open a library title in the player, press **Watch together**, then **Copy invite**. Family members sign in normally, join and press **Ready to watch**. The host controls play, pause and seek; subtitle language, size, visibility, offsets and volume stay personal. Rooms wait for buffering viewers and correct small playback drift.
 - **Torrent search**: searches The Pirate Bay and 1337x in parallel, ranked by seeders, with quality filters (4K, 1080p, 720p) and cinema recordings flagged. One tap sends a result to qBittorrent. Searching for a season (“South Park S18”) adds **Get all episodes**: Marquee finds the best torrent for every aired episode and downloads them all, for when there's no good complete-season torrent.
 - **Downloads**: live qBittorrent progress, speed and time remaining, for your own downloads (the owner can switch to everyone's).
 - **Auto-delete**: downloads are deleted 7 days after they finish (the owner can change this), counted per person; a video someone else still has in their library stays.
@@ -351,11 +352,21 @@ There's no separate login. Cloudflare Access adds the signed-in email to every r
 
 ### Activity
 
+City and country appear beside the OS/browser for people and events, using Cloudflare's `CF-IPCity` and `CF-IPCountry` headers. In the domain's Cloudflare dashboard, go to **Rules → Settings → Managed Transforms** and enable **Add visitor location headers**. Location is approximate (VPNs and mobile carriers can change it), not GPS. No external IP lookup service is called. Old events and direct LAN visits have no inferred location; country-only headers still show the country.
+
 The **Activity** tab shows who has been using Marquee and what they did: downloads started, films watched in the browser, casts to TVs, subtitles fetched and deletions. People are identified by the email they log in to Cloudflare Access with, plus the device and browser; visits through the server's local address show up as "Home network". The tab is only shown to the emails listed in `ADMIN_EMAILS`, and only through the Cloudflare address, since local visits have no email. The last 2,000 entries are kept in `.marquee-activity.jsonl`. Logins themselves (who signed in, when, from where) are in the Cloudflare Zero Trust dashboard under **Logs → Access**.
 
 ### Deletion
 
 Deleting a video that belongs to a torrent removes it through qBittorrent, so the torrent stops seeding and no "missing files" errors appear. For multi-file torrents you can delete a single episode (qBittorrent is told not to download it again) or the whole torrent. The MP4 copy, subtitles and audio-fixed copy are deleted too, as are any empty folders left behind.
+
+### Watch Together
+
+Rooms work in the browser player, including fullscreen. Invite URLs are `/?watch=<random token>` and stay behind the existing Cloudflare sign-in. The room grants access to that title without adding it to each guest's library. Up to 12 viewers can join. Casting is outside synchronized playback: leave the room before using a TV receiver.
+
+The server publishes a shared timeline over Server-Sent Events, with heartbeats to keep Cloudflare Tunnel from buffering or closing the connection. Each browser estimates clock offset from low-round-trip-time samples, starts at a shared future time and compensates for message arrival delay. Small drift is corrected with a bounded playback-rate adjustment; larger drift seeks to the shared position. The group pauses when a member buffers or needs an autoplay gesture and resumes when everyone is ready. This reduces skew but does not promise frame-perfect playback on every device or connection. Each viewer streams separately, so server upload bandwidth must cover all viewers.
+
+Only play/pause/seek and readiness enter room state. Caption tracks and manual offsets remain in each viewer's player; party offset buttons do not edit the shared SRT file. The host's departure pauses playback and hands control to a remaining viewer. Dropped viewers have a 20-second reconnect grace period. Rooms are in memory, expire within 24 hours and end when Marquee restarts. Active rooms protect their media against file deletion; normal retention cleanup retries later.
 
 ## Project structure
 
@@ -376,12 +387,14 @@ marquee/
 ├── clips.js              Clips tab, share links and their public pages (/c/)
 ├── invites.js            Invite links → Zero Trust email list (/c/i/)
 ├── accounts.js           Accounts (SQLite): people, settings, libraries, auto-delete, watch progress
+├── watch.js              Watch rooms, participants, readiness and the shared playback clock
 ├── agents/
 │   ├── marquee-house     Health reporter for Linux machines (+ systemd service/timer)
 │   └── marquee-house-boot.{service,timer}   Root timer for `marquee-house boot` (wake / restart into)
 ├── public/
 │   ├── index.html
 │   ├── app.js            Web client
+│   ├── watch-sync.js     Clock compensation, player synchronization and personal subtitle offsets
 │   └── style.css
 ├── .env.example          Configuration template
 ├── setup-autostart.ps1
@@ -419,6 +432,12 @@ The web client uses a JSON API that can also be scripted. `<kind>` is `lib` for 
 | --- | --- | --- |
 | `GET` | `/api/status` | Enabled features |
 | `GET` | `/api/activity` | Recent activity and people (`ADMIN_EMAILS` only) |
+| `POST` | `/api/watch` | Host a library title (`{ id, clientId, position }`), returns a private room token |
+| `GET` | `/api/watch/clock` | Server clock sample for latency compensation |
+| `GET` | `/api/watch/<token>/preview` | Title and host for the join screen (normal sign-in required) |
+| `POST` | `/api/watch/<token>/join`, `/heartbeat`, `/control`, `/leave` | Room membership and playback; all use `clientId`, control adds `{ action, position }`, heartbeat adds `{ ready, buffering, blocked, rtt }` |
+| `GET` | `/api/watch/<token>/events?clientId=` | Immediate timeline updates over SSE (joined viewers only) |
+| `GET` | `/api/watch/<token>/play-link?clientId=` | Browser stream for the room's title (joined viewers only) |
 | `GET` | `/api/trending`, `/api/search?q=` | TMDB titles |
 | `GET` | `/api/library` | Your library (`items`, with `expiresAt`), and what else is on the server (`server`) |
 | `POST` | `/api/library/add` | Add videos already on the server to your library (`{ ids }`) |

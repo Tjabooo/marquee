@@ -1,4 +1,5 @@
 // Marquee web client. Plain ES modules, no build step.
+import { WatchSession, offsetCues } from './watch-sync.js';
 
 const $ = (sel, el = document) => el.querySelector(sel);
 
@@ -61,7 +62,7 @@ async function api(path, opts = {}) {
   }
   let data = {};
   try { data = await r.json(); } catch { /* non-JSON */ }
-  if (!r.ok) throw new Error(data.error || `The server responded with ${r.status}.`);
+  if (!r.ok) throw Object.assign(new Error(data.error || `The server responded with ${r.status}.`), { status: r.status });
   return data;
 }
 
@@ -71,7 +72,7 @@ async function api(path, opts = {}) {
 let signedOutShown = false;
 async function signedOut() {
   let r;
-  try { r = await fetch('/api/me', { redirect: 'manual', cache: 'no-store' }); } catch { return false; } // really offline
+  try { r = await fetch('/api/me', { redirect: 'manual', cache: 'no-store', signal: AbortSignal.timeout(3000) }); } catch { return false; } // really offline
   if (r.type !== 'opaqueredirect') return false;
   if (!signedOutShown) {
     signedOutShown = true;
@@ -2004,6 +2005,115 @@ function openRemote(session, { replace = false } = {}) {
 const video = $('#video');
 let current = null;
 let lastSave = 0;
+let party = null;
+const watchClient = globalThis.crypto?.randomUUID?.() || `${CLIENT_ID}-${Math.random().toString(36).slice(2, 10)}`;
+
+function renderParty() {
+  const bar = $('#watch-bar');
+  bar.hidden = !party;
+  $('#watch-btn').hidden = Boolean(party) || current?.kind !== 'lib' || !state.library.some((f) => f.id === mediaId(current));
+  playerEl.classList.toggle('in-party', Boolean(party));
+  if (!party) return;
+  updatePlayState();
+  const room = party.state;
+  const host = room.members.find((m) => m.id === room.host)?.name || 'Host';
+  const status = !party.connected || !party.online ? 'Reconnecting — playback paused'
+    : party.blocked ? 'Press “Ready to watch” to enable playback'
+      : room.waitingFor.length ? `Waiting for ${room.waitingFor.join(', ')}`
+        : room.playing ? `Watching together · ${room.members.length} viewers` : party.isHost ? 'You’re hosting — press Play when everyone is ready' : `Paused · ${host} controls playback`;
+  if ($('#watch-status').textContent !== status) $('#watch-status').textContent = status;
+  const members = room.members.map((m) => `${m.name}${m.id === room.host ? ' (host)' : ''}${!m.ready || m.buffering || m.blocked ? ' · getting ready' : ''}`).join(' / ');
+  if ($('#watch-members').textContent !== members) $('#watch-members').textContent = members;
+  $('#watch-members').title = members;
+  $('#watch-ready').hidden = !party.blocked;
+  playerEl.classList.toggle('party-guest', !party.isHost);
+  airplayBtn.hidden = true;
+  syncBtn.hidden = true;
+  seekEl.setAttribute('aria-disabled', String(!party.isHost));
+  seekEl.tabIndex = party.isHost ? 0 : -1;
+  for (const b of [...playBtns, ...playerEl.querySelectorAll('.pc-skip')]) {
+    b.disabled = !party.isHost;
+    b.title = party.isHost ? '' : 'The host controls playback';
+  }
+}
+
+function leaveWatchRoom(notify = true) {
+  const old = party;
+  if (!old) return;
+  party = null;
+  old.close({ notify });
+  offsetCues(video.querySelector('track')?.track, 0);
+  video.disableRemotePlayback = false;
+  video.preload = 'metadata';
+  playerEl.classList.remove('party-guest');
+  seekEl.removeAttribute('aria-disabled');
+  seekEl.tabIndex = 0;
+  for (const b of [...playBtns, ...playerEl.querySelectorAll('.pc-skip')]) { b.disabled = false; b.title = ''; }
+  const url = new URL(location.href); url.searchParams.delete('watch'); history.replaceState(null, '', url.pathname + url.search + url.hash);
+  renderParty();
+  if (current) { watchCastTargets(); renderCcMenu(current, current); }
+}
+
+function attachWatchRoom(room) {
+  if (party) leaveWatchRoom();
+  const alreadyPlaying = !video.paused && video.readyState >= 3;
+  video.pause();
+  video.preload = 'auto';
+  video.disableRemotePlayback = true;
+  resetCasting();
+  party = new WatchSession({ video, room, clientId: watchClient, request: api, onState: renderParty,
+    onEnd: (message) => { leaveWatchRoom(false); video.pause(); toast(message); }, onError: toast });
+  if (alreadyPlaying) party.blocked = false;
+  renderParty();
+  return party;
+}
+
+async function hostWatchRoom() {
+  if (!current || current.kind !== 'lib' || party) return;
+  if (onTvVersion || video.remote?.state === 'connected') { toast('Watch Together uses the browser player. Stop casting first.'); return; }
+  const btn = $('#watch-btn'); btn.disabled = true;
+  const media = current;
+  try {
+    const room = await api('/api/watch', jsonPost({ id: mediaId(current), clientId: watchClient, position: video.currentTime || 0 }));
+    if (current !== media) { api(`/api/watch/${room.token}/leave`, jsonPost({ clientId: watchClient })).catch(() => {}); return; }
+    const session = attachWatchRoom(room);
+    await session.start();
+    showPlayerUi();
+    toast('Room ready. Copy the invite to your family.');
+  } catch (err) { leaveWatchRoom(); toast(err.message); }
+  finally { btn.disabled = false; }
+}
+
+async function offerWatchRoom(token) {
+  if (!/^[A-Za-z0-9_-]{24}$/.test(token)) { toast('Invalid watch-room link'); return; }
+  try {
+    const preview = await api(`/api/watch/${token}/preview`);
+    let closed = false;
+    const status = h('p', { class: 'muted', role: 'status' });
+    const join = h('button', { class: 'play-btn', onclick: async () => {
+      join.disabled = true;
+      try {
+        const room = await api(`/api/watch/${token}/join`, jsonPost({ clientId: watchClient }));
+        if (closed) { api(`/api/watch/${token}/leave`, jsonPost({ clientId: watchClient })).catch(() => {}); return; }
+        closeTopOverlay();
+        if (current) closeTopOverlay();
+        await openPlayer({ ...room.media, key: room.media.id, done: true }, { watchRoom: room });
+      } catch (err) { status.textContent = err.message; join.disabled = false; }
+    } }, 'Join and watch');
+    $('#picker-body').replaceChildren(h('h2', { id: 'picker-title' }, 'Watch together'),
+      h('p', { class: 'del-name' }, [preview.media.title, episodeLabel(preview.media)].filter(Boolean).join(' · ')),
+      h('p', { class: 'muted' }, `${preview.host} is hosting. Playback stays together; you choose your own subtitles and volume.`), join, status);
+    pushOverlay(showSheet($('#picker'), $('#picker-backdrop'), () => { closed = true; }));
+  } catch (err) { toast(err.message); }
+}
+
+$('#watch-btn').addEventListener('click', hostWatchRoom);
+$('#watch-ready').addEventListener('click', () => party?.unlock());
+$('#watch-copy').addEventListener('click', () => {
+  if (party) copyWithToast(`${location.origin}/?watch=${party.state.token}`, 'Watch-room invite copied. Everyone uses their usual Marquee sign-in.');
+});
+$('#watch-leave').addEventListener('click', () => { leaveWatchRoom(); video.pause(); toast('Left the watch room'); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden && party) { party.clock().then(() => party?.pulse()).catch(() => {}); } });
 
 function saveProgress(force = false) {
   if (!current || !video.duration || !isFinite(video.duration)) return;
@@ -2048,7 +2158,7 @@ airplayBtn.addEventListener('click', () => {
 });
 if (hasAirPlay) {
   video.addEventListener('webkitplaybacktargetavailabilitychanged', (e) => {
-    airplayBtn.hidden = e.availability !== 'available';
+    airplayBtn.hidden = Boolean(party) || e.availability !== 'available';
   });
   video.addEventListener('webkitcurrentplaybacktargetiswirelesschanged', () => onWireless(video.webkitCurrentPlaybackTargetIsWireless));
 }
@@ -2059,7 +2169,7 @@ if (hasRemotePlayback) {
 
 function watchCastTargets() {
   if (!hasRemotePlayback) return; // Safari reports availability through the event above
-  video.remote.watchAvailability((available) => { airplayBtn.hidden = !available; })
+  video.remote.watchAvailability((available) => { airplayBtn.hidden = Boolean(party) || !available; })
     .then((id) => { remoteWatchId = id; })
     .catch(() => { airplayBtn.hidden = true; });
 }
@@ -2079,13 +2189,14 @@ function swapSource(url) {
   swappingSource = true;
   video.addEventListener('loadedmetadata', () => {
     swappingSource = false;
-    if (at > 1) video.currentTime = at;
+    if (!party && at > 1) video.currentTime = at;
     if (wasPlaying) video.play().catch(() => {});
   }, { once: true });
   video.src = url;
 }
 
 async function onWireless(on) {
+  if (on && party) { leaveWatchRoom(); toast('Left Watch Together: casting is not synchronized.'); }
   const session = current;
   if (!session) return;
   const note = $('#player-note');
@@ -2126,6 +2237,7 @@ function applySubModes() {
   for (const t of video.textTracks) {
     if (t.kind !== 'subtitles') continue;
     const on = Boolean(ccActive) && t.language === ccActive;
+    if (party && on) offsetCues(t, party.offsets[t.language] || 0);
     t.mode = on ? (nativeSubs ? 'showing' : 'hidden') : 'disabled';
     if (on && !nativeSubs) subTrack = t;
   }
@@ -2239,6 +2351,14 @@ function nudgeRow(manual, onNudge) {
 }
 
 function subSyncItems(f, session) {
+  if (party && ccActive) return [
+    h('div', { class: 'cc-divider', role: 'separator' }),
+    h('p', { class: 'cc-message' }, 'Only your subtitles change. Other viewers keep their own settings.'),
+    nudgeRow(party.offsets[ccActive] || 0, (seconds) => {
+      party.offsets[ccActive] = Math.round(((party.offsets[ccActive] || 0) + seconds) * 1000) / 1000;
+      applySubModes(); renderCcMenu(f, session);
+    }),
+  ];
   const s = ccSync;
   if (!ccActive || !s) return [];
   const text = s.state === 'trusted' ? null : subSyncText(s);
@@ -2424,7 +2544,7 @@ async function watchAudio(f, session, target = null) {
     if (target === null) {
       syncShift = a.sync?.shift || 0;
       renderSyncMenu(f, session);
-      syncBtn.hidden = false;
+      syncBtn.hidden = Boolean(party);
     }
     const pendingSync = target !== null && (a.sync?.applied !== target || a.job);
     const videoOk = a.videoSafe !== false;
@@ -2470,8 +2590,9 @@ function switchToFixedAudio(session, message) {
   const base = video.src.replace(/[?&]v=\d+$/, '');
   video.addEventListener('loadedmetadata', () => {
     if (current !== session) return;
-    if (at > 1) video.currentTime = at;
-    if (wasPlaying) video.play().catch(() => {});
+    if (!party && at > 1) video.currentTime = at;
+    if (party) { party.pulse(); party.sync(); }
+    else if (wasPlaying) video.play().catch(() => {});
   }, { once: true });
   video.src = `${base}${base.includes('?') ? '&' : '?'}v=${Date.now()}`; // cache-busting URL
   $('#player-note').hidden = true;
@@ -2578,12 +2699,13 @@ function osd(content) {
 }
 
 function togglePlay(feedback = false) {
+  if (party) { party.control(party.state.intentPlaying ? 'pause' : 'play'); return; }
   const play = video.paused || video.ended;
   if (play) video.play().catch(() => {}); else video.pause();
   if (feedback) osd(icon(play ? 'play' : 'pause'));
 }
 function updatePlayState() {
-  const playing = !video.paused && !video.ended;
+  const playing = party ? party.state.intentPlaying : !video.paused && !video.ended;
   for (const b of playBtns) {
     b.replaceChildren(icon(playing ? 'pause' : 'play'));
     b.setAttribute('aria-label', playing ? 'Pause (Space)' : 'Play (Space)');
@@ -2598,6 +2720,7 @@ let skipTotal = 0;
 let skipAt = 0;
 function skip(seconds) {
   if (!isFinite(video.duration) || !video.duration) return;
+  if (party) { party.control('seek', Math.min(Math.max(video.currentTime + seconds, 0), video.duration - 0.5)); return; }
   const now = Date.now();
   skipTotal = now - skipAt < 1000 && Math.sign(skipTotal) === Math.sign(seconds) ? skipTotal + seconds : seconds;
   skipAt = now;
@@ -2652,6 +2775,7 @@ function showSeekTip(x) {
   seekTip.style.left = `${Math.min(Math.max(x - r.left, half), r.width - half)}px`;
 }
 seekEl.addEventListener('pointerdown', (e) => {
+  if (party && !party.isHost) { toast('The host controls seeking'); return; }
   if (!isFinite(video.duration) || !video.duration) return;
   seekEl.setPointerCapture(e.pointerId);
   seeking = seekTimeAt(e.clientX);
@@ -2665,7 +2789,10 @@ seekEl.addEventListener('pointermove', (e) => {
 });
 function endSeek(apply) {
   if (seeking == null) return;
-  if (apply) video.currentTime = seeking;
+  if (apply) {
+    if (party) party.control('seek', seeking);
+    else video.currentTime = seeking;
+  }
   seeking = null;
   seekEl.classList.remove('is-dragging');
   seekTip.hidden = true;
@@ -2856,7 +2983,11 @@ function toggleHelp() {
 }
 document.addEventListener('click', (e) => { if (!helpEl.hidden && !helpEl.contains(e.target)) helpEl.hidden = true; });
 
-const seekToFraction = (f) => { if (isFinite(video.duration)) { video.currentTime = video.duration * f; updateTime(); } };
+const seekToFraction = (f) => {
+  if (!isFinite(video.duration)) return;
+  if (party) party.control('seek', video.duration * f);
+  else { video.currentTime = video.duration * f; updateTime(); }
+};
 const nudgeVolume = (d) => {
   if (!canSetVolume) return;
   setVolume((video.muted ? 0 : video.volume) + d);
@@ -2885,6 +3016,7 @@ document.addEventListener('keydown', (e) => {
 document.addEventListener('keyup', (e) => { if (e.key === ' ' && playerKeyTarget(e)) e.preventDefault(); });
 
 async function openPlayer(f, opts = {}) {
+  if (party) leaveWatchRoom();
   let src = null; // signed link to the browser version (audio-fixed copy when one exists)
   const opener = document.activeElement;
   const err = $('#player-error');
@@ -2903,6 +3035,7 @@ async function openPlayer(f, opts = {}) {
   showPlayerUi();
   setSpinner(true);
   (opts.replace ? swapTopOverlay : pushOverlay)(() => {
+    leaveWatchRoom();
     setTheme(pageThemeColor);
     saveProgress(true);
     video.pause();
@@ -2927,10 +3060,13 @@ async function openPlayer(f, opts = {}) {
     opener?.focus?.({ preventScroll: true });
     if (state.view === 'library') renderLibrary(); // refresh watched bars
   });
+  const watchSession = opts.watchRoom ? attachWatchRoom(opts.watchRoom) : null;
+  renderParty();
 
   // Get a signed link, then request one byte so server errors can be shown as text.
   try {
-    const link = await api(`/api/play-link?kind=${f.kind}&id=${encodeURIComponent(mediaId(f))}&variant=browser`);
+    const link = await api(watchSession ? `${watchSession.base}/play-link?clientId=${encodeURIComponent(watchClient)}`
+      : `/api/play-link?kind=${f.kind}&id=${encodeURIComponent(mediaId(f))}&variant=browser`);
     src = link.url;
     session.browserName = link.name;
     const r = await fetch(src, { headers: { Range: 'bytes=0-0' } });
@@ -2942,6 +3078,7 @@ async function openPlayer(f, opts = {}) {
     r.body?.cancel();
   } catch (e) {
     if (current !== session) return;
+    if (party === watchSession && watchSession) leaveWatchRoom();
     setSpinner(false);
     err.textContent = e.message;
     err.hidden = false;
@@ -2950,7 +3087,7 @@ async function openPlayer(f, opts = {}) {
 
   if (current !== session) return; // closed while we were checking
   video.src = src;
-  watchCastTargets();
+  if (!party) watchCastTargets();
   if (opts.castHint && canCastFromBrowser) {
     const note = $('#player-note');
     note.textContent = hasAirPlay
@@ -2962,10 +3099,14 @@ async function openPlayer(f, opts = {}) {
   setupPlayerSubs(f, session);
   syncBtn.hidden = true;
   watchAudio(f, session);
-  video.play().catch(() => { /* autoplay blocked: the controls are there */ });
+  if (watchSession) {
+    try { await watchSession.start(); }
+    catch (error) { if (party === watchSession) { leaveWatchRoom(); video.pause(); err.textContent = error.message; err.hidden = false; } }
+  } else video.play().catch(() => { /* autoplay blocked: the controls are there */ });
 }
 
 video.addEventListener('loadedmetadata', () => {
+  if (party) { party.sync(); return; }
   if (swappingSource) return; // swapSource restores the position itself
   const saved = current && savedProgress(current);
   if (saved && saved.time > 30 && saved.time < video.duration - 90) {
@@ -2983,7 +3124,10 @@ video.addEventListener('error', () => {
   err.hidden = !$('#player-note').hidden;
 });
 $('#player-close').addEventListener('click', closeTopOverlay);
-window.addEventListener('pagehide', () => saveProgress(true));
+window.addEventListener('pagehide', () => { saveProgress(true); party?.close(); });
+window.addEventListener('pageshow', (event) => {
+  if (event.persisted && party?.closed) { const token = party.state.token; leaveWatchRoom(false); video.pause(); offerWatchRoom(token); }
+});
 
 // ---------- search box + tabs ----------
 const input = $('#q');
@@ -3218,6 +3362,7 @@ async function personUpdate(u, patch) {
 // ---------- activity (server owner only) ----------
 // Who has been using Marquee and what they did, from the server's activity log.
 const ACTIVITY_TEXT = {
+  watch: (d) => d,
   download: (d) => `started downloading ${d}`,
   delete: (d) => `deleted ${d}`,
   pause: (d) => `paused the download of ${d}`,
@@ -3343,14 +3488,15 @@ function renderActivity() {
   if (state.activityError) { body.replaceChildren(notice('Couldn’t get activity', state.activityError)); return; }
   if (!state.activity) return;
   const q = norm(state.query);
-  const people = state.activity.people.filter((p) => !q || norm(`${p.user} ${p.device}`).includes(q));
-  const events = state.activity.events.filter((e) => !q || norm(`${e.user} ${e.detail} ${e.action}`).includes(q));
-  const out = [...accessSection(), h('h3', { class: 'activity-head' }, 'People')];
+  const people = state.activity.people.filter((p) => !q || norm(`${p.user} ${activityDevice(p)}`).includes(q));
+  const events = state.activity.events.filter((e) => !q || norm(`${e.user} ${e.detail} ${e.action} ${activityDevice(e)}`).includes(q));
+  const out = [...accessSection(), h('h3', { class: 'activity-head' }, 'People'),
+    h('p', { class: 'muted activity-location-note' }, 'Locations are approximate. City names require Cloudflare’s “Add visitor location headers” Managed Transform.')];
   out.push(people.length ? h('ul', { class: 'rows' }, people.map((p) => h('li', { class: 'row' },
     h('span', { class: `activity-dot${Date.now() - p.at < 3 * 60000 ? ' is-on' : ''}`, 'aria-hidden': 'true' }),
     h('span', { class: 'row-text' },
       h('span', { class: 'row-title' }, p.user),
-      h('span', { class: 'row-meta' }, h('span', {}, lastSeenText(p.at)), p.device && h('span', {}, p.device))))))
+      h('span', { class: 'row-meta' }, h('span', {}, lastSeenText(p.at)), h('span', {}, activityDevice(p)))))))
     : h('p', { class: 'muted' }, 'Nobody yet.'));
   out.push(h('h3', { class: 'activity-head' }, 'What happened'));
   if (!events.length) out.push(h('p', { class: 'muted' }, q ? 'Nothing matches.' : 'Nothing has happened yet.'));
@@ -3367,9 +3513,16 @@ function renderActivity() {
       h('span', { class: 'activity-time' }, clock(e.at)),
       h('span', { class: 'row-text' },
         h('span', { class: 'activity-text' }, h('strong', {}, personName(e.user)), ' ', (ACTIVITY_TEXT[e.action] || ((d) => `${e.action} ${d}`))(e.detail)),
-        h('span', { class: 'row-meta' }, h('span', {}, e.device)))));
+        h('span', { class: 'row-meta' }, h('span', {}, activityDevice(e))))));
   }
   body.replaceChildren(...out);
+}
+
+function activityDevice(entry) {
+  const loc = entry.location;
+  let country = loc?.country || '';
+  if (country) { try { country = new Intl.DisplayNames(['en'], { type: 'region' }).of(country); } catch { /* use country code */ } }
+  return [entry.device, [loc?.city, country].filter(Boolean).join(', ') || 'Location unavailable'].filter(Boolean).join(' · ');
 }
 
 // ---------- house (server owner only) ----------
@@ -3743,6 +3896,13 @@ async function setView(view) {
   schedulePoll();
 }
 document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => setView(t.dataset.view)));
+$('#home-link').addEventListener('click', async (e) => {
+  e.preventDefault();
+  disc.list = null; disc.genre = null;
+  state.query = ''; input.value = ''; $('#q-clear').hidden = true;
+  if (state.view === 'discover') { await renderDiscover(); window.scrollTo({ top: 0 }); }
+  else await setView('discover');
+});
 $('#find-torrents').addEventListener('click', (e) => openTorrents({ query: state.query.trim(), opener: e.currentTarget }));
 
 // ---------- start ----------
@@ -3762,5 +3922,7 @@ $('#find-torrents').addEventListener('click', (e) => openTorrents({ query: state
   await Promise.all([loadLibrary(), loadDownloads(), loadSessions(), loadProgress()]);
   const start = prefs().startView;
   if (start && start !== 'discover') { state.view = null; await setView(start); } else renderDiscover();
+  const watchToken = new URL(location.href).searchParams.get('watch');
+  if (watchToken) await offerWatchRoom(watchToken);
   schedulePoll();
 })();

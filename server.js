@@ -20,6 +20,7 @@ import * as invites from './invites.js';
 import * as shows from './shows.js';
 import * as season from './season.js';
 import * as accounts from './accounts.js';
+import { WatchRooms } from './watch.js';
 import { isHomeRequest, describeRequest } from './network.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -49,6 +50,8 @@ function lanAddress() {
   return '127.0.0.1';
 }
 const LAN_IP = lanAddress();
+const watchRooms = new WatchRooms();
+setInterval(() => watchRooms.cleanup(), 3000).unref();
 activity.initActivity({ dataDir: ROOT });
 accounts.initAccounts({ dataDir: ROOT, adminEmails: activity.adminEmails(), mediaDir: MEDIA_DIR });
 house.initHouse({
@@ -728,6 +731,59 @@ async function handleApi(req, res, url) {
   activity.seen(req);
   const user = accounts.userFor(req);
 
+  // Watch-room links still require the normal Cloudflare sign-in. A room grants access to this
+  // one title, without adding it to every participant's library or changing anyone's subtitles.
+  if (p === '/api/watch/clock') return sendJson(res, 200, { serverNow: Date.now() });
+  if (p === '/api/watch' && req.method === 'POST') {
+    const body = await readJson(req);
+    const id = String(body.id || '');
+    const full = librarySource(id);
+    const key = accounts.mediaKey(full);
+    if (!key || !accounts.holders(key).includes(user.id)) throw new HttpError(403, 'Add this title to your library before hosting a room.');
+    if (!isVideo(full) || !fs.existsSync(full)) throw new HttpError(404, 'That video is no longer available.');
+    const info = parseFile(full);
+    const film = info.season == null ? shows.knownFilm(key, info.title, info.year) : null;
+    const room = watchRooms.create(user, { kind: 'lib', id, mediaKey: key, ...info,
+      title: film?.title || info.title, size: fs.statSync(full).size, format: path.extname(full).slice(1) },
+    String(body.clientId || ''), Number(body.position || 0));
+    activity.record(req, 'watch', `started a room for ${info.title}`);
+    return sendJson(res, 200, room);
+  }
+  if ((m = p.match(/^\/api\/watch\/([A-Za-z0-9_-]{24})\/(preview|join|events|heartbeat|control|leave|play-link)$/))) {
+    const [, token, action] = m;
+    if (action === 'preview') return sendJson(res, 200, watchRooms.preview(token));
+    if (req.method === 'POST') {
+      const body = await readJson(req);
+      const client = String(body.clientId || '');
+      if (action === 'join') return sendJson(res, 200, watchRooms.join(token, user, client));
+      if (action === 'heartbeat') return sendJson(res, 200, watchRooms.heartbeat(token, user, client, body));
+      if (action === 'control') return sendJson(res, 200, watchRooms.control(token, user, client, body.action, body.position));
+      if (action === 'leave') { watchRooms.leave(token, user, client); return sendJson(res, 200, { ok: true }); }
+    }
+    const client = String(url.searchParams.get('clientId') || '');
+    const room = watchRooms.room(token);
+    watchRooms.member(room, user, client);
+    if (action === 'play-link') return sendJson(res, 200, await playLink(room.media.kind, room.media.id, 'browser'));
+    if (action === 'events' && req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store, no-transform',
+        'CDN-Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
+      req.socket.setNoDelay(true);
+      res.flushHeaders();
+      const send = (state) => {
+        if (res.destroyed || res.writableEnded) return;
+        res.write(`data: ${JSON.stringify(state)}\n\n`);
+        if (state.left || state.ended) res.end();
+        else if (res.writableLength > 256 * 1024) res.destroy();
+      };
+      res.write('retry: 1000\n\n');
+      const unsubscribe = watchRooms.subscribe(token, user, client, send);
+      const ping = setInterval(() => { if (!res.destroyed) res.write(': keepalive\n\n'); }, 10000);
+      res.on('close', () => { clearInterval(ping); unsubscribe(); });
+      return;
+    }
+    throw new HttpError(405, 'Unsupported watch-room action.');
+  }
+
   // ---- the signed-in person: profile, preferences, watch progress ----
   if (p === '/api/me') {
     if (req.method === 'POST') {
@@ -1290,7 +1346,8 @@ const server = http.createServer(async (req, res) => {
       || (req.method === 'POST' && (url.pathname.startsWith('/api/cast/') || url.pathname === '/api/downloads/add' || url.pathname === '/api/downloads/season' || url.pathname === '/api/subs/fetch' || url.pathname === '/api/subs/sync' || url.pathname === '/api/library/delete' || /^\/api\/downloads\/\w+\/(pause|resume|delete)$/.test(url.pathname) || /^\/api\/media\/\w+\/[\w-]+\/sync$/.test(url.pathname)
         || /^\/api\/house\/(report|boot|power)$/.test(url.pathname) || /^\/api\/clips\/[\w-]+\/(share|unshare|delete|trim)$/.test(url.pathname)
         || /^\/api\/access\/(invite|remove|invite\/\w+\/revoke)$/.test(url.pathname) || /^\/c\/i\/[\w-]+\/?$/.test(url.pathname)
-        || /^\/api\/(me|me\/progress|library\/add|library\/extend|library\/identify|admin\/settings|admin\/users\/\d+)$/.test(url.pathname)));
+        || /^\/api\/(me|me\/progress|library\/add|library\/extend|library\/identify|admin\/settings|admin\/users\/\d+)$/.test(url.pathname)
+        || /^\/api\/watch(?:\/[A-Za-z0-9_-]{24}\/(join|heartbeat|control|leave))?$/.test(url.pathname)));
     if (!allowed) throw new HttpError(405, 'Method not allowed.');
     if (url.pathname.startsWith('/api/')) await handleApi(req, res, url);
     else if (url.pathname.startsWith('/play/')) await handlePlay(req, res, url);
@@ -1451,6 +1508,7 @@ async function deleteMedia(id, scope) {
   const wholeTorrent = torrent && (scope === 'torrent' || torrent.videos.length <= 1);
   const videos = wholeTorrent ? torrent.videos.map((v) => v.full) : [original];
   if (!videos.some((v) => samePath(v, original))) videos.push(original);
+  if (videos.some((v) => watchRooms.protects(accounts.mediaKey(v)))) throw new HttpError(409, 'A Watch Together room is using this video. End the room before deleting it.');
 
   // Remove Marquee's own files first so the folder can be cleaned up.
   for (const v of videos) {
@@ -1494,6 +1552,7 @@ async function deleteDownload(t, withFiles) {
   if (withFiles) {
     const files = await qbit(`/api/v2/torrents/files?hash=${t.hash}`);
     const videos = files.filter((f) => isVideo(f.name)).map((f) => path.join(t.save_path, f.name));
+    if (videos.some((v) => watchRooms.protects(accounts.mediaKey(v)))) throw new HttpError(409, 'A Watch Together room is using a video from this download.');
     if (videos.some((v) => converter.isBusy(v))) throw new HttpError(409, 'A file from this download is being converted right now. Try again when that finishes.');
     for (const v of videos) {
       for (const x of extrasFor(v)) removeFile(x);
