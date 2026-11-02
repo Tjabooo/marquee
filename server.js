@@ -792,6 +792,19 @@ async function handleApi(req, res, url) {
     const page = Math.max(1, Math.min(500, Number(url.searchParams.get('page')) || 1));
     return sendJson(res, 200, await discoverList(url.searchParams.get('key'), page));
   }
+  // A show's seasons (TMDB), for the season chips in the details and show sheets.
+  if ((m = p.match(/^\/api\/tv\/(\d+)\/seasons$/))) {
+    const d = await cachedTmdb(`/tv/${m[1]}`, {}, 6 * 3600 * 1000);
+    const today = new Date().toISOString().slice(0, 10);
+    return sendJson(res, 200, {
+      seasons: (d.seasons || []).filter((x) => x.season_number > 0).map((x) => ({
+        number: x.season_number,
+        name: x.name || `Season ${x.season_number}`,
+        episodes: x.episode_count || null,
+        upcoming: !x.air_date || x.air_date > today,
+      })),
+    });
+  }
   if (p === '/api/discover/genres') {
     return sendJson(res, 200, { genres: await genres() });
   }

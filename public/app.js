@@ -533,6 +533,7 @@ function renderShow() {
         show.rating && h('li', {}, `★ ${show.rating}`),
         h('li', {}, `${plural(episodeCount(files), 'episode')} here`)),
       show.overview && h('p', { class: 'overview' }, show.overview),
+      !open || single ? state.status.torrents && seasonStrip({ id: show.tmdbId, title: show.title }, files) : null,
       ...content));
 }
 
@@ -793,6 +794,16 @@ for (const [sheetSel, backdropSel] of [['#sheet', '#sheet-backdrop'], ['#picker'
 
 function openDetails(t, opener) {
   const files = matchesFor(t);
+  const isTv = t.type === 'tv';
+  const findBtn = state.status.torrents && h('button', {
+    class: 'find-btn',
+    onclick: (e) => openTorrents({
+      query: isTv ? t.title : [t.title, t.year].filter(Boolean).join(' '),
+      type: isTv ? 'tv' : 'movie',
+      label: t.title,
+      opener: e.currentTarget,
+    }),
+  }, icon('download'), files.some((f) => f.done) ? 'Find another version' : 'Find a download');
   $('#sheet-body').replaceChildren(
     h('div', { class: `sheet-hero${t.backdrop ? '' : ' no-image'}`, style: t.backdrop ? `background-image:url("${t.backdrop}")` : null }),
     h('div', { class: 'sheet-content' },
@@ -802,20 +813,59 @@ function openDetails(t, opener) {
         h('li', {}, t.type === 'tv' ? 'Series' : 'Film'),
         t.rating && h('li', {}, `★ ${t.rating}`)),
       t.overview && h('p', { class: 'overview' }, t.overview),
+      // Shows: downloading comes first (a season chip per season), then what's here folded by season,
+      // so a show with many episodes on the server doesn't push the buttons far down.
+      ...(isTv ? [findBtn, state.status.torrents && seasonStrip(t, files)] : []),
       h('h3', {}, 'On this server'),
-      files.length
-        ? h('ul', { class: 'rows' }, files.map(fileRow))
-        : h('p', { class: 'muted' }, 'Not on this server yet.'),
-      state.status.torrents && h('button', {
-        class: 'find-btn',
-        onclick: (e) => openTorrents({
-          query: t.type === 'tv' ? t.title : [t.title, t.year].filter(Boolean).join(' '),
-          type: t.type === 'tv' ? 'tv' : 'movie',
-          label: t.title,
-          opener: e.currentTarget,
-        }),
-      }, icon('download'), files.some((f) => f.done) ? 'Find another version' : 'Find a download')));
+      !files.length ? h('p', { class: 'muted' }, 'Not on this server yet.')
+        : isTv ? seasonGroups(files)
+          : h('ul', { class: 'rows' }, files.map(fileRow)),
+      !isTv && findBtn));
   pushOverlay(showSheet($('#sheet'), $('#sheet-backdrop'), () => opener?.focus({ preventScroll: true })));
+}
+
+// Episodes on the server, one collapsible line per season (loose files and season packs first).
+function seasonGroups(files) {
+  const loose = files.filter((f) => f.season == null);
+  const bySeason = new Map();
+  for (const f of files.filter((x) => x.season != null).sort((a, b) => a.season - b.season || a.episode - b.episode)) {
+    if (!bySeason.has(f.season)) bySeason.set(f.season, []);
+    bySeason.get(f.season).push(f);
+  }
+  return h('div', { class: 'season-groups' },
+    loose.length > 0 && h('ul', { class: 'rows' }, loose.map(fileRow)),
+    [...bySeason].map(([n, eps]) => {
+      const busy = eps.filter((f) => !f.done).length;
+      return h('details', { class: 'season-group' },
+        h('summary', {},
+          h('span', { class: 'row-title' }, seasonName(n)),
+          h('span', { class: 'row-meta' }, h('span', {}, plural(episodeCount(eps), 'episode')), busy > 0 && h('span', {}, `${busy} downloading`))),
+        h('ul', { class: 'rows' }, eps.map(fileRow)));
+    }));
+}
+
+// "Get a season": a chip per TMDB season (✓ complete here, 3/10 partly here, soon = not aired yet);
+// a tap searches torrents for that season, where "Get all episodes" can fetch it episode by episode.
+function seasonStrip(t, files) {
+  const box = h('div', { class: 'season-strip' });
+  if (!t.id) return box;
+  api(`/api/tv/${t.id}/seasons`).then(({ seasons }) => {
+    if (!seasons.length) return;
+    const chips = seasons.map((se) => {
+      const have = episodeCount(files.filter((f) => f.season === se.number && f.episode != null));
+      const full = se.episodes && have >= se.episodes;
+      const label = full ? `S${pad2(se.number)} ✓` : have ? `S${pad2(se.number)} · ${have}/${se.episodes || '?'}` : `S${pad2(se.number)}`;
+      return h('button', {
+        type: 'button',
+        class: `chip season-chip${full ? ' is-full' : have ? ' is-partial' : ''}`,
+        title: `${se.name}${se.episodes ? `, ${plural(se.episodes, 'episode')}` : ''}${have ? `, ${have} on the server` : ''}`,
+        disabled: se.upcoming && !have ? true : null,
+        onclick: (e) => openTorrents({ query: `${t.title} S${pad2(se.number)}`, type: 'tv', label: `${t.title}, ${se.name}`, opener: e.currentTarget }),
+      }, se.upcoming && !have ? `${label} · soon` : label);
+    });
+    box.replaceChildren(h('h3', {}, 'Get a season'), h('div', { class: 'season-chips' }, chips));
+  }).catch(() => {});
+  return box;
 }
 
 // ---------- casting: device picker ----------

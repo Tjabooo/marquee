@@ -1027,3 +1027,24 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .season-dl-btn.play-btn { height: 40px; padding: 0 14px; border-radius: 12px; color: var(--velvet); background: var(--bulb); font-weight: 700; }
 .season-dl-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.4; }
 .season-dl-btn.play-btn.is-added { color: var(--bulb); background: var(--bulb-dim); }
+
+/* Show sheets: season chips (get a season) and episodes folded per season */
+.season-strip:empty { display: none; }
+.season-strip { margin: 16px 0 22px; }
+.season-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.season-chip { height: 32px; padding: 0 12px; font-size: 13px; color: var(--paper); }
+.season-chip.is-full { color: var(--dust); border-style: dashed; }
+.season-chip.is-partial { border-color: var(--bulb); }
+.season-chip:disabled { opacity: 0.45; }
+.season-groups { display: grid; gap: 8px; margin-bottom: 22px; }
+.season-group { border-radius: 14px; background: var(--seat); }
+.season-group > summary {
+  display: flex; align-items: baseline; gap: 12px; padding: 14px; cursor: pointer;
+  list-style: none;
+}
+.season-group > summary::-webkit-details-marker { display: none; }
+.season-group > summary::after { content: "›"; margin-left: auto; color: var(--dust); transition: transform 0.2s; }
+.season-group[open] > summary::after { transform: rotate(90deg); }
+.season-group > .rows { padding: 0 6px 6px; }
+.season-group .row { background: var(--curtain); }
+.sheet-content > .find-btn { margin: 4px 0 0; }
