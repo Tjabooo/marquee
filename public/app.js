@@ -2286,6 +2286,7 @@ const ACTIVITY_TEXT = {
   stop: (d) => `stopped ${d}`,
   subtitles: (d) => `got ${d}`,
   share: (d) => `shared the clip ${d}`,
+  trim: (d) => `trimmed the clip ${d}`,
   invite: (d) => `made an invite link (${d})`,
   joined: (d) => `joined Marquee (${d})`,
   revoke: (d) => `removed ${d}’s access`,
@@ -2515,6 +2516,73 @@ async function shareClip(c, btn) {
   renderClips();
 }
 const copyLink = (url) => copyWithToast(url, 'Link copied: paste it in Discord');
+// ---------- clip trimmer (lossless: the server copies, never re-encodes) ----------
+const fmtT = (t) => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, '0')}`;
+async function openTrim(c, opener) {
+  const video = h('video', { class: 'trim-video', src: `/api/clips/${c.id}/video`, controls: true, playsinline: true, preload: 'auto' });
+  const info = h('p', { class: 'muted trim-info' }, 'Loading keyframes…');
+  const startOut = h('strong', {}, '0:00.0');
+  const endOut = h('strong', {}, '…');
+  const delOrig = h('input', { type: 'checkbox', id: 'trim-del' });
+  const save = h('button', { class: 'play-btn trim-save', disabled: true }, 'Save trimmed copy');
+  let keys = [0];
+  let start = 0;
+  let end = null;
+  // what the server will actually do: start at the keyframe at or before the chosen point
+  const snap = (t) => keys.filter((k) => k <= t + 0.001).pop() ?? 0;
+  const show = () => {
+    const from = snap(start);
+    startOut.textContent = fmtT(from);
+    endOut.textContent = end == null ? '…' : fmtT(end);
+    const ok = end != null && end - from >= 1;
+    save.disabled = !ok;
+    info.textContent = !ok ? 'Scrub the video, then set the start and the end (at least 1 s apart).'
+      : `${fmtT(end - from)} long${from < start - 0.05 ? ` · starts ${(start - from).toFixed(1)} s early, on the nearest keyframe` : ''} · no re-encoding, same quality`;
+  };
+  const preview = async () => {
+    const from = snap(start);
+    video.currentTime = from;
+    await video.play().catch(() => {});
+    const stop = () => { if (end != null && video.currentTime >= end) { video.pause(); video.removeEventListener('timeupdate', stop); } };
+    video.addEventListener('timeupdate', stop);
+  };
+  save.addEventListener('click', async () => {
+    save.disabled = true;
+    save.textContent = 'Saving…';
+    try {
+      const r = await api(`/api/clips/${c.id}/trim`, jsonPost({ start, end, deleteOriginal: delOrig.checked }));
+      toast(`Saved “${r.title}”`);
+      closeTopOverlay();
+      await loadClips();
+      renderClips();
+    } catch (err) {
+      toast(err.message);
+      save.textContent = 'Save trimmed copy';
+      show();
+    }
+  });
+  $('#sheet-body').replaceChildren(h('div', { class: 'sheet-content trim' },
+    h('h2', { id: 'sheet-title' }, `Trim · ${c.title}`),
+    video,
+    h('div', { class: 'trim-marks' },
+      h('button', { class: 'retry', onclick: () => { start = video.currentTime; if (end != null && end <= start) end = null; show(); } }, 'Start here'),
+      h('span', { class: 'trim-range' }, startOut, ' → ', endOut),
+      h('button', { class: 'retry', onclick: () => { end = video.currentTime; show(); } }, 'End here')),
+    info,
+    h('div', { class: 'trim-actions' },
+      h('button', { class: 'retry', onclick: preview }, 'Preview'),
+      save),
+    h('label', { class: 'trim-del', for: 'trim-del' }, delOrig, ' Move the original to Deleted afterwards (kept 30 days)')));
+  pushOverlay(showSheet($('#sheet'), $('#sheet-backdrop'), () => { video.pause(); video.removeAttribute('src'); video.load(); opener?.focus({ preventScroll: true }); }));
+  video.addEventListener('loadedmetadata', () => { if (end == null) { end = video.duration; show(); } }, { once: true });
+  try {
+    const k = await api(`/api/clips/${c.id}/keyframes`);
+    keys = k.keyframes.length ? k.keyframes : [0];
+    if (end == null && k.duration) end = k.duration;
+    show();
+  } catch (err) { info.textContent = `Couldn’t read the clip: ${err.message}`; }
+}
+
 async function deleteClip(c) {
   try {
     await api(`/api/clips/${c.id}/delete`, { method: 'POST' });
@@ -2558,6 +2626,7 @@ function clipCard(c) {
       setTimeout(() => { if (b.isConnected && !b.disabled) { delete b.dataset.sure; b.classList.remove('is-sure'); b.innerHTML = ICONS.trash; } }, 4000);
     },
   });
+  actions.push(h('button', { class: 'icon-btn clip-trim', 'aria-label': `Trim ${c.title}`, title: 'Trim (no quality loss)', onclick: (e) => openTrim(c, e.currentTarget) }));
   actions.push(del);
   const card = h('li', { class: 'clip' }, thumb,
     h('div', { class: 'clip-text' },
@@ -2567,6 +2636,7 @@ function clipCard(c) {
   const un = $('.clip-unshare', card);
   if (un) un.innerHTML = UNLINK_ICON;
   $('.clip-delete', card).innerHTML = ICONS.trash;
+  $('.clip-trim', card).innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M8.6 7.5 20 18M8.6 16.5 20 6"/></svg>';
   return card;
 }
 

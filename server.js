@@ -656,6 +656,13 @@ async function handleApi(req, res, url) {
       return res.end(data);
     }
     if ((m = p.match(/^\/api\/clips\/([\w-]{16})\/video$/))) return sendVideo(req, res, await clips.clipFile(m[1]));
+    if ((m = p.match(/^\/api\/clips\/([\w-]{16})\/keyframes$/))) return sendJson(res, 200, await clips.trimInfo(m[1]));
+    if ((m = p.match(/^\/api\/clips\/([\w-]{16})\/trim$/)) && req.method === 'POST') {
+      const { start, end, deleteOriginal } = await readJson(req);
+      const r = await clips.trim(m[1], start, end, { deleteOriginal: Boolean(deleteOriginal) });
+      activity.record(req, 'trim', r.original);
+      return sendJson(res, 200, r);
+    }
     if ((m = p.match(/^\/api\/clips\/([\w-]{16})\/delete$/)) && req.method === 'POST') {
       const r = await clips.deleteClip(m[1]);
       activity.record(req, 'delete', `the clip ${r.title}`);
@@ -972,7 +979,7 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost');
     const allowed = req.method === 'GET' || req.method === 'HEAD'
       || (req.method === 'POST' && (url.pathname.startsWith('/api/cast/') || url.pathname === '/api/downloads/add' || url.pathname === '/api/subs/fetch' || url.pathname === '/api/subs/sync' || url.pathname === '/api/library/delete' || /^\/api\/downloads\/\w+\/(pause|resume|delete)$/.test(url.pathname) || /^\/api\/media\/\w+\/[\w-]+\/sync$/.test(url.pathname)
-        || url.pathname === '/api/house/report' || /^\/api\/clips\/[\w-]+\/(share|unshare|delete)$/.test(url.pathname)
+        || url.pathname === '/api/house/report' || /^\/api\/clips\/[\w-]+\/(share|unshare|delete|trim)$/.test(url.pathname)
         || /^\/api\/access\/(invite|remove|invite\/\w+\/revoke)$/.test(url.pathname) || /^\/c\/i\/[\w-]+\/?$/.test(url.pathname)));
     if (!allowed) throw new HttpError(405, 'Method not allowed.');
     if (url.pathname.startsWith('/api/')) await handleApi(req, res, url);

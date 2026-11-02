@@ -61,10 +61,11 @@ async function walk(dir, rel = '', depth = 0, out = []) {
   return out;
 }
 
-// "Kept/Counter-Strike 2/clip.mp4" → game "Counter-Strike 2"; "Trimmed Clips/x.mp4" → "Trimmed".
+// "Kept/Counter-Strike 2/clip.mp4" → game "Counter-Strike 2"; trims made in Marquee keep their game
+// ("Trimmed Clips/<Game>/x.mp4"); the desktop's flat "Trimmed Clips/x.mp4" → "Trimmed".
 function gameOf(rel) {
   const parts = rel.split('/');
-  if (parts[0] === 'Kept' && parts.length > 2) return parts[1];
+  if ((parts[0] === 'Kept' || parts[0] === 'Trimmed Clips') && parts.length > 2) return parts[1];
   if (parts[0] === 'Trimmed Clips') return 'Trimmed';
   return parts.length > 1 ? parts[parts.length - 2] : 'Clips';
 }
@@ -202,6 +203,55 @@ export async function unshare(id) {
   saveShares();
   await fs.promises.rm(sharePath(c.id), { force: true });
   return { ok: true, title: c.title };
+}
+
+// ---------- lossless trimming ----------
+// Stream copy: nothing is re-encoded, so quality is identical to the original and no GPU is used.
+// The catch: a copy can only start on a keyframe, so the start snaps back to the keyframe at or
+// before the chosen point (the UI shows where). The end is cut where asked. All tracks are kept.
+async function keyframeTimes(file) {
+  // packet flags only: no decoding, so it's fast even for AV1 on a GPU that can't decode it
+  const out = await run(FFPROBE, ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'packet=pts_time,flags', '-of', 'csv=p=0', file]);
+  const keys = [];
+  for (const line of out.split(/\r?\n/)) {
+    const [t, flags] = line.split(',');
+    if (flags?.includes('K') && Number.isFinite(Number(t))) keys.push(Number(t));
+  }
+  return keys.sort((a, b) => a - b);
+}
+export async function trimInfo(id) {
+  const c = await byId(id);
+  const file = fullPath(c.rel);
+  const [{ duration }, keys] = await Promise.all([probe(file), keyframeTimes(file)]);
+  const first = keys[0] || 0; // container start offset: everything below is relative to it
+  return { duration, keyframes: keys.map((k) => Math.round((k - first) * 1000) / 1000) };
+}
+export async function trim(id, start, end, { deleteOriginal = false } = {}) {
+  const c = await byId(id);
+  const src = fullPath(c.rel);
+  const { duration, keyframes } = await trimInfo(id);
+  start = Number(start); end = Number(end);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end > duration + 0.05 || end - start < 1) {
+    throw Object.assign(new Error('Pick a start and an end at least 1 second apart.'), { status: 400 });
+  }
+  const from = keyframes.filter((k) => k <= start + 0.001).pop() ?? 0;
+  const dir = path.join(CLIPS_DIR, 'Trimmed Clips', c.game === 'Trimmed' ? '' : c.game);
+  await fs.promises.mkdir(dir, { recursive: true });
+  const base = `${c.title} (trim)`;
+  let name = `${base}.mp4`;
+  for (let i = 2; fs.existsSync(path.join(dir, name)); i++) name = `${base} ${i}.mp4`;
+  const dest = path.join(dir, name);
+  const tmp = `${dest}.marquee-tmp.mp4`;
+  try {
+    await run(FFMPEG, ['-hide_banner', '-nostdin', '-y', '-ss', String(from), '-i', src, '-t', String(end - from),
+      '-map', '0', '-c', 'copy', '-avoid_negative_ts', 'make_zero', '-movflags', '+faststart', tmp]);
+    await fs.promises.rename(tmp, dest);
+  } finally {
+    await fs.promises.rm(tmp, { force: true });
+  }
+  scanned.at = 0;
+  if (deleteOriginal) await deleteClip(id);
+  return { ok: true, title: path.basename(name, '.mp4'), start: from, end, original: c.title };
 }
 
 // Delete: the share link and its copy go, the thumbnail goes, and the clip itself moves to
