@@ -137,7 +137,8 @@ export async function thumbnail(id) {
 }
 
 // A copy Discord (and every browser) plays: H.264 8-bit, at most 1080p, one stereo AAC track
-// that mixes every audio track of the original.
+// that mixes every audio track of the original. Clips with 4+ tracks (clip-replay and Clipper since
+// 2026-11-02) already start with that mix (ALL, then game / friends / mic), so it's used as is.
 const sharePath = (id) => path.join(cacheDir, 'share', `${id}.mp4`);
 function makeShareCopy(c) {
   if (jobs.has(c.id)) return jobs.get(c.id);
@@ -148,7 +149,8 @@ function makeShareCopy(c) {
     if (!v) throw new Error('No video in this clip.');
     const tmp = `${sharePath(c.id)}.marquee-tmp.mp4`;
     const args = ['-hide_banner', '-nostdin', '-y', '-i', src, '-map', '0:v:0'];
-    if (audio.length > 1) {
+    if (audio.length >= 4) args.push('-map', '0:a:0');
+    else if (audio.length > 1) {
       args.push('-filter_complex', `${audio.map((_, i) => `[0:a:${i}]`).join('')}amix=inputs=${audio.length}:duration=longest:normalize=0,alimiter=limit=0.95[a]`, '-map', '[a]');
     } else if (audio.length === 1) args.push('-map', '0:a:0');
     if ((v.height || 0) > 1080) args.push('-vf', 'scale=-2:1080');

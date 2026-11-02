@@ -101,6 +101,7 @@ const state = {
   query: '',
   status: { search: false, library: false, downloads: false, torrents: false, subtitles: false },
   library: [],
+  libraryShows: [], // episodes grouped into shows (server side, TMDB posters per season)
   libraryError: null,
   downloads: [],
   downloadsError: null,
@@ -116,8 +117,8 @@ function localFiles() {
 function matchesFor(t) {
   const n = norm(t.title);
   return localFiles()
-    .filter((f) => norm(f.title) === n &&
-      (t.type === 'tv' || !f.year || !t.year || Math.abs(f.year - t.year) <= 1))
+    .filter((f) => (t.type === 'tv' && f.show && f.show === `tv-${t.id}`) || (norm(f.title) === n &&
+      (t.type === 'tv' || !f.year || !t.year || Math.abs(f.year - t.year) <= 1)))
     .sort((a, b) => (a.season ?? 0) - (b.season ?? 0) || (a.episode ?? 0) - (b.episode ?? 0));
 }
 
@@ -350,7 +351,9 @@ async function renderDiscover() {
 async function loadLibrary() {
   if (!state.status.library) return;
   try {
-    state.library = (await api('/api/library')).items;
+    const data = await api('/api/library');
+    state.library = data.items;
+    state.libraryShows = data.shows || [];
     state.libraryError = null;
   } catch (err) {
     state.libraryError = err.message;
@@ -404,7 +407,9 @@ function renderLibrary() {
     return;
   }
   const q = norm(state.query);
-  const items = state.library.filter((f) => !q || norm(f.title).includes(q) || norm(f.file).includes(q));
+  const showsById = new Map(state.libraryShows.map((x) => [x.id, x]));
+  const items = state.library.filter((f) => !q || norm(f.title).includes(q) || norm(f.file).includes(q)
+    || norm(showsById.get(f.show)?.title).includes(q) || norm(f.episodeName).includes(q));
   if (!state.library.length) {
     body.replaceChildren(notice('Nothing here yet', 'Video files you add to the media folder show up here within 30 seconds.'));
     return;
@@ -413,7 +418,19 @@ function renderLibrary() {
     body.replaceChildren(notice(`Nothing matches “${state.query.trim()}”`, 'Try part of the title instead.'));
     return;
   }
-  body.replaceChildren(h('div', { class: 'dl convert-banner', id: 'convert-banner', hidden: true }), h('ul', { class: 'rows' }, items.map((f) => {
+  // One entry per show (its seasons and episodes are behind it), films as their own rows. The list is
+  // newest first, so a show sits where its latest episode would.
+  const entries = [];
+  const byShow = new Map();
+  for (const f of items) {
+    const show = f.show && showsById.get(f.show);
+    if (!show) { entries.push({ file: f }); continue; }
+    if (!byShow.has(show.id)) { const e = { show, files: [] }; byShow.set(show.id, e); entries.push(e); }
+    byShow.get(show.id).files.push(f);
+  }
+  body.replaceChildren(h('div', { class: 'dl convert-banner', id: 'convert-banner', hidden: true }), h('ul', { class: 'rows' }, entries.map((e) => {
+    if (e.show) return showRow(e.show, e.files);
+    const f = e.file;
     const row = fileRow({ ...f, kind: 'lib', key: f.id, done: true });
     // Title on the first line, episode on the meta line.
     row.querySelector('.row-title').textContent = f.title + (f.year ? ` (${f.year})` : '');
@@ -422,6 +439,101 @@ function renderLibrary() {
     return row;
   })));
   renderConvertBanner();
+  if (showView.id) renderShow(); // an open show follows deletions and new episodes
+}
+
+// ---------- Library: shows ----------
+const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const episodeCount = (files) => new Set(files.map((f) => `${f.season}:${f.episode}`)).size;
+const seasonName = (n) => (n === 0 ? 'Specials' : `Season ${n}`);
+
+function showRow(show, files) {
+  const seasons = [...new Set(files.map((f) => f.season))].sort((a, b) => a - b);
+  const meta = [seasons.length === 1 ? seasonName(seasons[0]) : plural(seasons.length, 'season'), plural(episodeCount(files), 'episode')];
+  const name = show.title + (show.year ? ` (${show.year})` : '');
+  return h('li', {},
+    h('button', { class: 'row show-row', 'aria-label': `${name}: ${meta.join(', ')}`, onclick: (e) => openShow(show.id, e.currentTarget) },
+      h('span', { class: 'show-thumb', 'aria-hidden': 'true' },
+        show.poster ? h('img', { src: show.poster, alt: '', loading: 'lazy', decoding: 'async' }) : show.title.slice(0, 1)),
+      h('span', { class: 'row-text' },
+        h('span', { class: 'row-title' }, name),
+        h('span', { class: 'row-meta' }, meta.map((m) => h('span', {}, m)))),
+      h('span', { class: 'show-chevron' }, icon('back'))));
+}
+
+// The show sheet: seasons as poster cards (TMDB's poster for each season), then a season's episodes.
+// A show with one season on the server opens straight on its episodes.
+const showView = { id: null, season: null };
+function openShow(id, opener) {
+  showView.id = id;
+  showView.season = null;
+  renderShow();
+  pushOverlay(showSheet($('#sheet'), $('#sheet-backdrop'), () => {
+    showView.id = null;
+    opener?.focus({ preventScroll: true });
+  }));
+}
+
+function renderShow() {
+  const show = state.libraryShows.find((x) => x.id === showView.id);
+  const files = state.library.filter((f) => f.show === showView.id);
+  if (!show || !files.length) { // its last episode was just deleted
+    $('#sheet-body').replaceChildren(h('div', { class: 'sheet-content' }, h('h2', { id: 'sheet-title' }, show?.title || 'Show'),
+      h('p', { class: 'muted' }, 'No episodes of this show are left on the server.')));
+    return;
+  }
+  const seasons = show.seasons.filter((se) => files.some((f) => f.season === se.number));
+  const single = seasons.length === 1;
+  let open = single ? seasons[0] : seasons.find((se) => se.number === showView.season);
+  const pick = (n) => { showView.season = n; renderShow(); $('#sheet').scrollTo({ top: 0, behavior: 'smooth' }); };
+
+  let content;
+  if (!open) {
+    content = [
+      h('h3', {}, 'Seasons'),
+      h('ul', { class: 'grid season-grid' }, seasons.map((se) => {
+        const n = episodeCount(files.filter((f) => f.season === se.number));
+        return h('li', {},
+          h('button', { class: 'title-card', onclick: () => pick(se.number) },
+            h('div', { class: 'poster' },
+              se.poster ? h('img', { src: se.poster, alt: '', loading: 'lazy', decoding: 'async' }) : h('div', { class: 'poster-fallback' }, se.name)),
+            h('div', { class: 'name' }, se.name),
+            h('div', { class: 'sub' }, se.total ? `${n} of ${se.total} episodes` : plural(n, 'episode'))));
+      })),
+    ];
+  } else {
+    const eps = files.filter((f) => f.season === open.number)
+      .sort((a, b) => a.episode - b.episode || a.file.localeCompare(b.file));
+    const n = episodeCount(eps);
+    content = [
+      !single && h('button', { class: 'chip season-back', onclick: () => pick(null) }, icon('back'), 'All seasons'),
+      h('div', { class: 'season-head' },
+        h('div', { class: 'poster season-poster' },
+          open.poster ? h('img', { src: open.poster, alt: '' }) : h('div', { class: 'poster-fallback' }, open.name)),
+        h('div', {},
+          h('h3', {}, open.name),
+          h('p', { class: 'muted' }, open.total ? `${n} of ${open.total} episodes on the server` : `${plural(n, 'episode')} on the server`))),
+      h('ul', { class: 'rows' }, eps.map((f) => {
+        const row = fileRow({ ...f, kind: 'lib', key: f.id, done: true });
+        row.querySelector('.row-title').textContent = `${f.episode}. ${f.episodeName || `Episode ${f.episode}`}`;
+        row.querySelector('.row-title').title = f.file;
+        row.querySelector('.row-meta').prepend(h('span', {}, episodeLabel(f)));
+        return row;
+      })),
+    ];
+  }
+
+  $('#sheet-body').replaceChildren(
+    h('div', { class: `sheet-hero${show.backdrop ? '' : ' no-image'}`, style: show.backdrop ? `background-image:url("${show.backdrop}")` : null }),
+    h('div', { class: 'sheet-content' },
+      h('h2', { id: 'sheet-title' }, show.title),
+      h('ul', { class: 'facts' },
+        show.year && h('li', {}, show.year),
+        h('li', {}, 'Series'),
+        show.rating && h('li', {}, `★ ${show.rating}`),
+        h('li', {}, `${plural(episodeCount(files), 'episode')} here`)),
+      show.overview && h('p', { class: 'overview' }, show.overview),
+      ...content));
 }
 
 // ---------- Downloads ----------

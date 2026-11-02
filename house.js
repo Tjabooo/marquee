@@ -362,7 +362,19 @@ export async function houseReport() {
   return { checkedAt: Date.now(), server, machines: list, power: powerList, issues, agents: houseConfigured() };
 }
 
+// For the machines themselves (token + LAN only): waybar's house dot and the MAGI panel on the desktop.
 export async function houseSummary() {
   const r = await houseReport();
-  return { ok: r.issues.length === 0, issues: r.issues, machines: r.machines.filter((m) => !m.away).map((m) => m.host) };
+  return {
+    ok: r.issues.length === 0,
+    issues: r.issues,
+    machines: r.machines.filter((m) => !m.away).map((m) => m.host),
+    away: r.machines.filter((m) => m.away).map((m) => m.host),
+    server: {
+      name: r.server.name,
+      uptime: r.server.uptime,
+      disks: r.server.disks.map((d) => ({ label: d.label, free: d.size - d.used, size: d.size })),
+      services: r.server.services.map((x) => ({ name: x.name, ok: x.ok })),
+    },
+  };
 }

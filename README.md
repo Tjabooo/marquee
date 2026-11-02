@@ -7,7 +7,7 @@ Marquee is a single Node.js process with no dependencies, served as a mobile-fir
 ## Features
 
 - **Discover**: trending titles, search, posters and descriptions from TMDB, with titles you already have marked as on the server.
-- **Library**: every video in your media folder, grouped by title with season and episode detection. Remembers where you stopped watching.
+- **Library**: every video in your media folder. Episodes are grouped into one entry per show: open it, pick a season (each with its own TMDB poster) and see that season's episodes with their names, even when they came from different releases. Remembers where you stopped watching.
 - **Torrent search**: searches The Pirate Bay and 1337x in parallel, ranked by seeders, with quality filters (4K, 1080p, 720p) and cinema recordings flagged. One tap sends a result to qBittorrent.
 - **Downloads**: live qBittorrent progress, speed and time remaining.
 - **Subtitles**: pick a language in the player or TV remote and Marquee fetches the best match from OpenSubtitles, preferring subtitles timed for your exact file. Downloaded subtitles that weren't made for your exact file have their timing checked and fixed automatically. Subtitles can also be requested when starting a download and are fetched automatically when it finishes.
@@ -80,6 +80,7 @@ All settings live in `.env`. Changes take effect after a restart.
 | --- | --- | --- |
 | `QBIT_URL` | | qBittorrent Web UI address, e.g. `http://localhost:8081`. |
 | `QBIT_USER` / `QBIT_PASS` | | Web UI credentials. |
+| `QBIT_REMOVE_FINISHED` | `on` | Remove finished downloads from qBittorrent (files kept) so nothing seeds. Set to `off` to seed as usual. A torrent tagged `seed` in qBittorrent is never touched. |
 | `TORRENTS` | `on` | Set to `off` to hide torrent search. |
 | `TPB_API` | `https://apibay.org` | The Pirate Bay API endpoint. |
 | `X1337_URL` | built-in list | Comma-separated 1337x mirrors, tried in order. |
@@ -126,6 +127,7 @@ All settings live in `.env`. Changes take effect after a restart.
 | `CONVERT_DELETE_ORIGINAL` | `off` | Delete originals after conversion. Files owned by qBittorrent are never deleted. |
 | `FFMPEG` / `FFPROBE` | on `PATH` | Full paths to the binaries if they aren't on `PATH`. |
 | `AUDIO_FIX_DIR` | `./cache/audio` | Where audio-fixed copies of downloaded MP4s are stored. |
+| `PREPARE_NEXT_EPISODES` | `2` | When an episode needs a browser copy (HEVC in a browser without HEVC), this many following episodes get theirs made in the background. `0` turns it off. |
 
 ## Setting up integrations
 
@@ -313,6 +315,16 @@ The subtitle menu in the player shows the result and has **Undo timing fix**; th
 
 Downloaded MP4s are never modified, since qBittorrent may still be seeding them. When one won't play in browsers, a browser copy is made in `cache/audio/` and played instead; TVs still get the original. That happens when the audio isn't AAC or MP3 or starts out of sync, and when the video won't play in Safari: HEVC labelled `hev1` (relabelled to `hvc1`, which is quick and keeps the quality), 10-bit H.264, AV1 or other codecs (re-encoded to H.264). Opening such a file in the player moves it to the front of the queue, and playback switches to the copy by itself when it's ready.
 
+HEVC episodes keep their HEVC video in the MP4 copy: that's lossless and quick, and TVs, iPhones, Safari and Chrome play it. Firefox (and browsers built on it, like Zen) can't, so those get an H.264 copy, which takes a minute or two per episode. When that happens, the next episodes of the show (`PREPARE_NEXT_EPISODES`, default 2) get their copies made in the background, so the next one starts right away.
+
+### Shows in the library
+
+Episodes are recognised from `S01E05`, `S01E01E02`, `1x05` and `Season 1 Episode 5` in the file name. A file named only `S02E05.mkv` takes the show's name from its folder (`The Bear (2022)/Season 2/`). Episodes are grouped into one show when their names match loosely (case, punctuation and a leading "The" are ignored) or when TMDB resolves them to the same show, so episodes from different releases end up together. TMDB supplies the show's and each season's poster and the episode names; lookups are cached in `.marquee-shows.json` (found shows for 30 days, refreshed weekly for new seasons; unknown names are retried daily). Without TMDB, shows are still grouped by name.
+
+### Finished downloads
+
+With `QBIT_REMOVE_FINISHED=on` (the default), a finished download is removed from qBittorrent within a minute, with its files kept, so it never seeds. Downloads go into `MEDIA_DIR`, so the video stays in the Library and gets its MP4 copy as usual. A download still waiting for subtitles requested with it is stopped first and removed once they're fetched (at most 2 hours later). Downloads saved outside `MEDIA_DIR` are only stopped, so they stay playable from the Downloads tab. Give a torrent the tag `seed` in qBittorrent to keep it seeding. Once a download is removed, its files count as ordinary library files, so `CONVERT_DELETE_ORIGINAL=on` applies to them.
+
 ### Activity
 
 The **Activity** tab shows who has been using Marquee and what they did: downloads started, films watched in the browser, casts to TVs, subtitles fetched and deletions. People are identified by the email they log in to Cloudflare Access with, plus the device and browser; visits through the server's local address show up as "Home network". The tab is only shown to the emails listed in `ADMIN_EMAILS`, and only through the Cloudflare address, since local visits have no email. The last 2,000 entries are kept in `.marquee-activity.jsonl`. Logins themselves (who signed in, when, from where) are in the Cloudflare Zero Trust dashboard under **Logs → Access**.
@@ -331,6 +343,7 @@ marquee/
 ├── subtitles.js          OpenSubtitles client and local subtitle files
 ├── subsync.js            Automatic subtitle timing
 ├── convert.js            Background ffmpeg conversion and audio fixes
+├── shows.js              Groups episodes into shows and seasons (TMDB posters, episode names)
 ├── cast.js               DLNA and Apple TV casting
 ├── network.js            Home-network detection for casting
 ├── activity.js           Activity log
@@ -364,6 +377,7 @@ Created at runtime and excluded from Git:
 | `cache/audio/` | Audio-fixed copies of downloaded MP4s |
 | `logs/` | Output from the auto-start task |
 | `.marquee-house.json` | Latest report from each home machine |
+| `.marquee-shows.json` | TMDB lookups for grouping shows: show and season posters, episode names |
 | `.marquee-power.json` | Each dual-boot machine's MAC address and boot menu, for waking it |
 | `.marquee-shares.json` | Shared clips (token → clip) |
 | `.marquee-invites.json` | Invite links and who used them |
@@ -400,7 +414,7 @@ The web client uses a JSON API that can also be scripted. `<kind>` is `lib` for 
 | `POST` | `/api/cast/play` | Start playback on a TV |
 | `GET` | `/api/house` | Server health and home machines (`ADMIN_EMAILS` only) |
 | `POST` | `/api/house/report` | A machine's report (`X-Marquee-Token`, home network only) |
-| `GET` | `/api/house/summary` | Issues only, for status bars (`X-Marquee-Token`, home network only) |
+| `GET` | `/api/house/summary` | Issues, machines at home and the server's uptime, free space and services, for status bars and the MAGI panel (`X-Marquee-Token`, home network only) |
 | `POST` | `/api/house/boot` | A dual-boot machine's boot menu and network card; the reply says whether to restart, and into what (`X-Marquee-Token`, home network only) |
 | `POST` | `/api/house/power` | `{ host, action: "wake" \| "restart", entry? }`: wake a machine into a boot entry, or restart it (`ADMIN_EMAILS` only) |
 | `GET` | `/api/clips` | Clips and their share state (`ADMIN_EMAILS` only) |

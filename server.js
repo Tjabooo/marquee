@@ -17,6 +17,7 @@ import * as activity from './activity.js';
 import * as house from './house.js';
 import * as clips from './clips.js';
 import * as invites from './invites.js';
+import * as shows from './shows.js';
 import { isHomeRequest, describeRequest } from './network.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -53,6 +54,7 @@ house.initHouse({
   clipsDir: process.env.CLIPS_DIR ? path.resolve(process.env.CLIPS_DIR) : null,
   qbitCheck: QBIT_URL ? async () => (await qbitRequest('/api/v2/app/version')).ok : null,
 });
+shows.initShows({ dataDir: ROOT });
 clips.initClips({ dataDir: ROOT, getEncoder: () => converter.converterStatus().encoder });
 invites.initInvites({ dataDir: ROOT, onEvent: activity.record });
 cast.initCasting({ lanIp: LAN_IP });
@@ -91,22 +93,45 @@ class HttpError extends Error {
 // ---------- file-name parsing ----------
 // "The.Matrix.1999.1080p.BluRay.x264.mkv" -> { title: "The Matrix", year: 1999 }
 // "Severance.S02E03.1080p.mkv"           -> { title: "Severance", season: 2, episode: 3 }
-function parseName(raw) {
-  let name = raw.replace(/\.[a-z0-9]{2,4}$/i, '').replace(/[._]+/g, ' ');
-  const ep = name.match(/\bS(\d{1,2})\s?E(\d{1,3})\b/i);
+// Also "S01E01E02" (first episode counts), "1x05" and "Season 1 Episode 5". A name that starts with
+// the episode ("S01E05.1080p.mkv") gets an empty title; the library takes the folder's name then.
+const EPISODE_PATTERNS = [
+  /\bS(\d{1,2})\s?E(\d{1,3})(?=\b|E\d)/i,
+  /\bSeason\s?(\d{1,2})\s?Episode\s?(\d{1,3})\b/i,
+  /\b(\d{1,2})x(\d{2,3})\b/i,
+];
+function parseName(raw, { file = true, allowEmpty = false } = {}) {
+  let name = (file ? raw.replace(/\.[a-z0-9]{2,4}$/i, '') : raw).replace(/[._]+/g, ' ');
+  const ep = EPISODE_PATTERNS.map((re) => name.match(re)).find(Boolean);
   // The last year-like number wins: "Blade Runner 2049 2017" -> 2017.
   const year = [...name.matchAll(/[\s(\[]((?:19|20)\d{2})(?=[\s)\]]|$)/g)].at(-1);
   const cutAt = [ep?.index, year?.index,
     name.search(/\b(2160p|1080p|720p|480p|4k|uhd|bluray|brrip|web[- ]?dl|webrip|hdtv|dvdrip|x26[45]|h ?26[45]|hevc|remux)\b/i)]
     .filter((i) => i !== undefined && i > 0);
-  let title = cutAt.length ? name.slice(0, Math.min(...cutAt)) : name;
-  title = title.replace(/[\s\-([]+$/g, '').replace(/\s+/g, ' ').trim() || name.trim();
+  const bare = ep?.index === 0;
+  let title = bare ? '' : cutAt.length ? name.slice(0, Math.min(...cutAt)) : name;
+  title = title.replace(/[\s\-([]+$/g, '').replace(/\s+/g, ' ').trim() || (bare && allowEmpty ? '' : name.trim());
   return {
     title,
     year: year ? Number(year[1]) : null,
     season: ep ? Number(ep[1]) : null,
     episode: ep ? Number(ep[2]) : null,
   };
+}
+
+// A file's name info; "The Bear/Season 2/S02E05.mkv" takes the show's name from the nearest folder
+// that has one (inside MEDIA_DIR or a download folder: never higher than three levels up).
+function parseFile(full) {
+  const parsed = parseName(path.basename(full), { allowEmpty: true });
+  if (!parsed.title && parsed.season != null) {
+    let d = path.dirname(full);
+    for (let i = 0; i < 3 && (!MEDIA_DIR || d.length > MEDIA_DIR.length); i++, d = path.dirname(d)) {
+      const t = parseName(path.basename(d), { file: false });
+      if (t.title && !/^(season|series|s)\s*\d+$/i.test(t.title)) { parsed.title = t.title; parsed.year ??= t.year; break; }
+    }
+  }
+  if (!parsed.title) parsed.title = path.basename(full).replace(/\.[a-z0-9]{2,4}$/i, '').replace(/[._]+/g, ' ').trim();
+  return parsed;
 }
 
 // ---------- TMDB ----------
@@ -284,6 +309,7 @@ async function scanLibrary() {
       const stat = await fs.promises.stat(full).catch(() => null);
       if (!stat) continue;
       const rel = path.relative(MEDIA_DIR, full);
+      const parsed = parseFile(full);
       items.push({
         id: Buffer.from(rel).toString('base64url'),
         file: e.name,
@@ -291,7 +317,7 @@ async function scanLibrary() {
         added: stat.mtimeMs,
         format: ext.slice(1),
         full,
-        ...parseName(e.name),
+        ...parsed,
       });
     }
   }
@@ -494,7 +520,7 @@ async function handlePlay(req, res, url) {
 }
 
 // Title, year and episode used for subtitle searches.
-const infoFor = (file) => parseName(path.basename(file));
+const infoFor = (file) => parseFile(file);
 
 // ---------- streaming (HTTP range requests) ----------
 async function sendVideo(req, res, file, { captionUrl } = {}) {
@@ -591,6 +617,34 @@ async function readJson(req) {
 
 // ---------- API routes ----------
 // "Dune (2021)", "Severance S02 E03": how a file is named in the activity log.
+// Episodes are converted to MP4 keeping their HEVC video (fast, full quality, plays on TVs, iPhones,
+// Safari and Chrome). A browser without HEVC (Firefox, Zen) needs an H.264 copy, which takes a minute
+// or two per episode. When one episode needs it, the next NEXT_EPISODES of the show get theirs made in
+// the background, so the next episode starts right away.
+const NEXT_EPISODES = Math.max(0, Number(process.env.PREPARE_NEXT_EPISODES ?? 2) || 0);
+async function prepareNextEpisodes(source, plays) {
+  if (!NEXT_EPISODES) return;
+  const items = await scanLibrary();
+  const all = libraryCache.all || items || [];
+  const here = all.find((i) => samePath(i.full, source)) || items.find((i) => samePath(converter.preferConverted(i.full), source));
+  if (!here || here.season == null) return;
+  const key = shows.showKey(here.title);
+  const order = (i) => i.season * 10000 + i.episode;
+  const seen = new Set();
+  const next = items
+    .filter((i) => i.season != null && shows.showKey(i.title) === key && order(i) > order(here))
+    .sort((a, b) => order(a) - order(b))
+    .filter((i) => !seen.has(order(i)) && seen.add(order(i))) // one file per episode
+    .slice(0, NEXT_EPISODES);
+  for (const i of next) {
+    const served = converter.preferConverted(i.full);
+    const v = await converter.probeVideo(served).catch(() => null);
+    if (v && !converter.videoBrowserSafe(v, { hevc: plays.has('hevc') }) && converter.queueBrowserVideo(i.full)) {
+      console.log(`[convert] getting the next episode ready for this browser: ${path.basename(served)}`);
+    }
+  }
+}
+
 function titleOf(file) {
   const info = parseName(path.basename(file));
   const ep = info.season != null ? ` S${String(info.season).padStart(2, '0')} E${String(info.episode).padStart(2, '0')}` : '';
@@ -739,8 +793,15 @@ async function handleApi(req, res, url) {
     if (!items) throw new HttpError(503, 'No media folder is set up. Add MEDIA_DIR to .env and restart.');
     // A video whose MP4 copy is being made can't be played yet (the player disables Play).
     const converting = converter.convertingFile();
+    // Episodes are grouped into shows and seasons (TMDB posters and episode names when it answers in time).
+    const tmdbOn = Boolean(TMDB_TOKEN || TMDB_KEY);
+    const { shows: showList, showOf } = await shows.groupShows(items, tmdbOn ? tmdb : null);
     return sendJson(res, 200, {
-      items: items.map(({ full, ...rest }) => ({ ...rest, converting: Boolean(converting) && converting === full && converter.needsConversion(full) })),
+      items: items.map(({ full, ...rest }) => ({
+        ...rest, ...showOf.get(rest.id),
+        converting: Boolean(converting) && converting === full && converter.needsConversion(full),
+      })),
+      shows: showList,
     });
   }
   if (p === '/api/downloads/add' && req.method === 'POST') {
@@ -922,6 +983,8 @@ async function handleApi(req, res, url) {
     const fix = browserSafe && aligned && videoSafe ? {}
       : !videoSafe && vid?.codec === 'hevc' && !plays.has('hevc') ? converter.requestBrowserVideo(source)
         : converter.requestBrowserAudio(source);
+    // An episode this browser can't play as is: get the next ones ready now (see prepareNextEpisodes).
+    if (!videoSafe && m[1] === 'lib') prepareNextEpisodes(source, plays).catch(() => {});
     const sync = converter.syncState(source);
     return sendJson(res, 200, {
       known: true, codec: main, tracks, browserSafe, aligned,
@@ -1223,6 +1286,43 @@ async function checkSubtitleWants() {
 setTimeout(checkSubtitleWants, 20_000);
 setInterval(checkSubtitleWants, 2 * 60 * 1000);
 
+// ---------- finished downloads: no seeding ----------
+// QBIT_REMOVE_FINISHED=on (default): a finished download is removed from qBittorrent with its files
+// kept, so it never seeds and uses no upload bandwidth. Downloads save into MEDIA_DIR, so the video
+// stays in the Library (and gets its MP4 copy as usual). A download still waiting for its automatic
+// subtitles is stopped instead and removed once they're fetched (or 2 hours after it finished).
+// One saved outside MEDIA_DIR is only stopped, so it stays playable from the Downloads tab.
+// To keep seeding a particular torrent, give it the tag "seed" in qBittorrent.
+const REMOVE_FINISHED = (process.env.QBIT_REMOVE_FINISHED || 'on').toLowerCase() !== 'off';
+const SEEDING = /^(uploading|stalledUP|forcedUP|queuedUP|pausedUP|stoppedUP)$/;
+let stoppingSeeds = false;
+async function stopSeeding() {
+  if (!QBIT_URL || !REMOVE_FINISHED || stoppingSeeds) return;
+  stoppingSeeds = true;
+  try {
+    for (const t of await qbit('/api/v2/torrents/info?filter=completed')) {
+      if (t.progress < 1 || !SEEDING.test(t.state || '')) continue;
+      if ((t.tags || '').split(',').some((tag) => tag.trim().toLowerCase() === 'seed')) continue;
+      const content = t.content_path || path.join(t.save_path || '', t.name);
+      const inLibrary = Boolean(MEDIA_DIR) && isInside(content, MEDIA_DIR);
+      const waitingSubs = (subtitles.subtitleWants(t.hash) || []).some((w) => w.state === 'waiting');
+      const finishedFor = t.completion_on > 0 ? Date.now() / 1000 - t.completion_on : 0;
+      try {
+        if (inLibrary && (!waitingSubs || finishedFor > 2 * 3600)) {
+          await deleteDownload(t, false);
+        } else if (!/^(pausedUP|stoppedUP)$/.test(t.state)) {
+          await setPaused(t.hash, true);
+          console.log(`[downloads] stopped seeding "${t.name}"${waitingSubs ? ' (removed once its subtitles are fetched)' : ''}`);
+        }
+      } catch (e) { console.warn(`[downloads] couldn't stop "${t.name}" seeding: ${e.message}`); }
+    }
+  } catch { /* qBittorrent unreachable: next round */ } finally {
+    stoppingSeeds = false;
+  }
+}
+setTimeout(stopSeeding, 15_000);
+setInterval(stopSeeding, 60 * 1000);
+
 converter.startConverter({
   dataDir: ROOT,
   onSidecar: (srt) => subsync.markTrusted(srt), // extracted from the video: already in sync
@@ -1234,7 +1334,7 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`Marquee is running: http://localhost:${PORT}`);
   console.log(`  Search:    ${TMDB_TOKEN || TMDB_KEY ? 'ready' : 'off (add TMDB_TOKEN to .env)'}`);
   console.log(`  Library:   ${MEDIA_DIR || 'off (add MEDIA_DIR to .env)'}`);
-  console.log(`  Downloads: ${QBIT_URL || 'off (add QBIT_URL to .env)'}`);
+  console.log(`  Downloads: ${QBIT_URL ? `${QBIT_URL}${REMOVE_FINISHED ? ', finished downloads removed (no seeding)' : ''}` : 'off (add QBIT_URL to .env)'}`);
   console.log(`  Torrents:  ${torrents.torrentsEnabled() ? 'search on (1337x + The Pirate Bay)' : 'off (TORRENTS=off)'}`);
   console.log(`  Subtitles: ${subtitles.subtitlesConfigured() ? 'OpenSubtitles on' : 'off (add OPENSUBTITLES_API_KEY to .env)'}${subsync.autoSyncEnabled() ? ', timing auto-fix on' : ''}`);
   console.log(`  TVs will stream from: http://${LAN_IP}:${PORT} (set SERVER_IP in .env if this is wrong)`);

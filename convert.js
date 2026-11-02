@@ -220,6 +220,21 @@ export function requestBrowserVideo(file) {
   return runFirst({ file: target, fix: true, h264: true });
 }
 
+// Queues an H.264 browser copy at the BACK of the queue (nothing jumps ahead). Used to get the next
+// episodes of a show ready while one is being watched in a browser without HEVC, so pressing Play on
+// the next one starts right away instead of waiting for its copy. Returns true when one was queued.
+export function queueBrowserVideo(file) {
+  if (!status.enabled) return false;
+  const target = needsConversion(file) ? twinPath(file) : file;
+  if (!canFix(target) || !fs.existsSync(target)) return false; // not converted yet: that comes first
+  const fixed = fixPath(target);
+  if (!fixed || fs.existsSync(fixed) || failures[failureKey(target)]) return false;
+  if (target === currentFile || queue.some((q) => q.file === target)) return false;
+  queue.push({ file: target, fix: true, h264: true });
+  drain(onConvertedHook);
+  return true;
+}
+
 export function requestBrowserAudio(file) {
   if (!status.enabled) return { fixable: false, error: status.reason };
   const job = browserJob(file);

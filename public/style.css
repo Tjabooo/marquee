@@ -995,3 +995,23 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .trim-save:disabled { opacity: 0.5; }
 .trim-del { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 14px; color: var(--dust); }
 .trim h2 { padding-right: 52px; overflow-wrap: anywhere; }
+
+/* Library: shows (one row per show; seasons and episodes in the show sheet) */
+.show-row { width: 100%; text-align: left; color: inherit; font: inherit; border: 0; cursor: pointer; }
+.show-row:active { background: var(--seat); }
+.show-row .row-title { display: block; }
+.show-thumb {
+  flex: none; display: grid; place-items: center;
+  width: 44px; aspect-ratio: 2 / 3; overflow: hidden;
+  border-radius: 6px; background: var(--seat);
+  font: 700 18px/1 var(--display); color: var(--dust);
+}
+.show-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.show-chevron { flex: none; display: grid; color: var(--dust); }
+.show-chevron svg { width: 20px; height: 20px; transform: scaleX(-1); fill: none; stroke: currentColor; stroke-width: 2; }
+.season-grid { grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); margin-bottom: 8px; }
+.season-back { display: inline-flex; align-items: center; gap: 4px; margin-bottom: 14px; padding-left: 8px; }
+.season-back svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; }
+.season-head { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+.season-head .season-poster { flex: none; width: 76px; }
+.season-head h3 { margin: 0 0 4px; }
