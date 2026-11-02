@@ -147,7 +147,7 @@ function localFiles() {
 }
 const sameTitle = (t) => {
   const n = norm(t.title);
-  return (f) => (t.type === 'tv' && f.show && f.show === `tv-${t.id}`) || (norm(f.title) === n &&
+  return (f) => (t.type === 'tv' && f.show && f.show === `tv-${t.id}`) || (t.type !== 'tv' && f.tmdbId && f.tmdbId === t.id) || (norm(f.title) === n &&
     (t.type === 'tv' || !f.year || !t.year || Math.abs(f.year - t.year) <= 1));
 };
 const byEpisode = (a, b) => (a.season ?? 0) - (b.season ?? 0) || (a.episode ?? 0) - (b.episode ?? 0);
@@ -564,6 +564,9 @@ function renderLibrary() {
     body.replaceChildren(notice('Couldn’t read the library', state.libraryError, async () => { await loadLibrary(); renderLibrary(); }));
     return;
   }
+  // Open details follow extensions and deletions, including removal of the last library item.
+  if (showView.id) renderShow();
+  if (filmView.id) renderFilm();
   const q = norm(state.query);
   const showsById = new Map(state.libraryShows.map((x) => [x.id, x]));
   const isShow = (f) => Boolean(f.show && showsById.get(f.show)) || f.season != null;
@@ -584,7 +587,7 @@ function renderLibrary() {
   }
   // Your own downloads first, then what you added from the server, then (the owner's) collection that
   // was there before accounts. In each: one entry per show (its seasons and episodes are behind it),
-  // films as their own rows, in the order picked in Settings.
+  // films as poster cards, in the order picked in Settings.
   const sort = prefs().librarySort || 'newest';
   const soonest = (files) => Math.min(...files.map((f) => f.expiresAt ?? Infinity));
   const newest = (files) => Math.max(...files.map((f) => f.addedAt || f.added || 0));
@@ -605,29 +608,33 @@ function renderLibrary() {
       h('div', { class: 'lib-section-head' },
         h('h3', {}, title, h('span', { class: 'lib-count' }, String(entries.length))),
         h('p', { class: 'muted' }, typeof hint === 'function' ? hint() : hint)),
-      h('ul', { class: 'rows' }, entries.map((e) => {
-        if (e.show) return showRow(e.show, e.files);
-        const f = e.files[0];
-        const row = fileRow({ ...f, kind: 'lib', key: f.id, done: true });
-        // Title on the first line, episode on the meta line.
-        row.querySelector('.row-title').textContent = f.title + (f.year ? ` (${f.year})` : '');
-        const ep = episodeLabel(f);
-        if (ep) row.querySelector('.row-meta').prepend(h('span', {}, ep));
-        return row;
-      })));
+      libraryGroups(entries));
   });
-  body.replaceChildren(h('div', { class: 'dl convert-banner', id: 'convert-banner', hidden: true }), filters, ...sections.filter(Boolean));
+  const watching = items.map((f) => ({ f, progress: savedProgress(libraryFile(f)) }))
+    .filter((x) => partlyWatched(x.progress)).sort((a, b) => (b.progress.at || 0) - (a.progress.at || 0)).slice(0, 12);
+  const leaving = libraryEntries(items.filter((f) => f.expiresAt != null && f.expiresAt - Date.now() < 48 * 3600000))
+    .sort((a, b) => nextExpiry(a.files) - nextExpiry(b.files));
+  const shelves = [
+    watching.length > 0 && libraryShelf('Continue watching', watching.map(({ f, progress }) => {
+      const show = showsById.get(f.show);
+      const poster = show?.seasons.find((s) => s.number === f.season)?.poster || show?.poster || f.poster;
+      const remaining = Math.max(1, Math.ceil((progress.duration - progress.time) / 60));
+      return libraryCard({ name: show?.title || f.title, files: [f], poster,
+        subtitle: [episodeLabel(f), `${remaining} min left`].filter(Boolean).join(' · '), resume: true });
+    })),
+    leaving.length > 0 && libraryShelf('Leaving soon', leaving.map((e) => libraryCard(e, true))),
+  ].filter(Boolean);
+  body.replaceChildren(h('div', { class: 'dl convert-banner', id: 'convert-banner', hidden: true }), filters, ...shelves, ...sections.filter(Boolean));
   renderConvertBanner();
-  if (showView.id) renderShow(); // an open show follows deletions and new episodes
 }
 const LIB_FILTERS = [['all', 'All'], ['movie', 'Films'], ['tv', 'Shows']];
 const autoDeleteHint = () => (state.rules?.retentionDays
-  ? `Deleted ${plural(state.rules.retentionDays, 'day')} after they finish, unless you keep them longer.`
+  ? `Ready to watch. Keep them longer before the countdown runs out.`
   : 'Kept until you delete them.');
 const LIB_SECTIONS = [
   ['download', 'Your downloads', autoDeleteHint],
-  ['added', 'Added from the server', () => `Already on the server when you found them, so nothing was downloaded twice.${state.rules?.retentionDays ? ` They leave your library ${plural(state.rules.retentionDays, 'day')} after you add them.` : ''}`],
-  ['existing', 'Your collection', 'On the server before accounts, or copied in by hand. These aren’t deleted automatically.'],
+  ['added', 'Added from the server', 'Ready to watch, without another download.'],
+  ['existing', 'Your collection', 'Kept until you choose to delete them.'],
 ];
 
 // ---------- Library: shows ----------
@@ -635,22 +642,121 @@ const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const episodeCount = (files) => new Set(files.map((f) => `${f.season}:${f.episode}`)).size;
 const seasonName = (n) => (n === 0 ? 'Specials' : `Season ${n}`);
 
-function showRow(show, files) {
-  const seasons = [...new Set(files.map((f) => f.season))].sort((a, b) => a - b);
-  const meta = [seasons.length === 1 ? seasonName(seasons[0]) : plural(seasons.length, 'season'), plural(episodeCount(files), 'episode')];
-  const name = show.title + (show.year ? ` (${show.year})` : '');
-  // The next episode to be deleted, if any.
-  const next = Math.min(...files.map((f) => f.expiresAt ?? Infinity));
-  const soon = next - Date.now() < 86400000;
-  return h('li', {},
-    h('button', { class: 'row show-row', 'aria-label': `${name}: ${meta.join(', ')}`, onclick: (e) => openShow(show.id, e.currentTarget) },
-      h('span', { class: 'show-thumb', 'aria-hidden': 'true' },
-        show.poster ? h('img', { src: show.poster, alt: '', loading: 'lazy', decoding: 'async' }) : show.title.slice(0, 1)),
-      h('span', { class: 'row-text' },
-        h('span', { class: 'row-title' }, name),
-        h('span', { class: 'row-meta' }, meta.map((m) => h('span', {}, m)),
-          Number.isFinite(next) && h('span', { class: `expiry${soon ? ' is-soon' : ''}` }, files.length > 1 ? `next: ${timeLeft(next)}` : timeLeft(next)))),
-      h('span', { class: 'show-chevron' }, icon('back'))));
+// Library cards share the same identity as playback, including old browser resume points.
+const libraryFile = (f) => ({ ...f, kind: 'lib', key: f.id, done: true });
+const nextExpiry = (files) => Math.min(...files.map((f) => f.expiresAt ?? Infinity));
+const partlyWatched = (p) => p?.duration > 0 && p.time / p.duration > 0.01 && p.time / p.duration < 0.95;
+
+function libraryEntries(items) {
+  const shows = new Map(state.libraryShows.map((s) => [s.id, s]));
+  const grouped = new Map();
+  const entries = [];
+  for (const f of items) {
+    const show = shows.get(f.show);
+    if (!show) { entries.push({ name: f.title, files: [f] }); continue; }
+    if (!grouped.has(show.id)) {
+      const entry = { show, name: show.title, files: [] };
+      grouped.set(show.id, entry);
+      entries.push(entry);
+    }
+    grouped.get(show.id).files.push(f);
+  }
+  return entries;
+}
+
+function libraryGroups(entries) {
+  const films = entries.filter((e) => !e.show && e.files[0].season == null);
+  const series = entries.filter((e) => e.show || e.files[0].season != null);
+  const groups = films.length && series.length ? [['Films', films], ['Shows', series]] : [[null, entries]];
+  return groups.map(([label, list]) => h('div', { class: 'lib-group' },
+    label && h('h4', { class: 'lib-subhead' }, label),
+    h('ul', { class: 'grid library-grid' }, list.map((e) => libraryCard(e)))));
+}
+
+function libraryShelf(title, cards) {
+  return h('section', { class: 'shelf library-shelf', 'aria-label': title },
+    h('div', { class: 'shelf-head' }, h('h3', {}, title)), h('ul', { class: 'shelf-items' }, cards));
+}
+
+function libraryCard(entry, keep = false) {
+  const { show, files, name } = entry;
+  const f = files[0];
+  const seasons = [...new Set(files.map((f) => f.season))];
+  const subtitle = entry.subtitle || (show
+    ? `${seasons.length === 1 ? seasonName(seasons[0]) : plural(seasons.length, 'season')} · ${plural(episodeCount(files), 'episode')}`
+    : [f.year, f.season != null ? episodeLabel(f) : 'Film'].filter(Boolean).join(' · '));
+  const poster = entry.poster || show?.poster || f.poster;
+  const progress = savedProgress(libraryFile(f));
+  const next = nextExpiry(files);
+  const hours = (next - Date.now()) / 3600000;
+  const expiry = hours <= 0 ? 'Leaving soon' : hours < 1 ? '<1h left' : hours < 48 ? `${Math.ceil(hours)}h left` : `${Math.ceil(hours / 24)}d left`;
+  const eligible = files.filter(canExtend);
+  return h('li', { class: 'library-card' },
+    h('button', { type: 'button', class: 'title-card', onclick: (e) => entry.resume
+      ? openPlayer(libraryFile(f)) : show ? openShow(show.id, e.currentTarget) : openFilm(f, e.currentTarget) },
+      h('div', { class: 'poster' },
+        poster ? h('img', { src: poster, alt: '', loading: 'lazy', decoding: 'async', onerror: (e) => e.currentTarget.replaceWith(h('div', { class: 'poster-fallback' }, name)) })
+          : h('div', { class: 'poster-fallback' }, name),
+        Number.isFinite(next) && h('span', { class: `poster-expiry${hours < 24 ? ' is-soon' : ''}`, title: timeLeft(next) }, expiry),
+        partlyWatched(progress) && h('span', { class: 'poster-progress', 'aria-label': `${Math.round(progress.time / progress.duration * 100)}% watched` },
+          h('i', { style: `width:${progress.time / progress.duration * 100}%` }))),
+      h('div', { class: 'name' }, name), h('div', { class: 'sub' }, subtitle)),
+    keep && eligible.length > 0 && h('button', { type: 'button', class: 'chip library-keep', onclick: async (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      await extendItems(eligible);
+      if (btn.isConnected) btn.disabled = false;
+    } }, `Keep ${extendDays()} more days`));
+}
+
+// These controls appear above the seasons, so extending a show doesn't require finding an episode.
+function keepBar(files, onDone) {
+  const timed = files.filter((f) => f.expiresAt != null).sort((a, b) => a.expiresAt - b.expiresAt);
+  if (!timed.length) return h('div', { class: 'library-keep-bar is-kept' }, h('p', {}, 'Kept in your library'),
+    h('p', { class: 'muted' }, 'No automatic deletion scheduled.'));
+  const next = timed[0];
+  const eligible = timed.filter(canExtend);
+  const text = files.length > 1 ? `Next to go: ${episodeLabel(next) || next.title} · ${timeLeft(next.expiresAt)}` : timeLeft(next.expiresAt);
+  return h('div', { class: 'library-keep-bar' },
+    h('div', {}, h('p', { class: 'keep-countdown' }, text),
+      h('p', { class: 'muted' }, eligible.length ? 'Keep it longer if you’re not finished watching.' : 'The extension limit has been reached.')),
+    eligible.length > 0 && h('button', { type: 'button', class: 'play-btn', onclick: async (e) => {
+      e.currentTarget.disabled = true;
+      await extendItems(eligible);
+      onDone();
+    } }, eligible.length > 1 ? `Keep all ${eligible.length} · ${extendDays()} more days` : `Keep ${extendDays()} more days`));
+}
+
+const filmView = { id: null };
+function openFilm(f, opener) {
+  filmView.id = f.id;
+  renderFilm();
+  pushOverlay(showSheet($('#sheet'), $('#sheet-backdrop'), () => {
+    filmView.id = null;
+    opener?.focus({ preventScroll: true });
+  }));
+}
+function renderFilm() {
+  const f = state.library.find((f) => f.id === filmView.id);
+  if (!f) {
+    $('#sheet-body').replaceChildren(h('div', { class: 'sheet-content' }, h('h2', { id: 'sheet-title' }, 'Removed from your library')));
+    return;
+  }
+  const file = libraryFile(f);
+  const progress = savedProgress(file);
+  $('#sheet-body').replaceChildren(
+    h('div', { class: `sheet-hero${f.backdrop ? '' : ' no-image'}`, style: f.backdrop ? `background-image:url("${f.backdrop}")` : null }),
+    h('div', { class: 'sheet-content' },
+      h('h2', { id: 'sheet-title' }, f.title),
+      h('ul', { class: 'facts' }, [f.year, f.season != null ? episodeLabel(f) : 'Film', f.rating && `★ ${f.rating}`, f.format?.toUpperCase(), fmtBytes(f.size)]
+        .filter(Boolean).map((text) => h('li', {}, text))),
+      keepBar([f], renderFilm),
+      h('div', { class: 'library-film-actions' },
+        h('button', { class: 'play-btn', disabled: f.converting, onclick: () => openPlayer(file) }, icon('play'),
+          f.converting ? 'Converting…' : partlyWatched(progress) ? `Resume at ${fmtTime(progress.time)}` : 'Play'),
+        h('button', { class: 'chip', onclick: (e) => openPicker(file, e.currentTarget) }, icon('tv'), 'Play on TV'),
+        h('button', { class: 'chip', onclick: (e) => openDelete(file, e.currentTarget) }, icon('trash'), 'Delete')),
+      f.overview && h('p', { class: 'overview' }, f.overview)));
 }
 
 // The show sheet: seasons as poster cards (TMDB's poster for each season), then a season's episodes.
@@ -704,11 +810,7 @@ function renderShow() {
           open.poster ? h('img', { src: open.poster, alt: '' }) : h('div', { class: 'poster-fallback' }, open.name)),
         h('div', {},
           h('h3', {}, open.name),
-          h('p', { class: 'muted' }, open.total ? `${n} of ${open.total} episodes in your library` : `${plural(n, 'episode')} in your library`),
-          eps.filter(canExtend).length > 1 && h('button', {
-            type: 'button', class: 'chip keep-all',
-            onclick: async (e) => { e.currentTarget.disabled = true; await extendItems(eps.filter(canExtend)); renderShow(); },
-          }, `Keep all ${extendDays()} more days`))),
+          h('p', { class: 'muted' }, open.total ? `${n} of ${open.total} episodes in your library` : `${plural(n, 'episode')} in your library`))),
       h('ul', { class: 'rows' }, eps.map((f) => {
         const row = fileRow({ ...f, kind: 'lib', key: f.id, done: true });
         row.querySelector('.row-title').textContent = `${f.episode}. ${f.episodeName || `Episode ${f.episode}`}`;
@@ -728,6 +830,7 @@ function renderShow() {
         h('li', {}, 'Series'),
         show.rating && h('li', {}, `★ ${show.rating}`),
         h('li', {}, `${plural(episodeCount(files), 'episode')} here`)),
+      keepBar(files, renderShow),
       show.overview && h('p', { class: 'overview' }, show.overview),
       !open || single ? state.status.torrents && canDownload() && seasonStrip({ id: show.tmdbId, title: show.title }, files) : null,
       ...content));

@@ -905,7 +905,10 @@ async function handleApi(req, res, url) {
     const converting = converter.convertingFile();
     // Episodes are grouped into shows and seasons (TMDB posters and episode names when it answers in time).
     const tmdbOn = Boolean(TMDB_TOKEN || TMDB_KEY);
-    const { shows: showList, showOf } = await shows.groupShows(items, tmdbOn ? tmdb : null);
+    const [{ shows: showList, showOf }, filmOf] = await Promise.all([
+      shows.groupShows(items, tmdbOn ? tmdb : null),
+      shows.filmInfo(items, tmdbOn ? tmdb : null), // posters for films
+    ]);
     // `items` is this person's library, with when each video gets deleted. `server` is everything
     // else on the server (no word on whose it is), so search can offer to add it instead of downloading
     // it again.
@@ -916,7 +919,7 @@ async function handleApi(req, res, url) {
     for (const { full, ...rest } of items) {
       const mediaKey = accounts.mediaKey(full);
       const entry = mediaKey && mine.get(mediaKey);
-      const base = { ...rest, mediaKey, ...showOf.get(rest.id) };
+      const base = { ...rest, mediaKey, ...showOf.get(rest.id), ...filmOf.get(rest.id) };
       if (!entry) { server.push(base); continue; }
       own.push({
         ...base,

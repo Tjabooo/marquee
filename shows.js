@@ -21,7 +21,7 @@ const MISS_TTL = DAY;
 const DETAILS_TTL = 7 * DAY;
 
 let file = null;
-let cache = { names: {}, shows: {} }; // names: "key|year" -> { id, at }; shows: TMDB id -> details
+let cache = { names: {}, shows: {}, films: {} }; // names: "key|year" -> { id, at }; shows: TMDB id -> details; films: "key|year" -> film
 const pending = new Map();             // in-flight lookups, so a name is never looked up twice at once
 let saveTimer = null;
 
@@ -29,7 +29,7 @@ export function initShows({ dataDir }) {
   file = path.join(dataDir, '.marquee-shows.json');
   try {
     const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
-    cache = { names: saved.names || {}, shows: saved.shows || {} };
+    cache = { names: saved.names || {}, shows: saved.shows || {}, films: saved.films || {} };
   } catch { /* first run */ }
 }
 
@@ -234,4 +234,51 @@ export async function seasonEpisodes(title, year, season, tmdb) {
       aired: Boolean(e.air_date) && e.air_date <= today,
     })),
   };
+}
+
+// ---------- films ----------
+// A film's TMDB poster, backdrop and overview, for the library's poster cards and film page. Looked
+// up by the name and year in the file name and cached like shows (found: 30 days, unknown: a day).
+function lookupFilm(title, year, tmdb) {
+  const key = showKey(title);
+  const ck = `${key}|${year || ''}`;
+  const hit = cache.films[ck];
+  if (hit && Date.now() - hit.at < (hit.id ? NAME_TTL : MISS_TTL)) return Promise.resolve(hit);
+  return once(`film:${ck}`, async () => {
+    let results = [];
+    if (year) results = (await tmdb('/search/movie', { query: title, year: String(year) })).results || [];
+    if (!results.length) results = (await tmdb('/search/movie', { query: title })).results || [];
+    // An exact (loose) name match wins, the one from the right year first; otherwise TMDB's first result.
+    const sameYear = (r) => year && (r.release_date || '').startsWith(String(year));
+    const exact = results.filter((r) => showKey(r.title) === key || showKey(r.original_title) === key);
+    const pick = exact.find(sameYear) || exact[0] || results.find(sameYear) || results[0];
+    cache.films[ck] = pick ? {
+      at: Date.now(),
+      id: pick.id,
+      title: pick.title,
+      year: pick.release_date ? Number(pick.release_date.slice(0, 4)) : null,
+      overview: pick.overview || '',
+      rating: pick.vote_average ? Math.round(pick.vote_average * 10) / 10 : null,
+      poster: img('w342', pick.poster_path),
+      backdrop: img('w780', pick.backdrop_path),
+    } : { at: Date.now(), id: null };
+    save();
+    return cache.films[ck];
+  });
+}
+
+// items: library items. Returns a Map of item id -> { tmdbId, poster, backdrop, overview, rating } for
+// the films TMDB knows. Waits at most `wait` ms; films not looked up yet get their poster next time.
+export async function filmInfo(items, tmdb, { wait = 2500 } = {}) {
+  const films = items.filter((i) => i.season == null && i.title);
+  if (tmdb && films.length) {
+    const work = films.map((f) => lookupFilm(f.title, f.year, tmdb).catch(() => null));
+    await Promise.race([Promise.allSettled(work), new Promise((r) => setTimeout(r, wait))]);
+  }
+  const out = new Map();
+  for (const f of films) {
+    const hit = cache.films[`${showKey(f.title)}|${f.year || ''}`];
+    if (hit?.id) out.set(f.id, { tmdbId: hit.id, poster: hit.poster, backdrop: hit.backdrop, overview: hit.overview, rating: hit.rating });
+  }
+  return out;
 }
