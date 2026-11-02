@@ -16,6 +16,8 @@
 # module hides itself. Needs: bash, curl, jq, iproute2 (+ ethtool and grub for `boot`).
 # Only `boot` needs root; it reads MARQUEE_HOUSE_CONF (/etc/marquee-house.env in its unit).
 set -u
+# systemd starts system units without HOME; set -u would abort on it
+: "${HOME:=$(getent passwd "$EUID" | cut -d: -f6)}"
 CONF=${MARQUEE_HOUSE_CONF:-${XDG_CONFIG_HOME:-$HOME/.config}/marquee-house.env}
 STATE=${XDG_STATE_HOME:-$HOME/.local/state}/marquee-house
 MARQUEE_URL="" HOUSE_TOKEN="" HOME_GW_MAC=""
@@ -110,7 +112,7 @@ boot_default() {
 }
 
 # The wired card Wake-on-LAN uses (first physical Ethernet card, one that's up preferred), or the
-# default route's card when there is none. Prints: iface<TAB>wired(true|false)
+# default route's card when there is none. Prints: wired(true|false)<SPACE>iface (iface may be empty)
 wake_nic() {
   local d n up="" any=""
   for d in /sys/class/net/*; do
@@ -120,8 +122,8 @@ wake_nic() {
     [[ -z $up && $(<"$d/operstate") == up ]] && up=$n
   done
   n=${up:-$any}
-  if [[ -n $n ]]; then printf '%s\ttrue\n' "$n"
-  else printf '%s\tfalse\n' "$(ip route show default 2>/dev/null | awk '{print $5; exit}')"; fi
+  if [[ -n $n ]]; then printf 'true %s\n' "$n"
+  else printf 'false %s\n' "$(ip route show default 2>/dev/null | awk '{print $5; exit}')"; fi
 }
 
 # Wake-on flags of $1 after making sure magic packets ("g") are on, if the card supports them.
@@ -149,7 +151,7 @@ boot() {
     sleep 2
   done
   local nic wired mac wol entries def body out code reply reboot entry
-  IFS=$'\t' read -r nic wired < <(wake_nic)
+  read -r wired nic < <(wake_nic)  # flag first: an empty iface can't shift the fields
   mac=""; [[ -n $nic && -r /sys/class/net/$nic/address ]] && mac=$(<"/sys/class/net/$nic/address")
   wol=""; [[ $wired == true ]] && wol=$(wake_on "$nic")
   entries=$(boot_entries); [[ -n $entries ]] || entries='[]'
