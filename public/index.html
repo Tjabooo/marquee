@@ -11,6 +11,19 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Marquee">
   <title>Marquee</title>
+  <!-- The colours picked in Settings, applied before anything is drawn (app.js keeps this copy up to date) -->
+  <script>
+    try {
+      const t = JSON.parse(localStorage.getItem('marquee:theme'));
+      if (t && t.vars) {
+        const root = document.documentElement;
+        for (const k in t.vars) root.style.setProperty(k, t.vars[k]);
+        root.style.colorScheme = t.scheme;
+        root.dataset.scheme = t.scheme;
+        document.querySelector('meta[name="theme-color"]').content = t.vars['--velvet'];
+      }
+    } catch { /* first visit, or storage blocked: default colours */ }
+  </script>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎞️</text></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -39,19 +52,25 @@
     </section>
 
     <section id="view-library" class="view" aria-labelledby="library-heading" hidden>
-      <h2 class="view-heading" id="library-heading">On this server</h2>
+      <h2 class="view-heading" id="library-heading">Your library</h2>
       <div id="library-body"></div>
     </section>
 
     <section id="view-downloads" class="view" aria-labelledby="downloads-heading" hidden>
       <div class="view-head">
         <h2 class="view-heading" id="downloads-heading">Downloads</h2>
+        <div class="dl-scope" id="dl-scope"></div>
         <button class="head-btn" id="find-torrents" hidden>
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
           Find torrents
         </button>
       </div>
       <div id="downloads-body"></div>
+    </section>
+
+    <section id="view-settings" class="view" aria-labelledby="settings-heading" hidden>
+      <h2 class="view-heading" id="settings-heading">Settings</h2>
+      <div id="settings-body"></div>
     </section>
   </main>
 
@@ -68,6 +87,10 @@
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>
       <span>Downloads</span>
       <b class="tab-badge" id="dl-badge" hidden></b>
+    </button>
+    <button class="tab" data-view="settings">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      <span>Settings</span>
     </button>
   </nav>
 

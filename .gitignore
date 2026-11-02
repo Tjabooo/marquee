@@ -15,6 +15,8 @@ cache/
 .marquee-shares.json
 .marquee-invites.json
 .marquee-shows.json
+.marquee.db
+.marquee.db-*
 *.subsync-tmp
 *.marquee-tmp.mp4
 

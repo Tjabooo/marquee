@@ -6,10 +6,13 @@ Marquee is a single Node.js process with no dependencies, served as a mobile-fir
 
 ## Features
 
-- **Discover**: trending titles, search, posters and descriptions from TMDB, with titles you already have marked as on the server.
-- **Library**: every video in your media folder. Episodes are grouped into one entry per show: open it, pick a season (each with its own TMDB poster) and see that season's episodes with their names, even when they came from different releases. Remembers where you stopped watching.
+- **Accounts**: everyone who signs in through Cloudflare Access gets their own Marquee, with no extra login: their own library, watch progress that follows them between devices, colours and preferences. See [Accounts](#accounts).
+- **Discover**: trending titles, search, posters and descriptions from TMDB. Titles in your library are marked **In your library**; titles someone else already has on the server are marked **On server** and can be added to your library with one tap instead of being downloaded again.
+- **Library**: your own videos, your downloads first, then what you added from the server. Each shows how long until it's deleted, with **Keep 7 more days**. Episodes are grouped into one entry per show: open it, pick a season (each with its own TMDB poster) and see that season's episodes with their names, even when they came from different releases. Remembers where you stopped watching.
 - **Torrent search**: searches The Pirate Bay and 1337x in parallel, ranked by seeders, with quality filters (4K, 1080p, 720p) and cinema recordings flagged. One tap sends a result to qBittorrent. Searching for a season (“South Park S18”) adds **Get all episodes**: Marquee finds the best torrent for every aired episode and downloads them all, for when there's no good complete-season torrent.
-- **Downloads**: live qBittorrent progress, speed and time remaining.
+- **Downloads**: live qBittorrent progress, speed and time remaining, for your own downloads (the owner can switch to everyone's).
+- **Auto-delete**: downloads are deleted 7 days after they finish (the owner can change this), counted per person; a video someone else still has in their library stays.
+- **Settings**: colour themes (nine presets, or pick your own four colours), default subtitles, preferred torrent quality, start page and library order. The owner also sets the auto-delete rules, who may download, and sees everyone's library size.
 - **Subtitles**: pick a language in the player or TV remote and Marquee fetches the best match from OpenSubtitles, preferring subtitles timed for your exact file. Downloaded subtitles that weren't made for your exact file have their timing checked and fixed automatically. Subtitles can also be requested when starting a download and are fetched automatically when it finishes.
 - **Casting**: play on DLNA smart TVs (Samsung, LG, Sony and others) and Apple TV, with a full-screen remote for play/pause, seeking, volume and subtitles.
 - **Automatic conversion**: MKV, AVI, WebM and similar files get an MP4 copy that plays on iPhone and Apple TV. Streams are copied where possible; video is re-encoded on an NVIDIA GPU (NVENC) or CPU only when needed.
@@ -62,7 +65,7 @@ All settings live in `.env`. Changes take effect after a restart.
 | --- | --- | --- |
 | `PORT` | `8080` | Port for the web app. |
 | `SERVER_IP` | auto | LAN address TVs use to stream from the server. Set it if the address printed at startup is wrong. |
-| `ADMIN_EMAILS` | | Cloudflare Access emails that see the Activity, House and Clips tabs, comma-separated. |
+| `ADMIN_EMAILS` | | Cloudflare Access emails that see the Activity, House and Clips tabs and the owner's settings, comma-separated. The first one is the owner: files added outside Marquee go into their library. |
 | `PUBLIC_URL` | from the request | Public address used in share links and Discord embeds, e.g. `https://marquee.example.com`. |
 
 ### Metadata and library
@@ -329,6 +332,18 @@ Episodes are recognised from `S01E05`, `S01E01E02`, `1x05` and `Season 1 Episode
 
 With `QBIT_REMOVE_FINISHED=on` (the default), a finished download is removed from qBittorrent within a minute, with its files kept, so it never seeds. Downloads go into `MEDIA_DIR`, so the video stays in the Library and gets its MP4 copy as usual. A download still waiting for subtitles requested with it is stopped first and removed once they're fetched (at most 2 hours later). Downloads saved outside `MEDIA_DIR` are only stopped, so they stay playable from the Downloads tab. Give a torrent the tag `seed` in qBittorrent to keep it seeding. Once a download is removed, its files count as ordinary library files, so `CONVERT_DELETE_ORIGINAL=on` applies to them.
 
+### Accounts
+
+There's no separate login. Cloudflare Access adds the signed-in email to every request (`Cf-Access-Authenticated-User-Email`) and that email is the account; one is created the first time someone opens Marquee. Visits through the server's local address carry no email and share a "Home network" account. Accounts live in `.marquee.db`, a SQLite database (Node's built-in `node:sqlite`, so still no dependencies): people and their settings, what's in each library, who started each download, and watch progress.
+
+- **One file, many libraries.** A video exists once on disk. "Add to my library" adds it to your list; nothing is copied or downloaded again. A video's identity is its path in `MEDIA_DIR` without the extension, so the MP4 copy and the original count as the same video.
+- **Whose download.** Torrents added through Marquee get the qBittorrent tag `marquee-u<id>` (and a magnet's infohash is recorded). When one finishes, its videos go into that person's library, before the no-seeding cleanup removes the torrent. Torrents added straight in qBittorrent count as the owner's (the first address in `ADMIN_EMAILS`). A whole-season download puts episodes that are already on the server into your library instead of downloading them again.
+- **Already there.** On the first start with accounts, every video already on the server goes into the owner's library as **kept** (no countdown), so nothing that was there gets auto-deleted. Videos copied into `MEDIA_DIR` by hand later are treated the same way.
+- **Auto-delete.** Each video in someone's library has a date it goes: by default 7 days after the download finished (or after it was added from the server). **Keep 7 more days** pushes it back. When the date passes it leaves that person's library, and once it's in nobody's library the file is deleted (with its MP4 copy and subtitles), checked every 10 minutes. A file that's playing is retried later. The owner can change the period (or turn it off), the extension, and how many times a video can be extended, and can exempt someone (**Never auto-delete**) in Settings.
+- **Deleting** takes a video out of your library; the file is only deleted when nobody else has it. The owner can also delete it for everyone.
+- **Privacy.** People only see their own library and downloads. Search tells them a title is on the server, not whose it is. The owner's Settings tab lists everyone with how much they have.
+- **Staying signed in.** How long a sign-in lasts is Cloudflare's setting: Zero Trust → Access → Applications → your Marquee app → **Session duration** (24 hours by default; up to a month). If a sign-in runs out while Marquee is open, it says so and signs back in with one tap.
+
 ### Activity
 
 The **Activity** tab shows who has been using Marquee and what they did: downloads started, films watched in the browser, casts to TVs, subtitles fetched and deletions. People are identified by the email they log in to Cloudflare Access with, plus the device and browser; visits through the server's local address show up as "Home network". The tab is only shown to the emails listed in `ADMIN_EMAILS`, and only through the Cloudflare address, since local visits have no email. The last 2,000 entries are kept in `.marquee-activity.jsonl`. Logins themselves (who signed in, when, from where) are in the Cloudflare Zero Trust dashboard under **Logs → Access**.
@@ -355,6 +370,7 @@ marquee/
 ├── house.js              House tab: server health + reports from home machines
 ├── clips.js              Clips tab, share links and their public pages (/c/)
 ├── invites.js            Invite links → Zero Trust email list (/c/i/)
+├── accounts.js           Accounts (SQLite): people, settings, libraries, auto-delete, watch progress
 ├── agents/
 │   ├── marquee-house     Health reporter for Linux machines (+ systemd service/timer)
 │   └── marquee-house-boot.{service,timer}   Root timer for `marquee-house boot` (wake / restart into)
@@ -386,6 +402,7 @@ Created at runtime and excluded from Git:
 | `.marquee-power.json` | Each dual-boot machine's MAC address and boot menu, for waking it |
 | `.marquee-shares.json` | Shared clips (token → clip) |
 | `.marquee-invites.json` | Invite links and who used them |
+| `.marquee.db` | Accounts: people and their settings, each library, who started each download, watch progress, server rules |
 | `cache/clips/` | Clip thumbnails and the Discord-friendly copies of shared clips |
 | `CLIPS_DIR/.deleted/` | Deleted clips, erased automatically after 30 days (move a file back out to restore it) |
 
@@ -398,10 +415,17 @@ The web client uses a JSON API that can also be scripted. `<kind>` is `lib` for 
 | `GET` | `/api/status` | Enabled features |
 | `GET` | `/api/activity` | Recent activity and people (`ADMIN_EMAILS` only) |
 | `GET` | `/api/trending`, `/api/search?q=` | TMDB titles |
-| `GET` | `/api/library` | Library contents |
-| `GET` | `/api/library/delete-info?id=` | What deleting an item would remove |
-| `POST` | `/api/library/delete` | Delete a file or torrent (`{ id, scope: "file" \| "torrent" }`) |
-| `GET` | `/api/downloads` | qBittorrent downloads |
+| `GET` | `/api/library` | Your library (`items`, with `expiresAt`), and what else is on the server (`server`) |
+| `POST` | `/api/library/add` | Add videos already on the server to your library (`{ ids }`) |
+| `POST` | `/api/library/extend` | Keep videos longer (`{ ids }`) |
+| `GET` | `/api/library/delete-info?id=` | What deleting an item would remove, and how many others have it |
+| `POST` | `/api/library/delete` | Remove from your library; deletes the file or torrent when nobody else has it (`{ id, scope: "file" \| "torrent", everyone? }`) |
+| `GET`, `POST` | `/api/me` | You and your settings (`{ name?, theme?, subLang?, quality?, startView?, librarySort? }`) |
+| `GET`, `POST` | `/api/me/progress` | Where you stopped watching (`{ ref, time, duration }`; `time: null` = finished) |
+| `GET`, `POST` | `/api/admin/settings` | Auto-delete rules and defaults (`ADMIN_EMAILS` only) |
+| `GET` | `/api/admin/users` | Everyone who has used Marquee, with their library size (`ADMIN_EMAILS` only) |
+| `POST` | `/api/admin/users/<id>` | `{ canDownload?, keep? }` (`ADMIN_EMAILS` only) |
+| `GET` | `/api/downloads` | Your qBittorrent downloads (`?all=1`: everyone's, owner only) |
 | `POST` | `/api/downloads/add` | Add a magnet or `.torrent` URL (`{ link, subs? }`) |
 | `POST` | `/api/downloads/season` | Get a whole season episode by episode (`{ query: "South Park S18", quality?, subs? }`), returns `{ id }` |
 | `GET` | `/api/downloads/season/:id` | That job's progress: added, already here, not found |

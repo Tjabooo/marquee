@@ -19,6 +19,7 @@ import * as clips from './clips.js';
 import * as invites from './invites.js';
 import * as shows from './shows.js';
 import * as season from './season.js';
+import * as accounts from './accounts.js';
 import { isHomeRequest, describeRequest } from './network.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -49,6 +50,7 @@ function lanAddress() {
 }
 const LAN_IP = lanAddress();
 activity.initActivity({ dataDir: ROOT });
+accounts.initAccounts({ dataDir: ROOT, adminEmails: activity.adminEmails(), mediaDir: MEDIA_DIR });
 house.initHouse({
   dataDir: ROOT,
   mediaDir: MEDIA_DIR,
@@ -388,9 +390,14 @@ async function qbitRequest(endpoint, init = {}, retry = true) {
 
 const qbit = async (endpoint) => (await qbitRequest(endpoint)).json();
 
-// Adds a magnet link, .torrent URL or uploaded .torrent file.
-async function addDownload({ link, file }) {
+// Adds a magnet link, .torrent URL or uploaded .torrent file. `user` is who it's for: the torrent is
+// tagged marquee-u<id> (and a magnet's infohash recorded) so it lands in their library when it finishes.
+async function addDownload({ link, file, user = null, name = '' }) {
   const form = new FormData();
+  if (user) {
+    form.append('tags', accounts.tagFor(user.id));
+    if (link) accounts.recordTorrent(accounts.magnetHash(link), user.id, name);
+  }
   if (file) {
     form.append('torrents', new Blob([file], { type: 'application/x-bittorrent' }), 'upload.torrent');
   } else {
@@ -409,12 +416,16 @@ async function addDownload({ link, file }) {
 }
 
 // Episodes of a show's season that are already here: in the library, or in qBittorrent (an episode,
-// or a season pack, which counts as every episode).
-async function haveEpisodes(key, seasonNo) {
+// or a season pack, which counts as every episode). Episodes already on the server go straight into
+// `user`'s library instead of being downloaded twice.
+async function haveEpisodes(key, seasonNo, user = null) {
   const have = new Set();
   await scanLibrary();
   for (const i of libraryCache.all || []) {
-    if (i.season === seasonNo && i.episode != null && shows.showKey(i.title) === key) have.add(i.episode);
+    if (i.season === seasonNo && i.episode != null && shows.showKey(i.title) === key) {
+      have.add(i.episode);
+      if (user) accounts.addEntry(user.id, accounts.mediaKey(i.full), 'added');
+    }
   }
   let list = [];
   try { list = await qbit('/api/v2/torrents/info'); } catch { /* qBittorrent down: library only */ }
@@ -441,10 +452,23 @@ async function readRaw(req, limit) {
 
 const validHash = (h) => /^[a-f0-9]{40}$|^[a-f0-9]{64}$/i.test(h);
 
-async function listDownloads() {
+// Who a torrent is for: recorded when it was added through Marquee, or its marquee-u<id> tag.
+// Torrents added straight in qBittorrent belong to the owner.
+const torrentOwner = (t) => accounts.torrentRow(t.hash)?.user_id ?? accounts.userFromTags(t.tags) ?? accounts.ownerUser()?.id ?? null;
+
+// The user's own downloads; `all` (the owner only) lists everyone's, with whose each one is.
+async function listDownloads(user, all = false) {
   const torrents = await qbit('/api/v2/torrents/info?sort=added_on&reverse=true');
-  return torrents.map((t) => ({
+  const names = new Map();
+  const nameOf = (id) => {
+    if (!names.has(id)) names.set(id, id == null ? null : accounts.userById(id)?.name || null);
+    return names.get(id);
+  };
+  const owned = torrents.map((t) => [t, torrentOwner(t)]).filter(([, owner]) => all || owner === user.id);
+  return owned.map(([t, owner]) => ({
     hash: t.hash,
+    owner: all ? nameOf(owner) : undefined,
+    mine: owner === user.id,
     name: t.name,
     ...parseName(t.name),
     progress: t.progress,
@@ -695,6 +719,55 @@ async function handleApi(req, res, url) {
   }
 
   activity.seen(req);
+  const user = accounts.userFor(req);
+
+  // ---- the signed-in person: profile, preferences, watch progress ----
+  if (p === '/api/me') {
+    if (req.method === 'POST') {
+      const next = accounts.updateMe(user, await readJson(req));
+      return sendJson(res, 200, { me: accounts.publicUser(next) });
+    }
+    return sendJson(res, 200, { me: accounts.publicUser(user) });
+  }
+  if (p === '/api/me/progress') {
+    if (req.method === 'POST') {
+      const { ref, time, duration } = await readJson(req);
+      accounts.saveProgress(user.id, ref, time, duration);
+      return sendJson(res, 200, { ok: true });
+    }
+    return sendJson(res, 200, { progress: accounts.progressOf(user.id) });
+  }
+  // ---- the owner's settings: server rules and people ----
+  if (p.startsWith('/api/admin/')) {
+    if (!user.isOwner) throw new HttpError(403, 'Only the server’s owner can change this.');
+    if (p === '/api/admin/settings') {
+      if (req.method === 'POST') {
+        const next = accounts.updateServerSettings(await readJson(req));
+        activity.record(req, 'settings', `auto-delete ${next.retentionDays ? `after ${next.retentionDays} days` : 'off'}`, { quietMs: 60000 });
+        lastExpiry = 0; // run the auto-delete check on the next round
+        return sendJson(res, 200, { settings: next, choices: accounts.choices() });
+      }
+      return sendJson(res, 200, { settings: accounts.serverSettings(), choices: accounts.choices() });
+    }
+    if (p === '/api/admin/users') {
+      // Sizes come from the files on disk: each video counts once per person who has it.
+      const sizes = new Map();
+      for (const i of (await scanLibrary()) || []) sizes.set(accounts.mediaKey(i.full), i.size);
+      const users = accounts.listUsers().map(({ keys, ...u }) => {
+        const held = keys.filter((k) => sizes.has(k));
+        return { ...u, items: held.length, size: held.reduce((n, k) => n + sizes.get(k), 0) };
+      });
+      return sendJson(res, 200, { users });
+    }
+    if ((m = p.match(/^\/api\/admin\/users\/(\d+)$/)) && req.method === 'POST') {
+      const body = await readJson(req);
+      const u = accounts.updateUser(Number(m[1]), body);
+      if ('canDownload' in body) activity.record(req, 'permission', `${u.name} ${body.canDownload ? 'can' : 'can’t'} download`);
+      if ('keep' in body) activity.record(req, 'permission', `${u.name}’s videos ${body.keep ? 'are never auto-deleted' : 'are auto-deleted again'}`);
+      return sendJson(res, 200, { ok: true });
+    }
+    throw new HttpError(404, 'Unknown admin route.');
+  }
 
   if (p === '/api/house') {
     if (!activity.isAdmin(req)) throw new HttpError(403, 'Only the server’s owner can see the house.');
@@ -782,6 +855,9 @@ async function handleApi(req, res, url) {
       casting: await castAllowed(req),
       admin: activity.isAdmin(req),
       clips: activity.isAdmin(req) && clips.clipsConfigured(),
+      me: accounts.publicUser(user),
+      rules: accounts.serverSettings(),
+      subLangs: subtitles.subtitleLanguages(),
     });
   }
   if (p === '/api/convert') return sendJson(res, 200, converter.converterStatus());
@@ -830,21 +906,60 @@ async function handleApi(req, res, url) {
     // Episodes are grouped into shows and seasons (TMDB posters and episode names when it answers in time).
     const tmdbOn = Boolean(TMDB_TOKEN || TMDB_KEY);
     const { shows: showList, showOf } = await shows.groupShows(items, tmdbOn ? tmdb : null);
-    return sendJson(res, 200, {
-      items: items.map(({ full, ...rest }) => ({
-        ...rest, ...showOf.get(rest.id),
+    // `items` is this person's library, with when each video gets deleted. `server` is everything
+    // else on the server (no word on whose it is), so search can offer to add it instead of downloading
+    // it again.
+    const mine = accounts.libraryOf(user.id);
+    const autoDelete = accounts.serverSettings().retentionDays > 0;
+    const own = [];
+    const server = [];
+    for (const { full, ...rest } of items) {
+      const mediaKey = accounts.mediaKey(full);
+      const entry = mediaKey && mine.get(mediaKey);
+      const base = { ...rest, mediaKey, ...showOf.get(rest.id) };
+      if (!entry) { server.push(base); continue; }
+      own.push({
+        ...base,
         converting: Boolean(converting) && converting === full && converter.needsConversion(full),
-      })),
-      shows: showList,
-    });
+        source: entry.source,
+        addedAt: entry.addedAt,
+        expiresAt: autoDelete ? entry.expiresAt : null,
+        extensions: entry.extensions,
+      });
+    }
+    const myShows = new Set([...own, ...server].map((i) => i.show).filter(Boolean));
+    return sendJson(res, 200, { items: own, server, shows: showList.filter((s) => myShows.has(s.id)) });
+  }
+  // Add videos already on the server to your library (no copy is made).
+  if (p === '/api/library/add' && req.method === 'POST') {
+    const ids = [].concat((await readJson(req)).ids || []).map(String).slice(0, 500);
+    let added = 0;
+    for (const id of ids) {
+      const full = librarySource(id);
+      if (!fs.existsSync(full)) continue;
+      if (accounts.addEntry(user.id, accounts.mediaKey(full), 'added')) added++;
+    }
+    if (added) activity.record(req, 'add', ids.length === 1 ? titleOf(librarySource(ids[0])) : `${added} videos`, { quietMs: 60000 });
+    return sendJson(res, 200, { added });
+  }
+  // "Keep longer": push back when videos in your library are deleted.
+  if (p === '/api/library/extend' && req.method === 'POST') {
+    const ids = [].concat((await readJson(req)).ids || []).map(String).slice(0, 500);
+    const entries = ids.map((id) => accounts.extend(user.id, accounts.mediaKey(librarySource(id))));
+    const days = accounts.serverSettings().extendDays;
+    activity.record(req, 'extend', `${ids.length === 1 ? titleOf(librarySource(ids[0])) : `${ids.length} videos`} by ${days} days`, { quietMs: 60000 });
+    return sendJson(res, 200, { entries });
+  }
+  if ((p === '/api/downloads/add' || p === '/api/downloads/season') && !user.canDownload) {
+    throw new HttpError(403, 'The server’s owner hasn’t turned on downloads for you. Ask them, or add things that are already on the server.');
   }
   if (p === '/api/downloads/add' && req.method === 'POST') {
     if (/application\/json/i.test(req.headers['content-type'] || '')) {
       const body = await readJson(req);
-      await addDownload({ link: body.link });
       const dn = /[?&]dn=([^&]+)/.exec(String(body.link || ''))?.[1];
       let name = String(body.name || '');
       if (!name && dn) { try { name = decodeURIComponent(dn.replace(/\+/g, ' ')); } catch { name = dn; } }
+      await addDownload({ link: body.link, user, name });
       activity.record(req, 'download', name || 'a torrent link');
       // Subtitles chosen in torrent search are fetched when the download completes.
       if (Array.isArray(body.subs) && body.subs.length) {
@@ -854,7 +969,7 @@ async function handleApi(req, res, url) {
     } else {
       const file = await readRaw(req, 10 * 1024 * 1024);
       if (!file.length) throw new HttpError(400, 'The file was empty.');
-      await addDownload({ file });
+      await addDownload({ file, user });
       activity.record(req, 'download', 'a .torrent file');
     }
     return sendJson(res, 200, { ok: true });
@@ -872,8 +987,9 @@ async function handleApi(req, res, url) {
     }, {
       parseName, tmdb: TMDB_TOKEN || TMDB_KEY ? tmdb : null, seasonEpisodes: shows.seasonEpisodes,
       searchTorrents: torrents.searchTorrents, magnetFor1337x: torrents.magnetFor1337x,
-      addDownload, wantSubtitles: (link, subs, name) => { subtitles.wantSubtitles(link, subs, name); setTimeout(checkSubtitleWants, 30_000); },
-      haveEpisodes, log: (msg) => console.log(msg),
+      addDownload: (opts) => addDownload({ ...opts, user }),
+      wantSubtitles: (link, subs, name) => { subtitles.wantSubtitles(link, subs, name); setTimeout(checkSubtitleWants, 30_000); },
+      haveEpisodes: (key, seasonNo) => haveEpisodes(key, seasonNo, user), log: (msg) => console.log(msg),
     });
     activity.record(req, 'download', `${want.title} season ${want.season}, episode by episode`);
     return sendJson(res, 200, { id });
@@ -891,12 +1007,13 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, { magnet: await torrents.magnetFor1337x(url.searchParams.get('ref')) });
   }
   if (p === '/api/downloads') {
-    return sendJson(res, 200, { items: await listDownloads() });
+    return sendJson(res, 200, { items: await listDownloads(user, user.isOwner && url.searchParams.get('all') === '1') });
   }
   if ((m = p.match(/^\/api\/downloads\/([a-f0-9]{40}|[a-f0-9]{64})\/(pause|resume|delete)$/i)) && req.method === 'POST') {
     const body = await readJson(req).catch(() => ({}));
     const [t] = await qbit(`/api/v2/torrents/info?hashes=${m[1]}`);
     if (!t) throw new HttpError(404, 'That download no longer exists.');
+    if (!user.isOwner && torrentOwner(t) !== user.id) throw new HttpError(403, 'That’s someone else’s download.');
     if (m[2] === 'delete') {
       await deleteDownload(t, body.files !== false);
       activity.record(req, 'delete', `${t.name}${body.files === false ? ' (download only, files kept)' : ''}`);
@@ -1062,16 +1179,39 @@ async function handleApi(req, res, url) {
   }
 
   // ---- library deletion ----
+  // Deleting takes a video out of your library. The file itself is only deleted when nobody else has
+  // it in theirs (the owner can also delete it for everyone).
   if (p === '/api/library/delete-info') {
-    return sendJson(res, 200, await deleteInfo(String(url.searchParams.get('id') || '')));
+    const id = String(url.searchParams.get('id') || '');
+    const key = accounts.mediaKey(librarySource(id));
+    const others = accounts.holders(key).filter((u) => u !== user.id).length;
+    return sendJson(res, 200, { ...(await deleteInfo(id)), others, canDeleteForEveryone: user.isOwner && others > 0 });
   }
   if (p === '/api/library/delete' && req.method === 'POST') {
     const body = await readJson(req);
     const id = String(body.id || '');
+    const key = accounts.mediaKey(librarySource(id));
+    const everyone = Boolean(body.everyone) && user.isOwner;
+    if (!everyone && !accounts.libraryOf(user.id).has(key) && !user.isOwner) throw new HttpError(403, 'That isn’t in your library.');
     let what = id;
     try { what = titleOf((await deletePlan(id)).original); } catch { /* named by id */ }
-    await deleteMedia(id, body.scope === 'torrent' ? 'torrent' : 'file');
-    activity.record(req, 'delete', `${what}${body.scope === 'torrent' ? ' (whole download)' : ''}`);
+    const heldByOthers = (k) => accounts.holders(k).some((u) => u !== user.id);
+    if (!everyone && heldByOthers(key)) {
+      accounts.removeEntry(user.id, key);
+      activity.record(req, 'remove', what);
+      return sendJson(res, 200, { ok: true, kept: true });
+    }
+    let scope = body.scope === 'torrent' ? 'torrent' : 'file';
+    // A whole season pack only goes if none of its other episodes are in someone else's library.
+    if (scope === 'torrent' && !everyone) {
+      const { torrent } = await deletePlan(id);
+      if (torrent?.videos.some((v) => heldByOthers(accounts.mediaKey(v.full)))) scope = 'file';
+    }
+    for (const file of await deleteMedia(id, scope)) {
+      const k = accounts.mediaKey(file);
+      if (k) { accounts.removeAll(k); accounts.markGone(k); }
+    }
+    activity.record(req, 'delete', `${what}${scope === 'torrent' ? ' (whole download)' : ''}${everyone ? ' for everyone' : ''}`);
     return sendJson(res, 200, { ok: true });
   }
 
@@ -1114,7 +1254,8 @@ const server = http.createServer(async (req, res) => {
     const allowed = req.method === 'GET' || req.method === 'HEAD'
       || (req.method === 'POST' && (url.pathname.startsWith('/api/cast/') || url.pathname === '/api/downloads/add' || url.pathname === '/api/downloads/season' || url.pathname === '/api/subs/fetch' || url.pathname === '/api/subs/sync' || url.pathname === '/api/library/delete' || /^\/api\/downloads\/\w+\/(pause|resume|delete)$/.test(url.pathname) || /^\/api\/media\/\w+\/[\w-]+\/sync$/.test(url.pathname)
         || /^\/api\/house\/(report|boot|power)$/.test(url.pathname) || /^\/api\/clips\/[\w-]+\/(share|unshare|delete|trim)$/.test(url.pathname)
-        || /^\/api\/access\/(invite|remove|invite\/\w+\/revoke)$/.test(url.pathname) || /^\/c\/i\/[\w-]+\/?$/.test(url.pathname)));
+        || /^\/api\/access\/(invite|remove|invite\/\w+\/revoke)$/.test(url.pathname) || /^\/c\/i\/[\w-]+\/?$/.test(url.pathname)
+        || /^\/api\/(me|me\/progress|library\/add|library\/extend|admin\/settings|admin\/users\/\d+)$/.test(url.pathname)));
     if (!allowed) throw new HttpError(405, 'Method not allowed.');
     if (url.pathname.startsWith('/api/')) await handleApi(req, res, url);
     else if (url.pathname.startsWith('/play/')) await handlePlay(req, res, url);
@@ -1299,6 +1440,7 @@ async function deleteMedia(id, scope) {
   // qBittorrent deletes asynchronously; clean up afterwards.
   setTimeout(() => { removeEmptyFolders(path.dirname(original)); libraryCache.at = 0; }, 4000);
   console.log(`[library] deleted ${wholeTorrent ? `torrent "${torrent.name}"` : path.basename(original)}`);
+  return videos;
 }
 
 // Pause or resume a download. qBittorrent 5 calls these stop/start; older versions pause/resume.
@@ -1363,6 +1505,8 @@ async function stopSeeding() {
       if ((t.tags || '').split(',').some((tag) => tag.trim().toLowerCase() === 'seed')) continue;
       const content = t.content_path || path.join(t.save_path || '', t.name);
       const inLibrary = Boolean(MEDIA_DIR) && isInside(content, MEDIA_DIR);
+      // Not in anyone's library yet (claimFiles below does that first): keep it until it is.
+      if (inLibrary && !accounts.torrentRow(t.hash)?.claimed_at) continue;
       const waitingSubs = (subtitles.subtitleWants(t.hash) || []).some((w) => w.state === 'waiting');
       const finishedFor = t.completion_on > 0 ? Date.now() / 1000 - t.completion_on : 0;
       try {
@@ -1378,8 +1522,100 @@ async function stopSeeding() {
     stoppingSeeds = false;
   }
 }
-setTimeout(stopSeeding, 15_000);
-setInterval(stopSeeding, 60 * 1000);
+// ---------- whose library each video is in ----------
+// Finished downloads go into the library of whoever started them (the torrent's marquee-u<id> tag, or
+// the infohash recorded when it was added). Torrents added straight in qBittorrent belong to the owner.
+// Videos that turn up in MEDIA_DIR any other way (copied in by hand, or there before accounts
+// existed) go into the owner's library as kept, so nothing that was already there gets auto-deleted.
+async function claimFiles() {
+  if (!MEDIA_DIR) return;
+  const first = !accounts.migrated();
+  const torrentContent = []; // where torrents still in qBittorrent keep their files
+  if (QBIT_URL) {
+    try {
+      for (const t of await qbit('/api/v2/torrents/info')) {
+        torrentContent.push(t.content_path || path.join(t.save_path, t.name));
+        let row = accounts.torrentRow(t.hash);
+        if (!row) {
+          accounts.recordTorrent(t.hash, accounts.userFromTags(t.tags) ?? accounts.ownerUser()?.id ?? null, t.name);
+          row = accounts.torrentRow(t.hash);
+        }
+        if (row.claimed_at || t.progress < 1 || BUSY_STATES.test(t.state || '')) continue;
+        for (const f of await qbit(`/api/v2/torrents/files?hash=${t.hash}`)) {
+          const full = path.join(t.save_path, f.name);
+          if (f.priority === 0 || !isVideo(full)) continue;
+          // On the first run, what's already downloaded counts as being there before accounts.
+          accounts.addEntry(row.user_id, accounts.mediaKey(full), first ? 'existing' : 'download');
+        }
+        accounts.markClaimed(t.hash);
+        if (row.user_id && !first) console.log(`[accounts] "${t.name}" is in ${accounts.userById(row.user_id)?.name}’s library`);
+      }
+    } catch {
+      return; // qBittorrent unreachable: can't tell downloads from hand-copied files, so wait
+    }
+  }
+  const owner = accounts.ownerUser();
+  if (!owner) return;
+  await scanLibrary();
+  const tracked = accounts.trackedKeys();
+  let adopted = 0;
+  for (const i of libraryCache.all || []) {
+    const key = accounts.mediaKey(i.full);
+    if (!key || tracked.has(key) || torrentContent.some((c) => isInside(i.full, c))) continue;
+    if (!first && Date.now() - i.added < 10 * 60 * 1000) continue; // may still be being copied in
+    accounts.addEntry(owner.id, key, 'existing');
+    tracked.add(key);
+    adopted++;
+  }
+  if (adopted) console.log(`[accounts] ${adopted} video${adopted === 1 ? '' : 's'} added to ${owner.name}’s library (kept)`);
+  if (first) accounts.setMigrated();
+}
+
+// ---------- auto-delete ----------
+// Each video in someone's library has a date it goes (the owner sets how long, 7 days by default;
+// "Keep longer" pushes it back). When that passes it leaves their library, and once it's in nobody's
+// library the file is deleted. A delete that fails (the file is playing) is tried again next round.
+const SYSTEM = { headers: { 'user-agent': 'Marquee' } }; // stands in for a request in the activity log
+async function expireLibrary() {
+  if (!MEDIA_DIR) return;
+  const orphaned = accounts.expireDue();
+  const pending = accounts.pendingDeletes();
+  if (!pending.length) return;
+  if (orphaned.length) libraryCache.at = 0;
+  await scanLibrary();
+  const byKey = new Map();
+  for (const i of [...(libraryCache.all || []), ...(libraryCache.items || [])]) byKey.set(accounts.mediaKey(i.full), i); // the listed copy wins
+  for (const key of pending) {
+    const item = byKey.get(key);
+    if (!item) { accounts.markGone(key); continue; }
+    try {
+      await deleteMedia(item.id, 'file');
+      accounts.markGone(key);
+      activity.record(SYSTEM, 'expire', titleOf(item.full), { user: 'Marquee' });
+    } catch (e) {
+      console.warn(`[library] couldn’t auto-delete ${item.file}: ${e.message} Trying again later.`);
+    }
+  }
+}
+
+let libraryBusy = false;
+let lastExpiry = 0;
+async function libraryRound() {
+  if (libraryBusy) return;
+  libraryBusy = true;
+  try {
+    await claimFiles().catch((e) => console.warn(`[accounts] ${e.message}`));
+    await stopSeeding();
+    if (Date.now() - lastExpiry > 10 * 60 * 1000) {
+      lastExpiry = Date.now();
+      await expireLibrary().catch((e) => console.warn(`[library] auto-delete: ${e.message}`));
+    }
+  } finally {
+    libraryBusy = false;
+  }
+}
+setTimeout(libraryRound, 15_000);
+setInterval(libraryRound, 60 * 1000);
 
 converter.startConverter({
   dataDir: ROOT,

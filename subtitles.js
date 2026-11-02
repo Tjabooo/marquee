@@ -21,6 +21,8 @@ export const LANG_NAMES = {
 const LANGS = (process.env.SUB_LANGS || 'en,sv,da,no,fi,de,nl,fr,es,pt-pt,pt-br,it,pl,ar,tr')
   .split(',').map((s) => s.trim().toLowerCase()).filter((l) => LANG_NAMES[l]);
 const langList = (codes) => LANGS.filter((c) => codes.has(c)).map((code) => ({ code, name: LANG_NAMES[code] }));
+// Every language Marquee looks for (SUB_LANGS), for the default-subtitles setting.
+export const subtitleLanguages = () => LANGS.map((code) => ({ code, name: LANG_NAMES[code] }));
 
 export const subtitlesConfigured = () => Boolean(API_KEY);
 export const validLang = (l) => Object.hasOwn(LANG_NAMES, String(l || '').toLowerCase());

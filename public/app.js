@@ -52,11 +52,34 @@ const CLIENT_ID = (() => {
 })();
 
 async function api(path, opts = {}) {
-  const r = await fetch(path, { ...opts, headers: { ...opts.headers, 'X-Marquee-Client': CLIENT_ID } });
+  let r;
+  try {
+    r = await fetch(path, { ...opts, headers: { ...opts.headers, 'X-Marquee-Client': CLIENT_ID } });
+  } catch (err) {
+    if (err.name !== 'AbortError' && await signedOut()) throw new Error('You’ve been signed out. Sign in again to carry on.');
+    throw err;
+  }
   let data = {};
   try { data = await r.json(); } catch { /* non-JSON */ }
   if (!r.ok) throw new Error(data.error || `The server responded with ${r.status}.`);
   return data;
+}
+
+// When the Cloudflare Access sign-in runs out, API calls get redirected to Cloudflare's login page,
+// which fetch can't follow (it's another site), so they fail as network errors. Telling the two apart:
+// a redirect seen without following it means signed out. Then a reload goes through the sign-in.
+let signedOutShown = false;
+async function signedOut() {
+  let r;
+  try { r = await fetch('/api/me', { redirect: 'manual', cache: 'no-store' }); } catch { return false; } // really offline
+  if (r.type !== 'opaqueredirect') return false;
+  if (!signedOutShown) {
+    signedOutShown = true;
+    document.body.append(h('div', { class: 'signed-out', role: 'alert' },
+      h('p', {}, h('strong', {}, 'You’ve been signed out.'), ' Your sign-in ran out; sign in again to carry on where you were.'),
+      h('button', { class: 'play-btn', onclick: () => location.reload() }, 'Sign in again')));
+  }
+  return true;
 }
 
 // ---------- formatting ----------
@@ -105,21 +128,91 @@ const state = {
   libraryError: null,
   downloads: [],
   downloadsError: null,
+  dlScope: 'mine',  // the owner can switch Downloads to everyone's
+  server: [],       // videos on the server that aren't in this person's library
+  me: null,         // who's signed in, with their settings (accounts.js)
+  rules: null,      // the server's auto-delete rules
+  progress: {},     // where this person stopped watching, from any device
+  libFilter: 'all',
 };
+const canDownload = () => state.status.downloads && state.me?.canDownload !== false;
+const prefs = () => state.me?.settings || {};
 
 // Local files (library + finished downloads) that belong to a TMDB title.
 function localFiles() {
   return [
     ...state.library.map((f) => ({ ...f, kind: 'lib', key: f.id, done: true })),
-    ...state.downloads.map((d) => ({ ...d, kind: 'dl', key: d.hash, file: d.name })),
+    ...state.downloads.filter((d) => d.mine !== false).map((d) => ({ ...d, kind: 'dl', key: d.hash, file: d.name })),
   ];
 }
-function matchesFor(t) {
+const sameTitle = (t) => {
   const n = norm(t.title);
-  return localFiles()
-    .filter((f) => (t.type === 'tv' && f.show && f.show === `tv-${t.id}`) || (norm(f.title) === n &&
-      (t.type === 'tv' || !f.year || !t.year || Math.abs(f.year - t.year) <= 1)))
-    .sort((a, b) => (a.season ?? 0) - (b.season ?? 0) || (a.episode ?? 0) - (b.episode ?? 0));
+  return (f) => (t.type === 'tv' && f.show && f.show === `tv-${t.id}`) || (norm(f.title) === n &&
+    (t.type === 'tv' || !f.year || !t.year || Math.abs(f.year - t.year) <= 1));
+};
+const byEpisode = (a, b) => (a.season ?? 0) - (b.season ?? 0) || (a.episode ?? 0) - (b.episode ?? 0);
+function matchesFor(t) {
+  return localFiles().filter(sameTitle(t)).sort(byEpisode);
+}
+// The same title on the server but not in this person's library: offered as "Add to my library".
+function serverMatchesFor(t) {
+  return state.server.filter(sameTitle(t)).map((f) => ({ ...f, kind: 'lib', key: f.id, done: true })).sort(byEpisode);
+}
+
+// ---------- themes (Settings → Appearance) ----------
+// Each theme sets the colour tokens style.css is built on. A custom theme picks four colours and the
+// rest are mixed from them. The result is cached in localStorage so index.html can paint the right
+// colours before this script loads (no flash of the default theme).
+const THEMES = {
+  marquee: { name: 'Marquee', bg: '#1F1019', surface: '#2B1724', raised: '#3A2031', line: '#4B2C3F', text: '#F6EADF', muted: '#BA9DAD', accent: '#F4C152', alert: '#FF9B85' },
+  midnight: { name: 'Midnight', bg: '#0E1320', surface: '#161D2E', raised: '#1F2840', line: '#2A3552', text: '#E8EEF8', muted: '#96A3BD', accent: '#5CC8FF', alert: '#FF8A8A' },
+  forest: { name: 'Forest', bg: '#0F1A14', surface: '#16241C', raised: '#1E3127', line: '#2A4134', text: '#E9F2EA', muted: '#9DB5A4', accent: '#9BE07A', alert: '#FF9B85' },
+  ember: { name: 'Ember', bg: '#161312', surface: '#221D1B', raised: '#2E2724', line: '#3D3430', text: '#F5EDE8', muted: '#B3A49C', accent: '#FF7A3D', alert: '#FF8A8A' },
+  lagoon: { name: 'Lagoon', bg: '#0B1A1C', surface: '#112629', raised: '#183337', line: '#22444A', text: '#E3F4F4', muted: '#93B8BA', accent: '#3DDBC4', alert: '#FF9B85' },
+  synth: { name: 'Synthwave', bg: '#140F24', surface: '#1D1633', raised: '#281E45', line: '#352858', text: '#F0EAFF', muted: '#A99BC9', accent: '#FF5FA2', alert: '#FFB36B' },
+  noir: { name: 'Noir', bg: '#111111', surface: '#1B1B1B', raised: '#262626', line: '#333333', text: '#F2F2F2', muted: '#A0A0A0', accent: '#E8E8E8', alert: '#FF8A8A' },
+  paper: { name: 'Paper', bg: '#F7F2EA', surface: '#FFFDF9', raised: '#EFE7DB', line: '#DDD2C2', text: '#241A14', muted: '#6E6157', accent: '#C2410C', alert: '#B42318' },
+  daylight: { name: 'Daylight', bg: '#F2F5FA', surface: '#FFFFFF', raised: '#E5EBF4', line: '#D2DAE7', text: '#141B2B', muted: '#5A6478', accent: '#2563EB', alert: '#C0262D' },
+};
+const THEME_FIELDS = [['bg', 'Background'], ['surface', 'Panels'], ['text', 'Text'], ['accent', 'Accent']];
+
+const hexRgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+const rgbHex = (rgb) => `#${rgb.map((v) => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0')).join('')}`;
+const mix = (a, b, t) => rgbHex(hexRgb(a).map((v, i) => v + (hexRgb(b)[i] - v) * t)); // t of the way from a to b
+const luminance = (hex) => {
+  const [r, g, b] = hexRgb(hex).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+
+// A saved theme ({ preset } or { preset: 'custom', colors }) -> the full set of colours.
+function themeColors(theme) {
+  const preset = THEMES[theme?.preset] || THEMES[state.rules?.defaultTheme] || THEMES.marquee;
+  if (theme?.preset !== 'custom' || !theme.colors) return preset;
+  const { bg, surface, text, accent } = theme.colors;
+  const light = luminance(bg) > 0.5;
+  return {
+    name: 'Custom', bg, surface, text, accent,
+    raised: mix(surface, text, 0.08), line: mix(surface, text, 0.16), muted: mix(text, bg, 0.38),
+    alert: light ? '#B42318' : '#FF9B85',
+  };
+}
+
+function applyTheme(theme) {
+  const c = themeColors(theme);
+  const light = luminance(c.bg) > 0.5;
+  const onAccent = luminance(c.accent) > 0.4 ? (luminance(c.bg) < 0.15 ? c.bg : '#141414') : (luminance(c.bg) > 0.8 ? c.bg : '#FFFFFF');
+  const vars = {
+    '--velvet': c.bg, '--curtain': c.surface, '--seat': c.raised, '--line': c.line,
+    '--paper': c.text, '--dust': c.muted, '--bulb': c.accent, '--alert': c.alert,
+    '--bulb-dim': `${c.accent}33`, '--on-bulb': onAccent,
+  };
+  const root = document.documentElement;
+  for (const [k, v] of Object.entries(vars)) root.style.setProperty(k, v);
+  root.style.colorScheme = light ? 'light' : 'dark';
+  root.dataset.scheme = light ? 'light' : 'dark';
+  pageThemeColor = c.bg;
+  if (!current) setTheme(c.bg);
+  try { localStorage.setItem('marquee:theme', JSON.stringify({ vars, scheme: light ? 'light' : 'dark' })); } catch { /* blocked */ }
 }
 
 // ---------- shared UI bits ----------
@@ -145,8 +238,67 @@ function toast(msg) {
 }
 
 function resumeKey(f) { return `resume:${f.kind}:${f.key}`; }
+// Where this person stopped, synced through the server so it resumes on their other devices too.
+// Library videos go by their media key, which stays the same when the MP4 copy replaces the original.
+const progressRef = (f) => (f.mediaKey ? `m:${f.mediaKey}` : `${f.kind === 'dl' ? 'd' : 'l'}:${f.key}`);
 function savedProgress(f) {
+  const synced = state.progress[progressRef(f)];
+  if (synced) return synced;
   try { return JSON.parse(localStorage.getItem(resumeKey(f))); } catch { return null; }
+}
+async function loadProgress() {
+  try { state.progress = (await api('/api/me/progress')).progress || {}; } catch { /* local copy only */ }
+}
+
+// ---------- auto-delete countdown ----------
+// Videos in your library are deleted a set time after they finish downloading (the owner's setting,
+// 7 days unless changed). The countdown shows on each one, with a button to keep it longer.
+function timeLeft(ms) {
+  const hours = (ms - Date.now()) / 3600000;
+  if (hours <= 0) return 'Deleting soon';
+  if (hours < 1) return 'Deleted within the hour';
+  if (hours < 48) return `${Math.floor(hours)} h left`;
+  return `${Math.round(hours / 24)} days left`;
+}
+const canExtend = (f) => f.expiresAt != null && (!state.rules?.maxExtensions || (f.extensions || 0) < state.rules.maxExtensions);
+const extendDays = () => state.rules?.extendDays || 7;
+
+// The "4 days left · Keep 7 more days" part of a row's meta line. Re-renders itself after extending.
+function expiryBits(f) {
+  if (f.expiresAt == null) return null;
+  const soon = f.expiresAt - Date.now() < 86400000;
+  const wrap = h('span', { class: 'expiry-wrap' },
+    h('span', { class: `expiry${soon ? ' is-soon' : ''}`, title: `Deleted ${new Date(f.expiresAt).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}` }, timeLeft(f.expiresAt)),
+    canExtend(f) && h('button', {
+      type: 'button', class: 'keep-btn', 'aria-label': `Keep ${f.title}${episodeLabel(f) ? ` ${episodeLabel(f)}` : ''} ${extendDays()} more days`,
+      onclick: async (e) => {
+        e.stopPropagation();
+        const b = e.currentTarget;
+        b.disabled = true;
+        const [updated] = await extendItems([f]);
+        if (updated) wrap.replaceWith(expiryBits({ ...f, ...updated }) || '');
+        else b.disabled = false;
+      },
+    }, `Keep ${extendDays()} more days`));
+  return wrap;
+}
+
+// Pushes back when these library videos are deleted. Returns the updated items (or [] on failure).
+async function extendItems(files) {
+  try {
+    const { entries } = await api('/api/library/extend', jsonPost({ ids: files.map((f) => f.id || f.key) }));
+    const byKey = new Map(entries.map((e) => [e.key, e]));
+    for (const f of state.library) {
+      const e = byKey.get(f.mediaKey);
+      if (e) Object.assign(f, { expiresAt: e.expiresAt, extensions: e.extensions });
+    }
+    toast(files.length === 1 ? `Kept ${extendDays()} more days` : `Kept ${plural(files.length, 'video')} ${extendDays()} more days`);
+    if (state.view === 'library') renderLibrary();
+    return files.map((f) => state.library.find((x) => x.mediaKey === f.mediaKey)).filter(Boolean);
+  } catch (err) {
+    toast(err.message);
+    return [];
+  }
 }
 
 function fileRow(f) {
@@ -159,7 +311,7 @@ function fileRow(f) {
   return h('li', { class: 'row' },
     h('div', { class: 'row-text' },
       h('div', { class: 'row-title' }, title),
-      h('div', { class: 'row-meta' }, meta.filter(Boolean).map((m) => h('span', {}, m))),
+      h('div', { class: 'row-meta' }, meta.filter(Boolean).map((m) => h('span', {}, m)), f.kind === 'lib' && expiryBits(f)),
       pct > 1 && h('div', { class: 'resume-track', title: 'Watched so far' }, h('i', { style: `width:${pct}%` }))),
     f.done && h('div', { class: 'row-actions' },
       f.kind === 'lib' && h('button', { class: 'cast-btn del-btn', 'aria-label': `Delete ${title}`, title: 'Delete', onclick: (e) => openDelete(f, e.currentTarget) }, icon('trash')),
@@ -184,15 +336,21 @@ async function cachedApi(url, signal) {
   return data;
 }
 
+// "In your library", or "On server" when someone else has it here (it can be added, not downloaded).
+function ownershipBadge(t) {
+  if (matchesFor(t).some((f) => f.done)) return h('span', { class: 'on-server' }, 'In your library');
+  if (serverMatchesFor(t).length) return h('span', { class: 'on-server is-other' }, 'On server');
+  return null;
+}
+
 function titleCard(t) {
-  const onServer = matchesFor(t).some((f) => f.done);
   return h('li', {},
     h('button', { class: 'title-card', onclick: (e) => openDetails(t, e.currentTarget) },
       h('div', { class: 'poster' },
         t.poster
           ? h('img', { src: t.poster, alt: '', loading: 'lazy', decoding: 'async' })
           : h('div', { class: 'poster-fallback' }, t.title),
-        onServer && h('span', { class: 'on-server' }, 'On server'),
+        ownershipBadge(t),
         t.rating && h('span', { class: 'rating', 'aria-label': `Rated ${t.rating} out of 10` }, `★ ${t.rating.toFixed(1)}`)),
       h('div', { class: 'name' }, t.title),
       h('div', { class: 'sub' }, [t.year, t.type === 'tv' ? 'Series' : 'Film'].filter(Boolean).join(', '))));
@@ -230,12 +388,11 @@ function discoverFilters() {
 
 function heroSlide(t) {
   const meta = [t.year, t.type === 'tv' ? 'Series' : 'Film', t.rating && `★ ${t.rating.toFixed(1)}`, ...genreNames(t)].filter(Boolean);
-  const onServer = matchesFor(t).some((f) => f.done);
   return h('li', { class: 'hero-slide' },
     h('button', { class: 'hero-card', onclick: (e) => openDetails(t, e.currentTarget) },
       h('img', { src: t.backdrop, alt: '', decoding: 'async' }),
       h('div', { class: 'hero-text' },
-        onServer && h('span', { class: 'on-server' }, 'On server'),
+        ownershipBadge(t),
         h('div', { class: 'hero-title' }, t.title),
         h('div', { class: 'hero-meta' }, meta.join(' · ')),
         h('p', { class: 'hero-overview' }, t.overview))));
@@ -353,6 +510,7 @@ async function loadLibrary() {
   try {
     const data = await api('/api/library');
     state.library = data.items;
+    state.server = data.server || [];
     state.libraryShows = data.shows || [];
     state.libraryError = null;
   } catch (err) {
@@ -408,39 +566,69 @@ function renderLibrary() {
   }
   const q = norm(state.query);
   const showsById = new Map(state.libraryShows.map((x) => [x.id, x]));
-  const items = state.library.filter((f) => !q || norm(f.title).includes(q) || norm(f.file).includes(q)
-    || norm(showsById.get(f.show)?.title).includes(q) || norm(f.episodeName).includes(q));
+  const isShow = (f) => Boolean(f.show && showsById.get(f.show)) || f.season != null;
+  const items = state.library.filter((f) => (!q || norm(f.title).includes(q) || norm(f.file).includes(q)
+    || norm(showsById.get(f.show)?.title).includes(q) || norm(f.episodeName).includes(q))
+    && (state.libFilter === 'all' || (state.libFilter === 'tv') === isShow(f)));
+  const filters = segmented(LIB_FILTERS, state.libFilter, (v) => { state.libFilter = v; renderLibrary(); }, 'Show');
   if (!state.library.length) {
-    body.replaceChildren(notice('Nothing here yet', 'Video files you add to the media folder show up here within 30 seconds.'));
+    body.replaceChildren(notice('Your library is empty',
+      state.server.length
+        ? `Search for something in Discover. ${plural(state.server.length, 'video is', 'videos are')} already on the server: add those to your library and watch straight away, or download something new.`
+        : 'Find something in Discover and download it. It shows up here when it’s ready.'));
     return;
   }
   if (!items.length) {
-    body.replaceChildren(notice(`Nothing matches “${state.query.trim()}”`, 'Try part of the title instead.'));
+    body.replaceChildren(filters, notice(q ? `Nothing matches “${state.query.trim()}”` : `No ${state.libFilter === 'tv' ? 'shows' : 'films'} in your library`, q ? 'Try part of the title instead.' : 'Try the other filter.'));
     return;
   }
-  // One entry per show (its seasons and episodes are behind it), films as their own rows. The list is
-  // newest first, so a show sits where its latest episode would.
-  const entries = [];
-  const byShow = new Map();
-  for (const f of items) {
-    const show = f.show && showsById.get(f.show);
-    if (!show) { entries.push({ file: f }); continue; }
-    if (!byShow.has(show.id)) { const e = { show, files: [] }; byShow.set(show.id, e); entries.push(e); }
-    byShow.get(show.id).files.push(f);
-  }
-  body.replaceChildren(h('div', { class: 'dl convert-banner', id: 'convert-banner', hidden: true }), h('ul', { class: 'rows' }, entries.map((e) => {
-    if (e.show) return showRow(e.show, e.files);
-    const f = e.file;
-    const row = fileRow({ ...f, kind: 'lib', key: f.id, done: true });
-    // Title on the first line, episode on the meta line.
-    row.querySelector('.row-title').textContent = f.title + (f.year ? ` (${f.year})` : '');
-    const ep = episodeLabel(f);
-    if (ep) row.querySelector('.row-meta').prepend(h('span', {}, ep));
-    return row;
-  })));
+  // Your own downloads first, then what you added from the server, then (the owner's) collection that
+  // was there before accounts. In each: one entry per show (its seasons and episodes are behind it),
+  // films as their own rows, in the order picked in Settings.
+  const sort = prefs().librarySort || 'newest';
+  const soonest = (files) => Math.min(...files.map((f) => f.expiresAt ?? Infinity));
+  const newest = (files) => Math.max(...files.map((f) => f.addedAt || f.added || 0));
+  const order = (a, b) => (sort === 'expiring' ? soonest(a.files) - soonest(b.files) || newest(b.files) - newest(a.files)
+    : sort === 'title' ? a.name.localeCompare(b.name) : newest(b.files) - newest(a.files));
+  const sections = LIB_SECTIONS.map(([source, title, hint]) => {
+    const entries = [];
+    const byShow = new Map();
+    for (const f of items.filter((x) => (x.source || 'existing') === source)) {
+      const show = f.show && showsById.get(f.show);
+      if (!show) { entries.push({ name: f.title, files: [f] }); continue; }
+      if (!byShow.has(show.id)) { const e = { show, name: show.title, files: [] }; byShow.set(show.id, e); entries.push(e); }
+      byShow.get(show.id).files.push(f);
+    }
+    if (!entries.length) return null;
+    entries.sort(order);
+    return h('section', { class: 'lib-section', 'aria-label': title },
+      h('div', { class: 'lib-section-head' },
+        h('h3', {}, title, h('span', { class: 'lib-count' }, String(entries.length))),
+        h('p', { class: 'muted' }, typeof hint === 'function' ? hint() : hint)),
+      h('ul', { class: 'rows' }, entries.map((e) => {
+        if (e.show) return showRow(e.show, e.files);
+        const f = e.files[0];
+        const row = fileRow({ ...f, kind: 'lib', key: f.id, done: true });
+        // Title on the first line, episode on the meta line.
+        row.querySelector('.row-title').textContent = f.title + (f.year ? ` (${f.year})` : '');
+        const ep = episodeLabel(f);
+        if (ep) row.querySelector('.row-meta').prepend(h('span', {}, ep));
+        return row;
+      })));
+  });
+  body.replaceChildren(h('div', { class: 'dl convert-banner', id: 'convert-banner', hidden: true }), filters, ...sections.filter(Boolean));
   renderConvertBanner();
   if (showView.id) renderShow(); // an open show follows deletions and new episodes
 }
+const LIB_FILTERS = [['all', 'All'], ['movie', 'Films'], ['tv', 'Shows']];
+const autoDeleteHint = () => (state.rules?.retentionDays
+  ? `Deleted ${plural(state.rules.retentionDays, 'day')} after they finish, unless you keep them longer.`
+  : 'Kept until you delete them.');
+const LIB_SECTIONS = [
+  ['download', 'Your downloads', autoDeleteHint],
+  ['added', 'Added from the server', () => `Already on the server when you found them, so nothing was downloaded twice.${state.rules?.retentionDays ? ` They leave your library ${plural(state.rules.retentionDays, 'day')} after you add them.` : ''}`],
+  ['existing', 'Your collection', 'On the server before accounts, or copied in by hand. These aren’t deleted automatically.'],
+];
 
 // ---------- Library: shows ----------
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -451,13 +639,17 @@ function showRow(show, files) {
   const seasons = [...new Set(files.map((f) => f.season))].sort((a, b) => a - b);
   const meta = [seasons.length === 1 ? seasonName(seasons[0]) : plural(seasons.length, 'season'), plural(episodeCount(files), 'episode')];
   const name = show.title + (show.year ? ` (${show.year})` : '');
+  // The next episode to be deleted, if any.
+  const next = Math.min(...files.map((f) => f.expiresAt ?? Infinity));
+  const soon = next - Date.now() < 86400000;
   return h('li', {},
     h('button', { class: 'row show-row', 'aria-label': `${name}: ${meta.join(', ')}`, onclick: (e) => openShow(show.id, e.currentTarget) },
       h('span', { class: 'show-thumb', 'aria-hidden': 'true' },
         show.poster ? h('img', { src: show.poster, alt: '', loading: 'lazy', decoding: 'async' }) : show.title.slice(0, 1)),
       h('span', { class: 'row-text' },
         h('span', { class: 'row-title' }, name),
-        h('span', { class: 'row-meta' }, meta.map((m) => h('span', {}, m)))),
+        h('span', { class: 'row-meta' }, meta.map((m) => h('span', {}, m)),
+          Number.isFinite(next) && h('span', { class: `expiry${soon ? ' is-soon' : ''}` }, files.length > 1 ? `next: ${timeLeft(next)}` : timeLeft(next)))),
       h('span', { class: 'show-chevron' }, icon('back'))));
 }
 
@@ -512,7 +704,11 @@ function renderShow() {
           open.poster ? h('img', { src: open.poster, alt: '' }) : h('div', { class: 'poster-fallback' }, open.name)),
         h('div', {},
           h('h3', {}, open.name),
-          h('p', { class: 'muted' }, open.total ? `${n} of ${open.total} episodes on the server` : `${plural(n, 'episode')} on the server`))),
+          h('p', { class: 'muted' }, open.total ? `${n} of ${open.total} episodes in your library` : `${plural(n, 'episode')} in your library`),
+          eps.filter(canExtend).length > 1 && h('button', {
+            type: 'button', class: 'chip keep-all',
+            onclick: async (e) => { e.currentTarget.disabled = true; await extendItems(eps.filter(canExtend)); renderShow(); },
+          }, `Keep all ${extendDays()} more days`))),
       h('ul', { class: 'rows' }, eps.map((f) => {
         const row = fileRow({ ...f, kind: 'lib', key: f.id, done: true });
         row.querySelector('.row-title').textContent = `${f.episode}. ${f.episodeName || `Episode ${f.episode}`}`;
@@ -533,7 +729,7 @@ function renderShow() {
         show.rating && h('li', {}, `★ ${show.rating}`),
         h('li', {}, `${plural(episodeCount(files), 'episode')} here`)),
       show.overview && h('p', { class: 'overview' }, show.overview),
-      !open || single ? state.status.torrents && seasonStrip({ id: show.tmdbId, title: show.title }, files) : null,
+      !open || single ? state.status.torrents && canDownload() && seasonStrip({ id: show.tmdbId, title: show.title }, files) : null,
       ...content));
 }
 
@@ -554,12 +750,12 @@ const dlCards = new Map();
 async function loadDownloads() {
   if (!state.status.downloads) return;
   try {
-    state.downloads = (await api('/api/downloads')).items;
+    state.downloads = (await api(`/api/downloads${state.dlScope === 'all' ? '?all=1' : ''}`)).items;
     state.downloadsError = null;
   } catch (err) {
     state.downloadsError = err.message;
   }
-  const active = state.downloads.filter((d) => !d.done).length;
+  const active = state.downloads.filter((d) => !d.done && d.mine !== false).length;
   const badge = $('#dl-badge');
   badge.hidden = !active;
   badge.textContent = active;
@@ -650,7 +846,7 @@ function updateDlCard(el, d) {
   const label = d.done ? 'Ready to watch' : (STATE_LABELS[d.state] || 'Downloading');
   r.title.textContent = [d.title, episodeLabel(d), d.year && !d.season ? `(${d.year})` : null].filter(Boolean).join(' ');
   r.title.title = d.name;
-  r.state.textContent = label;
+  r.state.textContent = d.owner && !d.mine ? `${label} · for ${d.owner}` : label;
   r.state.classList.toggle('is-error', d.state === 'error' || d.state === 'missingFiles');
   r.actions.hidden = !d.done;
   r.play.setAttribute('aria-label', `Play ${d.title} here`);
@@ -676,6 +872,19 @@ function updateDlCard(el, d) {
 
 function renderDownloads() {
   const body = $('#downloads-body');
+  // The owner can see everyone's downloads; everybody else only ever gets their own from the server.
+  const scope = $('#dl-scope');
+  if (state.me?.isOwner && scope && !scope.firstChild) {
+    scope.append(segmented([['mine', 'Mine'], ['all', 'Everyone']], state.dlScope, async (v) => {
+      state.dlScope = v;
+      scope.replaceChildren();
+      dlCards.clear();
+      $('#downloads-body').replaceChildren();
+      renderDownloads();
+      await loadDownloads();
+      renderDownloads();
+    }, 'Whose downloads'));
+  }
   if (!state.status.downloads) {
     dlCards.clear();
     body.replaceChildren(notice('Downloads aren’t connected',
@@ -793,17 +1002,23 @@ for (const [sheetSel, backdropSel] of [['#sheet', '#sheet-backdrop'], ['#picker'
 }
 
 function openDetails(t, opener) {
+  renderDetails(t);
+  pushOverlay(showSheet($('#sheet'), $('#sheet-backdrop'), () => opener?.focus({ preventScroll: true })));
+}
+
+function renderDetails(t) {
   const files = matchesFor(t);
+  const onServer = serverMatchesFor(t);
   const isTv = t.type === 'tv';
-  const findBtn = state.status.torrents && h('button', {
-    class: 'find-btn',
+  const findBtn = state.status.torrents && canDownload() && h('button', {
+    class: `find-btn${onServer.length ? ' is-quiet' : ''}`,
     onclick: (e) => openTorrents({
       query: isTv ? t.title : [t.title, t.year].filter(Boolean).join(' '),
       type: isTv ? 'tv' : 'movie',
       label: t.title,
       opener: e.currentTarget,
     }),
-  }, icon('download'), files.some((f) => f.done) ? 'Find another version' : 'Find a download');
+  }, icon('download'), files.some((f) => f.done) || onServer.length ? 'Find another version' : 'Find a download');
   $('#sheet-body').replaceChildren(
     h('div', { class: `sheet-hero${t.backdrop ? '' : ' no-image'}`, style: t.backdrop ? `background-image:url("${t.backdrop}")` : null }),
     h('div', { class: 'sheet-content' },
@@ -813,15 +1028,82 @@ function openDetails(t, opener) {
         h('li', {}, t.type === 'tv' ? 'Series' : 'Film'),
         t.rating && h('li', {}, `★ ${t.rating}`)),
       t.overview && h('p', { class: 'overview' }, t.overview),
+      // Already on the server (someone else downloaded it): add it instead of downloading it again.
+      onServer.length > 0 && serverOffer(t, onServer),
       // Shows: downloading comes first (a season chip per season), then what's here folded by season,
       // so a show with many episodes on the server doesn't push the buttons far down.
-      ...(isTv ? [findBtn, state.status.torrents && seasonStrip(t, files)] : []),
-      h('h3', {}, 'On this server'),
-      !files.length ? h('p', { class: 'muted' }, 'Not on this server yet.')
+      ...(isTv ? [findBtn, state.status.torrents && canDownload() && seasonStrip(t, [...files, ...onServer])] : []),
+      h('h3', {}, 'In your library'),
+      !files.length ? h('p', { class: 'muted' }, onServer.length ? 'Not in your library yet.' : 'Not on this server yet.')
         : isTv ? seasonGroups(files)
           : h('ul', { class: 'rows' }, files.map(fileRow)),
       !isTv && findBtn));
-  pushOverlay(showSheet($('#sheet'), $('#sheet-backdrop'), () => opener?.focus({ preventScroll: true })));
+}
+
+// "Already on the server": a row per version of a film, or per season of a show, each with an Add
+// button (and Add & play for films). Adding makes no copy; the video just joins your library.
+function serverOffer(t, list) {
+  const status = h('p', { class: 'device-status', role: 'status' });
+  const isTv = t.type === 'tv';
+  const add = async (files, btn, play = false) => {
+    btn.disabled = true;
+    status.textContent = '';
+    try {
+      await api('/api/library/add', jsonPost({ ids: files.map((f) => f.id) }));
+      await loadLibrary();
+      toast(files.length === 1 ? 'Added to your library' : `Added ${plural(files.length, 'episode')} to your library`);
+      if (state.view === 'library') renderLibrary();
+      renderDetails(t);
+      if (play) {
+        const mine = state.library.find((x) => x.mediaKey === files[0].mediaKey);
+        if (mine) openPlayer({ ...mine, kind: 'lib', key: mine.id, done: true });
+      }
+    } catch (err) {
+      btn.disabled = false;
+      status.className = 'device-status is-error';
+      status.textContent = err.message;
+    }
+  };
+  const button = (text, cls, files, play) => {
+    const b = h('button', { type: 'button', class: cls }, text);
+    b.addEventListener('click', () => add(files, b, play));
+    return b;
+  };
+  let rows;
+  if (!isTv) {
+    rows = list.map((f) => h('li', { class: 'row' },
+      h('div', { class: 'row-text' },
+        h('div', { class: 'row-title' }, f.title + (f.year ? ` (${f.year})` : '')),
+        h('div', { class: 'row-meta' }, h('span', {}, f.format?.toUpperCase()), h('span', {}, fmtBytes(f.size)))),
+      h('div', { class: 'row-actions' },
+        button('Add', 'chip', [f]),
+        button('Add & play', 'play-btn', [f], true))));
+  } else {
+    const bySeason = new Map();
+    for (const f of list) {
+      const n = f.season ?? -1;
+      if (!bySeason.has(n)) bySeason.set(n, []);
+      bySeason.get(n).push(f);
+    }
+    rows = [...bySeason].sort((a, b) => a[0] - b[0]).map(([n, eps]) => {
+      const nums = [...new Set(eps.map((f) => f.episode).filter((x) => x != null))].sort((a, b) => a - b);
+      const span = nums.length > 1 ? `E${pad2(nums[0])}–E${pad2(nums.at(-1))}` : nums.length ? `E${pad2(nums[0])}` : null;
+      return h('li', { class: 'row' },
+        h('div', { class: 'row-text' },
+          h('div', { class: 'row-title' }, n < 0 ? 'Other videos' : seasonName(n)),
+          h('div', { class: 'row-meta' }, h('span', {}, plural(episodeCount(eps), 'episode')), span && h('span', {}, span))),
+        h('div', { class: 'row-actions' }, button(n < 0 ? 'Add' : 'Add season', 'chip', eps)));
+    });
+  }
+  return h('div', { class: 'server-offer' },
+    h('div', { class: 'server-offer-head' },
+      h('h3', {}, 'Already on the server'),
+      isTv && rows.length > 1 && button(`Add all ${plural(episodeCount(list), 'episode')}`, 'play-btn', list)),
+    h('p', { class: 'muted' }, isTv
+      ? 'Someone already has these here. Add them to your library to watch now, without downloading them again.'
+      : 'Someone already has this here. Add it to your library to watch now, without downloading it again.'),
+    h('ul', { class: 'rows' }, rows),
+    status);
 }
 
 // Episodes on the server, one collapsible line per season (loose files and season packs first).
@@ -986,15 +1268,15 @@ async function openDelete(f, opener) {
   const t = info.torrent;
   const pack = t && t.videos > 1;
 
-  const run = async (scope, btn) => {
+  const run = async (scope, btn, everyone = false) => {
     body.querySelectorAll('button').forEach((b) => { b.disabled = true; });
-    btn.textContent = 'Deleting…';
+    btn.textContent = everyone || !info.others ? 'Deleting…' : 'Removing…';
     status.className = 'device-status';
     status.textContent = '';
     try {
-      await api('/api/library/delete', jsonPost({ id, scope }));
+      const r = await api('/api/library/delete', jsonPost({ id, scope, everyone }));
       closeTopOverlay();
-      toast(scope === 'torrent' && pack ? `Deleted all ${t.videos} videos` : 'Deleted');
+      toast(r.kept ? 'Removed from your library' : scope === 'torrent' && pack ? `Deleted all ${t.videos} videos` : 'Deleted');
       state.library = state.library.filter((x) => x.id !== id);
       // Refresh after the server finishes cleaning up.
       setTimeout(async () => { await Promise.all([loadLibrary(), loadDownloads()]); if (state.view === 'library') renderLibrary(); if (state.view === 'downloads') renderDownloads(); }, 5000);
@@ -1006,11 +1288,25 @@ async function openDelete(f, opener) {
       status.textContent = err.message;
     }
   };
-  const button = (text, cls, scope) => {
+  const button = (text, cls, scope, everyone) => {
     const b = h('button', { class: cls, 'data-label': text }, text);
-    b.addEventListener('click', () => run(scope, b));
+    b.addEventListener('click', () => run(scope, b, everyone));
     return b;
   };
+  const cancel = h('button', { class: 'del-cancel', onclick: () => closeTopOverlay() }, 'Keep it');
+  // Someone else has it too: it only leaves your library (the owner can still delete the file).
+  if (info.others) {
+    body.replaceChildren(h('h2', { id: 'picker-title' }, 'Remove from your library?'),
+      h('p', { class: 'del-name' }, label),
+      h('p', { class: 'muted' }, `${plural(info.others, 'other person has', 'other people have')} this in their library, so the file stays on the server. You can add it back from Discover.`),
+      h('div', { class: 'del-actions' },
+        button('Remove from my library', 'del-confirm', 'file'),
+        info.canDeleteForEveryone && button(`Delete the file for everyone (${fmtBytes(info.size)})`, 'del-confirm del-secondary', 'file', true),
+        cancel),
+      status);
+    cancel.focus();
+    return;
+  }
 
   const lines = [
     h('p', { class: 'del-name' }, label),
@@ -1022,7 +1318,6 @@ async function openDelete(f, opener) {
   const actions = pack
     ? [button('Delete this video only', 'del-confirm', 'file'), button(`Delete all ${t.videos} videos (${fmtBytes(t.size)})`, 'del-confirm del-secondary', 'torrent')]
     : [button('Delete', 'del-confirm', t ? 'torrent' : 'file')];
-  const cancel = h('button', { class: 'del-cancel', onclick: () => closeTopOverlay() }, 'Keep it');
   body.replaceChildren(h('h2', { id: 'picker-title' }, 'Delete this?'), ...lines, h('div', { class: 'del-actions' }, ...actions, cancel), status);
   cancel.focus();
 }
@@ -1065,7 +1360,7 @@ async function sendToQbit(link, extra = {}) {
 
 function openTorrents({ query = '', type = 'all', label = null, opener } = {}) {
   let results = [];
-  let filter = 'all';
+  let filter = prefs().quality || 'all'; // Settings → preferred quality
   let ctrl;
   const added = new Set();
 
@@ -1107,6 +1402,7 @@ function openTorrents({ query = '', type = 'all', label = null, opener } = {}) {
       subSelect.append(...data.languages.map((l) => h('option', { value: l.code }, l.name)));
       let pref = '';
       try { pref = localStorage.getItem('subs:dlLang') || ''; } catch { /* blocked */ }
+      pref ||= prefs().subLang || ''; // Settings → subtitles
       if (data.languages.some((l) => l.code === pref)) subSelect.value = pref;
       note.textContent = data.languages.length ? '' : 'None found for this title';
     } catch (err) {
@@ -1185,7 +1481,7 @@ function openTorrents({ query = '', type = 'all', label = null, opener } = {}) {
   function renderSeasonBox(q) {
     seasonBox.replaceChildren();
     const want = parseSeasonQuery(q);
-    if (!want || type === 'movie' || !state.status.downloads) return;
+    if (!want || type === 'movie' || !canDownload()) return;
     const packRe = new RegExp(`\\bS0?${want.season}\\b(?!\\s?E\\d)|\\bseason\\s?0?${want.season}\\b`, 'i');
     const goodPack = results.some((r) => !r.cam && r.seeders >= 10 && norm(r.name).includes(norm(want.title))
       && packRe.test(r.name.replace(/[._]+/g, ' ')) && !/\bS\d{1,2}\s?E\d{1,3}\b/i.test(r.name.replace(/[._]+/g, ' ')));
@@ -1261,7 +1557,7 @@ function openTorrents({ query = '', type = 'all', label = null, opener } = {}) {
     ].filter(Boolean).map((m) => (m instanceof Node ? m : h('span', {}, m)));
 
     const copyBtn = h('button', { class: 'cast-btn', title: 'Copy magnet link', 'aria-label': `Copy magnet link for ${t.name}`, onclick: copy }, icon('copy'));
-    const getBtn = state.status.downloads && h('button', { class: 'play-btn', 'aria-label': `Download ${t.name}`, onclick: get }, icon('download'), 'Get');
+    const getBtn = canDownload() && h('button', { class: 'play-btn', 'aria-label': `Download ${t.name}`, onclick: get }, icon('download'), 'Get');
     if (getBtn && added.has(t.id)) markAdded();
 
     async function copy() {
@@ -1538,11 +1834,20 @@ function saveProgress(force = false) {
   const now = Date.now();
   if (!force && now - lastSave < 5000) return;
   lastSave = now;
+  const done = video.duration - video.currentTime < 90; // treat as finished
   try {
-    if (video.duration - video.currentTime < 90) localStorage.removeItem(resumeKey(current)); // treat as finished
+    if (done) localStorage.removeItem(resumeKey(current));
     else localStorage.setItem(resumeKey(current), JSON.stringify({ time: video.currentTime, duration: video.duration }));
   } catch { /* storage full or blocked */ }
+  // The server copy (other devices) is updated less often, and always on pause and close.
+  if (!force && now - lastPush < 15000) return;
+  lastPush = now;
+  const ref = progressRef(current);
+  if (done) delete state.progress[ref];
+  else state.progress[ref] = { time: video.currentTime, duration: video.duration, at: now };
+  api('/api/me/progress', { ...jsonPost({ ref, time: done ? null : video.currentTime, duration: video.duration }), keepalive: true }).catch(() => {});
 }
+let lastPush = 0;
 
 const mediaId = (f) => (f.kind === 'lib' ? f.id || f.key : f.hash || f.key);
 
@@ -1836,9 +2141,11 @@ async function setupPlayerSubs(f, session) {
   ccBtn.hidden = false;
   renderCcMenu(f, session, ccLangs.length ? null : (data.problem || 'No subtitles found for this.'));
   // Re-enable the last used language if it's already saved locally (no download quota used).
+  // Or the language picked in Settings, which is fetched when it isn't saved yet.
   let pref = null;
   try { pref = localStorage.getItem('subs:lang'); } catch { /* blocked */ }
-  const saved = ccLangs.find((l) => l.code === pref && l.saved);
+  const want = prefs().subLang;
+  const saved = ccLangs.find((l) => l.code === pref && l.saved) || (want && pref !== '' && ccLangs.find((l) => l.code === want));
   if (saved) pickPlayerSub(f, session, saved, { quiet: true });
 }
 
@@ -1998,7 +2305,7 @@ function switchToFixedAudio(session, message) {
 
 // Safari tints its toolbars with theme-color; black while the player is open so it blends in.
 const themeMeta = document.querySelector('meta[name="theme-color"]');
-const PAGE_THEME = themeMeta?.content;
+let pageThemeColor = themeMeta?.content; // the theme's background (applyTheme)
 const setTheme = (color) => { if (themeMeta) themeMeta.content = color; };
 
 // Safari's toolbars can't be hidden by a web page; the Home Screen version has none.
@@ -2420,7 +2727,7 @@ async function openPlayer(f, opts = {}) {
   showPlayerUi();
   setSpinner(true);
   (opts.replace ? swapTopOverlay : pushOverlay)(() => {
-    setTheme(PAGE_THEME);
+    setTheme(pageThemeColor);
     saveProgress(true);
     video.pause();
     if (fsElement()) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
@@ -2504,7 +2811,7 @@ window.addEventListener('pagehide', () => saveProgress(true));
 
 // ---------- search box + tabs ----------
 const input = $('#q');
-const PLACEHOLDERS = { discover: 'Search films and shows', library: 'Filter your library', downloads: 'Filter downloads', activity: 'Filter by person or title', house: 'Filter machines', clips: 'Filter by game or name' };
+const PLACEHOLDERS = { discover: 'Search films and shows', library: 'Filter your library', downloads: 'Filter downloads', activity: 'Filter by person or title', house: 'Filter machines', clips: 'Filter by game or name', settings: 'Search films and shows' };
 
 function renderView() {
   if (state.view === 'discover') renderDiscover();
@@ -2513,6 +2820,223 @@ function renderView() {
   if (state.view === 'activity') renderActivity();
   if (state.view === 'house') renderHouse();
   if (state.view === 'clips') renderClips();
+  if (state.view === 'settings') renderSettings();
+}
+
+// ---------- settings ----------
+// Everyone: name, colours (a preset or their own four), and how Marquee behaves for them. The owner
+// also gets the server's rules (auto-delete) and the people who use it. Changes save straight away.
+let saveMeTimer = null;
+async function saveMe(patch, msg = 'Saved') {
+  try {
+    state.me = (await api('/api/me', jsonPost(patch))).me;
+    if (msg) toast(msg);
+  } catch (err) { toast(err.message); }
+}
+async function saveRules(patch) {
+  try {
+    state.rules = (await api('/api/admin/settings', jsonPost(patch))).settings;
+    toast('Saved for everyone');
+    await loadLibrary(); // countdowns follow the new rules
+  } catch (err) { toast(err.message); }
+  renderSettings();
+}
+async function loadPeople() {
+  try { state.people = (await api('/api/admin/users')).users; state.peopleError = null; } catch (err) { state.peopleError = err.message; }
+}
+
+const settingsRow = (label, hint, control) => h('div', { class: 'set-row' },
+  h('div', { class: 'set-text' }, h('div', { class: 'set-label' }, label), hint && h('div', { class: 'set-hint' }, hint)),
+  h('div', { class: 'set-control' }, control));
+function toggle(checked, onChange, label) {
+  const input = h('input', { type: 'checkbox', role: 'switch', 'aria-label': label });
+  input.checked = checked;
+  input.addEventListener('change', () => onChange(input.checked, input));
+  return h('label', { class: 'switch' }, input, h('span', { 'aria-hidden': 'true' }));
+}
+function select(options, value, onChange, label) {
+  const el = h('select', { class: 'sub-select', 'aria-label': label },
+    options.map(([v, text]) => h('option', { value: String(v) }, text)));
+  el.value = String(value);
+  el.addEventListener('change', () => onChange(el.value));
+  return el;
+}
+const days = (n) => (n ? plural(n, 'day') : 'Never');
+
+function themeSwatch(key, t, selected, onPick) {
+  return h('button', {
+    type: 'button', class: 'swatch', 'aria-pressed': String(selected), 'aria-label': `${t.name} colours`,
+    style: `--sw-bg:${t.bg};--sw-surface:${t.surface};--sw-text:${t.text};--sw-accent:${t.accent};--sw-muted:${t.muted}`,
+    onclick: () => onPick(key),
+  },
+  h('span', { class: 'swatch-preview', 'aria-hidden': 'true' },
+    h('i', { class: 'sw-title' }), h('i', { class: 'sw-line' }), h('i', { class: 'sw-card' }), h('i', { class: 'sw-dot' })),
+  h('span', { class: 'swatch-name' }, t.name));
+}
+
+function appearanceSection() {
+  const theme = prefs().theme;
+  const active = theme?.preset || state.rules?.defaultTheme || 'marquee';
+  const pick = (key) => {
+    const next = key === 'custom' ? { preset: 'custom', colors: customColors() } : { preset: key };
+    applyTheme(next);
+    saveMe({ theme: next }, null).then(renderSettings);
+  };
+  // The custom editor starts from whatever is showing now.
+  const customColors = () => {
+    if (theme?.preset === 'custom') return { ...theme.colors };
+    const c = themeColors(theme);
+    return { bg: c.bg.toLowerCase(), surface: c.surface.toLowerCase(), text: c.text.toLowerCase(), accent: c.accent.toLowerCase() };
+  };
+  const grid = h('div', { class: 'swatches', role: 'group', 'aria-label': 'Colour themes' },
+    Object.entries(THEMES).map(([key, t]) => themeSwatch(key, t, active === key, pick)),
+    themeSwatch('custom', { ...themeColors(theme?.preset === 'custom' ? theme : { preset: 'custom', colors: customColors() }), name: 'Your own' }, active === 'custom', pick));
+
+  let editor = null;
+  if (active === 'custom') {
+    const colors = customColors();
+    const contrast = h('p', { class: 'set-hint custom-warn', role: 'status' });
+    const check = () => {
+      const ratio = (a, b) => { const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+      const low = ratio(colors.text, colors.bg) < 4.5 || ratio(colors.text, colors.surface) < 4.5;
+      contrast.textContent = low ? 'The text may be hard to read on these backgrounds. Try a lighter or darker text colour.' : '';
+    };
+    const commit = () => {
+      clearTimeout(saveMeTimer);
+      saveMeTimer = setTimeout(() => saveMe({ theme: { preset: 'custom', colors: { ...colors } } }, 'Colours saved'), 700);
+    };
+    editor = h('div', { class: 'custom-colors' },
+      THEME_FIELDS.map(([k, label]) => {
+        const id = `color-${k}`;
+        const picker = h('input', { type: 'color', id, value: colors[k] });
+        const hex = h('input', { type: 'text', class: 'hex-input', value: colors[k], maxlength: '7', spellcheck: 'false', 'aria-label': `${label} colour code` });
+        const set = (v) => {
+          colors[k] = v.toLowerCase();
+          picker.value = hex.value = colors[k];
+          applyTheme({ preset: 'custom', colors });
+          check();
+          commit();
+        };
+        picker.addEventListener('input', () => set(picker.value));
+        hex.addEventListener('change', () => {
+          const v = hex.value.trim().replace(/^#?/, '#');
+          if (/^#[0-9a-f]{6}$/i.test(v)) set(v); else { hex.value = colors[k]; toast('Use a colour code like #1f1019'); }
+        });
+        return h('div', { class: 'color-field' }, h('label', { for: id }, label), h('div', { class: 'color-inputs' }, picker, hex));
+      }),
+      contrast);
+    check();
+  }
+  return [
+    h('h3', { class: 'set-head' }, 'Appearance'),
+    h('p', { class: 'set-hint' }, 'Only changes how Marquee looks for you, on every device you use.'),
+    grid,
+    editor,
+  ];
+}
+
+function renderSettings() {
+  const body = $('#settings-body');
+  const me = state.me;
+  if (!me) { body.replaceChildren(notice('Couldn’t load your settings', 'Reload the page to try again.')); return; }
+  const p = prefs();
+  const out = [];
+
+  // ---- you ----
+  const nameInput = h('input', { type: 'text', class: 'invite-note set-name', maxlength: '40', value: me.name, 'aria-label': 'Your name', autocomplete: 'nickname' });
+  nameInput.addEventListener('change', () => saveMe({ name: nameInput.value }, 'Name saved'));
+  out.push(h('div', { class: 'profile' },
+    h('span', { class: 'avatar', 'aria-hidden': 'true' }, (me.name || '?').slice(0, 1).toUpperCase()),
+    h('div', { class: 'profile-text' },
+      nameInput,
+      h('div', { class: 'set-hint' }, me.email ? `Signed in as ${me.email} through Cloudflare` : 'Home network: everyone at home who opens the server’s local address shares this'),
+      h('div', { class: 'profile-tags' }, me.isOwner && h('span', { class: 'tag' }, 'Owner'), !me.canDownload && h('span', { class: 'tag' }, 'Can’t download')))));
+
+  out.push(...appearanceSection());
+
+  // ---- watching ----
+  out.push(h('h3', { class: 'set-head' }, 'Watching'));
+  out.push(settingsRow('Subtitles', 'Turned on automatically when a video has them in this language.',
+    select([['', 'Off'], ...(state.status.subLangs || []).map((l) => [l.code, l.name])], p.subLang || '', (v) => saveMe({ subLang: v }), 'Default subtitles')));
+  out.push(settingsRow('Open Marquee on', null,
+    segmented([['discover', 'Discover'], ['library', 'Library'], ['downloads', 'Downloads']], p.startView || 'discover', (v) => saveMe({ startView: v }).then(renderSettings), 'Open Marquee on')));
+  out.push(settingsRow('Library order', null,
+    segmented([['newest', 'Newest'], ['expiring', 'Leaving soonest'], ['title', 'A–Z']], p.librarySort || 'newest', (v) => saveMe({ librarySort: v }).then(renderSettings), 'Library order')));
+  if (canDownload()) {
+    out.push(settingsRow('Preferred quality', 'The filter torrent search starts on.',
+      segmented([['all', 'Any'], ['2160p', '4K'], ['1080p', '1080p'], ['720p', '720p']], p.quality || 'all', (v) => saveMe({ quality: v }).then(renderSettings), 'Preferred quality')));
+  }
+
+  // ---- your library ----
+  const r = state.rules || {};
+  const mine = state.library;
+  const next = mine.filter((f) => f.expiresAt != null).sort((a, b) => a.expiresAt - b.expiresAt)[0];
+  out.push(h('h3', { class: 'set-head' }, 'Your library'));
+  out.push(h('div', { class: 'set-card' },
+    h('p', {}, `${plural(mine.length, 'video')}, ${fmtBytes(mine.reduce((n, f) => n + (f.size || 0), 0))}.`,
+      next ? ` Next to go: ${next.title}${episodeLabel(next) ? ` ${episodeLabel(next)}` : ''}, ${timeLeft(next.expiresAt).replace(' left', '')} left.` : ''),
+    h('p', { class: 'set-hint' }, me.keep ? 'The owner has set your videos to stay until you delete them.'
+      : r.retentionDays
+        ? `Downloads are deleted ${plural(r.retentionDays, 'day')} after they finish, to keep space free on the server. Use “Keep ${r.extendDays} more days” in the Library to hold on to something${r.maxExtensions ? ` (up to ${plural(r.maxExtensions, 'time')} per video)` : ''}.`
+        : 'Nothing is deleted automatically.')));
+
+  if (me.isOwner) out.push(...ownerSettings());
+  body.replaceChildren(...out.filter(Boolean));
+}
+
+function ownerSettings() {
+  const r = state.rules || {};
+  const out = [h('h3', { class: 'set-head' }, 'Server', h('span', { class: 'tag' }, 'Owner'))];
+  out.push(settingsRow('Delete downloads after', 'Counted from when each download finishes, per person. A video someone else still has stays.',
+    select([0, 1, 3, 7, 14, 30].map((n) => [n, days(n)]), r.retentionDays ?? 7, (v) => saveRules({ retentionDays: Number(v) }), 'Delete downloads after')));
+  out.push(settingsRow('“Keep longer” adds', null,
+    select([1, 3, 7, 14, 30].map((n) => [n, plural(n, 'day')]), r.extendDays ?? 7, (v) => saveRules({ extendDays: Number(v) }), 'Keep longer adds')));
+  out.push(settingsRow('Times a video can be kept longer', null,
+    select([[0, 'No limit'], [1, 'Once'], [2, 'Twice'], [3, '3 times'], [5, '5 times'], [10, '10 times']], r.maxExtensions ?? 0, (v) => saveRules({ maxExtensions: Number(v) }), 'Times a video can be kept longer')));
+  out.push(settingsRow('New people can download', 'Otherwise they can only add what’s already on the server, until you allow them below.',
+    toggle(r.membersCanDownload !== false, (on) => saveRules({ membersCanDownload: on }), 'New people can download')));
+  out.push(settingsRow('Colours for new people', 'Until they pick their own.',
+    select(Object.entries(THEMES).map(([k, t]) => [k, t.name]), r.defaultTheme || 'marquee', (v) => saveRules({ defaultTheme: v }), 'Colours for new people')));
+  out.push(h('details', { class: 'set-card set-signin' },
+    h('summary', {}, 'Staying signed in'),
+    h('p', {}, 'Marquee has no login of its own: it uses the Cloudflare Access sign-in, so how long people stay signed in is set in Cloudflare. To make it last a month:'),
+    h('ol', {},
+      h('li', {}, 'Cloudflare dashboard → Zero Trust → Access → Applications → Marquee → Edit.'),
+      h('li', {}, 'Set Session Duration to 1 month (it’s 24 hours now) and save.'),
+      h('li', {}, 'If you’ve set a Global session timeout (Settings → Authentication), raise that too: it caps every app.')),
+    h('p', { class: 'set-hint' }, 'If someone’s sign-in does run out while Marquee is open, it now tells them and signs them back in with one tap.')));
+
+  out.push(h('h3', { class: 'set-head' }, 'People'));
+  if (state.peopleError) out.push(h('p', { class: 'muted' }, state.peopleError));
+  else if (!state.people) out.push(h('p', { class: 'muted' }, 'Loading…'));
+  else {
+    out.push(h('ul', { class: 'rows people' }, state.people.map((u) => h('li', { class: 'row person' },
+      h('span', { class: 'avatar small', 'aria-hidden': 'true' }, (u.name || '?').slice(0, 1).toUpperCase()),
+      h('div', { class: 'row-text' },
+        h('div', { class: 'row-title' }, u.name, u.isOwner && h('span', { class: 'tag' }, 'Owner')),
+        h('div', { class: 'row-meta' },
+          u.email && h('span', {}, u.email),
+          h('span', {}, `${plural(u.items, 'video')}, ${fmtBytes(u.size)}`),
+          u.lastSeen && h('span', {}, lastSeenText(u.lastSeen)))),
+      h('div', { class: 'person-controls' },
+        h('label', { class: 'person-toggle' }, 'Can download',
+          toggle(u.canDownload, async (on, input) => {
+            if (u.isOwner) { input.checked = true; toast('The owner can always download'); return; }
+            await personUpdate(u, { canDownload: on });
+          }, `${u.name} can download`)),
+        h('label', { class: 'person-toggle' }, 'Never auto-delete',
+          toggle(u.keep, (on) => personUpdate(u, { keep: on }), `Never auto-delete ${u.name}’s videos`)))))));
+  }
+  return out;
+}
+async function personUpdate(u, patch) {
+  try {
+    await api(`/api/admin/users/${u.id}`, jsonPost(patch));
+    toast('Saved');
+  } catch (err) { toast(err.message); }
+  await loadPeople();
+  if (u.id === state.me.id) { state.me = (await api('/api/me')).me; await loadLibrary(); }
+  if (state.view === 'settings') renderSettings();
 }
 
 // ---------- activity (server owner only) ----------
@@ -2534,6 +3058,12 @@ const ACTIVITY_TEXT = {
   unshare: (d) => `stopped sharing ${d}`,
   wake: (d) => `woke ${d}`,
   restart: (d) => `restarted ${d}`,
+  add: (d) => `added ${d} to their library`,
+  remove: (d) => `removed ${d} from their library`,
+  extend: (d) => `kept ${d} longer`,
+  expire: (d) => `auto-deleted ${d}`,
+  settings: (d) => `changed the server rules (${d})`,
+  permission: (d) => `changed a permission: ${d}`,
 };
 const personName = (user) => (user.includes('@') ? user.split('@')[0] : user);
 const clock = (ms) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
@@ -2973,7 +3503,7 @@ function addAdminTab(view, label, iconSvg) {
   const tab = h('button', { class: 'tab', 'data-view': view });
   tab.innerHTML = `${iconSvg}<span>${label}</span>`;
   tab.addEventListener('click', () => setView(view));
-  $('.tabs').append(tab);
+  $('.tabs').insertBefore(tab, $('.tab[data-view="settings"]')); // Settings stays last
 }
 const enableHouseTab = () => addAdminTab('house', 'House', '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 11 12 4l8.5 7"/><path d="M5.5 9.5V20h13V9.5"/><path d="M10 20v-5h4v5"/></svg>');
 const enableClipsTab = () => addAdminTab('clips', 'Clips', '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5.5" width="18" height="13" rx="2"/><path d="M10 9.5v5l4.5-2.5z"/></svg>');
@@ -2987,10 +3517,11 @@ function enableActivityTab() {
   const tab = h('button', { class: 'tab', 'data-view': 'activity' });
   tab.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M3 19c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5"/><path d="M16 4.8a3.5 3.5 0 0 1 0 6.4M18 13.8c1.8.7 3 2.6 3 5.2"/></svg><span>Activity</span>';
   tab.addEventListener('click', () => setView('activity'));
-  $('.tabs').append(tab);
+  $('.tabs').insertBefore(tab, $('.tab[data-view="settings"]'));
 }
 
 input.addEventListener('input', () => {
+  if (state.view === 'settings') { const q = input.value; setView('discover').then(() => { input.value = state.query = q; renderDiscover(); }); return; }
   state.query = input.value;
   $('#q-clear').hidden = !input.value;
   if (state.view === 'discover') {
@@ -3031,6 +3562,7 @@ async function setView(view) {
   if (view === 'activity') await loadActivity();
   if (view === 'house') await loadHouse();
   if (view === 'clips') await loadClips();
+  if (view === 'settings') await Promise.all([loadLibrary(), state.me?.isOwner ? loadPeople() : null]);
   if (state.view === view) renderView();
   schedulePoll();
 }
@@ -3045,10 +3577,14 @@ $('#find-torrents').addEventListener('click', (e) => openTorrents({ query: state
     $('#discover-body').replaceChildren(notice('Can’t reach the server', 'Make sure server.js is running, then reload this page.', () => location.reload()));
     return;
   }
-  $('#find-torrents').hidden = !state.status.torrents;
+  state.me = state.status.me;
+  state.rules = state.status.rules;
+  applyTheme(prefs().theme);
+  $('#find-torrents').hidden = !state.status.torrents || !canDownload();
   if (state.status.admin) { enableActivityTab(); enableHouseTab(); }
   if (state.status.clips) enableClipsTab();
-  await Promise.all([loadLibrary(), loadDownloads(), loadSessions()]);
-  renderDiscover();
+  await Promise.all([loadLibrary(), loadDownloads(), loadSessions(), loadProgress()]);
+  const start = prefs().startView;
+  if (start && start !== 'discover') { state.view = null; await setView(start); } else renderDiscover();
   schedulePoll();
 })();
