@@ -1205,6 +1205,7 @@ function renderDetails(t) {
       opener: e.currentTarget,
     }),
   }, icon('download'), files.some((f) => f.done) || onServer.length ? 'Find another version' : 'Find a download');
+  const getIt = findBtn && h('div', { class: 'dl-actions' }, bestDownload(t, files, onServer), findBtn);
   $('#sheet-body').replaceChildren(
     h('div', { class: `sheet-hero${t.backdrop ? '' : ' no-image'}`, style: t.backdrop ? `background-image:url("${t.backdrop}")` : null }),
     h('div', { class: 'sheet-content' },
@@ -1218,12 +1219,12 @@ function renderDetails(t) {
       onServer.length > 0 && serverOffer(t, onServer),
       // Shows: downloading comes first (a season chip per season), then what's here folded by season,
       // so a show with many episodes on the server doesn't push the buttons far down.
-      ...(isTv ? [findBtn, state.status.torrents && canDownload() && seasonStrip(t, [...files, ...onServer])] : []),
+      ...(isTv ? [getIt, state.status.torrents && canDownload() && seasonStrip(t, [...files, ...onServer])] : []),
       h('h3', {}, 'In your library'),
       !files.length ? h('p', { class: 'muted' }, onServer.length ? 'Not in your library yet.' : 'Not on this server yet.')
         : isTv ? seasonGroups(files)
           : h('ul', { class: 'rows' }, files.map(fileRow)),
-      !isTv && findBtn));
+      !isTv && getIt));
 }
 
 // "Already on the server": a row per version of a film, or per season of a show, each with an Add
@@ -1317,7 +1318,7 @@ function seasonGroups(files) {
 function seasonStrip(t, files) {
   const box = h('div', { class: 'season-strip' });
   if (!t.id) return box;
-  api(`/api/tv/${t.id}/seasons`).then(({ seasons }) => {
+  tvSeasons(t.id).then((seasons) => {
     if (!seasons.length) return;
     const chips = seasons.map((se) => {
       const have = episodeCount(files.filter((f) => f.season === se.number && f.episode != null));
@@ -1334,6 +1335,133 @@ function seasonStrip(t, files) {
     box.replaceChildren(h('h3', {}, 'Get a season'), h('div', { class: 'season-chips' }, chips));
   }).catch(() => {});
   return box;
+}
+
+// Requests worth repeating within a few minutes (re-rendering a sheet shouldn't search again).
+const shortCache = new Map(); // url -> { at, promise }
+function cachedFor(url, ms = 5 * 60 * 1000) {
+  const hit = shortCache.get(url);
+  if (hit && Date.now() - hit.at < ms) return hit.promise;
+  const promise = api(url);
+  promise.catch(() => shortCache.delete(url));
+  shortCache.set(url, { at: Date.now(), promise });
+  return promise;
+}
+const tvSeasons = (id) => cachedFor(`/api/tv/${id}/seasons`, 30 * 60 * 1000).then((d) => d.seasons);
+
+// "Best download": one tap gets the torrent the server picks (recommend.js: 1080p or 4K whenever
+// either exists). Films that aren't here yet; for shows, the first aired season that isn't complete
+// here. A season that's partly here, or has no healthy pack, is fetched episode by episode instead.
+function bestDownload(t, files, onServer) {
+  const box = h('div', { class: 'best-dl', hidden: true });
+  const isTv = t.type === 'tv';
+  if (!isTv && (files.length || onServer.length)) return box;
+  const status = h('p', { class: 'best-meta', role: 'status' });
+  const subs = () => (state.status.subtitles && prefs().subLang ? [prefs().subLang] : []);
+  const qualityName = (q) => (q === '2160p' ? '4K' : q || 'Unknown quality');
+  let se = null; // the season on offer (shows)
+
+  (async () => {
+    let have = 0;
+    if (isTv) {
+      if (!t.id) return;
+      const here = [...files, ...onServer].filter((f) => f.episode != null);
+      const count = (n) => episodeCount(here.filter((f) => f.season === n));
+      se = (await tvSeasons(t.id)).find((s) => !s.upcoming && !(s.episodes && count(s.number) >= s.episodes));
+      if (!se) return;
+      have = count(se.number);
+    }
+    box.hidden = false;
+    box.replaceChildren(h('button', { type: 'button', class: 'play-btn best-btn', disabled: true }, 'Finding the best download…'));
+    // Part of the season is already here: a pack would download those episodes again.
+    const rec = have ? { pick: null } : await cachedFor(`/api/torrents/recommend?${new URLSearchParams({
+      type: isTv ? 'tv' : 'movie', title: t.title, ...(t.year ? { year: t.year } : {}), ...(se ? { season: se.number } : {}) })}`);
+    if (rec.pick) return showPick(rec);
+    if (!isTv) {
+      box.replaceChildren(h('p', { class: 'best-meta' }, 'No download stood out, so pick one yourself.'));
+      return;
+    }
+    const btn = h('button', { type: 'button', class: 'play-btn best-btn' }, icon('download'), `Get ${se.name} episode by episode`);
+    btn.addEventListener('click', () => getSeason(`${t.title} S${pad2(se.number)}`, {
+      subs: subs(), btn, status, label: `Get ${se.name} episode by episode`, isOpen: () => btn.isConnected,
+    }));
+    status.textContent = have
+      ? `${have} of ${se.episodes || '?'} episodes are already here. Marquee finds the rest, in 1080p where it can.`
+      : `No complete ${se.name.toLowerCase()} with enough seeders, so Marquee finds each episode separately, in 1080p where it can.`;
+    box.replaceChildren(btn, status);
+  })().catch(() => { box.hidden = true; });
+
+  function showPick({ pick, why }) {
+    const label = isTv ? `Get ${se.name}` : 'Get the best download';
+    const btn = h('button', { type: 'button', class: 'play-btn best-btn', 'aria-label': `${label}, ${qualityName(pick.quality)}` },
+      icon('download'), label, h('span', { class: 'best-q' }, qualityName(pick.quality)));
+    status.replaceChildren(...[
+      [pick.size && fmtBytes(pick.size), `${pick.seeders.toLocaleString()} seeding`, ...pick.tags, SOURCE_NAMES[pick.source]].filter(Boolean).join(' · '),
+      why && h('span', { class: 'best-why' }, why),
+    ].filter(Boolean));
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      btn.replaceChildren('Adding…');
+      try {
+        await sendToQbit(await magnetOf(pick), { name: pick.name, subs: subs(), ...(!isTv && t.id ? { movieId: t.id } : {}) });
+        btn.classList.add('is-added');
+        btn.replaceChildren(icon('check'), 'Added');
+        toast(subs().length ? 'Added. Subtitles come when it finishes.' : 'Added to Downloads');
+      } catch (err) {
+        btn.disabled = false;
+        btn.replaceChildren(icon('download'), label, h('span', { class: 'best-q' }, qualityName(pick.quality)));
+        status.textContent = err.message;
+      }
+    });
+    box.replaceChildren(btn, status, h('p', { class: 'best-name', title: pick.name }, pick.name));
+  }
+  return box;
+}
+
+// A whole season episode by episode (season.js), with progress in `status` while isOpen() holds.
+async function getSeason(query, { quality = '', subs = [], btn, status, label, isOpen }) {
+  btn.disabled = true;
+  btn.replaceChildren('Starting…');
+  let job;
+  try {
+    job = await api('/api/downloads/season', jsonPost({ query, quality, subs }));
+  } catch (err) {
+    btn.disabled = false;
+    btn.replaceChildren(icon('download'), label);
+    status.textContent = err.message;
+    return;
+  }
+  btn.replaceChildren('Working…');
+  while (isOpen()) {
+    let j;
+    try { j = await api(`/api/downloads/season/${job.id}`); } catch (err) { status.textContent = err.message; break; }
+    const eps = (list) => list.map((e) => `E${pad2(e)}`).join(', ');
+    if (j.state === 'running') {
+      status.textContent = [j.step, j.added.length && `${j.added.length} added so far`].filter(Boolean).join(' · ');
+      await new Promise((r) => setTimeout(r, 1500));
+      continue;
+    }
+    if (j.state === 'failed') {
+      status.textContent = `Stopped: ${j.error}`;
+      btn.disabled = false;
+      btn.replaceChildren(icon('download'), 'Try again');
+      break;
+    }
+    const n = j.added.reduce((sum, a) => sum + a.episodes.length, 0);
+    status.textContent = [
+      n ? `Added ${plural(n, 'episode')}` : j.step || 'Nothing new to add',
+      j.have.length && `${j.have.length} already here`,
+      j.missing.length && `not found: ${eps(j.missing)}`,
+      j.upcoming && `${j.upcoming} not aired yet`,
+    ].filter(Boolean).join(' · ');
+    btn.classList.add('is-added');
+    btn.replaceChildren(icon('check'), n ? 'Added' : 'Done');
+    if (n) {
+      toast(`${j.title} season ${j.season}: ${plural(n, 'episode')} added to Downloads`);
+      loadDownloads().then(() => { if (state.view === 'downloads') renderDownloads(); });
+    }
+    break;
+  }
 }
 
 // ---------- casting: device picker ----------
@@ -1681,51 +1809,12 @@ function openTorrents({ query = '', type = 'all', label = null, movieId = null, 
         status),
       h('div', { class: 'row-actions' }, btn)));
 
-    async function go() {
-      btn.disabled = true;
-      btn.replaceChildren('Starting…');
+    function go() {
       const sub = subRow.hidden ? '' : subSelect.value;
-      const quality = ['2160p', '1080p', '720p'].includes(filter) ? filter : '';
-      let job;
-      try {
-        job = await api('/api/downloads/season', jsonPost({ query: q, quality, subs: sub ? [sub] : [] }));
-      } catch (err) {
-        btn.disabled = false;
-        btn.replaceChildren(icon('download'), 'Get all episodes');
-        status.textContent = err.message;
-        return;
-      }
-      btn.replaceChildren('Working…');
-      while (!closed) {
-        let j;
-        try { j = await api(`/api/downloads/season/${job.id}`); } catch (err) { status.textContent = err.message; break; }
-        const eps = (list) => list.map((e) => `E${pad2(e)}`).join(', ');
-        if (j.state === 'running') {
-          status.textContent = [j.step, j.added.length && `${j.added.length} added so far`].filter(Boolean).join(' · ');
-          await new Promise((r) => setTimeout(r, 1500));
-          continue;
-        }
-        if (j.state === 'failed') {
-          status.textContent = `Stopped: ${j.error}`;
-          btn.disabled = false;
-          btn.replaceChildren(icon('download'), 'Try again');
-          break;
-        }
-        const n = j.added.reduce((sum, a) => sum + a.episodes.length, 0);
-        status.textContent = [
-          n ? `Added ${plural(n, 'episode')}` : j.step || 'Nothing new to add',
-          j.have.length && `${j.have.length} already here`,
-          j.missing.length && `not found: ${eps(j.missing)}`,
-          j.upcoming && `${j.upcoming} not aired yet`,
-        ].filter(Boolean).join(' · ');
-        btn.classList.add('is-added');
-        btn.replaceChildren(icon('check'), n ? 'Added' : 'Done');
-        if (n) {
-          toast(`${j.title} season ${j.season}: ${plural(n, 'episode')} added to Downloads`);
-          loadDownloads().then(() => { if (state.view === 'downloads') renderDownloads(); });
-        }
-        break;
-      }
+      return getSeason(q, {
+        quality: ['2160p', '1080p', '720p'].includes(filter) ? filter : '',
+        subs: sub ? [sub] : [], btn, status, label: 'Get all episodes', isOpen: () => !closed,
+      });
     }
   }
 

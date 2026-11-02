@@ -19,6 +19,7 @@ import * as clips from './clips.js';
 import * as invites from './invites.js';
 import * as shows from './shows.js';
 import * as season from './season.js';
+import * as recommend from './recommend.js';
 import * as accounts from './accounts.js';
 import { WatchRooms } from './watch.js';
 import { isHomeRequest, describeRequest } from './network.js';
@@ -1094,6 +1095,19 @@ async function handleApi(req, res, url) {
   // ---- torrent search ----
   if (p === '/api/torrents/search') {
     return sendJson(res, 200, await torrents.searchTorrents(url.searchParams.get('q'), url.searchParams.get('type')));
+  }
+  // One best download for a film, or for a season of a show as a single pack (see recommend.js).
+  if (p === '/api/torrents/recommend') {
+    const q = url.searchParams;
+    const type = q.get('type') === 'tv' ? 'tv' : 'movie';
+    const title = String(q.get('title') || '').trim().slice(0, 100);
+    const year = Number(q.get('year')) || null;
+    const seasonNo = Number(q.get('season')) || null;
+    if (!title || (type === 'tv' && !seasonNo)) throw new HttpError(400, 'Which title, and for a show which season?');
+    const query = type === 'tv' ? `${title} S${String(seasonNo).padStart(2, '0')}` : [title, year].filter(Boolean).join(' ');
+    const { results } = await torrents.searchTorrents(query, type);
+    const { pick, why } = recommend.pickBest(results, { type, title, year, season: seasonNo, prefer: user.settings?.quality }, parseName);
+    return sendJson(res, 200, { pick, why, query, of: results.length });
   }
   if (p === '/api/torrents/magnet') {
     return sendJson(res, 200, { magnet: await torrents.magnetFor1337x(url.searchParams.get('ref')) });
