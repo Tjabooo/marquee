@@ -203,7 +203,7 @@ export async function unshare(id) {
 }
 
 // ---------- public share pages (/c/...) ----------
-const esc = (s) => String(s).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
+export const esc = (s) => String(s).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
 // Absolute links for the embed: PUBLIC_URL if set, else the host the visitor used (Cloudflare
 // Tunnel passes the public hostname through; it's https whenever CF-Ray is present).
 export const baseUrl = (req) => PUBLIC_URL || `${req.headers['cf-ray'] || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http'}://${req.headers.host}`;
@@ -223,9 +223,17 @@ p{margin:0;color:#BA9DAD}
 video{display:block;width:100%;aspect-ratio:16/9;background:#000;border-radius:14px;margin-top:18px;border:1px solid #4B2C3F}
 .brand{color:#F4C152;font-weight:800;letter-spacing:.02em;text-decoration:none}
 .foot{margin-top:14px;font-size:13px}
-.wait{margin-top:18px;padding:40px;border:1px dashed #4B2C3F;border-radius:14px;text-align:center}`;
+.wait{margin-top:18px;padding:40px;border:1px dashed #4B2C3F;border-radius:14px;text-align:center}
+.card{max-width:460px;margin:0 auto;padding:28px 24px;background:#2B1724;border:1px solid #4B2C3F;border-radius:18px}
+.card h1{margin-bottom:8px}.card p+p{margin-top:10px}
+form{margin-top:20px;display:grid;gap:10px}
+label{font-size:14px;color:#BA9DAD}
+input[type=email]{font:inherit;color:#F6EADF;background:#1F1019;border:1px solid #4B2C3F;border-radius:12px;padding:12px 14px}
+input[type=email]:focus{outline:2px solid #F4C152;border-color:transparent}
+button{font:700 16px/1 system-ui,sans-serif;color:#1F1019;background:#F4C152;border:0;border-radius:999px;padding:14px 18px;cursor:pointer}
+.err{color:#FF9B85}.ok{color:#F4C152;font-weight:700}`;
 
-function page({ title, desc, url, image, video, body }) {
+export function page({ title, desc, url, image, video, body }) {
   const og = [
     ['og:site_name', 'Marquee'], ['og:title', title], ['og:description', desc], ['og:url', url],
     ['og:type', video ? 'video.other' : 'website'], image && ['og:image', image],

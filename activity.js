@@ -32,6 +32,7 @@ function userOf(req) {
 }
 
 export const isAdmin = (req) => ADMINS.includes(userOf(req));
+export const adminEmails = () => [...ADMINS];
 
 // "iPhone · Safari", "Windows · Firefox", ...
 function deviceOf(req) {
@@ -50,8 +51,9 @@ export function seen(req) {
 
 // action: download | delete | play | cast | stop | subtitles. Repeats of the same thing by the same
 // person within `quietMs` are logged once (a film played twice in a row, a page reloaded).
-export function record(req, action, detail, { quietMs = 0 } = {}) {
-  const user = userOf(req);
+// `user` overrides who it's logged as (an invite is accepted before its new user has signed in).
+export function record(req, action, detail, { quietMs = 0, user: who = null } = {}) {
+  const user = who || userOf(req);
   const key = `${user}|${action}|${detail}`;
   if (quietMs && Date.now() - (recentKeys.get(key) || 0) < quietMs) return;
   recentKeys.set(key, Date.now());

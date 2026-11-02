@@ -16,6 +16,7 @@ import * as subsync from './subsync.js';
 import * as activity from './activity.js';
 import * as house from './house.js';
 import * as clips from './clips.js';
+import * as invites from './invites.js';
 import { isHomeRequest, describeRequest } from './network.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -53,6 +54,7 @@ house.initHouse({
   qbitCheck: QBIT_URL ? async () => (await qbitRequest('/api/v2/app/version')).ok : null,
 });
 clips.initClips({ dataDir: ROOT, getEncoder: () => converter.converterStatus().encoder });
+invites.initInvites({ dataDir: ROOT, onEvent: activity.record });
 cast.initCasting({ lanIp: LAN_IP });
 subsync.initSubsync({ dataDir: ROOT, audioShift: (video) => converter.syncState(video).shift });
 subtitles.initSubtitles({
@@ -617,6 +619,34 @@ async function handleApi(req, res, url) {
     if (!activity.isAdmin(req)) throw new HttpError(403, 'Only the server’s owner can see the house.');
     return sendJson(res, 200, await house.houseReport());
   }
+  // Who has access (the Cloudflare Access group) and invite links: owner only.
+  if (p === '/api/access' || p.startsWith('/api/access/')) {
+    if (!activity.isAdmin(req)) throw new HttpError(403, 'Only the server’s owner can manage access.');
+    if (p === '/api/access') {
+      if (!invites.invitesConfigured()) return sendJson(res, 200, { configured: false, members: [], invites: [] });
+      let members = null;
+      let error = null;
+      try { members = await invites.members(); } catch (e) { error = e.message; }
+      return sendJson(res, 200, { configured: true, members, error, owners: activity.adminEmails(), invites: invites.listInvites() });
+    }
+    if (p === '/api/access/invite' && req.method === 'POST') {
+      const { note } = await readJson(req);
+      const inv = invites.createInvite(req, note);
+      activity.record(req, 'invite', inv.note || 'a new invite');
+      return sendJson(res, 200, inv);
+    }
+    if ((m = p.match(/^\/api\/access\/invite\/([a-f0-9]{8})\/revoke$/)) && req.method === 'POST') {
+      invites.revokeInvite(m[1]);
+      return sendJson(res, 200, { ok: true });
+    }
+    if (p === '/api/access/remove' && req.method === 'POST') {
+      const { email } = await readJson(req);
+      const left = await invites.removeMember(email, activity.adminEmails());
+      activity.record(req, 'revoke', String(email || '').toLowerCase());
+      return sendJson(res, 200, { members: left });
+    }
+    throw new HttpError(404, 'Unknown access route.');
+  }
   if (p === '/api/clips' || p.startsWith('/api/clips/')) {
     if (!activity.isAdmin(req)) throw new HttpError(403, 'Only the server’s owner can see clips.');
     if (p === '/api/clips') return sendJson(res, 200, await clips.listClips());
@@ -937,13 +967,14 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost');
     const allowed = req.method === 'GET' || req.method === 'HEAD'
       || (req.method === 'POST' && (url.pathname.startsWith('/api/cast/') || url.pathname === '/api/downloads/add' || url.pathname === '/api/subs/fetch' || url.pathname === '/api/subs/sync' || url.pathname === '/api/library/delete' || /^\/api\/downloads\/\w+\/(pause|resume|delete)$/.test(url.pathname) || /^\/api\/media\/\w+\/[\w-]+\/sync$/.test(url.pathname)
-        || url.pathname === '/api/house/report' || /^\/api\/clips\/[\w-]+\/(share|unshare)$/.test(url.pathname)));
+        || url.pathname === '/api/house/report' || /^\/api\/clips\/[\w-]+\/(share|unshare)$/.test(url.pathname)
+        || /^\/api\/access\/(invite|remove|invite\/\w+\/revoke)$/.test(url.pathname) || /^\/c\/i\/[\w-]+\/?$/.test(url.pathname)));
     if (!allowed) throw new HttpError(405, 'Method not allowed.');
     if (url.pathname.startsWith('/api/')) await handleApi(req, res, url);
     else if (url.pathname.startsWith('/play/')) await handlePlay(req, res, url);
     // Public: shared clips and the Marquee invite card (bypassed in Cloudflare Access; see README)
     else if (url.pathname === '/c' || url.pathname.startsWith('/c/')) {
-      if (!(await clips.handlePublic(req, res, url, { sendVideo }))) throw new HttpError(404, 'Not found.');
+      if (!(await invites.handlePublic(req, res, url)) && !(await clips.handlePublic(req, res, url, { sendVideo }))) throw new HttpError(404, 'Not found.');
     }
     else await serveStatic(res, url.pathname);
   } catch (err) {

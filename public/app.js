@@ -2286,6 +2286,9 @@ const ACTIVITY_TEXT = {
   stop: (d) => `stopped ${d}`,
   subtitles: (d) => `got ${d}`,
   share: (d) => `shared the clip ${d}`,
+  invite: (d) => `made an invite link (${d})`,
+  joined: (d) => `joined Marquee (${d})`,
+  revoke: (d) => `removed ${d}’s access`,
   unshare: (d) => `stopped sharing ${d}`,
 };
 const personName = (user) => (user.includes('@') ? user.split('@')[0] : user);
@@ -2308,6 +2311,81 @@ function lastSeenText(ms) {
 
 async function loadActivity() {
   try { state.activity = await api('/api/activity'); state.activityError = null; } catch (err) { state.activityError = err.message; }
+  try { state.access = await api('/api/access'); } catch (err) { state.access = { configured: true, error: err.message, invites: [] }; }
+}
+
+// ---------- access: who may sign in (Cloudflare Access group) + invite links ----------
+async function makeInvite(btn) {
+  const note = $('#invite-note')?.value.trim() || '';
+  btn.disabled = true;
+  try {
+    const inv = await api('/api/access/invite', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ note }) });
+    state.newInvite = inv.url;
+    await copyWithToast(inv.url, 'Invite link copied: send it to them');
+  } catch (err) { toast(err.message); }
+  await loadActivity();
+  renderActivity();
+}
+// copyText() (above) has the iOS fallback; this adds the toast, or shows the link if copying failed
+async function copyWithToast(text, msg) {
+  if (await copyText(text)) toast(msg); else prompt('Copy this link', text);
+}
+async function accessAction(path, body, msg) {
+  try {
+    await api(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+    toast(msg);
+  } catch (err) { toast(err.message); }
+  await loadActivity();
+  renderActivity();
+}
+
+function accessSection() {
+  const a = state.access;
+  if (!a) return [];
+  const out = [h('h3', { class: 'activity-head' }, 'Access')];
+  if (!a.configured) {
+    out.push(h('p', { class: 'muted' }, 'Set CF_API_TOKEN, CF_ACCOUNT_ID and CF_ACCESS_GROUP_ID in .env to invite people from here (see the README).'));
+    return out;
+  }
+  const noteInput = h('input', { id: 'invite-note', class: 'invite-note', type: 'text', maxlength: '60', placeholder: 'Who’s it for?' });
+  out.push(h('div', { class: 'invite-new' }, noteInput,
+    h('button', { class: 'retry', onclick: (e) => makeInvite(e.currentTarget) }, 'Invite someone')));
+  out.push(h('p', { class: 'muted invite-hint' }, 'Makes a one-time link (valid 7 days). They enter their email and can sign in from then on.'));
+  const open = (a.invites || []).filter((i) => i.state === 'open');
+  if (open.length) {
+    out.push(h('ul', { class: 'rows' }, open.map((i) => {
+      const url = `${location.origin}/c/i/${i.token}`;
+      return h('li', { class: 'row' },
+        h('span', { class: 'row-text' },
+          h('span', { class: 'row-title' }, i.note || 'Invite'),
+          h('span', { class: 'row-meta' }, h('span', {}, `open · expires ${new Date(i.expires).toLocaleDateString([], { day: 'numeric', month: 'short' })}`))),
+        h('span', { class: 'row-actions' },
+          h('button', { class: 'retry', onclick: () => copyWithToast(url, 'Invite link copied') }, 'Copy link'),
+          h('button', { class: 'retry', onclick: () => accessAction(`/api/access/invite/${i.id}/revoke`, null, 'Invite cancelled') }, 'Cancel')));
+    })));
+  }
+  if (a.error) out.push(h('p', { class: 'muted' }, `Couldn’t read the access list: ${a.error}`));
+  else if (a.members) {
+    const q = norm(state.query);
+    const list = a.members.filter((e) => !q || norm(e).includes(q));
+    out.push(h('p', { class: 'activity-day' }, `${a.members.length} ${a.members.length === 1 ? 'person' : 'people'} can sign in`));
+    out.push(h('ul', { class: 'rows' }, list.map((email) => {
+      const owner = (a.owners || []).includes(email);
+      return h('li', { class: 'row' },
+        h('span', { class: 'row-text' }, h('span', { class: 'row-title' }, email), owner && h('span', { class: 'row-meta' }, h('span', {}, 'owner'))),
+        !owner && h('span', { class: 'row-actions' }, h('button', {
+          class: 'retry',
+          onclick: (e) => {
+            const b = e.currentTarget;
+            if (b.dataset.sure) return accessAction('/api/access/remove', { email }, `${email} can’t sign in any more`);
+            b.dataset.sure = '1';
+            b.textContent = 'Sure?';
+            setTimeout(() => { b.textContent = 'Remove'; delete b.dataset.sure; }, 4000);
+          },
+        }, 'Remove')));
+    })));
+  }
+  return out;
 }
 
 function renderActivity() {
@@ -2317,7 +2395,7 @@ function renderActivity() {
   const q = norm(state.query);
   const people = state.activity.people.filter((p) => !q || norm(`${p.user} ${p.device}`).includes(q));
   const events = state.activity.events.filter((e) => !q || norm(`${e.user} ${e.detail} ${e.action}`).includes(q));
-  const out = [h('h3', { class: 'activity-head' }, 'People')];
+  const out = [...accessSection(), h('h3', { class: 'activity-head' }, 'People')];
   out.push(people.length ? h('ul', { class: 'rows' }, people.map((p) => h('li', { class: 'row' },
     h('span', { class: `activity-dot${Date.now() - p.at < 3 * 60000 ? ' is-on' : ''}`, 'aria-hidden': 'true' }),
     h('span', { class: 'row-text' },
@@ -2436,9 +2514,7 @@ async function shareClip(c, btn) {
   await loadClips();
   renderClips();
 }
-async function copyLink(url) {
-  try { await navigator.clipboard.writeText(url); toast('Link copied: paste it in Discord'); } catch { prompt('Copy this link', url); }
-}
+const copyLink = (url) => copyWithToast(url, 'Link copied: paste it in Discord');
 async function unshareClip(c) {
   try { await api(`/api/clips/${c.id}/unshare`, { method: 'POST' }); toast('Link removed'); } catch (err) { toast(err.message); }
   await loadClips();
