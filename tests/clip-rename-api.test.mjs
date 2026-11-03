@@ -8,7 +8,7 @@ import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-test('clip renames persist without moving files or breaking public links; recommendation API honors quality', { timeout: 20000 }, async () => {
+test('clip renames persist without moving files or breaking public links; download preferences persist and the old recommendation route is gone', { timeout: 20000 }, async () => {
   const root = fileURLToPath(new URL('../', import.meta.url));
   const app = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-clip-api-'));
   for (const name of await fs.readdir(root)) if (name.endsWith('.js') || name === 'package.json') await fs.copyFile(path.join(root, name), path.join(app, name));
@@ -70,16 +70,17 @@ test('clip renames persist without moving files or breaking public links; recomm
     child.kill(); await exited; await start();
     assert.equal((await request('/api/clips')).clips[0].title, title, 'Rename survives a real server restart');
 
-    const rec = '/api/torrents/recommend?title=The+Matrix&year=1999&type=movie';
-    assert.equal((await request(rec)).pick.quality, '1080p');
-    assert.equal((await request(rec + '&quality=720p')).pick.quality, '720p');
-    assert.equal((await request(rec + '&quality=1080p')).pick.quality, '1080p');
-    assert.equal((await request(rec + '&quality=1440p')).pick.quality, '1440p');
+    // Download preferences: a chosen profile replaces an older fixed resolution and survives restarts.
     assert.equal((await request('/api/me', { quality: '1440p' })).me.settings.quality, '1440p');
-    assert.equal((await request('/api/me')).me.settings.quality, '1440p');
-    assert.equal((await request(rec)).pick.quality, '1440p', 'Stored quality is used by Auto ranking');
-    assert.equal((await request(rec + '&quality=2160p')).pick, null);
-    await request(rec + '&quality=garbage', undefined, undefined, 400);
+    const prefs = (await request('/api/me', { downloadProfile: 'save', maxSize: 8, audioLang: 'sv' })).me.settings;
+    assert.deepEqual([prefs.downloadProfile, prefs.maxSize, prefs.audioLang, prefs.quality], ['save', 8, 'sv', 'all']);
+    const ignored = (await request('/api/me', { downloadProfile: 'huge', maxSize: 7, audioLang: 'Swedish!' })).me.settings;
+    assert.deepEqual([ignored.downloadProfile, ignored.maxSize, ignored.audioLang], ['save', 8, '']);
+    child.kill(); await exited; await start();
+    assert.equal((await request('/api/me')).me.settings.downloadProfile, 'save');
+    // The single Download command: never available without qBittorrent; the old parallel routes are gone.
+    assert.match((await request('/api/downloads/smart', { type: 'movie', tmdbId: 603 }, undefined, 503)).error, /Downloads aren’t connected/);
+    await request('/api/torrents/recommend?title=The+Matrix&year=1999&type=movie', undefined, undefined, 404);
   } finally {
     if (child?.exitCode === null) child.kill(); if (exited) await exited;
     await fs.rm(app, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });

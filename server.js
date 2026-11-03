@@ -21,7 +21,9 @@ import * as shows from './shows.js';
 import * as season from './season.js';
 import { matchesRelease } from './release-match.js';
 import { downloadDestination, downloadFilePath } from './download-paths.js';
-import * as recommend from './recommend.js';
+import * as smart from './smart-download.js';
+import { planEpisodeOrder } from './episode-order.js';
+import { PROFILES } from './recommend.js';
 import * as accounts from './accounts.js';
 import { NotesStore } from './notes.js';
 import { NotesUploads, mediaType } from './notes-media.js';
@@ -585,7 +587,7 @@ async function addDownloadNow({ link, file, user = null, name = '', film = null,
       if (show && !shows.showDownload(hash)) shows.rememberShowDownload(hash, show, torrentIdentity(name));
       if (/^(missingFiles|error|unknown)$/.test(existing.state || '')) await retryDownload(existing);
       await claimCompletedTorrents([existing]);
-      return;
+      return { existing: true, hash };
     }
   }
   const form = new FormData();
@@ -623,6 +625,7 @@ async function addDownloadNow({ link, file, user = null, name = '', film = null,
   }
   if (film && hash) shows.rememberFilmDownload(hash, film);
   if (show && hash) shows.rememberShowDownload(hash, show, torrentIdentity(name));
+  return { existing: false, hash };
 }
 
 // Episodes of a show's season that are already here: in the library, or in qBittorrent (an episode,
@@ -630,6 +633,8 @@ async function addDownloadNow({ link, file, user = null, name = '', film = null,
 // `user`'s library instead of being downloaded twice.
 async function haveEpisodes(key, seasonNo, user = null) {
   const have = new Set();
+  const queued = new Set(); // in `have` because a download has them, not yet playable
+  have.queued = queued;
   let list = [];
   try { list = await qbit('/api/v2/torrents/info'); } catch { /* qBittorrent down: library only */ }
   const relevant = list.filter((t) => {
@@ -650,7 +655,7 @@ async function haveEpisodes(key, seasonNo, user = null) {
         const failed = /^(missingFiles|error|unknown)$/.test(t.state || '');
         // Selected queued files count, but a completed/missing download must prove its files exist.
         if (!ready && (failed || t.progress >= 1)) continue;
-        for (const ep of season.episodesIn(f.name, seasonNo)) { have.add(ep); covered = true; }
+        for (const ep of season.episodesIn(f.name, seasonNo)) { have.add(ep); if (!ready) queued.add(ep); covered = true; }
       }
       if (covered && user) {
         accounts.recordTorrent(t.hash, torrentOwner(t), t.name);
@@ -664,11 +669,178 @@ async function haveEpisodes(key, seasonNo, user = null) {
     const managedState = managed.get(path.resolve(i.full).toLowerCase());
     // A partial file may already be visible in MEDIA_DIR; never adopt it as a playable episode.
     if (managedState === false || (managedState == null && relevant.some((t) => isInside(i.full, t.content_path || path.join(t.save_path || '', t.name))))) continue;
-    for (const ep of season.episodesIn(i.file, seasonNo)) have.add(ep);
+    for (const ep of season.episodesIn(i.file, seasonNo)) { have.add(ep); queued.delete(ep); }
     if (user) accounts.addEntry(user.id, accounts.mediaKey(i.full), 'added');
   }
   return have;
 }
+
+// ---- smart downloads (smart-download.js): what the job needs from the server ----
+// Space left for new downloads on the disk a film or show goes to: free space, minus what queued
+// downloads still have to write there, minus a reserve so the disk never fills up completely.
+const DISK_RESERVE = 5 * 1024 ** 3;
+async function freeBytesFor(type) {
+  const dir = MEDIA_DIR ? downloadDestination(MEDIA_DIR, { mediaType: type }) || MEDIA_DIR : null;
+  if (!dir) return Infinity;
+  let free;
+  try {
+    const target = fs.existsSync(dir) ? dir : MEDIA_DIR;
+    const st = await fs.promises.statfs(target);
+    free = Number(st.bavail) * Number(st.bsize);
+  } catch { return Infinity; } // unknown: the size limit from Settings still applies
+  let pending = 0;
+  try {
+    const root = path.parse(path.resolve(dir)).root.toLowerCase();
+    for (const t of await qbit('/api/v2/torrents/info?filter=downloading')) {
+      if (path.parse(path.resolve(t.save_path || dir)).root.toLowerCase() === root) pending += Number(t.amount_left) || 0;
+    }
+  } catch { /* qBittorrent down: free space alone */ }
+  return free - pending - DISK_RESERVE;
+}
+
+// A film you already have, can have (someone else's copy on the server joins your library), or that
+// is already downloading (you're added to its requesters, as when adding the same magnet twice).
+async function filmHave(tmdbId, user) {
+  const items = await libraryVisibleItems(await scanLibrary(), user);
+  if (items?.length) {
+    const ids = await shows.filmInfo(items.map((i) => ({ ...i, mediaKey: accounts.mediaKey(i.full) })), null);
+    const mine = accounts.libraryOf(user.id);
+    const matches = items.filter((i) => Number(ids.get(i.id)?.tmdbId) === Number(tmdbId) && !ids.get(i.id)?.movieAmbiguous);
+    if (matches.some((i) => mine.has(accounts.mediaKey(i.full)))) return 'library';
+    if (matches.length) {
+      for (const i of matches) accounts.addEntry(user.id, accounts.mediaKey(i.full), 'added');
+      return 'server';
+    }
+  }
+  let list = [];
+  try { list = await qbit('/api/v2/torrents/info'); } catch { return null; }
+  const active = list.find((t) => Number(shows.filmDownload(t.hash)?.id) === Number(tmdbId) && !/^(missingFiles|error|unknown)$/.test(t.state || ''));
+  if (!active) return null;
+  accounts.recordTorrent(active.hash, torrentOwner(active), active.name);
+  accounts.requestTorrent(active.hash, user.id, active.name);
+  return 'downloading';
+}
+
+// A season pack that was just added: wait (bounded) for its file list, switch off the episodes
+// already here and report the episodes it really contains. null when the file list never came.
+async function trimSeasonPack(link, seasonNo, owned, { timeout = 45000 } = {}) {
+  const hash = accounts.magnetHash(link);
+  if (!hash) return null;
+  let files = [];
+  for (const end = Date.now() + timeout; Date.now() < end;) {
+    try { files = await qbit(`/api/v2/torrents/files?hash=${hash}`); } catch { files = []; }
+    if (files.length) break;
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+  if (!files.length) return null;
+  const covered = new Set(), skip = [];
+  files.forEach((f, i) => {
+    if (!isVideo(f.name)) return;
+    const name = f.name.replace(/\\/g, '/');
+    const fileSeason = parseName(path.basename(name)).season;
+    if (fileSeason != null && fileSeason !== seasonNo) return;
+    const eps = season.episodesIn(path.basename(name), seasonNo);
+    if (!eps.length) return;
+    if (eps.every((e) => owned.has(e))) skip.push(f.index ?? i);
+    else eps.forEach((e) => covered.add(e));
+  });
+  if (skip.length && covered.size) {
+    await qbitRequest('/api/v2/torrents/filePrio', {
+      method: 'POST', body: new URLSearchParams({ hash, id: skip.join('|'), priority: '0' }),
+    });
+  }
+  torrentFilesCache.delete(hash);
+  torrentInventory.at = 0;
+  return { covered, skipped: covered.size ? skip.length : 0 };
+}
+
+async function removeNewPack(link) {
+  const hash = accounts.magnetHash(link);
+  if (!hash) return;
+  await qbitRequest('/api/v2/torrents/delete', { method: 'POST', body: new URLSearchParams({ hashes: hash, deleteFiles: 'true' }) });
+  torrentFilesCache.delete(hash);
+  torrentInventory.at = 0;
+}
+
+// Download preferences (Settings → Downloads), optionally overridden for one command.
+const EXACT_QUALITIES = ['2160p', '1440p', '1080p', '720p'];
+function downloadWant(user, body = {}) {
+  const s = user.settings || {};
+  const saved = PROFILES.includes(s.downloadProfile) ? s.downloadProfile
+    : ['2160p', '1440p'].includes(s.quality) ? 'best' : s.quality === '720p' ? 'save' : 'balanced';
+  const profile = PROFILES.includes(body.profile) ? body.profile : saved;
+  return {
+    profile,
+    // A resolution chosen before profiles existed still leads, as long as the profile is the saved one.
+    prefer: profile === saved && EXACT_QUALITIES.includes(s.quality) ? s.quality : null,
+    quality: EXACT_QUALITIES.includes(body.quality) ? body.quality : null,
+    maxBytes: Number(s.maxSize) > 0 ? Number(s.maxSize) * 1024 ** 3 : 0,
+    audioLang: s.audioLang || '',
+  };
+}
+
+// ---- episodes in order (episode-order.js) ----
+// Torrents a Download Season added: hash -> { key, season, held }. held = stopped by Marquee to
+// let an earlier episode download first. Saved, so a restart doesn't leave episodes stopped.
+const ORDER_FILE = path.join(ROOT, '.marquee-episode-order.json');
+const episodeOrder = new Map(Object.entries((() => { try { return JSON.parse(fs.readFileSync(ORDER_FILE, 'utf8')); } catch { return {}; } })()));
+const saveEpisodeOrder = () => { try { fs.writeFileSync(ORDER_FILE, JSON.stringify(Object.fromEntries(episodeOrder))); } catch (e) { console.warn(`[order] ${e.message}`); } };
+const finishedEpisodeFiles = new Set();
+function orderEpisodes(hash, key, seasonNo) {
+  if (!hash || !key || !Number.isInteger(seasonNo)) return;
+  episodeOrder.set(hash.toLowerCase(), { key, season: seasonNo, held: false });
+  saveEpisodeOrder();
+  setTimeout(() => episodeOrderRound().catch(() => {}), 1500);
+}
+// The person took over this download (paused, resumed or removed it): Marquee stops ordering it.
+function releaseEpisodeOrder(hash) {
+  if (episodeOrder.delete(String(hash).toLowerCase())) saveEpisodeOrder();
+}
+let orderBusy = false;
+async function episodeOrderRound() {
+  if (!QBIT_URL || !episodeOrder.size || orderBusy) return;
+  orderBusy = true;
+  try {
+    const list = await qbit(`/api/v2/torrents/info?hashes=${[...episodeOrder.keys()].join('|')}`);
+    const present = new Set(list.map((t) => t.hash.toLowerCase()));
+    let changed = false;
+    for (const hash of [...episodeOrder.keys()]) if (!present.has(hash)) { episodeOrder.delete(hash); changed = true; }
+    const groups = new Map();
+    for (const t of list) {
+      const entry = episodeOrder.get(t.hash.toLowerCase());
+      if (t.progress >= 1) { episodeOrder.delete(t.hash.toLowerCase()); changed = true; continue; }
+      const files = await qbit(`/api/v2/torrents/files?hash=${t.hash}`).catch(() => []);
+      for (const f of files) {
+        const id = `${t.hash}:${f.index ?? files.indexOf(f)}`;
+        if (f.progress >= 1 && f.priority !== 0 && isVideo(f.name) && !finishedEpisodeFiles.has(id)) {
+          finishedEpisodeFiles.add(id);
+          converter.convertSoon(); // a finished episode becomes an MP4 while the next one downloads
+          invalidateLibrary();
+        }
+      }
+      const group = `${entry.key}|${entry.season}`;
+      if (!groups.has(group)) groups.set(group, { season: entry.season, torrents: [] });
+      groups.get(group).torrents.push({ hash: t.hash.toLowerCase(), name: t.name, state: t.state, progress: t.progress,
+        files: files.map((f, i) => ({ index: f.index ?? i, name: f.name, progress: f.progress, priority: f.priority })) });
+    }
+    if (finishedEpisodeFiles.size > 5000) finishedEpisodeFiles.clear();
+    const held = new Set([...episodeOrder].filter(([, e]) => e.held).map(([hash]) => hash));
+    for (const group of groups.values()) {
+      const plan = planEpisodeOrder(group, held);
+      for (const { hash, ids, priority } of plan.priorities) {
+        await qbitRequest('/api/v2/torrents/filePrio', { method: 'POST', body: new URLSearchParams({ hash, id: ids.join('|'), priority: String(priority) }) });
+        torrentFilesCache.delete(hash);
+      }
+      for (const hash of plan.stop) { await setPaused(hash, true); episodeOrder.get(hash).held = true; changed = true; }
+      for (const hash of plan.start) { await setPaused(hash, false); episodeOrder.get(hash).held = false; changed = true; }
+      if (plan.stop.length || plan.start.length) torrentInventory.at = 0;
+    }
+    if (changed) saveEpisodeOrder();
+  } catch (e) {
+    console.warn(`[order] ${e.message}`);
+  } finally { orderBusy = false; }
+}
+setInterval(() => episodeOrderRound(), 5000).unref();
 
 async function readRaw(req, limit) {
   const chunks = [];
@@ -756,7 +928,8 @@ async function listDownloads(user, all = false) {
     speed: t.dlspeed,
     eta: t.eta >= 8640000 ? null : t.eta,
     size: t.size,
-    state: t.state,
+    // Stopped by Marquee so an earlier episode downloads first: waiting its turn, not paused.
+    state: episodeOrder.get(t.hash.toLowerCase())?.held && /^(paused|stopped)/.test(t.state || '') ? 'queuedDL' : t.state,
     transferComplete: t.progress >= 1,
     done: Boolean(verifiedComplete),
     converting: convertingIn(t),
@@ -1383,7 +1556,7 @@ async function handleApi(req, res, url) {
     activity.record(req, 'extend', `${ids.length === 1 ? titleOf(librarySource(ids[0])) : `${ids.length} videos`} by ${days} days`, { quietMs: 60000 });
     return sendJson(res, 200, { entries });
   }
-  if ((p === '/api/downloads/add' || p === '/api/downloads/season') && !user.canDownload) {
+  if ((p === '/api/downloads/add' || p === '/api/downloads/smart') && !user.canDownload) {
     throw new HttpError(403, 'The server’s owner hasn’t turned on downloads for you. Ask them, or add things that are already on the server.');
   }
   if (p === '/api/downloads/add' && req.method === 'POST') {
@@ -1420,40 +1593,48 @@ async function handleApi(req, res, url) {
     }
     return sendJson(res, 200, { ok: true });
   }
-  // ---- a whole season, episode by episode (see season.js) ----
-  if (p === '/api/downloads/season' && req.method === 'POST') {
+  // ---- Download: one command for a film, a season or some episodes (see smart-download.js) ----
+  if (p === '/api/downloads/smart' && req.method === 'POST') {
     if (!QBIT_URL) throw new HttpError(503, 'Downloads aren’t connected. Add QBIT_URL to .env and restart.');
     const body = await readJson(req);
-    const want = season.parseSeasonQuery(body.query);
-    if (!want) throw new HttpError(400, 'Search for a show and a season, like “South Park S18”.');
-    let show = null;
-    if (body.tvId != null) {
-      const id = Number(body.tvId);
-      if (!Number.isSafeInteger(id) || id <= 0) throw new HttpError(400, 'Invalid show identity.');
-      show = await tmdb(`/tv/${id}`);
-      want.title = show.name || want.title;
-      want.year = show.first_air_date ? Number(show.first_air_date.slice(0, 4)) : want.year;
-    }
-    if (body.exactQuality && !['2160p', '1440p', '1080p', '720p'].includes(body.quality)) throw new HttpError(400, 'Choose 4K, 1440p, 1080p or 720p.');
-    const id = season.startSeasonJob({
-      ...want,
-      requester: user.id,
-      quality: String(body.quality || ''),
-      exactQuality: Boolean(body.exactQuality),
-      subs: Array.isArray(body.subs) ? body.subs.map(String).slice(0, 3) : [],
+    const type = body.type === 'tv' ? 'tv' : 'movie';
+    const tmdbId = Number(body.tmdbId);
+    if (!Number.isSafeInteger(tmdbId) || tmdbId <= 0) throw new HttpError(400, 'Which film or show?');
+    if (!TMDB_TOKEN && !TMDB_KEY) throw new HttpError(503, 'Downloading by title needs TMDB. Add TMDB_TOKEN to .env and restart.');
+    const details = await tmdb(`/${type}/${tmdbId}`);
+    const title = String((type === 'tv' ? details.name : details.title) || '').trim();
+    if (!title) throw new HttpError(404, 'That title couldn’t be found.');
+    const date = type === 'tv' ? details.first_air_date : details.release_date;
+    const year = date ? Number(date.slice(0, 4)) : null;
+    const original = String((type === 'tv' ? details.original_name : details.original_title) || '').trim();
+    const seasonNo = type === 'tv' ? Number(body.season) : null;
+    if (type === 'tv' && (!Number.isInteger(seasonNo) || seasonNo < 1 || seasonNo > 99)) throw new HttpError(400, 'Which season?');
+    const episodes = type === 'tv' && Array.isArray(body.episodes)
+      ? [...new Set(body.episodes.map(Number).filter((e) => Number.isInteger(e) && e > 0 && e < 1000))].slice(0, 200) : null;
+    const film = type === 'movie' ? details : null, show = type === 'tv' ? details : null;
+    const subs = subtitles.subtitlesConfigured() && user.settings?.subLang ? [user.settings.subLang] : [];
+    const id = smart.startSmartJob({
+      type, title, year, season: seasonNo, episodes: episodes?.length ? episodes : null, requester: user.id, subs,
+      originalTitle: original && original !== title && /^[\p{Script=Latin}\d\s\p{P}]+$/u.test(original) ? original : null,
+      want: downloadWant(user, body),
     }, {
-      parseName, tmdb: TMDB_TOKEN || TMDB_KEY ? tmdb : null, seasonEpisodes: shows.seasonEpisodes,
-      searchTorrents: torrents.searchTorrents, magnetFor1337x: torrents.magnetFor1337x,
-      addDownload: (opts) => addDownload({ ...opts, user, show }),
-      wantSubtitles: (link, subs, name) => { subtitles.wantSubtitles(link, subs, name); setTimeout(checkSubtitleWants, 30_000); },
-      haveEpisodes: (key, seasonNo) => haveEpisodes(key, seasonNo, user), log: (msg) => console.log(msg),
+      parseName, searchTorrents: torrents.searchTorrents, magnetFor1337x: torrents.magnetFor1337x,
+      addDownload: (opts) => addDownload({ ...opts, user, film, show }),
+      wantSubtitles: (link, list, name) => { subtitles.wantSubtitles(link, list, name); setTimeout(checkSubtitleWants, 30_000); },
+      filmHave: () => filmHave(tmdbId, user), freeBytes: freeBytesFor,
+      seasonEpisodes: (t, y, n) => shows.seasonEpisodes(t, y, n, tmdb),
+      haveEpisodes: (key, n) => haveEpisodes(key, n, user),
+      trimPack: (link, n, owned) => trimSeasonPack(link, n, owned), removePack: removeNewPack,
+      inOrder: ({ hash, existing }, n) => { if (!existing) orderEpisodes(hash, shows.showKey(title), n); },
+      log: (msg) => console.log(msg),
     });
-    activity.record(req, 'download', `${want.title} season ${want.season}, episode by episode`);
-    return sendJson(res, 200, { id });
+    activity.record(req, 'download', type === 'tv'
+      ? `${title} season ${seasonNo}${episodes?.length ? `, ${episodes.length === 1 ? `episode ${episodes[0]}` : `${episodes.length} episodes`}` : ''}` : title);
+    return sendJson(res, 202, { id });
   }
-  if ((m = p.match(/^\/api\/downloads\/season\/([a-f0-9]{12})$/))) {
-    const job = season.seasonJob(m[1], { userId: user.id, owner: user.isOwner });
-    if (!job) throw new HttpError(404, 'That season download is no longer tracked.');
+  if ((m = p.match(/^\/api\/downloads\/smart\/([a-f0-9]{12})$/))) {
+    const job = smart.smartJob(m[1], { userId: user.id, owner: user.isOwner });
+    if (!job) throw new HttpError(404, 'That download request is no longer tracked.');
     return sendJson(res, 200, job);
   }
   // ---- torrent search ----
@@ -1462,33 +1643,6 @@ async function handleApi(req, res, url) {
     const found = await torrents.searchTorrents(query, url.searchParams.get('type'));
     return sendJson(res, 200, url.searchParams.get('strict') === '1'
       ? { ...found, results: found.results.filter((r) => matchesRelease(query, r.name, parseName)) } : found);
-  }
-  // One best download for a film, or for a season of a show as a single pack (see recommend.js).
-  if (p === '/api/torrents/recommend') {
-    const q = url.searchParams;
-    const type = q.get('type') === 'tv' ? 'tv' : 'movie';
-    const title = String(q.get('title') || '').trim().slice(0, 100);
-    const year = Number(q.get('year')) || null;
-    const seasonNo = Number(q.get('season')) || null;
-    const quality = q.get('quality') || 'all';
-    if (!['all', '2160p', '1440p', '1080p', '720p'].includes(quality)) throw new HttpError(400, 'Choose Auto, 4K, 1440p, 1080p or 720p.');
-    if (!title || (type === 'tv' && !seasonNo)) throw new HttpError(400, 'Which title, and for a show which season?');
-    const query = type === 'tv' ? `${title} S${String(seasonNo).padStart(2, '0')}` : [title, year].filter(Boolean).join(' ');
-    const want = { type, title, year, season: seasonNo, quality, prefer: user.settings?.quality };
-    let { results } = await torrents.searchTorrents(query, type);
-    let { pick, why } = recommend.pickBest(results, want, parseName);
-    // House is frequently released as "House MD"; searching only "House S02"
-    // can miss a complete pack even though the episode downloader finds it.
-    if (!pick && type === 'tv' && ['house', 'housemd'].includes(shows.showKey(title))) {
-      const alias = shows.showKey(title) === 'house' ? 'House MD' : 'House';
-      const alternative = `${alias} S${String(seasonNo).padStart(2, '0')}`;
-      try {
-        const found = await torrents.searchTorrents(alternative, type);
-        results = [...results, ...found.results];
-        ({ pick, why } = recommend.pickBest(results, want, parseName));
-      } catch { /* Keep original search results if the fallback provider fails. */ }
-    }
-    return sendJson(res, 200, { pick, why, query, of: results.length });
   }
   if (p === '/api/torrents/magnet') {
     return sendJson(res, 200, { magnet: await torrents.magnetFor1337x(url.searchParams.get('ref')) });
@@ -1502,6 +1656,7 @@ async function handleApi(req, res, url) {
     if (!t) throw new HttpError(404, 'That download no longer exists.');
     if (!user.isOwner && torrentOwner(t) !== user.id) throw new HttpError(403, 'That’s someone else’s download.');
     if (['resume', 'retry'].includes(m[2]) && !user.canDownload) throw new HttpError(403, 'Downloads have been turned off for you. Ask the server’s owner before resuming this download.');
+    releaseEpisodeOrder(t.hash); // pausing, resuming or removing it yourself overrides the episode order
     if (m[2] === 'delete') {
       await deleteDownload(t, body.files !== false, user);
       activity.record(req, 'delete', `${t.name}${body.files === false ? ' (download only, files kept)' : ''}`);
@@ -1751,7 +1906,7 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://localhost');
     const allowed = req.method === 'GET' || req.method === 'HEAD'
-      || (req.method === 'POST' && (url.pathname.startsWith('/api/cast/') || url.pathname === '/api/downloads/add' || url.pathname === '/api/downloads/season' || url.pathname === '/api/subs/fetch' || url.pathname === '/api/subs/sync' || url.pathname === '/api/library/delete' || /^\/api\/downloads\/\w+\/(pause|resume|retry|delete)$/.test(url.pathname) || /^\/api\/media\/\w+\/[\w-]+\/sync$/.test(url.pathname)
+      || (req.method === 'POST' && (url.pathname.startsWith('/api/cast/') || url.pathname === '/api/downloads/add' || url.pathname === '/api/downloads/smart' || url.pathname === '/api/subs/fetch' || url.pathname === '/api/subs/sync' || url.pathname === '/api/library/delete' || /^\/api\/downloads\/\w+\/(pause|resume|retry|delete)$/.test(url.pathname) || /^\/api\/media\/\w+\/[\w-]+\/sync$/.test(url.pathname)
         || /^\/api\/house\/(report|boot|power)$/.test(url.pathname) || /^\/api\/clips\/[\w-]+\/(share|unshare|delete|trim|rename)$/.test(url.pathname)
         || /^\/api\/access\/(invite|remove|invite\/\w+\/revoke)$/.test(url.pathname) || /^\/c\/i\/[\w-]+\/?$/.test(url.pathname)
         || /^\/api\/(me|me\/progress|library\/add|library\/extend|library\/identify|admin\/settings|admin\/users\/\d+)$/.test(url.pathname)
@@ -1791,7 +1946,10 @@ async function conversionCandidates() {
         const complete = t.progress >= 1 && !BUSY_STATES.test(t.state || '');
         for (const f of files) {
           const full = torrentFilePath(t, f);
-          if (!complete || f.progress < 1 || f.priority === 0) { unfinished.push(full); continue; }
+          // A finished episode of a pack that's still downloading converts now, not when the pack ends.
+          const fileDone = f.progress >= 1 && f.priority !== 0 && !BUSY_STATES.test(t.state || '')
+            && (complete || await downloadAvailable(t, f, { fresh: true }));
+          if (!fileDone) { unfinished.push(full); continue; }
           if (/\bsample\b/i.test(f.name) || !VIDEO_EXT.has(path.extname(f.name).toLowerCase())) continue;
           torrentFiles.push(full);
         }

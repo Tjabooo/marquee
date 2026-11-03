@@ -1050,25 +1050,8 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .season-head h3 { margin: 0 0 4px; }
 
 /* Torrent search: whole season, episode by episode */
-.season-dl-wrap:empty { display: none; }
-.season-dl-wrap { margin-bottom: 10px; }
-.season-dl { background: var(--seat); align-items: center; }
-.season-dl.is-main { border: 1px solid var(--bulb); }
-.season-dl .row-title { white-space: normal; }
-.season-dl-status:not(:empty) { margin-top: 6px; color: var(--paper); }
-.season-dl-btn { flex: none; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
-.season-dl-btn.play-btn { height: 40px; padding: 0 14px; border-radius: 12px; color: var(--on-bulb); background: var(--bulb); font-weight: 700; }
-.season-dl-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.4; }
-.season-dl-btn.play-btn.is-added { color: var(--bulb); background: var(--bulb-dim); }
 
 /* Show sheets: season chips (get a season) and episodes folded per season */
-.season-strip:empty { display: none; }
-.season-strip { margin: 16px 0 22px; }
-.season-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.season-chip { height: 32px; padding: 0 12px; font-size: 13px; color: var(--paper); }
-.season-chip.is-full { color: var(--dust); border-style: dashed; }
-.season-chip.is-partial { border-color: var(--bulb); }
-.season-chip:disabled { opacity: 0.45; }
 .season-groups { display: grid; gap: 8px; margin-bottom: 22px; }
 .season-group { border-radius: 14px; background: var(--seat); }
 .season-group > summary {
@@ -1080,7 +1063,6 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .season-group[open] > summary::after { transform: rotate(90deg); }
 .season-group > .rows { padding: 0 6px 6px; }
 .season-group .row { background: var(--curtain); }
-.sheet-content > .find-btn { margin: 4px 0 0; }
 
 /* ---------- accounts: library sections, countdown, adding from the server ---------- */
 .lib-section { margin-bottom: 26px; }
@@ -1108,7 +1090,6 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .keep-btn:disabled { opacity: 0.5; }
 .on-server.is-other { color: var(--on-image); background: rgba(20, 8, 16, 0.78); }
 .on-server.is-other::before { background: var(--bulb); }
-.find-btn.is-quiet { height: 40px; font-size: 14px; color: var(--dust); border-color: var(--line); }
 .server-offer {
   margin: 16px 0 6px; padding: 14px;
   background: var(--seat); border: 1px solid var(--bulb-dim); border-radius: 16px;
@@ -1144,8 +1125,6 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .set-label { font-weight: 600; }
 .set-control { flex: none; max-width: 100%; }
 .set-control .segmented { flex-wrap: wrap; }
-.set-quality .set-control { flex: 1 1 330px; width: 100%; }
-.set-quality .quality-rail { background: var(--velvet); }
 .set-card { padding: 14px; background: var(--curtain); border-radius: 14px; }
 .set-card p { margin: 0 0 6px; }
 .set-card p:last-child { margin-bottom: 0; }
@@ -1343,37 +1322,9 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .watch-description #watch-members { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .activity-location-note { margin: 0 0 12px; font-size: 13px; }
 
-/* "Best download": one tap gets the torrent the server picks, with "Find a download" under it */
-.dl-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; margin: 14px 0 0; }
-.dl-actions .find-btn { margin: 0; }
-.best-dl {
-  align-self: stretch; display: grid; gap: 12px; min-width: 0;
-  padding: 14px; background: var(--seat); border: 1px solid var(--bulb-dim); border-radius: 16px;
-}
-.best-dl[hidden] { display: none; }
-.best-result { display: grid; gap: 6px; min-width: 0; }
-.best-quality { display: grid; gap: 7px; font-size: 13px; font-weight: 500; color: var(--dust); }
-.best-empty { display: flex; align-items: center; min-height: 48px; margin: 0; font-weight: 600; }
-.best-btn { width: 100%; max-width: 100%; height: auto; min-height: 48px; padding: 8px 14px; border-radius: 12px; text-align: left; justify-content: flex-start; }
-.best-btn svg { fill: none; stroke: currentColor; stroke-width: 2.4; }
-.best-btn:disabled:not(.is-added) { opacity: 0.6; }
-.best-q {
-  flex: none; margin-left: auto; padding: 3px 8px; font-size: 12px; white-space: nowrap; font-weight: 700; letter-spacing: 0.02em;
-  color: var(--on-bulb); background: color-mix(in srgb, var(--on-bulb) 12%, transparent); border-radius: 6px;
-}
-.best-meta { margin: 0; font-size: 13px; color: var(--dust); }
-.best-meta:empty { display: none; }
-.best-why { display: block; margin-top: 2px; color: var(--paper); }
-.best-name { margin: 0; font-size: 12px; color: var(--dust); opacity: 0.8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-@media (max-width: 420px) {
-  .best-btn { padding-inline: 14px; font-size: 14px; }
-}
 @media (max-width: 359px) { .quality-rail button { font-size: 12px; } }
 
 /* Recommended season selector and the safe missing-only alternative. */
-.best-season { display: grid; gap: 7px; font-size: 13px; font-weight: 500; color: var(--dust); }
-.best-season select { width: 100%; min-width: 0; padding: 10px 12px; border: 1px solid var(--bulb-dim); border-radius: 10px; color: var(--paper); background: var(--seat); font: inherit; }
-.best-missing-btn { width: fit-content; margin-top: 5px; }
 
 /* A title stays in Library while its files arrive. Transfer controls live in details. */
 .library-heading-row { flex-wrap: wrap; gap: 8px 14px; }
@@ -1388,7 +1339,7 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .library-source-notice { padding: 12px; border: 1px solid var(--line); border-radius: 10px; color: var(--dust); font-size: 13px; }
 .unified-card { position: relative; }
 .unified-card .title-card .sub { min-height: 19px; }
-.library-transfer { min-height: 73px; padding: 10px 0 0; font-size: 12px; color: var(--dust); font-variant-numeric: tabular-nums; }
+.library-transfer { min-height: 42px; padding: 8px 0 0; font-size: 12px; color: var(--dust); font-variant-numeric: tabular-nums; }
 .transfer-line { display: flex; justify-content: space-between; align-items: start; gap: 5px; min-height: 18px; line-height: 1.35; }
 .transfer-state { overflow-wrap: anywhere; }
 .transfer-percent { flex-shrink: 0; }
@@ -1396,7 +1347,6 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .transfer-track i { display: block; height: 100%; background: var(--bulb); border-radius: inherit; }
 .library-transfer.is-paused .transfer-track i { background: var(--dust); }
 .library-transfer.is-error .transfer-state, .transfer-action-error { color: var(--alert); }
-.transfer-stats { font-size: 11px; line-height: 1.4; min-height: 30px; overflow-wrap: anywhere; }
 .transfer-pill { position: absolute; top: 8px; left: 8px; right: 8px; width: fit-content; max-width: calc(100% - 16px); padding: 5px 8px; background: var(--curtain); color: var(--paper); border-radius: 6px; font-size: 11px; font-weight: 600; }
 .library-more { position: absolute; top: 0; right: 0; margin: 5px; min-width: 44px; min-height: 44px; background: var(--curtain); color: var(--paper); border: 1px solid var(--line); border-radius: 50%; letter-spacing: 1px; }
 .unified-card:has(.transfer-pill) .library-more { top: 38px; }
@@ -1422,3 +1372,72 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 }
 .library-keep, .sheet-content .season-back, .pack-transfer .chip, #picker-body > .chip, #picker-body .segmented button { min-height: 44px; }
 .dl-ctl[aria-disabled="true"] { opacity: .6; cursor: wait; }
+
+/* Download: Play / Download in the title sheet, the season panel, and progress where the title is */
+.title-actions { display: grid; gap: 12px; margin: 4px 0 20px; min-width: 0; }
+.title-actions:empty { display: none; }
+.action-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.action-row[hidden] { display: none; }
+.action-btn { min-width: 132px; height: 48px; padding: 0 16px; gap: 8px; border-radius: 12px; font-size: 15px; font-weight: 600; }
+.action-btn svg { width: 20px; height: 20px; }
+.action-btn > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.action-btn[aria-expanded="true"] { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--on-bulb) 25%, transparent); }
+.action-btn[aria-disabled="true"], .dl-submit[aria-disabled="true"], .episode-get[aria-disabled="true"] { opacity: 0.7; cursor: progress; transform: none; }
+.action-btn svg { flex: none; }
+.stroke-icon svg { fill: none; stroke: currentColor; stroke-width: 2.2; }
+.action-result { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.action-result:has(.action-status:empty):has(.action-retry[hidden]) { display: none; }
+.action-status, .dl-status { margin: 0; font-size: 14px; line-height: 1.5; color: var(--dust); }
+.action-status:empty, .dl-status:empty { display: none; }
+.action-status.is-error, .dl-status.is-error { color: var(--paper); }
+.action-retry, .dl-retry { height: 44px; color: var(--paper); }
+.action-retry[hidden], .dl-retry[hidden] { display: none; }
+
+.dl-panel { display: grid; gap: 0; padding: 20px; max-width: 100%; background: var(--curtain); border: 1px solid var(--line); border-radius: 16px; }
+.dl-panel[hidden] { display: none; }
+.dl-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.dl-field { display: grid; gap: 6px; min-width: 0; }
+.dl-field label, .adv-field label { font-size: 13px; font-weight: 500; color: var(--dust); }
+.dl-field .sub-select, .adv-field .sub-select { width: 100%; min-width: 0; height: 48px; padding-left: 12px; background-color: var(--velvet); }
+.dl-note { margin: 14px 0 0; font-size: 13px; line-height: 1.5; color: var(--dust); }
+.dl-avail { margin: 6px 0 0; font-size: 13px; line-height: 1.5; color: var(--paper); font-variant-numeric: tabular-nums; }
+.dl-avail[hidden], .dl-quiet[hidden], .dl-submit[hidden] { display: none; }
+.dl-submit { width: 100%; height: 48px; margin-top: 18px; border-radius: 12px; font-size: 15px; font-weight: 600; }
+.dl-quiet { margin: 18px 0 0; min-height: 48px; display: flex; align-items: center; justify-content: center; font-size: 14px; color: var(--dust);
+  border: 1px dashed var(--line); border-radius: 12px; }
+.dl-result { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 12px; }
+.dl-result:has(.dl-status:empty):has(.dl-retry[hidden]) { display: none; }
+.dl-panel .advanced { margin-top: 8px; }
+
+.advanced > summary { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; font-size: 13px; color: var(--dust); cursor: pointer; list-style: none; border-radius: 8px; }
+.advanced > summary::-webkit-details-marker { display: none; }
+.advanced > summary::after { content: ""; width: 7px; height: 7px; margin: -3px 0 0 2px; border: solid currentColor; border-width: 0 1.6px 1.6px 0; transform: rotate(45deg); transition: transform .15s; }
+.advanced[open] > summary::after { margin-top: 3px; transform: rotate(-135deg); }
+.advanced > summary:hover { color: var(--paper); }
+.adv-body { display: grid; gap: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+.adv-field { display: grid; gap: 6px; max-width: 360px; }
+.adv-hint { margin: 0; font-size: 12px; line-height: 1.5; color: var(--dust); }
+.adv-body > .chip { justify-self: start; display: inline-flex; align-items: center; gap: 6px; height: 44px; color: var(--paper); }
+.adv-body > .chip svg { width: 18px; height: 18px; }
+.adv-browser:empty { display: none; }
+
+.transfer-summary { display: grid; gap: 0; font-size: 14px; color: var(--paper); font-variant-numeric: tabular-nums; }
+.transfer-summary[hidden] { display: none; }
+.transfer-summary .transfer-line { font-size: 14px; }
+.transfer-summary .transfer-percent { color: var(--dust); }
+.transfer-summary.is-error .transfer-state { color: var(--alert); }
+.transfer-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.transfer-ctl { height: 44px; color: var(--paper); }
+.transfer-ctl[hidden] { display: none; }
+.link-btn { height: 44px; padding: 0 6px; font-size: 14px; color: var(--dust); background: none; border: 0; text-decoration: underline; text-underline-offset: 3px; }
+.link-btn:hover { color: var(--paper); }
+.missing-episode .episode-get { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 44px; color: var(--paper); }
+.episode-get svg { width: 16px; height: 16px; }
+
+@media (max-width: 479px) {
+  .dl-panel { padding: 16px; }
+  .dl-fields { grid-template-columns: 1fr; gap: 14px; }
+  .dl-field .sub-select { font-size: 16px; } /* no zoom on focus in iOS */
+  .action-row .action-btn { flex: 1 1 0; min-width: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .advanced > summary::after { transition: none; } }

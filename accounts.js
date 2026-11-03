@@ -39,7 +39,10 @@ const RETENTION_CHOICES = [0, 1, 3, 7, 14, 30];
 const EXTEND_CHOICES = [1, 3, 7, 14, 30];
 
 // Per-person preferences (Settings tab).
-const USER_DEFAULTS = { theme: null, subLang: '', quality: 'all', startView: 'discover', librarySort: 'newest' };
+const USER_DEFAULTS = { theme: null, subLang: '', quality: 'all', downloadProfile: '', maxSize: 0, audioLang: '', startView: 'discover', librarySort: 'newest' };
+// Settings → Downloads. quality is the resolution chosen before profiles existed: it maps to a profile until one is chosen.
+const DOWNLOAD_PROFILES = ['save', 'balanced', 'best'];
+const MAX_SIZES = [0, 1, 2, 4, 8, 15, 30, 60]; // GB per film or episode; 0 = no limit
 const QUALITIES = ['all', '2160p', '1440p', '1080p', '720p'];
 const START_VIEWS = ['discover', 'library', 'downloads'];
 const LIBRARY_SORTS = ['newest', 'expiring', 'title'];
@@ -223,6 +226,12 @@ export function updateMe(user, patch) {
   if ('theme' in patch) s.theme = cleanTheme(patch.theme);
   if ('subLang' in patch) s.subLang = /^[a-z]{2,3}(-[a-z]{2})?$/.test(String(patch.subLang)) ? String(patch.subLang) : '';
   if ('quality' in patch && QUALITIES.includes(patch.quality)) s.quality = patch.quality;
+  if ('downloadProfile' in patch && DOWNLOAD_PROFILES.includes(patch.downloadProfile)) {
+    s.downloadProfile = patch.downloadProfile;
+    if (!('quality' in patch)) s.quality = 'all'; // the chosen profile replaces an older fixed resolution
+  }
+  if ('maxSize' in patch && MAX_SIZES.includes(Number(patch.maxSize))) s.maxSize = Number(patch.maxSize);
+  if ('audioLang' in patch) s.audioLang = /^[a-z]{2,3}$/.test(String(patch.audioLang)) ? String(patch.audioLang) : '';
   if ('startView' in patch && START_VIEWS.includes(patch.startView)) s.startView = patch.startView;
   if ('librarySort' in patch && LIBRARY_SORTS.includes(patch.librarySort)) s.librarySort = patch.librarySort;
   const stored = Object.fromEntries(Object.entries(s).filter(([k, v]) => v !== USER_DEFAULTS[k]));

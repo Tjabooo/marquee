@@ -720,14 +720,14 @@ function makeUnifiedCard(entry) {
   const button = h('button', { class: 'title-card', type: 'button', onclick: e => openUnifiedTitle(card._entry, e.currentTarget) },
     h('div', { class: 'poster' }), h('div', { class: 'name' }), h('div', { class: 'sub' }));
   const panel = h('div', { class: 'library-transfer' }, h('div', { class: 'transfer-line' }, h('span', { class: 'transfer-state' }), h('span', { class: 'transfer-percent' })),
-    h('div', { class: 'transfer-track', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100' }, h('i')), h('div', { class: 'transfer-stats' }));
+    h('div', { class: 'transfer-track', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100' }, h('i')));
   card.append(button, panel, h('button', { class: 'library-more', type: 'button', 'aria-label': `Download details for ${entry.name}`, onclick: e => openTransferDetails(card._entry, e.currentTarget) }, '•••'));
   return card;
 }
 function updateUnifiedCard(card, entry) {
   const old = card._entry;
   card._entry = entry;
-  const paint = JSON.stringify([entry.key, entry.type, entry.transfers.map(d => [d.hash, d.done]), entry.name, entry.poster, entry.ready, entry.state, entry.progress, entry.speed, entry.attention, entry.active.map(d => [d.hash, d.eta]), entry.files.map(f => [f.id, f.expiresAt, savedProgress(libraryFile(f))]), libraryAvailability(entry)]);
+  const paint = JSON.stringify([entry.key, entry.type, entry.transfers.map(d => [d.hash, d.done]), entry.name, entry.poster, entry.ready, entry.state, entry.progress, entry.attention, entry.files.map(f => [f.id, f.expiresAt, savedProgress(libraryFile(f))]), libraryAvailability(entry)]);
   if (card._paint === paint) return; card._paint = paint;
   const button = $('.title-card', card), poster = $('.poster', card), panel = $('.library-transfer', card);
   button.setAttribute('data-library-focus', entry.key);
@@ -751,8 +751,6 @@ function updateUnifiedCard(card, entry) {
   track.setAttribute('aria-valuetext', `${entry.state}${entry.progress == null ? '' : `, ${Math.floor(entry.progress*100)} percent`}`);
   if (entry.progress == null) track.removeAttribute('aria-valuenow'); else track.setAttribute('aria-valuenow', String(Math.floor(entry.progress*100)));
   track.firstChild.style.width = entry.progress == null ? '0%' : `${entry.progress*100}%`;
-  const eta = entry.active.length === 1 && entry.speed > 0 ? entry.active[0].eta : null;
-  $('.transfer-stats', card).textContent = [entry.speed > 0 && `${fmtBytes(entry.speed)}/s`, Number.isFinite(eta) && eta >= 0 && eta < 8640000 && fmtEta(eta)].filter(Boolean).join(' · ');
   let pill = $('.transfer-pill', poster);
   const pillText = entry.attention ? 'Needs attention' : entry.state === 'Paused' ? 'Paused' : /Preparing|Checking/.test(entry.state) ? 'Preparing' : '';
   if (pillText) { if (!pill) { pill = h('span', { class: 'transfer-pill' }); poster.append(pill); } pill.textContent = pillText; } else pill?.remove();
@@ -879,7 +877,7 @@ function renderFilm() {
   const f = entry?.files[0] || state.library.find((f) => f.id === filmView.id);
   if (!f && entry) {
     const d = entry.transfers[0];
-    $('#sheet-body').replaceChildren(h('div', { class: `sheet-hero${d?.backdrop ? '' : ' no-image'}`, style: d?.backdrop ? `background-image:url("${d.backdrop}")` : null }), h('div', { class: 'sheet-content' }, h('h2', { id: 'sheet-title' }, entry.name), h('p', { class: 'muted' }, libraryAvailability(entry)), transferPanel(entry), state.status.torrents && canDownload() && h('button', { class: 'chip', onclick: e => openTorrents({ query: entry.name, opener: e.currentTarget }) }, 'Find another release'))); return;
+    $('#sheet-body').replaceChildren(h('div', { class: `sheet-hero${d?.backdrop ? '' : ' no-image'}`, style: d?.backdrop ? `background-image:url("${d.backdrop}")` : null }), h('div', { class: 'sheet-content' }, h('h2', { id: 'sheet-title' }, entry.name), h('p', { class: 'muted' }, libraryAvailability(entry)), transferPanel(entry))); return;
   }
   if (!f) {
     $('#sheet-body').replaceChildren(h('div', { class: 'sheet-content' }, h('h2', { id: 'sheet-title' }, 'Removed from your library')));
@@ -967,13 +965,11 @@ function updateOpenShow() {
   const signature = JSON.stringify([showView.id, showView.season, entry?.files, entry?.transfers.map(d => [d.hash, d.season, (d.episodes || []).map(ep => [ep.season, ep.episode, ep.available, ep.libraryId])])]);
   if (signature !== showStructure && !$('#sheet-body').contains(document.activeElement)) { const top = $('#sheet').scrollTop; renderShow(); $('#sheet').scrollTop = top; }
 }
+// A title's downloads in its sheet: state, percentage, Pause/Resume and Details (speed, files, peers).
 function transferPanel(entry) {
-  if (!entry?.transfers.length) return entry?.preparing ? h('p', { class: 'pack-transfer' }, 'Preparing playback. Follow conversion progress in Library.') : null;
-  return h('section', { class: 'title-transfers', 'aria-label': `${entry.name} downloads` },
-    h('h3', {}, 'Download progress'),
-    h('ul', { class: 'rows' }, entry.transfers.map(d => {
-      const card = makeDlCard(d); updateDlCard(card, d); transferNodes.add(card); return card;
-    })));
+  if (!entry?.active.length) return entry?.preparing ? h('p', { class: 'pack-transfer' }, 'Preparing playback. It plays here as soon as the MP4 copy is ready.') : null;
+  const { key, aliases } = entry;
+  return transferSummary(() => unifiedLibrary().find((e) => e.key === key || e.aliases.some((a) => aliases.includes(a)))?.transfers || [], entry.name);
 }
 function renderShow() {
   const entry = showEntry(), show = entry?.show;
@@ -998,17 +994,20 @@ function renderShow() {
     const byEpisode = new Map();
     for (const d of pendingFor(open.number)) for (const ep of d.episodes || []) if (ep.season === open.number && !ready.some(f => f.episode === ep.episode) && !byEpisode.has(ep.episode)) byEpisode.set(ep.episode, { d, ep });
     const rows = ready.map(f => ({ number: f.episode, node: (() => { const row = fileRow(libraryFile(f)); $('.row-title', row).textContent = `${f.episode}. ${f.episodeName || `Episode ${f.episode}`}`; $('.row-title', row).title = f.file; return row; })() }));
+    const tvId = show.tmdbId && canGet() ? { id: show.tmdbId, title: show.title, type: 'tv' } : null;
     for (const {d,ep} of byEpisode.values()) rows.push({ number: ep.episode, node: h('li', { class: 'row pending-episode', 'data-transfer-hash': d.hash, 'data-episode-number': ep.episode, 'data-episode-season': ep.season }, h('div', { class: 'row-text' }, h('div', { class: 'row-title' }, `${ep.episode}. Episode ${ep.episode}`), h('div', { class: 'row-meta episode-transfer-state' }, ep.available ? 'Ready in download details' : `${transferState(d)}${Number.isFinite(ep.progress) ? ` · ${Math.floor(ep.progress*100)}%` : ''}`)), h('button', { class: 'chip', onclick: e => openTransferDetails({ ...entry, transfers: [d] }, e.currentTarget) }, 'Details')) });
-    if (Number.isInteger(open.total) && open.total > 0 && open.total <= 1000) for (let number = 1; number <= open.total; number++) if (!rows.some(row => row.number === number)) rows.push({ number, node: h('li', { class: 'row missing-episode' }, h('div', { class: 'row-text' }, h('div', { class: 'row-title' }, `${number}. Episode ${number}`), h('div', { class: 'row-meta' }, 'Not in library'))) });
+    if (Number.isInteger(open.total) && open.total > 0 && open.total <= 1000) for (let number = 1; number <= open.total; number++) if (!rows.some(row => row.number === number)) rows.push({ number, node: h('li', { class: 'row missing-episode' }, h('div', { class: 'row-text' }, h('div', { class: 'row-title' }, `${number}. Episode ${number}`), h('div', { class: 'row-meta' }, 'Not in library')), tvId && episodeDownload(tvId, open.number, number)) });
     content = [!single && h('button', { class: 'chip season-back', onclick: () => pick(null) }, icon('back'), 'All seasons'), h('h3', {}, open.name),
       h('p', { class: 'muted' }, `${open.total ? `${episodeCount(ready)} of ${open.total}` : episodeCount(ready)} episodes ready`),
       ...pendingFor(open.number).filter(d => !(d.episodes || []).some(ep => ep.season === open.number)).map(d => h('div', { class: 'pack-transfer' }, h('strong', {}, `${open.name} pack`), h('p', {}, 'Episode availability is shown when individual files are verified.'), h('button', { class: 'chip', onclick: e => openTransferDetails({ ...entry, transfers: [d] }, e.currentTarget) }, 'Season pack details'))),
       h('ul', { class: 'rows' }, rows.sort((a,b) => a.number-b.number).map(r => r.node))];
   }
+  // The same Download panel as in Discover, opened on the season you're looking at.
+  const tv = canGet() && show.tmdbId ? showDownload({ id: show.tmdbId, title: show.title, type: 'tv' }, { season: open?.number ?? null }) : null;
   $('#sheet-body').replaceChildren(h('div', { class: `sheet-hero${show.backdrop ? '' : ' no-image'}`, style: show.backdrop ? `background-image:url("${show.backdrop}")` : null }),
     h('div', { class: 'sheet-content' }, h('h2', { id: 'sheet-title' }, show.title), h('ul', { class: 'facts' }, [show.year, 'Series', libraryAvailability(entry)].filter(Boolean).map(text => h('li', {}, text))),
-      transferPanel(entry), files.length > 0 && keepBar(files, renderShow), show.overview && h('p', { class: 'overview' }, show.overview),
-      (!open || single) && state.status.torrents && canDownload() && show.tmdbId && seasonStrip({ id: show.tmdbId, title: show.title }, files), ...content));
+      h('div', { class: 'title-actions' }, tv && h('div', { class: 'action-row' }, tv.toggle), tv?.panel, transferPanel(entry)),
+      files.length > 0 && keepBar(files, renderShow), show.overview && h('p', { class: 'overview' }, show.overview), ...content));
   showStructure = JSON.stringify([showView.id, showView.season, entry.files, entry.transfers.map(d => [d.hash, d.season, (d.episodes || []).map(ep => [ep.season, ep.episode, ep.available, ep.libraryId])])]);
 }
 
@@ -1242,6 +1241,7 @@ function patchTransferNodes() {
     if (ep) $('.episode-transfer-state', row).textContent = ep.available ? 'Ready in download details' : `${transferState(d)}${Number.isFinite(ep.progress) ? ` · ${Math.floor(ep.progress*100)}%` : ''}`;
   }
   drawTransferDetails();
+  refreshCommandViews();
 }
 function patchUnifiedLibrary() { if (state.view === 'library') renderLibrary(); patchTransferNodes(); }
 
@@ -1365,20 +1365,13 @@ function renderDetails(t) {
   const files = matchesFor(t);
   const onServer = serverMatchesFor(t);
   const isTv = t.type === 'tv';
-  const findBtn = state.status.torrents && canDownload() && h('button', {
-    class: `find-btn${onServer.length ? ' is-quiet' : ''}`,
-    onclick: (e) => openTorrents({
-      query: isTv ? t.title : [t.title, t.year].filter(Boolean).join(' '),
-      type: isTv ? 'tv' : 'movie',
-      movieId: !isTv ? t.id : null,
-      tvId: isTv ? t.id : null,
-      canonicalTitle: t.title,
-      label: t.title,
-      opener: e.currentTarget,
-    }),
-  }, icon('download'), files.some((f) => f.done) || onServer.length ? 'Find another version' : 'Find a download');
-  const recommended = findBtn && bestDownload(t, files, onServer);
-  const getIt = findBtn && h('div', { class: 'dl-actions' }, recommended, findBtn);
+  // Shows: one Download button opens the season panel; films: Play and/or Download right here.
+  const tv = isTv && canGet() && t.id ? showDownload(t) : null;
+  const actions = isTv
+    ? h('div', { class: 'title-actions' }, tv && h('div', { class: 'action-row' }, tv.toggle), tv?.panel,
+      transferSummary(() => titleState(t).transfers, t.title))
+    : filmActions(t);
+  const versions = !isTv && files.filter((f) => f.kind === 'lib').length > 1;
   $('#sheet-body').replaceChildren(
     h('div', { class: `sheet-hero${t.backdrop ? '' : ' no-image'}`, style: t.backdrop ? `background-image:url("${t.backdrop}")` : null }),
     h('div', { class: 'sheet-content' },
@@ -1387,17 +1380,14 @@ function renderDetails(t) {
         t.year && h('li', {}, t.year),
         h('li', {}, t.type === 'tv' ? 'Series' : 'Film'),
         t.rating && h('li', {}, `★ ${t.rating}`)),
+      actions,
       t.overview && h('p', { class: 'overview' }, t.overview),
-      // Already on the server (someone else downloaded it): add it instead of downloading it again.
-      onServer.length > 0 && serverOffer(t, onServer),
-      // Shows: downloading comes first (a season chip per season), then what's here folded by season,
-      // so a show with many episodes on the server doesn't push the buttons far down.
-      ...(isTv ? [getIt, state.status.torrents && canDownload() && seasonStrip(t, [...files, ...onServer], (n) => recommended?.selectSeason?.(n))] : []),
-      h('h3', {}, 'In your library'),
-      !files.length ? h('p', { class: 'muted' }, onServer.length ? 'Not in your library yet.' : 'Not on this server yet.')
-        : isTv ? seasonGroups(files)
-          : h('ul', { class: 'rows' }, files.map(fileRow)),
-      !isTv && getIt));
+      // Without download rights, episodes someone else has here can still be added (no copy is made).
+      isTv && !canGet() && onServer.length > 0 && serverOffer(t, onServer),
+      isTv && files.length > 0 && h('h3', {}, 'In your library'),
+      isTv && files.length > 0 && seasonGroups(files),
+      versions && h('h3', {}, 'Your copies'),
+      versions && h('ul', { class: 'rows' }, files.map(fileRow))));
 }
 
 // "Already on the server": a row per version of a film, or per season of a show, each with an Add
@@ -1486,30 +1476,6 @@ function seasonGroups(files) {
     }));
 }
 
-// "Get a season": a chip per TMDB season (✓ complete here, 3/10 partly here, soon = not aired yet);
-// a tap searches torrents for that season, where "Get all episodes" can fetch it episode by episode.
-function seasonStrip(t, files, onSelect = null) {
-  const box = h('div', { class: 'season-strip' });
-  if (!t.id) return box;
-  tvSeasons(t.id).then((seasons) => {
-    if (!seasons.length) return;
-    const chips = seasons.map((se) => {
-      const have = episodeCount(files.filter((f) => f.season === se.number && f.episode != null));
-      const full = se.episodes && have >= se.episodes;
-      const label = full ? `S${pad2(se.number)} ✓` : have ? `S${pad2(se.number)} · ${have}/${se.episodes || '?'}` : `S${pad2(se.number)}`;
-      return h('button', {
-        type: 'button',
-        class: `chip season-chip${full ? ' is-full' : have ? ' is-partial' : ''}`,
-        title: `${se.name}${se.episodes ? `, ${plural(se.episodes, 'episode')}` : ''}${have ? `, ${have} on the server` : ''}`,
-        disabled: se.upcoming && !have ? true : null,
-        onclick: (e) => onSelect ? onSelect(se.number) : openTorrents({ query: `${t.title} S${pad2(se.number)}`, type: 'tv', tvId: t.id, canonicalTitle: t.title, label: `${t.title}, ${se.name}`, opener: e.currentTarget }),
-      }, se.upcoming && !have ? `${label} · soon` : label);
-    });
-    box.replaceChildren(h('h3', {}, 'Get a season'), h('div', { class: 'season-chips' }, chips));
-  }).catch(() => {});
-  return box;
-}
-
 // Requests worth repeating within a few minutes (re-rendering a sheet shouldn't search again).
 const shortCache = new Map(); // url -> { at, promise }
 function cachedFor(url, ms = 5 * 60 * 1000) {
@@ -1522,214 +1488,315 @@ function cachedFor(url, ms = 5 * 60 * 1000) {
 }
 const tvSeasons = (id) => cachedFor(`/api/tv/${id}/seasons`, 30 * 60 * 1000).then((d) => d.seasons);
 
-// "Best download": one tap gets the torrent the server picks (recommend.js: 1080p or 4K whenever
-// either exists). Films that aren't here yet; for shows, the first aired season that isn't complete
-// here. A season that's partly here, or has no healthy pack, is fetched episode by episode instead.
-function bestDownload(t, files, onServer) {
-  const box = h('div', { class: 'best-dl', hidden: true });
-  const isTv = t.type === 'tv';
-  if (!isTv && (files.length || onServer.length)) return box;
-  const status = h('p', { class: 'best-meta', role: 'status' });
-  const result = h('div', { class: 'best-result' });
-  const subs = () => (state.status.subtitles && prefs().subLang ? [prefs().subLang] : []);
-  const qualityName = (q) => (q === '2160p' ? '4K' : q || 'Unknown quality');
-  let quality = ['2160p', '1440p', '1080p', '720p'].includes(prefs().quality) ? prefs().quality : 'all';
-  let se = null, have = 0, request = 0, seasons = [], selectedSeason = null;
-  const here = [...files, ...onServer].filter((f) => f.episode != null);
-  const count = (n) => episodeCount(here.filter((f) => f.season === n));
-  const seasonSelect = h('select', { 'aria-label': 'Recommended download season' });
-  const seasonRow = h('label', { class: 'best-season' }, h('span', {}, 'Season'), seasonSelect);
-  seasonSelect.addEventListener('change', () => chooseSeason(Number(seasonSelect.value)));
-  function chooseSeason(number) {
-    const next = seasons.find((s) => s.number === number && !s.upcoming);
-    if (!next) return;
-    selectedSeason = number;
-    se = next;
-    have = count(number);
-    seasonSelect.value = String(number);
-    box.hidden = false;
-    refresh();
-  }
-  box.selectSeason = (number) => {
-    if (seasons.length) chooseSeason(number);
-    else selectedSeason = number; // A chip can be pressed before the season list has loaded.
+// ---------- Download: you choose what, the server chooses how (smart-download.js) ----------
+// One command for films, seasons and single episodes. Films: Download picks a release straight away.
+// Shows: Download opens a small panel (season, quality, Download Season). Manual releases and an
+// exact resolution live under Advanced options. Progress shows where the title is, never as a list.
+const PROFILE_OPTIONS = [['save', 'Save Space'], ['balanced', 'Balanced · 1080p'], ['best', 'Best Quality']];
+const EXACT_OPTIONS = [['', 'Use the quality setting'], ['2160p', '4K only'], ['1440p', '1440p only'], ['1080p', '1080p only'], ['720p', '720p only']];
+const savedProfile = () => {
+  const p = prefs();
+  return ['save', 'balanced', 'best'].includes(p.downloadProfile) ? p.downloadProfile
+    : ['2160p', '1440p'].includes(p.quality) ? 'best' : p.quality === '720p' ? 'save' : 'balanced';
+};
+const canGet = () => Boolean(state.status.torrents && canDownload());
+
+// Commands by target, so a sheet that re-renders (or is reopened) shows the same state.
+const downloadCommands = new Map(); // key -> { body, busy, job, error }
+const commandKey = (b) => [b.type, b.tmdbId, b.season ?? '', (b.episodes || []).join(',')].join(':');
+const commandViews = new Set();     // nodes with _update(), refreshed on command and transfer changes
+function refreshCommandViews() {
+  for (const node of commandViews) { if (!node.isConnected) commandViews.delete(node); else node._update(); }
+}
+const commandStep = (cmd, plural = false) => (/^Starting/.test(cmd?.job?.step || '')
+  ? `Starting download${plural ? 's' : ''}…` : `Finding ${plural ? 'downloads' : 'a download'}…`);
+
+async function runDownloadCommand(body) {
+  const key = commandKey(body);
+  if (downloadCommands.get(key)?.busy) return downloadCommands.get(key);
+  const cmd = { body, busy: true, job: null, error: null };
+  downloadCommands.set(key, cmd);
+  refreshCommandViews();
+  try {
+    const { id } = await api('/api/downloads/smart', jsonPost(body));
+    for (let i = 0; i < 500; i++) { // a few minutes at most; the job keeps going on the server regardless
+      cmd.job = await api(`/api/downloads/smart/${id}`);
+      refreshCommandViews();
+      if (cmd.job.state !== 'running') break;
+      await new Promise((r) => setTimeout(r, i < 8 ? 800 : 1500));
+    }
+  } catch (err) { cmd.error = err.message; }
+  cmd.busy = false;
+  if (cmd.job?.outcome === 'have') await loadLibrary();
+  await loadDownloads();
+  patchUnifiedLibrary();
+  refreshCommandViews();
+  if (['started', 'partial'].includes(cmd.job?.outcome)) toast(cmd.job.type === 'tv' ? `${cmd.job.title}: ${cmd.job.message}` : `${cmd.job.title} is downloading`);
+  return cmd;
+}
+// A command's result in plain words, or null while there's nothing to say.
+function commandResult(cmd) {
+  if (!cmd || cmd.busy) return null;
+  if (cmd.error) return { text: cmd.error, retry: true };
+  const j = cmd.job;
+  if (!j) return null;
+  if (j.state === 'failed') return { text: j.message || j.error, retry: true };
+  if (j.outcome === 'none') return { text: j.message, retry: true, episodes: j.unavailable?.map((u) => u.episode) };
+  if (j.outcome === 'partial') return { text: j.message, retry: true, episodes: j.unavailable.map((u) => u.episode), partial: true };
+  if (j.outcome === 'have' || j.outcome === 'queued') return { text: j.message };
+  return null;
+}
+
+// A title's files and transfers, from the same state the Library uses.
+function titleState(t) {
+  const match = sameTitle(t);
+  const files = matchesFor(t), onServer = serverMatchesFor(t);
+  const transfers = state.downloads.filter((d) => d.mine !== false && match({ ...d, title: d.canonicalTitle || d.title, show: d.showId || d.show }));
+  const active = transfers.filter((d) => !d.done || d.converting || transferAttention(d));
+  return { files, onServer, ready: files.filter((f) => f.kind === 'lib' || f.ready), transfers, active };
+}
+
+// State, percentage and a slim bar for one title's downloads, with Pause/Resume, Retry and Details.
+function transferSummary(getTransfers, name) {
+  const stateEl = h('span', { class: 'transfer-state' }), pct = h('span', { class: 'transfer-percent' });
+  const track = h('div', { class: 'transfer-track', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-label': `${name} download progress` }, h('i'));
+  const pause = h('button', { type: 'button', class: 'chip transfer-ctl' });
+  const retry = h('button', { type: 'button', class: 'chip transfer-ctl' }, 'Retry');
+  const details = h('button', { type: 'button', class: 'link-btn transfer-details' }, 'Details');
+  const el = h('div', { class: 'transfer-summary' }, h('div', { class: 'transfer-line' }, stateEl, pct), track, h('div', { class: 'transfer-controls' }, pause, retry, details));
+  const list = () => getTransfers().filter((d) => !d.done || d.converting || transferAttention(d));
+  pause.addEventListener('click', () => {
+    const mine = list().filter((d) => d.canManage !== false && !transferAttention(d));
+    const resume = mine.length && mine.every((d) => isPaused(d));
+    for (const d of mine.filter((x) => resume ? isPaused(x) : !isPaused(x))) runTransferAction(d, resume ? 'resume' : 'pause');
+  });
+  retry.addEventListener('click', () => { for (const d of list().filter(transferAttention)) runTransferAction(d, 'retry'); });
+  details.addEventListener('click', (e) => openTransferDetails({ key: `title:${name}`, name, transfers: getTransfers() }, e.currentTarget));
+  el._update = () => {
+    const active = list();
+    el.hidden = !active.length;
+    if (!active.length) return;
+    const attention = active.some(transferAttention);
+    const known = active.every((d) => Number.isFinite(d.size) && d.size > 0 && Number.isFinite(d.progress));
+    const progress = known ? active.reduce((n, d) => n + d.size * Math.max(0, Math.min(1, d.progress)), 0) / active.reduce((n, d) => n + d.size, 0) : null;
+    const label = attention ? 'Needs attention' : active.length === 1 ? transferState(active[0])
+      : active.every((d) => isPaused(d)) ? 'Paused' : `Downloading · ${plural(active.length, 'download')}`;
+    stateEl.textContent = label;
+    pct.textContent = progress == null ? '' : `${Math.floor(progress * 100)}%`;
+    track.firstChild.style.width = progress == null ? '0%' : `${progress * 100}%`;
+    if (progress == null) track.removeAttribute('aria-valuenow'); else track.setAttribute('aria-valuenow', String(Math.floor(progress * 100)));
+    track.setAttribute('aria-valuetext', `${label}${progress == null ? '' : `, ${Math.floor(progress * 100)} percent`}`);
+    el.classList.toggle('is-error', attention);
+    const mine = active.filter((d) => d.canManage !== false && !transferAttention(d));
+    const resume = mine.length > 0 && mine.every((d) => isPaused(d));
+    pause.hidden = !mine.length;
+    pause.textContent = resume ? 'Resume' : 'Pause';
+    pause.setAttribute('aria-label', `${resume ? 'Resume' : 'Pause'} ${name}`);
+    retry.hidden = !attention;
   };
-  const qualityRail = segmented([['all', 'Auto'], ['2160p', '4K'], ['1440p', '1440p'], ['1080p', '1080p'], ['720p', '720p']], quality,
-    (value) => {
-      if (quality === value) return;
-      quality = value;
-      qualityRail.querySelectorAll('button').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.quality === value)));
-      refresh();
-    }, 'Recommended download quality');
-  qualityRail.classList.add('quality-rail');
-  qualityRail.querySelectorAll('button').forEach((button, i) => { button.dataset.quality = ['all', '2160p', '1440p', '1080p', '720p'][i]; });
-  const lockQuality = (locked) => qualityRail.querySelectorAll('button').forEach((button) => { button.disabled = locked; });
-  if (isTv) box.append(seasonRow);
-  box.append(h('div', { class: 'best-quality' }, h('span', {}, 'Download quality'), qualityRail), result);
+  commandViews.add(el);
+  el._update();
+  return el;
+}
 
-  (async () => {
-    if (isTv) {
-      if (!t.id) return;
-      seasons = (await tvSeasons(t.id)).filter((s) => !s.upcoming && s.number > 0);
-      if (!seasons.length) return;
-      seasonSelect.replaceChildren(...seasons.map((s) => h('option', { value: String(s.number) },
-        `${s.name}${s.episodes ? ` · ${count(s.number)}/${s.episodes} here` : ''}`)));
-      const initial = seasons.find((s) => s.number === selectedSeason)
-        || seasons.find((s) => !(s.episodes && count(s.number) >= s.episodes))
-        || seasons[0];
-      se = initial;
-      selectedSeason = se.number;
-      seasonSelect.value = String(se.number);
-      have = count(se.number);
-    }
-    box.hidden = false;
-    await refresh();
-  })().catch(() => { box.hidden = true; });
-
-  async function refresh() {
-    const current = ++request;
-    if (isTv && !se) return;
-    const targetSeason = se;
-    const alreadyHere = have;
-    result.setAttribute('aria-busy', 'true');
-    result.replaceChildren(h('p', { class: 'best-empty', role: 'status' }, 'Finding a download…'));
-    try {
-      // Always check for a complete season pack first, even if some episodes already exist.
-      // When partly present, offer a separate missing-only action to avoid duplicate downloads.
-      if (isTv && targetSeason.episodes && alreadyHere >= targetSeason.episodes) {
-        result.replaceChildren(h('p', { class: 'best-empty' }, 'All episodes of this season are already here.'));
-        return;
-      }
-      const rec = await cachedFor(`/api/torrents/recommend?${new URLSearchParams({
-        type: isTv ? 'tv' : 'movie', title: t.title, quality,
-        ...(t.year ? { year: t.year } : {}), ...(targetSeason ? { season: targetSeason.number } : {}) })}`);
-      if (current !== request) return;
-      if (rec.pick) return showPick(rec, targetSeason, alreadyHere);
-      if (!isTv) {
-        const name = quality === 'all' ? '' : `${qualityName(quality)} `;
-        result.replaceChildren(h('p', { class: 'best-empty', role: 'status' }, `No ${name}download found`),
-          h('p', { class: 'best-meta' }, rec.why || 'Choose another quality or find a download below.'));
-        return;
-      }
-      const label = `Download season ${targetSeason.number}`;
-      const btn = h('button', { type: 'button', class: 'play-btn best-btn' }, icon('download'), label);
-      btn.addEventListener('click', async () => {
-        seasonSelect.disabled = true;
-        lockQuality(true);
-        try { await getSeason(`${t.title} S${pad2(targetSeason.number)}`, {
-          quality: quality === 'all' ? '' : quality, exactQuality: quality !== 'all', tvId: t.id, canonicalTitle: t.title,
-          subs: subs(), btn, status, label, isOpen: () => btn.isConnected,
-        }); } finally { lockQuality(false); seasonSelect.disabled = false; }
-      });
-      const resolution = quality === 'all' ? '1080p where it can' : qualityName(quality);
-      status.textContent = alreadyHere
-        ? `${alreadyHere} of ${targetSeason.episodes || '?'} episodes are already here. Marquee finds only the missing ones in ${resolution}.`
-        : `No matching complete ${targetSeason.name.toLowerCase()} pack found, so Marquee finds each episode separately in ${resolution}.`;
-      result.replaceChildren(btn, status);
-    } catch (err) {
-      if (current !== request) return;
-      result.replaceChildren(h('p', { class: 'best-meta', role: 'status' }, err.message),
-        h('button', { type: 'button', class: 'retry', onclick: refresh }, 'Try again'));
-    } finally { if (current === request) result.removeAttribute('aria-busy'); }
-  }
-
-  function showPick({ pick, why }, targetSeason, alreadyHere) {
-    const label = isTv ? `Download season ${targetSeason.number} pack` : 'Download';
-    const btn = h('button', { type: 'button', class: 'play-btn best-btn', 'aria-label': `${label}, ${qualityName(pick.quality)}` },
-      icon('download'), label, h('span', { class: 'best-q' }, qualityName(pick.quality)));
-    status.replaceChildren(...[
-      [pick.size && fmtBytes(pick.size), `${pick.seeders.toLocaleString()} seeding`, ...pick.tags, SOURCE_NAMES[pick.source]].filter(Boolean).join(' · '),
-      why && h('span', { class: 'best-why' }, why),
-    ].filter(Boolean));
-    btn.addEventListener('click', async () => {
-      btn.disabled = true; lockQuality(true);
-      if (isTv) seasonSelect.disabled = true;
-      btn.replaceChildren('Adding…');
-      try {
-        await sendToQbit(await magnetOf(pick), { name: pick.name, subs: subs(), mediaType: isTv ? 'tv' : 'movie', ...(t.id ? isTv ? { tvId: t.id, canonicalTitle: t.title } : { movieId: t.id } : {}) });
-        btn.classList.add('is-added');
-        btn.replaceChildren(icon('check'), 'Added');
-        toast(subs().length ? 'Added. Subtitles come when it finishes.' : 'Added to Library');
-      } catch (err) {
-        btn.disabled = false; lockQuality(false);
-        if (isTv) seasonSelect.disabled = false;
-        btn.replaceChildren(icon('download'), label, h('span', { class: 'best-q' }, qualityName(pick.quality)));
-        status.textContent = err.message;
-      }
-    });
-    const missingOnly = isTv && alreadyHere > 0 && (!targetSeason.episodes || alreadyHere < targetSeason.episodes)
-      ? h('button', { type: 'button', class: 'chip best-missing-btn', onclick: async () => {
-        const seasonNo = targetSeason.number;
-        const actionLabel = 'Get only missing episodes';
-        seasonSelect.disabled = true;
-        lockQuality(true);
-        try {
-          await getSeason(`${t.title} S${pad2(seasonNo)}`, {
-            quality: quality === 'all' ? '' : quality, exactQuality: quality !== 'all', tvId: t.id, canonicalTitle: t.title,
-            subs: subs(), btn: missingOnly, status, label: actionLabel, isOpen: () => missingOnly.isConnected,
-          });
-        } finally { seasonSelect.disabled = false; lockQuality(false); }
-      } }, icon('download'), 'Get only missing episodes') : null;
-    if (alreadyHere > 0 && isTv) {
-      status.append(h('span', { class: 'best-why' },
-        `${alreadyHere} episode(s) already here. The full pack may download duplicates; use “Get only missing episodes” to avoid that.`));
-    }
-    result.replaceChildren(...[btn, status, h('p', { class: 'best-name', title: pick.name }, pick.name), missingOnly].filter(Boolean));
-
-  }
+// "Advanced options": an exact resolution for this command, and the release list for choosing one.
+const advancedOpen = new Map(); // title key -> open
+function advancedOptions(key, { exact, onExact, browse }) {
+  const exactSel = h('select', { class: 'sub-select', id: `adv-exact-${key}` }, EXACT_OPTIONS.map(([v, text]) => h('option', { value: v }, text)));
+  exactSel.value = exact;
+  exactSel.addEventListener('change', () => onExact(exactSel.value));
+  const browser = h('div', { class: 'adv-browser' });
+  const browseBtn = h('button', { type: 'button', class: 'chip stroke-icon' }, icon('search'), 'Choose a release yourself');
+  browseBtn.addEventListener('click', () => {
+    browseBtn.hidden = true;
+    const b = torrentBrowser(browse());
+    browser.replaceChildren(b.el);
+    b.start();
+  });
+  const box = h('details', { class: 'advanced' },
+    h('summary', {}, 'Advanced options'),
+    h('div', { class: 'adv-body' },
+      h('div', { class: 'adv-field' }, h('label', { for: `adv-exact-${key}` }, 'Exact quality'), exactSel,
+        h('p', { class: 'adv-hint' }, 'Download looks for this resolution only, and finds nothing rather than another one.')),
+      browseBtn, browser));
+  box.open = Boolean(advancedOpen.get(key));
+  box.addEventListener('toggle', () => advancedOpen.set(key, box.open));
   return box;
 }
 
-// A whole season episode by episode (season.js), with progress in `status` while isOpen() holds.
-async function getSeason(query, { quality = '', exactQuality = false, subs = [], tvId = null, canonicalTitle = null, btn, status, label, isOpen }) {
-  btn.disabled = true;
-  btn.replaceChildren('Starting…');
-  let job;
-  try {
-    job = await api('/api/downloads/season', jsonPost({ query, quality, exactQuality, subs, ...(tvId ? { tvId, canonicalTitle } : {}) }));
-  } catch (err) {
-    btn.disabled = false;
-    btn.replaceChildren(icon('download'), label);
-    status.textContent = err.message;
-    return;
-  }
-  btn.replaceChildren('Working…');
-  while (isOpen()) {
-    let j;
-    try { j = await api(`/api/downloads/season/${job.id}`); } catch (err) { status.textContent = err.message; break; }
-    const eps = (list) => list.map((e) => `E${pad2(e)}`).join(', ');
-    if (j.state === 'running') {
-      status.textContent = [j.step, j.added.length && `${j.added.length} added so far`].filter(Boolean).join(' · ');
-      await new Promise((r) => setTimeout(r, 1500));
-      continue;
+// Films: Play when it's here (or on the server), else one Download press. Then state and progress.
+const filmExact = new Map(); // tmdb id -> exact resolution for this session
+function filmActions(t) {
+  const body = () => ({ type: 'movie', tmdbId: t.id, ...(filmExact.get(t.id) ? { quality: filmExact.get(t.id) } : {}) });
+  const play = h('button', { type: 'button', class: 'play-btn action-btn' });
+  const get = h('button', { type: 'button', class: 'play-btn action-btn stroke-icon' }, icon('download'), h('span', {}, 'Download'));
+  const row = h('div', { class: 'action-row' }, play, get);
+  const status = h('p', { class: 'action-status', role: 'status' });
+  const retry = h('button', { type: 'button', class: 'chip action-retry' }, 'Try again');
+  const progress = transferSummary(() => titleState(t).transfers, t.title);
+  const root = h('div', { class: 'title-actions' }, row, progress, h('div', { class: 'action-result' }, status, retry));
+  if (canGet() && t.id) root.append(advancedOptions(`movie-${t.id}`, {
+    exact: filmExact.get(t.id) || '', onExact: (v) => filmExact.set(t.id, v),
+    browse: () => ({ query: [t.title, t.year].filter(Boolean).join(' '), type: 'movie', movieId: t.id, canonicalTitle: t.title, strict: true }),
+  }));
+  let playing = false;
+  play.addEventListener('click', async () => {
+    if (play.getAttribute('aria-disabled') === 'true') return;
+    const s = titleState(t), mine = s.ready.find((f) => !f.converting);
+    if (mine) return openPlayer(mine);
+    if (!s.onServer.length || playing) return;
+    playing = true; play.setAttribute('aria-disabled', 'true');
+    try {
+      await api('/api/library/add', jsonPost({ ids: [s.onServer[0].id] }));
+      await loadLibrary();
+      const added = state.library.find((x) => x.mediaKey === s.onServer[0].mediaKey);
+      if (added) openPlayer(libraryFile(added));
+      patchUnifiedLibrary();
+    } catch (err) { status.textContent = err.message; } finally { playing = false; root._update(); }
+  });
+  const start = () => { if (get.getAttribute('aria-disabled') !== 'true') runDownloadCommand(body()); };
+  get.addEventListener('click', start);
+  retry.addEventListener('click', start);
+  root._update = () => {
+    const s = titleState(t), cmd = downloadCommands.get(commandKey(body()));
+    const file = s.ready.find((f) => !f.converting) || s.ready[0];
+    const playable = Boolean(file || s.onServer.length);
+    play.hidden = !playable;
+    if (playable) {
+      const saved = file && savedProgress(file);
+      const converting = file && !s.ready.some((f) => !f.converting);
+      play.replaceChildren(icon('play'), h('span', {}, converting ? 'Preparing playback…' : partlyWatched(saved) ? `Resume at ${fmtTime(saved.time)}` : 'Play'));
+      play.setAttribute('aria-disabled', String(Boolean(converting || playing)));
     }
-    if (j.state === 'failed') {
-      status.textContent = `Stopped: ${j.error}`;
-      btn.disabled = false;
-      btn.replaceChildren(icon('download'), 'Try again');
-      break;
-    }
-    const n = j.added.reduce((sum, a) => sum + a.episodes.length, 0);
-    status.textContent = [
-      n ? `Added ${plural(n, 'episode')}` : j.step || 'Nothing new to add',
-      j.have.length && `${j.have.length} already here`,
-      j.missing.length && `not added: ${eps(j.missing)}`,
-      j.errors?.length && `${j.errors.length} search/download errors`,
-      j.upcoming && `${j.upcoming} not aired yet`,
-    ].filter(Boolean).join(' · ');
-    btn.classList.toggle('is-added', !j.missing.length);
-    if (j.missing.length) {
-      btn.disabled = false;
-      btn.replaceChildren(icon('download'), 'Retry missing');
-    } else {
-      btn.replaceChildren(icon('check'), n ? 'Added' : 'Done');
-    }
-    if (n) {
-      toast(`${j.title} season ${j.season}: ${plural(n, 'episode')} added to Library`);
-      loadDownloads().then(() => { if (state.view === 'downloads') renderDownloads(); });
-    }
-    break;
-  }
+    // Download only when there's nothing to play and nothing downloading; while it runs it says what it's doing.
+    get.hidden = playable || !canGet() || !t.id || (s.active.length > 0 && !cmd?.busy);
+    get.lastChild.textContent = cmd?.busy ? commandStep(cmd) : 'Download';
+    get.setAttribute('aria-disabled', String(Boolean(cmd?.busy)));
+    root.setAttribute('aria-busy', String(Boolean(cmd?.busy)));
+    const result = !playable && commandResult(cmd);
+    if (status.textContent !== (result?.text || '')) status.textContent = result?.text || '';
+    status.classList.toggle('is-error', Boolean(result?.retry));
+    retry.hidden = !result?.retry || s.active.length > 0;
+    row.hidden = play.hidden && get.hidden;
+    progress._update();
+  };
+  commandViews.add(root);
+  root._update();
+  return root;
+}
+
+// Shows: one Download button opens the panel; the season and quality chosen stay while it's open.
+const showPanels = new Map(); // tmdb id -> { open, season, profile, exact, last: { [season]: command key } }
+function showDownload(t, { season = null } = {}) {
+  let ps = showPanels.get(t.id);
+  if (!ps) { ps = { open: false, season, profile: savedProfile(), exact: '', last: {} }; showPanels.set(t.id, ps); }
+  else if (season != null && !ps.touched) ps.season = season;
+  const panelId = `dl-panel-${t.id}`;
+  const toggle = h('button', { type: 'button', class: 'play-btn action-btn stroke-icon', 'aria-expanded': String(ps.open), 'aria-controls': panelId }, icon('download'), h('span', {}, 'Download'));
+  const seasonSel = h('select', { class: 'sub-select', id: `${panelId}-season`, disabled: true }, h('option', {}, 'Loading seasons…'));
+  const profileSel = h('select', { class: 'sub-select', id: `${panelId}-quality` }, PROFILE_OPTIONS.map(([v, text]) => h('option', { value: v }, text)));
+  profileSel.value = ps.profile;
+  const avail = h('p', { class: 'dl-avail' });
+  const submit = h('button', { type: 'button', class: 'play-btn dl-submit' }, h('span', {}, 'Download Season'));
+  const quiet = h('p', { class: 'dl-quiet' });
+  const status = h('p', { class: 'dl-status', role: 'status' });
+  const retry = h('button', { type: 'button', class: 'chip dl-retry' });
+  const panel = h('div', { class: 'dl-panel', id: panelId, hidden: !ps.open },
+    h('div', { class: 'dl-fields' },
+      h('div', { class: 'dl-field' }, h('label', { for: seasonSel.id }, 'Season'), seasonSel),
+      h('div', { class: 'dl-field' }, h('label', { for: profileSel.id }, 'Quality'), profileSel)),
+    h('p', { class: 'dl-note' }, 'Smart selection chooses a suitable season download and skips episodes you already have.'),
+    avail, submit, quiet, h('div', { class: 'dl-result' }, status, retry),
+    advancedOptions(`tv-${t.id}`, {
+      exact: ps.exact, onExact: (v) => { ps.exact = v; },
+      browse: () => ({ query: `${t.title} S${pad2(ps.season || 1)}`, type: 'tv', tvId: t.id, canonicalTitle: t.title, strict: true }),
+    }));
+  let seasons = null;
+  const load = () => {
+    if (seasons || !t.id) return;
+    seasons = [];
+    tvSeasons(t.id).then((list) => {
+      seasons = list;
+      const s = titleState(t), have = (n) => episodeCount([...s.ready, ...s.onServer].filter((f) => f.season === n && f.episode != null));
+      seasonSel.replaceChildren(...list.map((se) => h('option', { value: String(se.number), disabled: se.upcoming && !have(se.number) ? true : null },
+        `${se.name}${se.upcoming && !have(se.number) ? ' · Not released' : ''}`)));
+      const pick = list.find((se) => se.number === ps.season)
+        || list.find((se) => !se.upcoming && !(se.episodes && have(se.number) >= se.episodes)) || list.find((se) => !se.upcoming) || list[0];
+      if (pick) { ps.season = pick.number; seasonSel.value = String(pick.number); }
+      seasonSel.disabled = false;
+      panel._update();
+    }).catch((err) => { seasons = null; seasonSel.replaceChildren(h('option', {}, 'Seasons unavailable')); status.textContent = err.message; });
+  };
+  toggle.addEventListener('click', (e) => {
+    ps.open = !ps.open;
+    toggle.setAttribute('aria-expanded', String(ps.open));
+    panel.hidden = !ps.open;
+    if (ps.open) { load(); if (e.detail === 0) seasonSel.focus(); } // keyboard: straight to Season
+  });
+  seasonSel.addEventListener('change', () => { ps.season = Number(seasonSel.value); ps.touched = true; panel._update(); });
+  profileSel.addEventListener('change', () => { ps.profile = profileSel.value; });
+  const body = (episodes = null) => ({ type: 'tv', tmdbId: t.id, season: ps.season, profile: ps.profile,
+    ...(ps.exact ? { quality: ps.exact } : {}), ...(episodes?.length ? { episodes } : {}) });
+  const run = (episodes) => {
+    if (submit.getAttribute('aria-disabled') === 'true' || !ps.season) return;
+    const b = body(episodes);
+    ps.last[ps.season] = commandKey(b);
+    runDownloadCommand(b);
+  };
+  submit.addEventListener('click', () => run(null));
+  retry.addEventListener('click', () => run(retry._episodes));
+  panel._update = () => {
+    const n = ps.season, se = seasons?.find((x) => x.number === n);
+    const cmd = downloadCommands.get(ps.last[n]);
+    const s = titleState(t);
+    const ready = new Set(s.ready.filter((f) => f.season === n && f.episode != null).map((f) => f.episode));
+    const server = new Set(s.onServer.filter((f) => f.season === n && f.episode != null && !ready.has(f.episode)).map((f) => f.episode));
+    const downloading = new Set(s.active.flatMap((d) => (d.episodes || []).filter((ep) => ep.season === n && !ep.available).map((ep) => ep.episode)).filter((e) => !ready.has(e)));
+    const packBusy = s.active.some((d) => d.season === n && !(d.episodes || []).length);
+    const total = se?.episodes || null;
+    const parts = [ready.size && (total ? `${ready.size} of ${total} episodes ready` : `${plural(ready.size, 'episode')} ready`),
+      downloading.size ? `${downloading.size} downloading` : packBusy && 'Season pack downloading',
+      server.size && `${server.size} already on the server`].filter(Boolean);
+    avail.textContent = parts.join(' · ');
+    avail.hidden = !parts.length;
+    const complete = total && ready.size >= total;
+    const covered = total && ready.size + server.size + downloading.size >= total && !complete && downloading.size > 0;
+    const locked = Boolean(cmd?.busy);
+    submit.hidden = Boolean(complete || covered) && !locked;
+    quiet.textContent = complete ? 'This season is ready to watch' : covered ? 'Remaining episodes are downloading' : '';
+    quiet.hidden = !submit.hidden;
+    submit.firstChild.textContent = locked ? commandStep(cmd, true) : `Download Season ${n ?? ''}`.trim();
+    submit.setAttribute('aria-disabled', String(locked || !n));
+    seasonSel.disabled = locked || !seasons?.length;
+    profileSel.disabled = locked;
+    panel.setAttribute('aria-busy', String(locked));
+    const result = commandResult(cmd);
+    if (status.textContent !== (result?.text || '')) status.textContent = result?.text || '';
+    status.classList.toggle('is-error', Boolean(result?.retry && !result.partial));
+    retry._episodes = result?.episodes?.length ? result.episodes : null;
+    retry.hidden = !result?.retry;
+    retry.textContent = retry._episodes ? 'Retry unavailable' : 'Try again';
+  };
+  commandViews.add(panel);
+  panel._update();
+  if (ps.open) load();
+  return { toggle, panel };
+}
+
+// One missing episode in the show sheet: a quiet Download that runs the same command for it alone.
+function episodeDownload(t, seasonNo, episode) {
+  const b = { type: 'tv', tmdbId: t.id, season: seasonNo, episodes: [episode], profile: savedProfile() };
+  const btn = h('button', { type: 'button', class: 'chip episode-get stroke-icon', 'aria-label': `Download episode ${episode}` }, icon('download'), h('span', {}, 'Download'));
+  btn.addEventListener('click', () => { if (btn.getAttribute('aria-disabled') !== 'true') runDownloadCommand(b); });
+  btn._update = () => {
+    const cmd = downloadCommands.get(commandKey(b)), result = commandResult(cmd);
+    btn.setAttribute('aria-disabled', String(Boolean(cmd?.busy)));
+    btn.lastChild.textContent = cmd?.busy ? 'Finding…' : result?.retry ? 'Try again' : 'Download';
+    btn.title = result?.text || '';
+  };
+  commandViews.add(btn);
+  btn._update();
+  return btn;
 }
 
 // ---------- casting: device picker ----------
@@ -1930,13 +1997,6 @@ async function copyText(text) {
   return ok;
 }
 
-// "South Park S18", "South Park season 18" -> { title, season } (same rule as the server's season.js).
-function parseSeasonQuery(q) {
-  const m = /^(.*?)[\s.]+(?:s(\d{1,2})|season[\s.]*(\d{1,2}))(?:[\s.]+(?:complete|full))?[\s.]*$/i.exec(String(q || '').trim());
-  if (!m || !m[1].trim()) return null;
-  return { title: m[1].replace(/[._]+/g, ' ').replace(/\(?(19|20)\d{2}\)?\s*$/, '').trim(), season: Number(m[2] || m[3]) };
-}
-
 async function magnetOf(t) {
   if (t.magnet) return t.magnet;
   t.magnet = (await api(`/api/torrents/magnet?ref=${encodeURIComponent(t.ref)}`)).magnet;
@@ -1949,10 +2009,11 @@ async function sendToQbit(link, extra = {}) {
   toast('Added to Library');
 }
 
-function openTorrents({ query = '', type = 'all', label = null, movieId = null, tvId = null, canonicalTitle = null, opener } = {}) {
+// The release list: search 1337x and The Pirate Bay and pick one yourself. It sits inside a title's
+// Advanced options, and in the Find torrents sheet for anything that isn't a known film or show.
+function torrentBrowser({ query = '', type = 'all', movieId = null, tvId = null, canonicalTitle = null, strict = false } = {}) {
   let results = [];
-  let filter = prefs().quality || 'all'; // Settings → preferred quality
-  let seasonQuery = '', seasonRunning = false;
+  let filter = 'all';
   let ctrl;
   const added = new Set();
 
@@ -1969,19 +2030,18 @@ function openTorrents({ query = '', type = 'all', label = null, movieId = null, 
         filter = key;
         chips.querySelectorAll('.chip').forEach((c) => c.setAttribute('aria-pressed', String(c === e.currentTarget)));
         renderList();
-        renderSeasonBox(seasonQuery);
       },
     }, text)));
   const info = h('p', { class: 'muted tor-info', role: 'status' });
-  const seasonBox = h('div', { class: 'season-dl-wrap' });
   const list = h('ul', { class: 'rows tor-list' });
-  let closed = false;
   // Subtitle language fetched automatically when the download completes.
-  const subSelect = h('select', { class: 'sub-select', id: 'tor-sub' });
+  const subId = `tor-sub-${Math.random().toString(36).slice(2, 8)}`;
+  const subSelect = h('select', { class: 'sub-select', id: subId });
   const subRow = h('div', { class: 'tor-subs', hidden: true },
-    h('label', { for: 'tor-sub' }, 'Subtitles'), subSelect,
+    h('label', { for: subId }, 'Subtitles'), subSelect,
     h('span', { class: 'muted tor-subs-note' }));
   subSelect.addEventListener('change', () => { try { localStorage.setItem('subs:dlLang', subSelect.value); } catch { /* blocked */ } });
+  const el = h('div', { class: 'tor-browser' }, form, subRow, chips, info, list);
 
   async function loadSubLangs(q) {
     if (!state.status.subtitles) return;
@@ -2005,31 +2065,21 @@ function openTorrents({ query = '', type = 'all', label = null, movieId = null, 
     }
   }
 
-  $('#picker-body').replaceChildren(...[
-    h('h2', { id: 'picker-title' }, 'Find a download'),
-    label && h('p', { class: 'muted picker-sub' }, label),
-    form, subRow, chips, info, seasonBox, list].filter(Boolean));
-  pushOverlay(showSheet($('#picker'), $('#picker-backdrop'), () => { closed = true; ctrl?.abort(); opener?.focus({ preventScroll: true }); }));
-
   form.addEventListener('submit', (e) => { e.preventDefault(); input.blur(); run(); });
 
   async function run() {
     const q = input.value.trim();
     ctrl?.abort();
     if (/^magnet:\?/i.test(q)) return addPastedMagnet(q);
-    seasonQuery = '';
-    seasonBox.replaceChildren();
     if (q.length < 2) { results = []; list.replaceChildren(); info.textContent = 'Type a title to search 1337x and The Pirate Bay.'; return; }
     ctrl = new AbortController();
     const { signal } = ctrl;
     info.textContent = 'Searching 1337x and The Pirate Bay…';
     list.replaceChildren(...Array.from({ length: 5 }, () => h('li', { class: 'row tor skeleton-row', 'aria-hidden': 'true' })));
     try {
-      const data = await api(`/api/torrents/search?q=${encodeURIComponent(q)}&type=${type}${label ? '&strict=1' : ''}`, { signal });
+      const data = await api(`/api/torrents/search?q=${encodeURIComponent(q)}&type=${type}${strict && q === query ? '&strict=1' : ''}`, { signal });
       results = data.results;
-      seasonQuery = q;
       renderList(data.problems);
-      renderSeasonBox(q);
       loadSubLangs(q);
     } catch (err) {
       if (err.name === 'AbortError') return;
@@ -2045,7 +2095,7 @@ function openTorrents({ query = '', type = 'all', label = null, movieId = null, 
     info.textContent = 'Sending to qBittorrent…';
     try {
       await sendToQbit(link);
-      info.textContent = 'Added. It’s in the Downloads tab.';
+      info.textContent = 'Added. It appears in your Library.';
       input.value = '';
     } catch (err) {
       info.textContent = err.message;
@@ -2069,41 +2119,6 @@ function openTorrents({ query = '', type = 'all', label = null, movieId = null, 
       return;
     }
     list.replaceChildren(...shown.map(torrentRow));
-  }
-
-  // A season search ("South Park S18"): offer to get the whole season one episode at a time. It's
-  // the main suggestion when no complete-season torrent has enough seeders, a quiet extra otherwise.
-  function renderSeasonBox(q) {
-    if (seasonRunning) return;
-    seasonBox.replaceChildren();
-    const want = parseSeasonQuery(q);
-    if (!want || type === 'movie' || !canDownload()) return;
-    const packRe = new RegExp(`\\bS0?${want.season}\\b(?!\\s?E\\d)|\\bseason\\s?0?${want.season}\\b`, 'i');
-    const goodPack = results.some((r) => (filter === 'all' || r.quality === filter) && !r.cam && r.seeders >= 10 && norm(r.name).includes(norm(want.title))
-      && packRe.test(r.name.replace(/[._]+/g, ' ')) && !/\bS\d{1,2}\s?E\d{1,3}\b/i.test(r.name.replace(/[._]+/g, ' ')));
-    const status = h('div', { class: 'row-meta season-dl-status', role: 'status' });
-    const btn = h('button', { class: goodPack ? 'chip season-dl-btn' : 'play-btn season-dl-btn', onclick: go },
-      icon('download'), 'Get all episodes');
-    seasonBox.append(h('div', { class: `row season-dl${goodPack ? '' : ' is-main'}` },
-      h('div', { class: 'row-text' },
-        h('div', { class: 'row-title' }, goodPack ? `Or get season ${want.season} episode by episode` : `No complete season ${want.season}${filter === 'all' ? '' : ` in ${filter === '2160p' ? '4K' : filter}`} with enough seeders`),
-        h('div', { class: 'row-meta' }, h('span', {}, filter === 'all' ? 'Marquee finds the best torrent for each episode.' : `Only ${filter === '2160p' ? '4K' : filter} episodes will be added; unavailable episodes are skipped.`)),
-        status),
-      h('div', { class: 'row-actions' }, btn)));
-
-    async function go() {
-      const sub = subRow.hidden ? '' : subSelect.value;
-      const selectedQuality = ['2160p', '1440p', '1080p', '720p'].includes(filter) ? filter : '';
-      seasonRunning = true;
-      chips.querySelectorAll('button').forEach((button) => { button.disabled = true; });
-      try { await getSeason(q, {
-        quality: selectedQuality, exactQuality: !!selectedQuality, ...(input.value.trim() === query.trim() && tvId ? { tvId, canonicalTitle } : {}),
-        subs: sub ? [sub] : [], btn, status, label: 'Get all episodes', isOpen: () => !closed,
-      }); } finally {
-        seasonRunning = false;
-        chips.querySelectorAll('button').forEach((button) => { button.disabled = false; });
-      }
-    }
   }
 
   function torrentRow(t) {
@@ -2141,11 +2156,12 @@ function openTorrents({ query = '', type = 'all', label = null, movieId = null, 
       status.textContent = '';
       try {
         const sub = subRow.hidden ? '' : subSelect.value;
-        // Only carry the selected film while searching its original title; free searches can be anything.
+        // Only carry the title's identity while searching its own name; free searches can be anything.
+        const own = input.value.trim() === query.trim();
         await sendToQbit(await magnetOf(t), { name: t.name, ...(sub ? { subs: [sub] } : {}),
-          ...(input.value.trim() === query.trim() && type !== 'all' ? { mediaType: type } : {}),
-          ...(movieId && input.value.trim() === query.trim() ? { movieId } : {}),
-          ...(tvId && input.value.trim() === query.trim() ? { tvId, canonicalTitle } : {}) });
+          ...(own && type !== 'all' ? { mediaType: type } : {}),
+          ...(movieId && own ? { movieId } : {}),
+          ...(tvId && own ? { tvId, canonicalTitle } : {}) });
         added.add(t.id);
         markAdded();
         const subName = sub && subSelect.selectedOptions[0]?.textContent;
@@ -2171,7 +2187,19 @@ function openTorrents({ query = '', type = 'all', label = null, movieId = null, 
       h('div', { class: 'row-actions' }, copyBtn, getBtn));
   }
 
-  if (query) run(); else { info.textContent = 'Type a title to search 1337x and The Pirate Bay.'; input.focus(); }
+  return {
+    el,
+    abort: () => ctrl?.abort(),
+    start: () => { if (query) run(); else { info.textContent = 'Type a title to search 1337x and The Pirate Bay.'; input.focus(); } },
+  };
+}
+
+// Find torrents (Discover search): the release list on its own, for anything you search by name.
+function openTorrents({ query = '', opener } = {}) {
+  const browser = torrentBrowser({ query });
+  $('#picker-body').replaceChildren(h('h2', { id: 'picker-title' }, 'Find torrents'), browser.el);
+  pushOverlay(showSheet($('#picker'), $('#picker-backdrop'), () => { browser.abort(); opener?.focus({ preventScroll: true }); }));
+  browser.start();
 }
 
 // ---------- casting: remote control ----------
@@ -4044,6 +4072,15 @@ function appearanceSection() {
   ];
 }
 
+const PROFILE_HINTS = {
+  save: 'Compact 1080p or 720p copies that leave room on the server.',
+  balanced: 'Good-looking 1080p at sensible sizes. Recommended.',
+  best: '4K when there is one, within your size limit.',
+};
+const MAX_SIZE_OPTIONS = [[0, 'No limit'], [1, '1 GB'], [2, '2 GB'], [4, '4 GB'], [8, '8 GB'], [15, '15 GB'], [30, '30 GB'], [60, '60 GB']];
+const AUDIO_LANGUAGES = [['', 'Original language'], ['en', 'English'], ['sv', 'Swedish'], ['da', 'Danish'], ['no', 'Norwegian'], ['fi', 'Finnish'],
+  ['de', 'German'], ['fr', 'French'], ['es', 'Spanish'], ['it', 'Italian'], ['pt', 'Portuguese'], ['nl', 'Dutch'], ['pl', 'Polish'],
+  ['ru', 'Russian'], ['tr', 'Turkish'], ['hi', 'Hindi'], ['ja', 'Japanese'], ['ko', 'Korean'], ['zh', 'Chinese']];
 function renderSettings() {
   const body = $('#settings-body');
   const me = state.me;
@@ -4071,11 +4108,16 @@ function renderSettings() {
     segmented([['discover', 'Discover'], ['library', 'Library']], p.startView === 'downloads' ? 'library' : p.startView || 'discover', (v) => saveMe({ startView: v }).then(renderSettings), 'Open Marquee on')));
   out.push(settingsRow('Library order', null,
     segmented([['newest', 'Newest'], ['expiring', 'Leaving soonest'], ['title', 'A–Z']], p.librarySort || 'newest', (v) => saveMe({ librarySort: v }).then(renderSettings), 'Library order')));
+  // ---- downloads: set once, used by every Download ----
   if (canDownload()) {
-    const control = segmented([['all', 'Any'], ['2160p', '4K'], ['1440p', '1440p'], ['1080p', '1080p'], ['720p', '720p']], p.quality || 'all', (v) => saveMe({ quality: v }).then(renderSettings), 'Preferred quality');
-    control.classList.add('quality-rail');
-    const row = settingsRow('Preferred quality', 'Starts recommendations and search at this quality.', control);
-    row.classList.add('set-quality'); out.push(row);
+    const profile = savedProfile();
+    out.push(h('h3', { class: 'set-head' }, 'Downloads'));
+    out.push(settingsRow('Quality', PROFILE_HINTS[profile],
+      select(PROFILE_OPTIONS, profile, (v) => saveMe({ downloadProfile: v }).then(renderSettings), 'Download quality')));
+    out.push(settingsRow('Largest download', 'Per film or episode. Bigger releases are skipped.',
+      select(MAX_SIZE_OPTIONS, p.maxSize || 0, (v) => saveMe({ maxSize: Number(v) }), 'Largest download')));
+    out.push(settingsRow('Audio language', 'Releases in this language come first. Releases dubbed into another language are skipped when there’s a choice.',
+      select(AUDIO_LANGUAGES, p.audioLang || '', (v) => saveMe({ audioLang: v }), 'Audio language')));
   }
 
   // ---- your library ----

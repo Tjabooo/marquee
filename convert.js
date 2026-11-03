@@ -660,6 +660,13 @@ async function drain(onConverted) {
   running = false;
 }
 
+// Look for new files soon instead of at the next two-minute round (a downloaded episode just finished).
+let scanNow = null, scanSoonTimer = null;
+export function convertSoon() {
+  if (!scanNow || scanSoonTimer) return;
+  scanSoonTimer = setTimeout(() => { scanSoonTimer = null; scanNow(); }, 3000);
+}
+
 // listCandidates(): Promise<[{ file, deleteOriginal }]>
 export async function startConverter({ dataDir, listCandidates, onConverted, onSidecar }) {
   onSidecarHook = onSidecar || null;
@@ -738,6 +745,7 @@ export async function startConverter({ dataDir, listCandidates, onConverted, onS
       console.warn(`[convert] scan failed: ${e.message}`);
     }
   };
+  scanNow = tick;
   setTimeout(tick, 5000);
   setInterval(tick, INTERVAL_MS);
 }

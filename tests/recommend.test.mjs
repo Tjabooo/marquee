@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import vm from 'node:vm';
 import { pickBest } from '../recommend.js';
 import { parseTpb } from '../torrents.js';
-import { startSeasonJob, seasonJob } from '../season.js';
+import { startSmartJob, smartJob } from '../smart-download.js';
 
 // The server's own release-name parser, taken from server.js so the test can't drift from it.
 const server = await fs.readFile(new URL('../server.js', import.meta.url), 'utf8');
@@ -81,17 +81,17 @@ test('an explicit recommended quality never falls back to another resolution', (
   }), 'Severance.S02.720p.WEB');
 });
 
-for (const quality of ['2160p', '1440p']) test(`episode fallback respects ${quality} and skips unavailable episodes`, async () => {
+for (const quality of ['2160p', '1440p']) test(`episode fallback respects an exact ${quality} and reports unavailable episodes`, async () => {
   const added = [];
-  const id = startSeasonJob({ title: 'Severance', season: 2, quality, exactQuality: true }, {
+  const id = startSmartJob({ type: 'tv', title: 'Severance', season: 2, episodes: [1, 2], want: { quality } }, {
     parseName, seasonEpisodes: async () => ({ episodes: [{ episode: 1, aired: true }, { episode: 2, aired: true }] }),
     haveEpisodes: async () => new Set(), searchTorrents: async (query) => ({ results: results([
-      [query + '.1080p.WEB', 500], ...(query.endsWith('E01') ? [[query + `.${quality}.WEB`, 2, 20 * GB]] : []),
+      [query.replace(/ /g, '.') + '.1080p.WEB', 500], ...(query.endsWith('E01') ? [[query.replace(/ /g, '.') + `.${quality}.WEB`, 2, 20 * GB]] : []),
     ]) }), addDownload: async (download) => added.push(download),
   });
-  for (let tries = 0; seasonJob(id).state === 'running' && tries < 100; tries++) await new Promise((r) => setTimeout(r, 5));
-  const job = seasonJob(id);
-  assert.equal(job.state, 'done'); assert.deepEqual(job.missing, [2]);
+  for (let tries = 0; smartJob(id).state === 'running' && tries < 200; tries++) await new Promise((r) => setTimeout(r, 5));
+  const job = smartJob(id);
+  assert.equal(job.state, 'done'); assert.deepEqual(job.unavailable.map((u) => u.episode), [2]);
   assert.deepEqual(job.added.map((r) => r.quality), [quality]); assert.equal(added.length, 1);
 });
 
