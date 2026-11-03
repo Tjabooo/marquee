@@ -63,7 +63,9 @@ const watchRooms = new WatchRooms();
 // Artwork for a room's link preview, from the TMDB cache only (Discord's crawler doesn't wait long).
 function watchArtwork(media) {
   const art = media.season == null ? shows.knownFilm(media.mediaKey, media.title, media.year) : shows.knownShow(media.title, media.year);
-  const image = art?.backdrop || art?.poster;
+  // An episode shows its own still (full size: link previews are large), then the show's backdrop.
+  const still = media.season != null && shows.knownEpisode(media.title, media.year, media.season, media.episode)?.still;
+  const image = still?.replace('/t/p/w300/', '/t/p/original/') || art?.backdrop || art?.poster;
   return image ? { image } : null;
 }
 setInterval(() => watchRooms.cleanup(), 3000).unref();

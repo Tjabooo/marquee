@@ -708,7 +708,7 @@ function renderLibrary() {
     const q = norm(state.query), ready = state.library.filter(f => (!q || norm(`${f.title} ${f.filmTitle || ''} ${f.file}`).includes(q)) && (state.libFilter === 'all' || (state.libFilter === 'tv') === (f.season != null)));
     const watching = ready.map(f => ({ f, progress: savedProgress(libraryFile(f)) })).filter(x => partlyWatched(x.progress)).sort((a,b) => (b.progress.at || 0) - (a.progress.at || 0)).slice(0,12);
     const leaving = libraryEntries(ready.filter(f => f.expiresAt != null && f.expiresAt - Date.now() < 48 * 3600000));
-    ui.shelves.replaceChildren(...[watching.length && libraryShelf('Continue watching', watching.map(({f, progress}) => libraryCard({ name: state.libraryShows.find(s => s.id === f.show)?.title || f.title, files: [f], poster: f.poster, subtitle: [episodeLabel(f), `${Math.max(1, Math.ceil((progress.duration-progress.time)/60))} min left`].filter(Boolean).join(' · '), resume: true }))), leaving.length && libraryShelf('Leaving soon', leaving.map(e => libraryCard(e, true)))].filter(Boolean));
+    ui.shelves.replaceChildren(...[watching.length && libraryShelf('Continue watching', watching.map(({f, progress}) => continueCard(f, progress)), 'continue-shelf'), leaving.length && libraryShelf('Leaving soon', leaving.map(e => libraryCard(e, true)))].filter(Boolean));
   }
   ui.shelves.hidden = state.libAvailability !== 'all' && state.libAvailability !== 'ready';
   if (showView.id) updateOpenShow();
@@ -801,9 +801,45 @@ function libraryGroups(entries) {
     h('ul', { class: 'grid library-grid' }, list.map((e) => libraryCard(e)))));
 }
 
-function libraryShelf(title, cards) {
-  return h('section', { class: 'shelf library-shelf', 'aria-label': title },
+function libraryShelf(title, cards, cls = '') {
+  return h('section', { class: `shelf library-shelf ${cls}`.trim(), 'aria-label': title },
     h('div', { class: 'shelf-head' }, h('h3', {}, title)), h('ul', { class: 'shelf-items' }, cards));
+}
+
+// 16:9 artwork (episode stills, backdrops). Each source is tried in turn, then a themed placeholder.
+// A source is a URL, or { src, contain: true } for a portrait poster shown whole. With `sizes`, TMDB's
+// small stills also offer the 780px version, for large cards on high-density screens.
+function wideArt(sources, cls = '', sizes = null) {
+  const list = sources.map((s) => (typeof s === 'string' ? { src: s } : s)).filter((s) => s?.src);
+  const next = () => {
+    const s = list.shift();
+    const srcset = sizes && /\/t\/p\/w300\//.test(s?.src) ? `${s.src} 300w, ${s.src.replace('/t/p/w300/', '/t/p/w780/')} 780w` : null;
+    return s ? h('img', { src: s.src, srcset, sizes: srcset && sizes, alt: '', loading: 'lazy', decoding: 'async', class: s.contain ? 'is-contained' : null, onerror: (e) => e.currentTarget.replaceWith(next()) })
+      : h('div', { class: 'wide-art-fallback', 'aria-hidden': 'true' }, icon('tv'));
+  };
+  return h('div', { class: `wide-art ${cls}`.trim() }, next());
+}
+// TMDB art for an episode: its own still, then the show's backdrop.
+const episodeArt = (still, show, cls, sizes) => wideArt([still, show?.backdrop], cls, sizes);
+
+const CONTINUE_SIZES = '(max-width: 420px) 200px, 240px'; // matches .continue-shelf column widths
+// Continue watching: landscape cards that resume playback. Episodes show their still, films a backdrop.
+function continueCard(f, progress) {
+  const show = state.libraryShows.find((s) => s.id === f.show);
+  const name = show?.title || f.filmTitle || f.title;
+  const left = `${Math.max(1, Math.ceil((progress.duration - progress.time) / 60))} min left`;
+  const pct = progress.time / progress.duration * 100;
+  const next = nextExpiry([f]), hours = (next - Date.now()) / 3600000;
+  const art = f.season != null ? episodeArt(f.still, show, '', CONTINUE_SIZES) : wideArt([f.backdrop, { src: f.poster, contain: true }]);
+  art.append(...[
+    Number.isFinite(next) && h('span', { class: `poster-expiry${hours < 24 ? ' is-soon' : ''}`, title: timeLeft(next) },
+      hours <= 0 ? 'Leaving soon' : hours < 1 ? '<1h left' : hours < 48 ? `${Math.ceil(hours)}h left` : `${Math.ceil(hours / 24)}d left`),
+    h('span', { class: 'poster-progress', 'aria-label': `${Math.round(pct)}% watched` }, h('i', { style: `width:${pct}%` }))].filter(Boolean));
+  return h('li', { class: 'library-card continue-card' },
+    h('button', { type: 'button', class: 'title-card', 'data-library-focus': `play-${f.id}`, onclick: () => openPlayer(libraryFile(f)) },
+      art, h('div', { class: 'name' }, name),
+      f.season != null && f.episodeName && h('div', { class: 'sub continue-episode' }, f.episodeName),
+      h('div', { class: 'sub' }, [episodeLabel(f), left].filter(Boolean).join(' · '))));
 }
 
 function libraryCard(entry, keep = false) {
@@ -993,10 +1029,13 @@ function renderShow() {
     const ready = [...new Map(versions.map(f => [f.episode, f])).values()];
     const byEpisode = new Map();
     for (const d of pendingFor(open.number)) for (const ep of d.episodes || []) if (ep.season === open.number && !ready.some(f => f.episode === ep.episode) && !byEpisode.has(ep.episode)) byEpisode.set(ep.episode, { d, ep });
-    const rows = ready.map(f => ({ number: f.episode, node: (() => { const row = fileRow(libraryFile(f)); $('.row-title', row).textContent = `${f.episode}. ${f.episodeName || `Episode ${f.episode}`}`; $('.row-title', row).title = f.file; return row; })() }));
+    const tmdbEp = n => open.episodes?.[n] || {};
+    const epTitle = (n, name) => `${n}. ${name || tmdbEp(n).name || `Episode ${n}`}`;
+    const thumb = (n, still) => episodeArt(still || tmdbEp(n).still, show, 'episode-thumb');
+    const rows = ready.map(f => ({ number: f.episode, node: (() => { const row = fileRow(libraryFile(f)); row.classList.add('episode-row'); row.prepend(thumb(f.episode, f.still)); $('.row-title', row).textContent = epTitle(f.episode, f.episodeName); $('.row-title', row).title = f.file; return row; })() }));
     const tvId = show.tmdbId && canGet() ? { id: show.tmdbId, title: show.title, type: 'tv' } : null;
-    for (const {d,ep} of byEpisode.values()) rows.push({ number: ep.episode, node: h('li', { class: 'row pending-episode', 'data-transfer-hash': d.hash, 'data-episode-number': ep.episode, 'data-episode-season': ep.season }, h('div', { class: 'row-text' }, h('div', { class: 'row-title' }, `${ep.episode}. Episode ${ep.episode}`), h('div', { class: 'row-meta episode-transfer-state' }, ep.available ? 'Ready in download details' : `${transferState(d)}${Number.isFinite(ep.progress) ? ` · ${Math.floor(ep.progress*100)}%` : ''}`)), h('button', { class: 'chip', onclick: e => openTransferDetails({ ...entry, transfers: [d] }, e.currentTarget) }, 'Details')) });
-    if (Number.isInteger(open.total) && open.total > 0 && open.total <= 1000) for (let number = 1; number <= open.total; number++) if (!rows.some(row => row.number === number)) rows.push({ number, node: h('li', { class: 'row missing-episode' }, h('div', { class: 'row-text' }, h('div', { class: 'row-title' }, `${number}. Episode ${number}`), h('div', { class: 'row-meta' }, 'Not in library')), tvId && episodeDownload(tvId, open.number, number)) });
+    for (const {d,ep} of byEpisode.values()) rows.push({ number: ep.episode, node: h('li', { class: 'row episode-row pending-episode', 'data-transfer-hash': d.hash, 'data-episode-number': ep.episode, 'data-episode-season': ep.season }, thumb(ep.episode), h('div', { class: 'row-text' }, h('div', { class: 'row-title' }, epTitle(ep.episode)), h('div', { class: 'row-meta episode-transfer-state' }, ep.available ? 'Ready in download details' : `${transferState(d)}${Number.isFinite(ep.progress) ? ` · ${Math.floor(ep.progress*100)}%` : ''}`)), h('button', { class: 'chip', onclick: e => openTransferDetails({ ...entry, transfers: [d] }, e.currentTarget) }, 'Details')) });
+    if (Number.isInteger(open.total) && open.total > 0 && open.total <= 1000) for (let number = 1; number <= open.total; number++) if (!rows.some(row => row.number === number)) rows.push({ number, node: h('li', { class: 'row episode-row missing-episode' }, thumb(number), h('div', { class: 'row-text' }, h('div', { class: 'row-title' }, epTitle(number)), h('div', { class: 'row-meta' }, 'Not in library')), tvId && episodeDownload(tvId, open.number, number)) });
     content = [!single && h('button', { class: 'chip season-back', onclick: () => pick(null) }, icon('back'), 'All seasons'), h('h3', {}, open.name),
       h('p', { class: 'muted' }, `${open.total ? `${episodeCount(ready)} of ${open.total}` : episodeCount(ready)} episodes ready`),
       ...pendingFor(open.number).filter(d => !(d.episodes || []).some(ep => ep.season === open.number)).map(d => h('div', { class: 'pack-transfer' }, h('strong', {}, `${open.name} pack`), h('p', {}, 'Episode availability is shown when individual files are verified.'), h('button', { class: 'chip', onclick: e => openTransferDetails({ ...entry, transfers: [d] }, e.currentTarget) }, 'Season pack details'))),
@@ -3839,6 +3878,7 @@ async function openPlayer(f, opts = {}) {
 // ---- Up next ----
 const upNextEl = $('#up-next');
 const upNextTitle = $('#up-next-title');
+const upNextArt = $('#up-next-art');
 const upNextPlay = $('#up-next-play');
 const upNextDismiss = $('#up-next-dismiss');
 const upNextError = $('#up-next-error');
@@ -3866,6 +3906,10 @@ function updateUpNext() {
   if (show) {
     const title = [episodeLabel(next), next.episodeName || next.title].filter(Boolean).join(' · ');
     if (upNextTitle.textContent !== title) upNextTitle.textContent = title;
+    if (upNextArt.dataset.for !== next.id) {
+      upNextArt.dataset.for = next.id;
+      upNextArt.replaceChildren(episodeArt(next.still, state.libraryShows.find((s) => s.id === next.show)));
+    }
     upNextPlay.disabled = session.upNextBusy;
     upNextPlay.textContent = session.upNextBusy ? 'Starting…' : 'Next episode';
     upNextPlay.setAttribute('aria-busy', String(session.upNextBusy));

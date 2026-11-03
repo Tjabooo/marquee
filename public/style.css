@@ -883,6 +883,7 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 }
 
 @media (hover: hover) {
+  .title-card:hover .wide-art { outline: 2px solid var(--bulb); outline-offset: 2px; }
   .title-card:hover .poster { outline: 2px solid var(--bulb); outline-offset: 2px; }
   .tab:hover { color: var(--paper); }
 }
@@ -1441,3 +1442,46 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
   .action-row .action-btn { flex: 1 1 0; min-width: 0; }
 }
 @media (prefers-reduced-motion: reduce) { .advanced > summary::after { transition: none; } }
+
+/* Episode art: 16:9 TMDB stills (or the show's backdrop), with a themed placeholder when neither loads. */
+.wide-art { position: relative; aspect-ratio: 16 / 9; border-radius: 10px; overflow: hidden; background: var(--curtain); }
+.wide-art img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.wide-art img.is-contained { object-fit: contain; }
+.wide-art-fallback {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  color: var(--dust); background: linear-gradient(135deg, var(--curtain), var(--seat));
+}
+.wide-art-fallback svg { width: 22px; height: 22px; opacity: .7; }
+.title-card:active .wide-art { transform: scale(0.97); }
+
+/* Continue watching: landscape cards (other shelves keep portrait posters). */
+.continue-shelf .shelf-items { grid-auto-columns: 240px; }
+.continue-card .wide-art { box-shadow: 0 2px 8px color-mix(in srgb, var(--velvet) 30%, transparent); }
+.continue-card .continue-episode { margin-top: 1px; color: var(--paper); opacity: .85; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.continue-card .continue-episode + .sub { margin-top: 0; }
+
+/* Episode rows in a season: thumbnail left, text beside it. */
+.episode-row { padding: 10px 12px 10px 10px; }
+.episode-thumb { flex: none; width: 112px; border-radius: 8px; }
+.episode-row .row-title { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+
+/* Up next: the next episode's still beside the label and title (hidden in the short landscape layout). */
+.up-next-copy { display: flex; align-items: center; gap: 12px; }
+.up-next-copy > div:last-child { min-width: 0; }
+.up-next-art { flex: none; width: 96px; }
+.up-next-art .wide-art { border-radius: 8px; }
+.up-next-art:empty { display: none; }
+
+@media (max-width: 480px) {
+  .episode-thumb { width: 80px; border-radius: 7px; }
+}
+@media (max-width: 420px) {
+  .continue-shelf .shelf-items { grid-auto-columns: 200px; }
+  /* Actions move to a second line so the title keeps its width on phones. */
+  .episode-row { flex-wrap: wrap; row-gap: 8px; }
+  .episode-row .row-text { flex: 1 1 calc(100% - 92px); }
+  .episode-row > :not(.wide-art):not(.row-text) { margin-left: auto; }
+}
+@media (max-height: 450px) and (min-width: 480px) {
+  .up-next-art { display: none; }
+}

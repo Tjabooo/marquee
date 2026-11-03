@@ -57,8 +57,9 @@ test('Up Next uses closing-credit chapters first, otherwise a conservative runti
 const source = await fs.readFile(new URL('../public/app.js', import.meta.url), 'utf8');
 const between = (start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
 class Element {
-  constructor() { this.hidden = true; this.disabled = false; this.textContent = ''; this.attrs = {}; this.events = new Map(); this.style = { setProperty() {} }; this.classes = new Set(); this.classList = { add: (...xs) => xs.forEach(x => this.classes.add(x)), remove: (...xs) => xs.forEach(x => this.classes.delete(x)), toggle: (x, on) => on ? this.classes.add(x) : this.classes.delete(x) }; }
+  constructor() { this.hidden = true; this.disabled = false; this.textContent = ''; this.attrs = {}; this.events = new Map(); this.style = { setProperty() {} }; this.classes = new Set(); this.dataset = {}; this.children = []; this.classList = { add: (...xs) => xs.forEach(x => this.classes.add(x)), remove: (...xs) => xs.forEach(x => this.classes.delete(x)), toggle: (x, on) => on ? this.classes.add(x) : this.classes.delete(x) }; }
   setAttribute(k, v) { this.attrs[k] = v; }
+  replaceChildren(...xs) { this.children = xs; }
   removeAttribute(k) { delete this.attrs[k]; }
   addEventListener(k, fn) { if (!this.events.has(k)) this.events.set(k, new Set()); this.events.get(k).add(fn); }
   removeEventListener(k, fn) { this.events.get(k)?.delete(fn); }
@@ -73,7 +74,7 @@ function playbackHarness({ prepare, autoplayRejected = false } = {}) {
   const logs = [];
   const video = new Element();
   const context = vm.createContext({ $, video, URL, AbortController, setTimeout, clearTimeout, location: { href: 'https://example.test/' },
-    nextLibraryEpisode, isNextEpisodeTime, invalidateLibraryProgress() {}, state: { library: [episode('one', 1), episode('two', 2)], libraryShows: [], progress: {}, view: 'library' },
+    nextLibraryEpisode, isNextEpisodeTime, invalidateLibraryProgress() {}, state: { library: [episode('one', 1), episode('two', 2, { still: 'https://image.test/two.jpg' })], libraryShows: [{ id: 'tv-123', backdrop: 'https://image.test/show.jpg' }], progress: {}, view: 'library' },
     current: { ...playing, ready: true, sourceUrl: 'https://example.test/one.mp4', abort: new AbortController(), creditsAt: 800, upNextDismissed: false },
     party: null, nativeSubs: false, onTvVersion: false, seeking: null, hasRemotePlayback: false,
     playerEl: $('#player'), ccBtn: $('#cc-btn'), audioBtn: $('#sync-btn'), helpEl: $('#help'), osdEl: $('#osd'),
@@ -81,6 +82,7 @@ function playbackHarness({ prepare, autoplayRejected = false } = {}) {
     document: { activeElement: new Element(), body: { style: {}, classList: { add() {}, remove() {} } } },
     localStorage: { setItem: (key, value) => logs.push({ store: key, value: JSON.parse(value) }), removeItem: key => logs.push({ remove: key }) },
     jsonPost: body => ({ body }), progressRef: f => `l:${f.id}`, resumeKey: f => `resume:${f.id}`, savedProgress: () => null,
+    episodeArt: (still, show) => ({ still, backdrop: show?.backdrop }),
     episodeLabel: f => `S${f.season} E${f.episode}`, libraryFile: f => ({ ...f, kind: 'lib', key: f.id, done: true }),
     toast: message => logs.push({ toast: message }), layoutSubs: () => logs.push({ layout: true }),
     api: async (path, options) => { logs.push({ path, options, id: context.current?.id }); if (path.includes('/play-link')) return prepare ? prepare(options) : { url: 'https://example.test/two.mp4', name: 'two.mp4' }; if (path.endsWith('/credits')) return { creditsAt: null }; return {}; },
@@ -110,6 +112,7 @@ test('manual Next saves the old episode, ignores a double click, preserves overl
   h.video.currentTime = 850;
   const first = h.run('playNextEpisode()');
   const second = h.run('playNextEpisode()');
+  assert.deepEqual(h.$('#up-next-art').children, [{ still: 'https://image.test/two.jpg', backdrop: 'https://image.test/show.jpg' }], 'Up next shows the next episode’s still');
   assert.equal(h.$('#up-next-play').disabled, true);
   assert.equal(h.context.current.id, 'one');
   assert.equal(h.video.paused, true);

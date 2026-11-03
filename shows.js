@@ -191,6 +191,8 @@ export async function groupShows(items, tmdb, { wait = 2500 } = {}) {
         poster: sd?.poster || d?.poster || null,
         total: sd?.total || null,                               // episodes in the season on TMDB
         count: new Set(eps.map((i) => i.episode)).size,          // episodes on the server
+        // Every TMDB episode's name and still, so rows for episodes not on the server get them too.
+        episodes: d?.episodes?.[n] || {},
       };
     });
     for (const it of grp.items) {
@@ -282,6 +284,10 @@ export function knownShow(title, year) {
   const key = showKey(title);
   const id = cache.names[`${key}|${year || ''}`]?.id ?? cache.names[`${key}|`]?.id;
   return id ? cache.shows[id] || null : null;
+}
+// One episode's TMDB name and still from the cache (link previews), or null.
+export function knownEpisode(title, year, season, episode) {
+  return knownShow(title, year)?.episodes?.[season]?.[episode] || null;
 }
 export function knownFilm(key, title, year) {
   const explicit = cache.filmFiles[key];
