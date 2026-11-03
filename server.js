@@ -19,6 +19,8 @@ import * as clips from './clips.js';
 import * as invites from './invites.js';
 import * as shows from './shows.js';
 import * as season from './season.js';
+import { matchesRelease } from './release-match.js';
+import { downloadDestination, downloadFilePath } from './download-paths.js';
 import * as recommend from './recommend.js';
 import * as accounts from './accounts.js';
 import { NotesStore } from './notes.js';
@@ -310,16 +312,34 @@ async function discoverGenre({ type, movieGenre, tvGenre, sort, page }) {
 
 // ---------- library ----------
 let libraryCache = { at: 0, items: [] };
+let libraryScan = null;
+let libraryRevision = 0;
+function invalidateLibrary() { libraryCache.at = 0; libraryRevision++; }
 
 async function scanLibrary() {
   if (!MEDIA_DIR) return null;
   if (Date.now() - libraryCache.at < 30_000) return libraryCache.items;
+  if (libraryScan) return libraryScan;
+  const task = (async () => {
+    // A completion/delete during a scan must not turn its earlier view into a fresh cache.
+    let revision;
+    do { revision = libraryRevision; await scanLibraryNow(); } while (revision !== libraryRevision);
+    return libraryCache.items;
+  })();
+  const done = task.finally(() => { if (libraryScan === done) libraryScan = null; });
+  libraryScan = done;
+  return done;
+}
 
+async function scanLibraryNow() {
   const items = [];
   async function walk(dir, depth) {
     if (depth > 6) return;
     let entries;
-    try { entries = await fs.promises.readdir(dir, { withFileTypes: true }); } catch { return; }
+    try { entries = await fs.promises.readdir(dir, { withFileTypes: true }); } catch {
+      if (depth === 0) throw new HttpError(503, 'The media folder could not be read. Check that its drive is connected and try again.');
+      return;
+    }
     for (const e of entries) {
       if (e.name.startsWith('.') || e.name.startsWith('$')) continue;
       const full = path.join(dir, e.name);
@@ -363,15 +383,27 @@ const libraryPath = (id) => converter.preferConverted(librarySource(id));
 
 // ---------- qBittorrent ----------
 let qbitCookie = '';
+let qbitSigningIn = null;
 
-async function qbitLogin() {
+function qbitLogin() {
+  if (qbitSigningIn) return qbitSigningIn;
+  const task = signInQbit();
+  const done = task.finally(() => { if (qbitSigningIn === done) qbitSigningIn = null; });
+  qbitSigningIn = done;
+  return done;
+}
+
+async function signInQbit() {
   const body = new URLSearchParams({
     username: process.env.QBIT_USER || '',
     password: process.env.QBIT_PASS || '',
   });
-  const r = await fetch(`${QBIT_URL}/api/v2/auth/login`, {
-    method: 'POST', body, headers: { Referer: QBIT_URL }, signal: AbortSignal.timeout(5000),
-  });
+  let r;
+  try {
+    r = await fetch(`${QBIT_URL}/api/v2/auth/login`, {
+      method: 'POST', body, headers: { Referer: QBIT_URL }, signal: AbortSignal.timeout(5000),
+    });
+  } catch { throw new HttpError(503, 'qBittorrent could not be reached while signing in. Try again when it is running.'); }
   const text = (await r.text()).trim();
   if (r.status === 403) {
     throw new HttpError(502, 'qBittorrent has temporarily blocked sign-ins after too many failed attempts. Restart qBittorrent to clear it.');
@@ -381,7 +413,7 @@ async function qbitLogin() {
     throw new HttpError(502, 'Could not sign in to qBittorrent. Check QBIT_USER and QBIT_PASS in .env.');
   }
   const cookie = (r.headers.getSetCookie?.() || [])[0]?.split(';')[0];
-  if (cookie) qbitCookie = cookie; // absent when localhost auth bypass is enabled
+  qbitCookie = cookie || ''; // absent when localhost auth bypass is enabled
 }
 
 async function qbitRequest(endpoint, init = {}, retry = true) {
@@ -405,15 +437,165 @@ async function qbitRequest(endpoint, init = {}, retry = true) {
   return r;
 }
 
-const qbit = async (endpoint) => (await qbitRequest(endpoint)).json();
+const torrentInventory = { at: 0, items: null, pending: null };
+const knownLibraryAvailability = new Map();
+async function qbit(endpoint) {
+  let data;
+  try { data = await (await qbitRequest(endpoint)).json(); }
+  catch (error) {
+    if (/^\/api\/v2\/torrents\/info(?:\?|$)/.test(endpoint)) torrentInventory.at = 0;
+    throw error;
+  }
+  if (/^\/api\/v2\/torrents\/info(?:\?|$)/.test(endpoint) && !/[?&](?:hashes|filter)=/.test(endpoint) && Array.isArray(data)) {
+    torrentInventory.at = Date.now(); torrentInventory.items = data;
+  }
+  return data;
+}
+async function libraryVisibleItems(items, user) {
+  if (!QBIT_URL || !items) return items;
+  const mine = accounts.libraryOf(user.id);
+  const trusted = (item) => mine.has(accounts.mediaKey(item.full)) && knownLibraryAvailability.get(accounts.mediaKey(item.full)) !== false;
+  let torrents = torrentInventory.items;
+  if (!torrents || Date.now() - torrentInventory.at > 5000) {
+    try {
+      if (!torrentInventory.pending) {
+        torrentInventory.pending = qbit('/api/v2/torrents/info').finally(() => { torrentInventory.pending = null; });
+      }
+      torrents = await torrentInventory.pending;
+    } catch {
+      // A disconnected client must not make existing trusted ownership disappear. Unowned files
+      // cannot be offered for adoption until their completion can be established again.
+      return items.filter(trusted);
+    }
+  }
+  const availability = new Map(), uncertain = [];
+  const relevant = torrents.filter((t) => items.some((i) => isInside(i.full, t.save_path || MEDIA_DIR)));
+  await Promise.all(relevant.map(async (t) => {
+    try {
+      const files = await torrentFileMetadata(t);
+      await Promise.all(files.filter((f) => isVideo(f.name)).map(async (f) => {
+        const key = accounts.mediaKey(torrentFilePath(t, f));
+        if (!key) return;
+        const ready = !deletingDownloads.has(t.hash.toLowerCase()) && f.priority !== 0 && await downloadAvailable(t, f);
+        availability.set(key, availability.get(key) === false ? false : ready);
+      }));
+    } catch { uncertain.push(t.content_path || t.save_path); }
+  }));
+  return items.filter((item) => {
+    const key = accounts.mediaKey(item.full);
+    if (availability.has(key)) {
+      const ready = availability.get(key); knownLibraryAvailability.set(key, ready); return ready;
+    }
+    if (uncertain.some((dir) => dir && isInside(item.full, dir))) return trusted(item);
+    knownLibraryAvailability.set(key, true);
+    return true;
+  });
+}
+
+// Coalesce file metadata between viewers/polls and bound requests for large torrent lists.
+// Completion changes bypass the short cache so a newly finished episode is available immediately.
+const torrentFilesCache = new Map();
+let torrentFileRequests = 0;
+const torrentFileWaiters = [];
+async function fetchTorrentFiles(hash) {
+  if (torrentFileRequests >= 4) await new Promise((resolve) => torrentFileWaiters.push(resolve));
+  else torrentFileRequests++;
+  try { return await qbit(`/api/v2/torrents/files?hash=${encodeURIComponent(hash)}`); }
+  finally {
+    const next = torrentFileWaiters.shift();
+    if (next) next(); else torrentFileRequests--;
+  }
+}
+function torrentFileMetadata(t, { fresh = false } = {}) {
+  const key = `${t.save_path || ''}|${t.progress >= 1}`;
+  const previous = torrentFilesCache.get(t.hash);
+  if (!fresh && previous?.key === key && (previous.pending || Date.now() - previous.at < 5000)) return previous.promise;
+  // A claim and the metadata view can safely share an in-flight request.
+  if (previous?.pending && previous.key === key) return previous.promise;
+  const entry = { key, at: Date.now(), pending: true, promise: null };
+  entry.promise = fetchTorrentFiles(t.hash).then((files) => {
+    if (!Array.isArray(files)) throw new Error('Invalid qBittorrent file list.');
+    entry.at = Date.now(); entry.pending = false;
+    return files;
+  }).catch((error) => { if (torrentFilesCache.get(t.hash) === entry) torrentFilesCache.delete(t.hash); throw error; });
+  torrentFilesCache.set(t.hash, entry);
+  if (torrentFilesCache.size > 500) torrentFilesCache.delete(torrentFilesCache.keys().next().value);
+  return entry.promise;
+}
+function torrentFilePath(t, f) {
+  const full = downloadFilePath(t.save_path, f.name);
+  if (!full) throw new HttpError(502, 'qBittorrent returned an unsafe file path.');
+  return full;
+}
+const fileExists = (file) => { try { return fs.statSync(file).isFile(); } catch { return false; } };
+const downloadStatCache = new Map();
+let downloadStatRequests = 0;
+const downloadStatWaiters = [];
+async function statDownloadFile(full) {
+  if (downloadStatRequests >= 8) await new Promise((resolve) => downloadStatWaiters.push(resolve));
+  else downloadStatRequests++;
+  try { return await fs.promises.stat(full).catch(() => null); }
+  finally { const next = downloadStatWaiters.shift(); if (next) next(); else downloadStatRequests--; }
+}
+function downloadAvailable(t, f, { fresh = false } = {}) {
+  if (!(f.progress >= 1) || BUSY_STATES.test(t.state || '')) return Promise.resolve(false);
+  let full;
+  try { full = torrentFilePath(t, f); } catch { return Promise.resolve(false); }
+  const key = `${full}|${f.size || 0}`, cached = downloadStatCache.get(key);
+  if (!fresh && cached && Date.now() - cached.at < 1500) return cached.promise;
+  const entry = { at: Date.now(), promise: statDownloadFile(full).then((stat) => Boolean(stat?.isFile() && (!f.size || stat.size >= f.size))) };
+  downloadStatCache.set(key, entry);
+  if (downloadStatCache.size > 2000) downloadStatCache.delete(downloadStatCache.keys().next().value);
+  return entry.promise;
+}
+
+function torrentIdentity(name) {
+  const parsed = parseName(name, { file: false });
+  if (parsed.season != null) return parsed;
+  const pack = /\b(?:S(\d{1,2})|season[\s._-]*(\d{1,2}))\b/i.exec(name.replace(/[._]+/g, ' '));
+  return pack ? { ...parsed, title: parseName(name.slice(0, pack.index), { file: false }).title, season: Number(pack[1] || pack[2]) } : parsed;
+}
 
 // Adds a magnet link, .torrent URL or uploaded .torrent file. `user` is who it's for: the torrent is
 // tagged marquee-u<id> (and a magnet's infohash recorded) so it lands in their library when it finishes.
-async function addDownload({ link, file, user = null, name = '', film = null }) {
+const downloadAdds = new Map();
+const recentlyAddedDownloads = new Map();
+const deletingDownloads = new Set();
+function assertDownloadNotDeleting(hash) {
+  if (hash && deletingDownloads.has(hash.toLowerCase())) throw new HttpError(409, 'This download is being removed. Wait for it to finish, then try again.');
+}
+async function addDownload(opts) {
+  const hash = accounts.magnetHash(opts.link);
+  if (!hash) return addDownloadNow(opts);
+  const task = (downloadAdds.get(hash) || Promise.resolve()).catch(() => {}).then(() => addDownloadNow(opts));
+  const done = task.finally(() => { if (downloadAdds.get(hash) === done) downloadAdds.delete(hash); });
+  downloadAdds.set(hash, done);
+  return done;
+}
+async function addDownloadNow({ link, file, user = null, name = '', film = null, show = null, mediaType = null }) {
+  const hash = accounts.magnetHash(link);
+  assertDownloadNotDeleting(hash);
+  if (hash && user) {
+    const [existing] = await qbit(`/api/v2/torrents/info?hashes=${hash}`);
+    assertDownloadNotDeleting(hash);
+    if (existing) {
+      accounts.recordTorrent(hash, torrentOwner(existing), existing.name);
+      accounts.requestTorrent(hash, user.id, name);
+      if (film && !shows.filmDownload(hash)) shows.rememberFilmDownload(hash, film);
+      if (show && !shows.showDownload(hash)) shows.rememberShowDownload(hash, show, torrentIdentity(name));
+      if (/^(missingFiles|error|unknown)$/.test(existing.state || '')) await retryDownload(existing);
+      await claimCompletedTorrents([existing]);
+      return;
+    }
+  }
   const form = new FormData();
   if (user) {
     form.append('tags', accounts.tagFor(user.id));
-    if (link) accounts.recordTorrent(accounts.magnetHash(link), user.id, name);
+  }
+  const destination = downloadDestination(MEDIA_DIR, { mediaType, film, name });
+  if (destination) {
+    await fs.promises.mkdir(destination, { recursive: true });
+    form.append('savepath', destination);
   }
   if (file) {
     form.append('torrents', new Blob([file], { type: 'application/x-bittorrent' }), 'upload.torrent');
@@ -430,7 +612,17 @@ async function addDownload({ link, file, user = null, name = '', film = null }) 
   if (r.status === 415 || /^fails/i.test(text)) {
     throw new HttpError(400, file ? 'qBittorrent couldn’t read that .torrent file.' : 'qBittorrent couldn’t use that link.');
   }
-  if (film && link) shows.rememberFilmDownload(accounts.magnetHash(link), film);
+  if (hash && user) {
+    assertDownloadNotDeleting(hash);
+    const recent = recentlyAddedDownloads.get(hash);
+    accounts.requestTorrent(hash, user.id, name, { restart: !recent || Date.now() - recent > 60000 });
+    recentlyAddedDownloads.set(hash, Date.now());
+    if (recentlyAddedDownloads.size > 500) recentlyAddedDownloads.delete(recentlyAddedDownloads.keys().next().value);
+    torrentFilesCache.delete(hash);
+    torrentInventory.at = 0;
+  }
+  if (film && hash) shows.rememberFilmDownload(hash, film);
+  if (show && hash) shows.rememberShowDownload(hash, show, torrentIdentity(name));
 }
 
 // Episodes of a show's season that are already here: in the library, or in qBittorrent (an episode,
@@ -438,21 +630,42 @@ async function addDownload({ link, file, user = null, name = '', film = null }) 
 // `user`'s library instead of being downloaded twice.
 async function haveEpisodes(key, seasonNo, user = null) {
   const have = new Set();
-  await scanLibrary();
-  for (const i of libraryCache.all || []) {
-    if (i.season === seasonNo && i.episode != null && shows.showKey(i.title) === key) {
-      have.add(i.episode);
-      if (user) accounts.addEntry(user.id, accounts.mediaKey(i.full), 'added');
-    }
-  }
   let list = [];
   try { list = await qbit('/api/v2/torrents/info'); } catch { /* qBittorrent down: library only */ }
-  for (const t of list) {
-    const n = parseName(t.name);
-    if (shows.showKey(n.title) !== key) continue;
-    if (n.season === seasonNo && n.episode != null) have.add(n.episode);
-    const pack = new RegExp(`\\bS0?${seasonNo}\\b(?!\\s?E\\d)|\\bseason\\s?0?${seasonNo}\\b`, 'i').test(t.name.replace(/[._]+/g, ' '));
-    if (n.season == null && pack) for (let e = 1; e <= 99; e++) have.add(e);
+  const relevant = list.filter((t) => {
+    const identity = torrentIdentity(t.name);
+    return identity.season === seasonNo && season.sameShow(identity.title, key);
+  });
+  const managed = new Map();
+  for (const t of relevant) {
+    try {
+      const files = await torrentFileMetadata(t, { fresh: true });
+      let covered = false;
+      for (const f of files) {
+        const full = torrentFilePath(t, f);
+        const selected = f.priority !== 0 && isVideo(f.name);
+        const ready = selected && f.progress >= 1 && fileExists(full) && !BUSY_STATES.test(t.state || '');
+        managed.set(path.resolve(full).toLowerCase(), ready);
+        if (!selected) continue;
+        const failed = /^(missingFiles|error|unknown)$/.test(t.state || '');
+        // Selected queued files count, but a completed/missing download must prove its files exist.
+        if (!ready && (failed || t.progress >= 1)) continue;
+        for (const ep of season.episodesIn(f.name, seasonNo)) { have.add(ep); covered = true; }
+      }
+      if (covered && user) {
+        accounts.recordTorrent(t.hash, torrentOwner(t), t.name);
+        accounts.requestTorrent(t.hash, user.id, t.name);
+      }
+    } catch { /* Unreadable file metadata does not prove episode coverage. */ }
+  }
+  const library = await libraryVisibleItems(await scanLibrary(), user || accounts.ownerUser());
+  for (const i of library || []) {
+    if (i.season !== seasonNo || i.episode == null || !season.sameShow(i.title, key)) continue;
+    const managedState = managed.get(path.resolve(i.full).toLowerCase());
+    // A partial file may already be visible in MEDIA_DIR; never adopt it as a playable episode.
+    if (managedState === false || (managedState == null && relevant.some((t) => isInside(i.full, t.content_path || path.join(t.save_path || '', t.name))))) continue;
+    for (const ep of season.episodesIn(i.file, seasonNo)) have.add(ep);
+    if (user) accounts.addEntry(user.id, accounts.mediaKey(i.full), 'added');
   }
   return have;
 }
@@ -485,22 +698,70 @@ async function listDownloads(user, all = false) {
     if (!names.has(id)) names.set(id, id == null ? null : accounts.userById(id)?.name || null);
     return names.get(id);
   };
-  const owned = torrents.map((t) => [t, torrentOwner(t)]).filter(([, owner]) => all || owner === user.id);
-  return owned.map(([t, owner]) => ({
+  const owned = torrents.map((t) => [t, torrentOwner(t), accounts.torrentRequesters(t.hash).includes(user.id)])
+    .filter(([, owner, requested]) => all || owner === user.id || requested);
+  await scanLibrary();
+  const library = new Map((libraryCache.items || []).map((i) => [accounts.mediaKey(i.full), i]));
+  const mine = accounts.libraryOf(user.id);
+  return Promise.all(owned.map(async ([t, owner, requested]) => {
+    let files = [], filesKnown = false;
+    try { files = await torrentFileMetadata(t); filesKnown = true; } catch { /* Keep the download visible while qBittorrent refreshes metadata. */ }
+    const videos = files.filter((f) => f.priority !== 0 && isVideo(f.name));
+    let parsed = torrentIdentity(t.name);
+    if (parsed.season == null && videos.length) {
+      const first = parseName(path.basename(videos[0].name), { file: true });
+      if (first.season != null) parsed = { ...parsed, ...first };
+    }
+    const film = shows.filmDownload(t.hash), show = shows.showDownload(t.hash);
+    const cachedShow = shows.knownShow(parsed.title, parsed.year), cachedFilm = shows.knownFilm(null, parsed.title, parsed.year);
+    const mediaType = film ? 'movie' : show || parsed.season != null || cachedShow ? 'tv' : cachedFilm?.id || parsed.year ? 'movie' : null;
+    const art = film ? mapTitle(film, 'movie') : show ? mapTitle(show, 'tv') : mediaType === 'tv' ? cachedShow : cachedFilm;
+    const tmdbId = film?.id || show?.id || art?.id || null;
+    const canonicalTitle = art?.title || parsed.title;
+    const showKey = mediaType === 'tv' ? shows.showKey(canonicalTitle) : null;
+    const safeFiles = await Promise.all(videos.map(async (f) => {
+      let full = null;
+      try { full = torrentFilePath(t, f); } catch { /* Invalid metadata cannot become playable. */ }
+      const key = full && accounts.mediaKey(full);
+      const item = key && mine.has(key) && library.get(key);
+      return { name: path.basename(f.name.replace(/\\/g, '/')), size: f.size || 0, progress: f.progress || 0,
+        available: await downloadAvailable(t, f),
+        libraryId: item?.id || null };
+    }));
+    const episodes = [];
+    for (let i = 0; i < videos.length; i++) {
+      const fileSeason = parseName(videos[i].name).season ?? parsed.season;
+      for (const episode of season.episodesIn(videos[i].name, fileSeason)) {
+        episodes.push({ season: fileSeason, episode, progress: safeFiles[i].progress,
+          available: safeFiles[i].available, libraryId: safeFiles[i].libraryId });
+      }
+    }
+    const primary = safeFiles.toSorted((a, b) => b.size - a.size)[0];
+    const selected = files.filter((f) => f.priority !== 0);
+    const verifiedComplete = t.progress >= 1 && selected.length > 0 && (await Promise.all(selected.map((f) => downloadAvailable(t, f)))).every(Boolean);
+    return {
     hash: t.hash,
-    tmdbId: shows.filmDownload(t.hash)?.id || null,
+    mediaType, tmdbId, canonicalTitle, showKey,
+    showId: mediaType === 'tv' ? tmdbId ? `tv-${tmdbId}` : `name-${showKey}${parsed.year ? `-${parsed.year}` : ''}` : null,
+    poster: art?.poster || null, backdrop: art?.backdrop || null,
+    added: t.added_on ? t.added_on * 1000 : accounts.torrentRow(t.hash)?.added_at || null,
+    ready: Boolean(primary?.available), hasVideo: filesKnown ? videos.length > 0 : null, files: safeFiles, episodes,
+    libraryIds: [...new Set(safeFiles.map((f) => f.libraryId).filter(Boolean))],
     owner: all ? nameOf(owner) : undefined,
-    mine: owner === user.id,
+    mine: owner === user.id || requested,
+    canManage: user.isOwner || owner === user.id,
     name: t.name,
-    ...parseName(t.name),
+    ...parsed,
     progress: t.progress,
     speed: t.dlspeed,
     eta: t.eta >= 8640000 ? null : t.eta,
     size: t.size,
     state: t.state,
-    done: t.progress >= 1,
+    transferComplete: t.progress >= 1,
+    done: Boolean(verifiedComplete),
     converting: convertingIn(t),
     subs: subtitles.subtitleWants(t.hash),
+    };
   }));
 }
 
@@ -515,13 +776,15 @@ async function downloadSource(hash) {
   if (!validHash(hash)) throw new HttpError(400, 'Invalid download.');
   const [info] = await qbit(`/api/v2/torrents/info?hashes=${hash}`);
   if (!info) throw new HttpError(404, 'That download no longer exists.');
-  const files = await qbit(`/api/v2/torrents/files?hash=${hash}`);
+  const files = await torrentFileMetadata(info, { fresh: true });
   const video = files
-    .filter((f) => VIDEO_EXT.has(path.extname(f.name).toLowerCase()) && !/\bsample\b/i.test(f.name))
+    .filter((f) => f.priority !== 0 && isVideo(f.name))
     .sort((a, b) => b.size - a.size)[0];
   if (!video) throw new HttpError(404, 'This download has no playable video file.');
-  if (video.progress < 1) throw new HttpError(409, 'This video hasn’t finished downloading yet.');
-  return path.join(info.save_path, video.name);
+  if (!(video.progress >= 1) || BUSY_STATES.test(info.state || '')) throw new HttpError(409, 'This video hasn’t finished downloading yet.');
+  const full = torrentFilePath(info, video);
+  if (!fileExists(full)) throw new HttpError(409, 'The downloaded video is missing. Retry the download to check its files.');
+  return full;
 }
 const downloadPath = async (hash) => converter.preferConverted(await downloadSource(hash));
 
@@ -551,6 +814,15 @@ const signPlay = (kind, id, variant, exp) => crypto.createHmac('sha256', streamS
 
 // variant "browser" = the copy with browser-friendly audio; "tv" = original audio for TVs.
 async function streamFile(kind, id, variant) {
+  const selected = variant.match(/^browser-a(\d+)-([a-f0-9]{24})$/);
+  if (selected) {
+    const base = await streamFile(kind, id, 'browser');
+    const file = converter.selectedAudioPath(base, Number(selected[1]), selected[2]);
+    if (!file) throw new HttpError(410, 'This audio selection has expired. Choose the language again.');
+    // Keep actively streamed selections out of the cache's stale-file cleanup.
+    fs.promises.utimes(file, new Date(), new Date()).catch(() => {});
+    return file;
+  }
   const browser = variant === 'browser';
   if (kind === 'lib') return browser ? converter.preferConverted(librarySource(id), { browser: true }) : libraryPath(id);
   if (kind === 'dl') {
@@ -560,14 +832,25 @@ async function streamFile(kind, id, variant) {
   throw new HttpError(400, 'Unknown media type.');
 }
 
-async function playLink(kind, id, variant) {
+async function playLink(kind, id, variant, audio = null, audioSource = null, retry = false) {
   if (!['browser', 'tv'].includes(variant)) throw new HttpError(400, 'Unknown variant.');
   if (!/^[A-Za-z0-9_-]+$/.test(id)) throw new HttpError(400, 'Invalid file.');
-  const file = await streamFile(kind, id, variant);
+  let file = await streamFile(kind, id, variant);
+  let selection = {};
+  if (audio !== null) {
+    if (variant !== 'browser' || !/^\d{1,5}$/.test(String(audio))) throw new HttpError(400, 'Invalid audio selection.');
+    const track = Number(audio);
+    const result = await converter.requestAudioTrack(file, track, audioSource, { retry });
+    selection = { ready: result.ready, track, audioSource };
+    if (!result.ready) return { ...selection, state: result.state };
+    file = result.file;
+    variant = `browser-a${track}-${audioSource}`;
+  }
   if (!fs.existsSync(file)) throw new HttpError(404, 'That file is no longer on the server.');
   const exp = Math.floor(Date.now() / 1000) + PLAY_LINK_HOURS * 3600;
   const name = path.basename(file);
   return {
+    ...selection,
     url: `/play/${kind}/${id}/${variant}/${exp}/${signPlay(kind, id, variant, exp)}/${encodeURIComponent(name)}`,
     name,
     ext: path.extname(name).slice(1).toLowerCase(),
@@ -575,7 +858,7 @@ async function playLink(kind, id, variant) {
 }
 
 async function handlePlay(req, res, url) {
-  const m = url.pathname.match(/^\/play\/(lib|dl)\/([A-Za-z0-9_-]+)\/(browser|tv)\/(\d+)\/([A-Za-z0-9_-]+)(?:\/[^/]*)?$/);
+  const m = url.pathname.match(/^\/play\/(lib|dl)\/([A-Za-z0-9_-]+)\/(browser(?:-a\d+-[a-f0-9]{24})?|tv)\/(\d+)\/([A-Za-z0-9_-]+)(?:\/[^/]*)?$/);
   if (!m) throw new HttpError(404, 'Not found.');
   const [, kind, id, variant, exp, sig] = m;
   const expected = signPlay(kind, id, variant, exp);
@@ -1023,7 +1306,7 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, { results: data.results.filter(onlyScreen).map((x) => mapTitle(x)) });
   }
   if (p === '/api/library') {
-    const items = await scanLibrary();
+    const items = await libraryVisibleItems(await scanLibrary(), user);
     if (!items) throw new HttpError(503, 'No media folder is set up. Add MEDIA_DIR to .env and restart.');
     // A video whose MP4 copy is being made can't be played yet (the player disables Play).
     const converting = converter.convertingFile();
@@ -1078,9 +1361,14 @@ async function handleApi(req, res, url) {
   }
   if (p === '/api/library/add' && req.method === 'POST') {
     const ids = [].concat((await readJson(req)).ids || []).map(String).slice(0, 500);
+    const available = new Set((await libraryVisibleItems(await scanLibrary(), user) || []).map((i) => i.id));
     let added = 0;
     for (const id of ids) {
       const full = librarySource(id);
+      if (!available.has(id)) throw new HttpError(409, 'That video is not ready to add. Wait for its download to finish, then try again.');
+      if ((torrentInventory.items || []).some((t) => deletingDownloads.has(t.hash.toLowerCase()) && isInside(full, t.save_path || MEDIA_DIR))) {
+        throw new HttpError(409, 'A download in this folder is being removed. Wait for it to finish, then try again.');
+      }
       if (!fs.existsSync(full)) continue;
       if (accounts.addEntry(user.id, accounts.mediaKey(full), 'added')) added++;
     }
@@ -1104,13 +1392,20 @@ async function handleApi(req, res, url) {
       const dn = /[?&]dn=([^&]+)/.exec(String(body.link || ''))?.[1];
       let name = String(body.name || '');
       if (!name && dn) { try { name = decodeURIComponent(dn.replace(/\+/g, ' ')); } catch { name = dn; } }
-      let film = null;
+      let film = null, show = null;
+      if (body.movieId != null && body.tvId != null) throw new HttpError(400, 'Choose a film or a show identity.');
       if (body.movieId != null) {
         const id = Number(body.movieId);
         if (!Number.isSafeInteger(id) || id <= 0) throw new HttpError(400, 'Invalid film identity.');
         film = await tmdb(`/movie/${id}`);
       }
-      await addDownload({ link: body.link, user, name, film });
+      if (body.tvId != null) {
+        const id = Number(body.tvId);
+        if (!Number.isSafeInteger(id) || id <= 0) throw new HttpError(400, 'Invalid show identity.');
+        show = await tmdb(`/tv/${id}`);
+      }
+      await addDownload({ link: body.link, user, name, film, show,
+        mediaType: ['tv', 'movie'].includes(body.mediaType) ? body.mediaType : null });
       activity.record(req, 'download', name || 'a torrent link');
       // Subtitles chosen in torrent search are fetched when the download completes.
       if (Array.isArray(body.subs) && body.subs.length) {
@@ -1131,16 +1426,25 @@ async function handleApi(req, res, url) {
     const body = await readJson(req);
     const want = season.parseSeasonQuery(body.query);
     if (!want) throw new HttpError(400, 'Search for a show and a season, like “South Park S18”.');
+    let show = null;
+    if (body.tvId != null) {
+      const id = Number(body.tvId);
+      if (!Number.isSafeInteger(id) || id <= 0) throw new HttpError(400, 'Invalid show identity.');
+      show = await tmdb(`/tv/${id}`);
+      want.title = show.name || want.title;
+      want.year = show.first_air_date ? Number(show.first_air_date.slice(0, 4)) : want.year;
+    }
     if (body.exactQuality && !['2160p', '1440p', '1080p', '720p'].includes(body.quality)) throw new HttpError(400, 'Choose 4K, 1440p, 1080p or 720p.');
     const id = season.startSeasonJob({
       ...want,
+      requester: user.id,
       quality: String(body.quality || ''),
       exactQuality: Boolean(body.exactQuality),
       subs: Array.isArray(body.subs) ? body.subs.map(String).slice(0, 3) : [],
     }, {
       parseName, tmdb: TMDB_TOKEN || TMDB_KEY ? tmdb : null, seasonEpisodes: shows.seasonEpisodes,
       searchTorrents: torrents.searchTorrents, magnetFor1337x: torrents.magnetFor1337x,
-      addDownload: (opts) => addDownload({ ...opts, user }),
+      addDownload: (opts) => addDownload({ ...opts, user, show }),
       wantSubtitles: (link, subs, name) => { subtitles.wantSubtitles(link, subs, name); setTimeout(checkSubtitleWants, 30_000); },
       haveEpisodes: (key, seasonNo) => haveEpisodes(key, seasonNo, user), log: (msg) => console.log(msg),
     });
@@ -1148,13 +1452,16 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, { id });
   }
   if ((m = p.match(/^\/api\/downloads\/season\/([a-f0-9]{12})$/))) {
-    const job = season.seasonJob(m[1]);
+    const job = season.seasonJob(m[1], { userId: user.id, owner: user.isOwner });
     if (!job) throw new HttpError(404, 'That season download is no longer tracked.');
     return sendJson(res, 200, job);
   }
   // ---- torrent search ----
   if (p === '/api/torrents/search') {
-    return sendJson(res, 200, await torrents.searchTorrents(url.searchParams.get('q'), url.searchParams.get('type')));
+    const query = url.searchParams.get('q');
+    const found = await torrents.searchTorrents(query, url.searchParams.get('type'));
+    return sendJson(res, 200, url.searchParams.get('strict') === '1'
+      ? { ...found, results: found.results.filter((r) => matchesRelease(query, r.name, parseName)) } : found);
   }
   // One best download for a film, or for a season of a show as a single pack (see recommend.js).
   if (p === '/api/torrents/recommend') {
@@ -1167,8 +1474,20 @@ async function handleApi(req, res, url) {
     if (!['all', '2160p', '1440p', '1080p', '720p'].includes(quality)) throw new HttpError(400, 'Choose Auto, 4K, 1440p, 1080p or 720p.');
     if (!title || (type === 'tv' && !seasonNo)) throw new HttpError(400, 'Which title, and for a show which season?');
     const query = type === 'tv' ? `${title} S${String(seasonNo).padStart(2, '0')}` : [title, year].filter(Boolean).join(' ');
-    const { results } = await torrents.searchTorrents(query, type);
-    const { pick, why } = recommend.pickBest(results, { type, title, year, season: seasonNo, quality, prefer: user.settings?.quality }, parseName);
+    const want = { type, title, year, season: seasonNo, quality, prefer: user.settings?.quality };
+    let { results } = await torrents.searchTorrents(query, type);
+    let { pick, why } = recommend.pickBest(results, want, parseName);
+    // House is frequently released as "House MD"; searching only "House S02"
+    // can miss a complete pack even though the episode downloader finds it.
+    if (!pick && type === 'tv' && ['house', 'housemd'].includes(shows.showKey(title))) {
+      const alias = shows.showKey(title) === 'house' ? 'House MD' : 'House';
+      const alternative = `${alias} S${String(seasonNo).padStart(2, '0')}`;
+      try {
+        const found = await torrents.searchTorrents(alternative, type);
+        results = [...results, ...found.results];
+        ({ pick, why } = recommend.pickBest(results, want, parseName));
+      } catch { /* Keep original search results if the fallback provider fails. */ }
+    }
     return sendJson(res, 200, { pick, why, query, of: results.length });
   }
   if (p === '/api/torrents/magnet') {
@@ -1177,14 +1496,18 @@ async function handleApi(req, res, url) {
   if (p === '/api/downloads') {
     return sendJson(res, 200, { items: await listDownloads(user, user.isOwner && url.searchParams.get('all') === '1') });
   }
-  if ((m = p.match(/^\/api\/downloads\/([a-f0-9]{40}|[a-f0-9]{64})\/(pause|resume|delete)$/i)) && req.method === 'POST') {
+  if ((m = p.match(/^\/api\/downloads\/([a-f0-9]{40}|[a-f0-9]{64})\/(pause|resume|retry|delete)$/i)) && req.method === 'POST') {
     const body = await readJson(req).catch(() => ({}));
     const [t] = await qbit(`/api/v2/torrents/info?hashes=${m[1]}`);
     if (!t) throw new HttpError(404, 'That download no longer exists.');
     if (!user.isOwner && torrentOwner(t) !== user.id) throw new HttpError(403, 'That’s someone else’s download.');
+    if (['resume', 'retry'].includes(m[2]) && !user.canDownload) throw new HttpError(403, 'Downloads have been turned off for you. Ask the server’s owner before resuming this download.');
     if (m[2] === 'delete') {
-      await deleteDownload(t, body.files !== false);
+      await deleteDownload(t, body.files !== false, user);
       activity.record(req, 'delete', `${t.name}${body.files === false ? ' (download only, files kept)' : ''}`);
+    } else if (m[2] === 'retry') {
+      await retryDownload(t);
+      activity.record(req, 'resume', `${t.name} (checking files and retrying)`);
     } else {
       await setPaused(t.hash, m[2] === 'pause');
       activity.record(req, m[2], t.name);
@@ -1194,9 +1517,9 @@ async function handleApi(req, res, url) {
   // ---- casting ----
   if (p === '/api/play-link') {
     const q = url.searchParams;
-    const link = await playLink(q.get('kind') || '', q.get('id') || '', q.get('variant') || 'browser');
-    activity.record(req, 'play', titleOf(link.name), { quietMs: 3 * 3600 * 1000 });
-    return sendJson(res, 200, link);
+    const link = await playLink(q.get('kind') || '', q.get('id') || '', q.get('variant') || 'browser', q.get('audio'), q.get('audioSource'), q.get('audioRetry') === '1');
+    if (link.url && q.get('audio') === null) activity.record(req, 'play', titleOf(link.name), { quietMs: 3 * 3600 * 1000 });
+    return sendJson(res, link.ready === false ? 202 : 200, link);
   }
   if (p === '/api/network') {
     return sendJson(res, 200, { ...(await describeRequest(req)), castAllowed: await castAllowed(req), castWhenAwaySetting: CAST_WHEN_AWAY });
@@ -1338,6 +1661,7 @@ async function handleApi(req, res, url) {
     const sync = converter.syncState(source);
     return sendJson(res, 200, {
       known: true, codec: main, tracks, browserSafe, aligned,
+      audioSource: converter.audioSourceKey(served), defaultAudio: tracks[0]?.index ?? null,
       videoSafe, videoCodec: vid ? (vid.codec === 'hevc' ? `HEVC (${vid.tag || 'hev1'})` : `${converter.VIDEO_NAMES[vid.codec] || vid.codec}${vid.tenBit ? ' 10-bit' : ''}`) : null,
       fixable: Boolean(fix.fixable), job: fix.state || sync.state || null,
       percent: fix.percent ?? (sync.state === 'converting' ? converter.converterStatus().current?.percent ?? 0 : null),
@@ -1382,7 +1706,7 @@ async function handleApi(req, res, url) {
       const { torrent } = await deletePlan(id);
       if (torrent?.videos.some((v) => heldByOthers(accounts.mediaKey(v.full)))) scope = 'file';
     }
-    for (const file of await deleteMedia(id, scope)) {
+    for (const file of await deleteMedia(id, scope, { user, everyone })) {
       const k = accounts.mediaKey(file);
       if (k) { accounts.removeAll(k); accounts.markGone(k); }
     }
@@ -1427,7 +1751,7 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://localhost');
     const allowed = req.method === 'GET' || req.method === 'HEAD'
-      || (req.method === 'POST' && (url.pathname.startsWith('/api/cast/') || url.pathname === '/api/downloads/add' || url.pathname === '/api/downloads/season' || url.pathname === '/api/subs/fetch' || url.pathname === '/api/subs/sync' || url.pathname === '/api/library/delete' || /^\/api\/downloads\/\w+\/(pause|resume|delete)$/.test(url.pathname) || /^\/api\/media\/\w+\/[\w-]+\/sync$/.test(url.pathname)
+      || (req.method === 'POST' && (url.pathname.startsWith('/api/cast/') || url.pathname === '/api/downloads/add' || url.pathname === '/api/downloads/season' || url.pathname === '/api/subs/fetch' || url.pathname === '/api/subs/sync' || url.pathname === '/api/library/delete' || /^\/api\/downloads\/\w+\/(pause|resume|retry|delete)$/.test(url.pathname) || /^\/api\/media\/\w+\/[\w-]+\/sync$/.test(url.pathname)
         || /^\/api\/house\/(report|boot|power)$/.test(url.pathname) || /^\/api\/clips\/[\w-]+\/(share|unshare|delete|trim|rename)$/.test(url.pathname)
         || /^\/api\/access\/(invite|remove|invite\/\w+\/revoke)$/.test(url.pathname) || /^\/c\/i\/[\w-]+\/?$/.test(url.pathname)
         || /^\/api\/(me|me\/progress|library\/add|library\/extend|library\/identify|admin\/settings|admin\/users\/\d+)$/.test(url.pathname)
@@ -1463,24 +1787,28 @@ async function conversionCandidates() {
   if (QBIT_URL) {
     try {
       for (const t of await qbit('/api/v2/torrents/info')) {
-        const files = await qbit(`/api/v2/torrents/files?hash=${t.hash}`);
+        const files = await torrentFileMetadata(t, { fresh: true });
         const complete = t.progress >= 1 && !BUSY_STATES.test(t.state || '');
         for (const f of files) {
-          const full = path.join(t.save_path, f.name);
-          if (!complete || f.progress < 1) { if (f.priority !== 0) unfinished.push(full); continue; }
+          const full = torrentFilePath(t, f);
+          if (!complete || f.progress < 1 || f.priority === 0) { unfinished.push(full); continue; }
           if (/\bsample\b/i.test(f.name) || !VIDEO_EXT.has(path.extname(f.name).toLowerCase())) continue;
           torrentFiles.push(full);
         }
       }
       qbitReachable = true;
-    } catch { /* retried next round */ }
+    } catch {
+      // An incomplete inventory cannot distinguish hand-copied videos from partial torrent files.
+      // Wait for qBittorrent rather than converting (or deleting) an unknown source.
+      return [];
+    }
   }
   const isTorrentFile = (file) => torrentFiles.some((t) => samePath(t, file));
   const isUnfinished = (file) => unfinished.some((t) => samePath(t, file));
 
   const list = torrentFiles.map((file) => ({ file, deleteOriginal: false }));
   if (MEDIA_DIR) {
-    libraryCache.at = 0;
+    invalidateLibrary();
     await scanLibrary();
     // Without qBittorrent's file list there is no way to tell what it owns, so nothing is deleted.
     const deleteOriginal = qbitReachable && (process.env.CONVERT_DELETE_ORIGINAL || 'off').toLowerCase() === 'on';
@@ -1518,11 +1846,13 @@ async function torrentFor(file) {
   for (const t of list) {
     const content = t.content_path || path.join(t.save_path, t.name);
     if (!isInside(file, content) && !isInside(file, t.save_path)) continue;
-    const files = await qbit(`/api/v2/torrents/files?hash=${t.hash}`);
-    const all = files.map((f, i) => ({ index: f.index ?? i, full: path.join(t.save_path, f.name), size: f.size, priority: f.priority }));
+    const files = await torrentFileMetadata(t, { fresh: true });
+    const all = files.map((f, i) => ({ index: f.index ?? i, full: torrentFilePath(t, f), size: f.size, priority: f.priority }));
     const me = all.find((f) => samePath(f.full, file));
     if (!me) continue;
-    const videos = all.filter((f) => isVideo(f.full) && f.priority !== 0 && fs.existsSync(f.full));
+    // Deselected videos may still exist and belong to another viewer; deleting a torrent removes
+    // those bytes too, so include them in sharing/conversion/room safety checks.
+    const videos = all.filter((f) => isVideo(f.full) && fs.existsSync(f.full));
     return { hash: t.hash, name: t.name, size: t.size, fileIndex: me.index, videos };
   }
   return null;
@@ -1589,19 +1919,26 @@ async function deleteInfo(id) {
   };
 }
 
-async function deleteMedia(id, scope) {
-  const { original, torrent } = await deletePlan(id);
+async function deleteMedia(id, scope, context = {}) {
+  const plan = await deletePlan(id), hash = plan.torrent?.hash.toLowerCase();
+  assertDownloadNotDeleting(hash);
+  if (hash) deletingDownloads.add(hash);
+  try { return await deleteMediaPlan(plan, scope, context); }
+  finally { if (hash) deletingDownloads.delete(hash); }
+}
+async function deleteMediaPlan({ original, torrent }, scope, { user = null, everyone = false } = {}) {
   if (converter.isBusy(original)) throw new HttpError(409, 'This file is being converted right now. Try again when that finishes.');
   const wholeTorrent = torrent && (scope === 'torrent' || torrent.videos.length <= 1);
   const videos = wholeTorrent ? torrent.videos.map((v) => v.full) : [original];
   if (!videos.some((v) => samePath(v, original))) videos.push(original);
+  if (!everyone && (videos.some((v) => accounts.holders(accounts.mediaKey(v)).some((id) => id !== user?.id))
+    || (torrent && accounts.torrentClaimants(torrent.hash).some((id) => id !== user?.id)))) {
+    throw new HttpError(409, 'Someone else is using a video from this download. Its files have been kept. Try again after their request finishes.');
+  }
+  if (videos.some((v) => converter.isBusy(v))) throw new HttpError(409, 'A file from this download is being converted right now. Try again when that finishes.');
   if (videos.some((v) => watchRooms.protects(accounts.mediaKey(v)))) throw new HttpError(409, 'A Watch Together room is using this video. End the room before deleting it.');
 
-  // Remove Marquee's own files first so the folder can be cleaned up.
-  for (const v of videos) {
-    for (const x of extrasFor(v)) removeFile(x);
-    converter.forget(v);
-  }
+  const extras = videos.flatMap((v) => extrasFor(v));
   if (wholeTorrent) {
     // qBittorrent removes the torrent and all of its files.
     await qbitRequest('/api/v2/torrents/delete', {
@@ -1613,12 +1950,21 @@ async function deleteMedia(id, scope) {
       await qbitRequest('/api/v2/torrents/filePrio', {
         method: 'POST', body: new URLSearchParams({ hash: torrent.hash, id: String(torrent.fileIndex), priority: '0' }),
       });
+      torrentFilesCache.delete(torrent.hash);
     }
     removeFile(original);
   }
-  libraryCache.at = 0;
+  // Only invalidate derived files after qBittorrent accepted the mutation.
+  for (const extra of extras) removeFile(extra);
+  for (const v of videos) converter.forget(v);
+  if (torrent) {
+    torrentFilesCache.delete(torrent.hash);
+    if (wholeTorrent) recentlyAddedDownloads.delete(torrent.hash.toLowerCase());
+    torrentInventory.at = 0;
+  }
+  invalidateLibrary();
   // qBittorrent deletes asynchronously; clean up afterwards.
-  setTimeout(() => { removeEmptyFolders(path.dirname(original)); libraryCache.at = 0; }, 4000);
+  setTimeout(() => { removeEmptyFolders(path.dirname(original)); invalidateLibrary(); }, 4000);
   console.log(`[library] deleted ${wholeTorrent ? `torrent "${torrent.name}"` : path.basename(original)}`);
   return videos;
 }
@@ -1635,22 +1981,51 @@ async function setPaused(hash, paused) {
 }
 
 // Removes a download from qBittorrent, with its files (and Marquee's copies and subtitles) unless keepFiles.
-async function deleteDownload(t, withFiles) {
+async function retryDownload(t) {
+  await qbitRequest('/api/v2/torrents/recheck', {
+    method: 'POST', body: new URLSearchParams({ hashes: t.hash }),
+  });
+  await setPaused(t.hash, false);
+  const owner = torrentOwner(t);
+  accounts.recordTorrent(t.hash, owner, t.name);
+  for (const userId of new Set([owner, ...accounts.torrentRequesters(t.hash)])) {
+    if (userId) accounts.requestTorrent(t.hash, userId, t.name);
+  }
+  torrentFilesCache.delete(t.hash);
+  torrentInventory.at = 0;
+  invalidateLibrary();
+}
+
+async function deleteDownload(t, withFiles, user = null) {
+  const hash = t.hash.toLowerCase();
+  assertDownloadNotDeleting(hash);
+  deletingDownloads.add(hash);
+  try { return await deleteDownloadNow(t, withFiles, user); }
+  finally { deletingDownloads.delete(hash); }
+}
+async function deleteDownloadNow(t, withFiles, user = null) {
+  let videos = [], extras = [];
   if (withFiles) {
-    const files = await qbit(`/api/v2/torrents/files?hash=${t.hash}`);
-    const videos = files.filter((f) => isVideo(f.name)).map((f) => path.join(t.save_path, f.name));
+    const files = await torrentFileMetadata(t, { fresh: true });
+    videos = files.filter((f) => isVideo(f.name)).map((f) => torrentFilePath(t, f));
+    if (user && (accounts.torrentClaimants(t.hash).some((id) => id !== user.id)
+      || videos.some((v) => accounts.holders(accounts.mediaKey(v)).some((id) => id !== user.id)))) {
+      throw new HttpError(409, 'Someone else has a video from this download in their library. Remove the download with files kept instead.');
+    }
     if (videos.some((v) => watchRooms.protects(accounts.mediaKey(v)))) throw new HttpError(409, 'A Watch Together room is using a video from this download.');
     if (videos.some((v) => converter.isBusy(v))) throw new HttpError(409, 'A file from this download is being converted right now. Try again when that finishes.');
-    for (const v of videos) {
-      for (const x of extrasFor(v)) removeFile(x);
-      converter.forget(v);
-    }
+    extras = videos.flatMap((v) => extrasFor(v));
   }
   await qbitRequest('/api/v2/torrents/delete', {
     method: 'POST', body: new URLSearchParams({ hashes: t.hash, deleteFiles: withFiles ? 'true' : 'false' }),
   });
-  libraryCache.at = 0;
-  if (withFiles && t.content_path) setTimeout(() => { removeEmptyFolders(path.dirname(t.content_path)); libraryCache.at = 0; }, 4000);
+  for (const extra of extras) removeFile(extra);
+  for (const v of videos) converter.forget(v);
+  torrentFilesCache.delete(t.hash);
+  recentlyAddedDownloads.delete(t.hash.toLowerCase());
+  torrentInventory.at = 0;
+  invalidateLibrary();
+  if (withFiles && t.content_path) setTimeout(() => { removeEmptyFolders(path.dirname(t.content_path)); invalidateLibrary(); }, 4000);
   console.log(`[downloads] removed "${t.name}"${withFiles ? ' and its files' : ''}`);
 }
 
@@ -1669,7 +2044,7 @@ setInterval(checkSubtitleWants, 2 * 60 * 1000);
 
 // ---------- finished downloads: no seeding ----------
 // QBIT_REMOVE_FINISHED=on (default): a finished download is removed from qBittorrent with its files
-// kept, so it never seeds and uses no upload bandwidth. Downloads save into MEDIA_DIR, so the video
+// kept, so it never seeds and uses no upload bandwidth. New categorized torrents save inside MEDIA_DIR, so the video
 // stays in the Library (and gets its MP4 copy as usual). A download still waiting for its automatic
 // subtitles is stopped instead and removed once they're fetched (or 2 hours after it finished).
 // One saved outside MEDIA_DIR is only stopped, so it stays playable from the Downloads tab.
@@ -1716,31 +2091,38 @@ function claimCompletedTorrents(torrents) {
     const first = !accounts.migrated();
     for (const t of torrents) {
       let row = accounts.torrentRow(t.hash);
+      if (deletingDownloads.has(t.hash.toLowerCase())) continue;
       if (!row) {
         accounts.recordTorrent(t.hash, accounts.userFromTags(t.tags) ?? accounts.ownerUser()?.id ?? null, t.name);
         row = accounts.torrentRow(t.hash);
       }
-      if (row.claimed_at || !row.user_id || t.progress < 1 || BUSY_STATES.test(t.state || '')) continue;
+      if (!accounts.torrentClaimants(t.hash).length || BUSY_STATES.test(t.state || '')) continue;
       try {
-        const files = await qbit(`/api/v2/torrents/files?hash=${t.hash}`);
+        const files = await torrentFileMetadata(t, { fresh: true });
         const videos = files.filter((f) => f.priority !== 0 && isVideo(f.name));
         if (!videos.length) continue;
-        for (const f of videos) {
-          const full = path.join(t.save_path, f.name);
-          // Rechecking/moving torrents can briefly report complete before files are ready.
-          if (f.progress < 1 || !fs.existsSync(full)) throw new Error('File not ready');
-        }
-        for (const f of videos) {
-          const full = path.join(t.save_path, f.name);
-          accounts.addEntry(row.user_id, accounts.mediaKey(full), first ? 'existing' : 'download');
+        const availability = await Promise.all(videos.map((f) => downloadAvailable(t, f, { fresh: true })));
+        if (deletingDownloads.has(t.hash.toLowerCase())) continue;
+        const ready = videos.filter((f, i) => availability[i]);
+        if (!ready.length) continue;
+        const claimants = accounts.torrentClaimants(t.hash);
+        let changed = false;
+        for (const f of ready) {
+          const full = torrentFilePath(t, f), key = accounts.mediaKey(full);
+          for (const userId of claimants) {
+            if (accounts.addEntry(userId, key, first ? 'existing' : 'download')) changed = true;
+          }
           const film = shows.filmDownload(t.hash);
-          if (film && parseFile(full).season == null) shows.identifyFilm(accounts.mediaKey(full), film);
+          if (film && parseFile(full).season == null && shows.knownFilm(key, '', null)?.id !== film.id) {
+            shows.identifyFilm(key, film); changed = true;
+          }
         }
-        accounts.markClaimed(t.hash);
-        libraryCache.at = 0;
+        // A season pack can contribute ready episodes while the rest downloads. Keep claimants
+        // pending until the whole selected video set is ready; INSERT OR IGNORE preserves dates.
+        if (t.progress >= 1 && availability.every(Boolean)) accounts.markClaimed(t.hash);
+        if (changed) invalidateLibrary();
       } catch {
         // A transient qBittorrent/filesystem failure is retried on the next poll.
-        libraryCache.at = 0;
       }
     }
   });
@@ -1789,7 +2171,7 @@ async function expireLibrary() {
   const orphaned = accounts.expireDue();
   const pending = accounts.pendingDeletes();
   if (!pending.length) return;
-  if (orphaned.length) libraryCache.at = 0;
+  if (orphaned.length) invalidateLibrary();
   await scanLibrary();
   const byKey = new Map();
   for (const i of [...(libraryCache.all || []), ...(libraryCache.items || [])]) byKey.set(accounts.mediaKey(i.full), i); // the listed copy wins
@@ -1829,7 +2211,7 @@ converter.startConverter({
   dataDir: ROOT,
   onSidecar: (srt) => subsync.markTrusted(srt), // extracted from the video: already in sync
   listCandidates: conversionCandidates,
-  onConverted: () => { libraryCache.at = 0; },
+  onConverted: () => { invalidateLibrary(); },
 });
 
 server.listen(PORT, '0.0.0.0', () => {

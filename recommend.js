@@ -11,6 +11,7 @@
 // Among those: more seeders, trusted uploaders, sane sizes; remuxes (huge), burned-in subtitles
 // and Dolby Vision without an HDR10 fallback (odd colours on most screens) count against.
 import { showKey } from './shows.js';
+import { sameShow } from './season.js';
 
 const HEALTHY = 5;
 const ALIVE = 2;
@@ -53,7 +54,8 @@ export function pickBest(results, want, parseName) {
   if (want.type === 'tv') {
     const keyOf = (r) => { const t = packTitle(r.name, want.season); return t == null ? null : showKey(parseName(t, { file: false }).title); };
     // "The Office US" for TMDB's "The Office": only when no pack uses the plain name.
-    const exact = live.filter((r) => keyOf(r) === key);
+    const exact = live.filter((r) => { const t = packTitle(r.name, want.season);
+      return t != null && sameShow(parseName(t, { file: false }).title, want.title); });
     return choose(exact.length ? exact : live.filter((r) => keyOf(r)?.startsWith(key) && COUNTRIES.has(keyOf(r).slice(key.length))), want);
   }
   return choose(live.filter((r) => {

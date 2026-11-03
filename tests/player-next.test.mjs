@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
-import { nextLibraryEpisode, isNextEpisodeTime } from '../public/player-next.js';
+import { nextLibraryEpisode, isNextEpisodeTime, nextEpisodePromptAt } from '../public/player-next.js';
 
 const episode = (id, number, extra = {}) => ({ id, show: 'tv-123', title: 'Example Show', season: 1, episode: number, file: `${id}.mp4`, ...extra });
 const playing = { ...episode('one', 1), kind: 'lib', key: 'one' };
@@ -38,12 +38,20 @@ test('specials, malformed numbers and unready files are excluded, and duplicates
   }
 });
 
-test('only a valid explicit credits marker offers Next early; unknown markers wait until ended', () => {
-  const point = { time: 999, duration: 1000, ended: false };
-  for (const creditsAt of [null, undefined, 0, -1, NaN, Infinity, 1000, 1001, '900']) assert.equal(isNextEpisodeTime({ ...point, creditsAt }), false);
-  assert.equal(isNextEpisodeTime({ ...point, time: 899, creditsAt: 900 }), false);
-  assert.equal(isNextEpisodeTime({ ...point, time: 900, creditsAt: 900 }), true);
-  assert.equal(isNextEpisodeTime({ ...point, ended: true, creditsAt: null }), true);
+test('Up Next uses closing-credit chapters first, otherwise a conservative runtime-based estimate', () => {
+  assert.equal(nextEpisodePromptAt(2100, 1900), 1900);
+  assert.equal(nextEpisodePromptAt(2100, null), 2047.5);
+  assert.equal(nextEpisodePromptAt(1200, null), 1170);
+  assert.equal(nextEpisodePromptAt(3600, null), 3525);
+  assert.equal(nextEpisodePromptAt(200, null), null);
+  assert.equal(nextEpisodePromptAt(NaN, null), null);
+  assert.equal(nextEpisodePromptAt(1000, 100), 970, 'early chapter markers are not closing credits');
+  assert.equal(isNextEpisodeTime({ time: 1899, duration: 2100, creditsAt: 1900 }), false);
+  assert.equal(isNextEpisodeTime({ time: 1900, duration: 2100, creditsAt: 1900 }), true);
+  assert.equal(isNextEpisodeTime({ time: 2047, duration: 2100, creditsAt: null }), false);
+  assert.equal(isNextEpisodeTime({ time: 2048, duration: 2100, creditsAt: null }), true);
+  assert.equal(isNextEpisodeTime({ time: 180, duration: 200, creditsAt: null }), false);
+  assert.equal(isNextEpisodeTime({ ended: true, time: 200, duration: 200, creditsAt: null }), true);
 });
 
 const source = await fs.readFile(new URL('../public/app.js', import.meta.url), 'utf8');
@@ -65,11 +73,11 @@ function playbackHarness({ prepare, autoplayRejected = false } = {}) {
   const logs = [];
   const video = new Element();
   const context = vm.createContext({ $, video, URL, AbortController, setTimeout, clearTimeout, location: { href: 'https://example.test/' },
-    nextLibraryEpisode, isNextEpisodeTime, state: { library: [episode('one', 1), episode('two', 2)], libraryShows: [], progress: {}, view: 'library' },
+    nextLibraryEpisode, isNextEpisodeTime, invalidateLibraryProgress() {}, state: { library: [episode('one', 1), episode('two', 2)], libraryShows: [], progress: {}, view: 'library' },
     current: { ...playing, ready: true, sourceUrl: 'https://example.test/one.mp4', abort: new AbortController(), creditsAt: 800, upNextDismissed: false },
     party: null, nativeSubs: false, onTvVersion: false, seeking: null, hasRemotePlayback: false,
-    playerEl: $('#player'), ccBtn: $('#cc-btn'), syncBtn: $('#sync-btn'), helpEl: $('#help'), osdEl: $('#osd'),
-    audioWatch: {}, ccLangs: ['en'], syncShift: 2, lastSave: 123, lastTap: {}, skipTotal: 10, skipAt: 100, osdTimer: null,
+    playerEl: $('#player'), ccBtn: $('#cc-btn'), audioBtn: $('#sync-btn'), helpEl: $('#help'), osdEl: $('#osd'),
+    audioWatch: {}, ccLangs: ['en'], lastSave: 123, lastTap: {}, skipTotal: 10, skipAt: 100, osdTimer: null,
     document: { activeElement: new Element(), body: { style: {}, classList: { add() {}, remove() {} } } },
     localStorage: { setItem: (key, value) => logs.push({ store: key, value: JSON.parse(value) }), removeItem: key => logs.push({ remove: key }) },
     jsonPost: body => ({ body }), progressRef: f => `l:${f.id}`, resumeKey: f => `resume:${f.id}`, savedProgress: () => null,
@@ -77,7 +85,7 @@ function playbackHarness({ prepare, autoplayRejected = false } = {}) {
     toast: message => logs.push({ toast: message }), layoutSubs: () => logs.push({ layout: true }),
     api: async (path, options) => { logs.push({ path, options, id: context.current?.id }); if (path.includes('/play-link')) return prepare ? prepare(options) : { url: 'https://example.test/two.mp4', name: 'two.mp4' }; if (path.endsWith('/credits')) return { creditsAt: null }; return {}; },
     fetch: async () => ({ ok: true, body: { cancel: () => Promise.resolve() } }),
-    leaveWatchRoom: () => { context.party = null; }, resetCasting() {}, clearSubTracks() {}, closeCcMenu() {}, closeSyncMenu() {},
+    leaveWatchRoom: () => { context.party = null; }, resetCasting() {}, clearSubTracks() {}, closeCcMenu() {}, closeAudioMenu() {}, resetAudioSelection() {},
     endSeek: () => { context.seeking = null; }, setSpinner() {}, updatePlayState() {}, updateTime() {}, showPlayerUi() {}, renderParty() {},
     setupPlayerSubs() {}, watchAudio() {}, watchCastTargets() {}, canCastFromBrowser: false,
     fsElement: () => false, setTheme() {}, pageThemeColor: '#000', renderLibrary() {},
@@ -147,9 +155,11 @@ test('Keep watching cancels a pending transition and stays dismissed at the actu
   assert.equal(h.context.current.upNextError, '');
 });
 
-test('Next is suppressed during Watch Together, native playback and seeking, and waits for ended without chapters', () => {
-  const h = playbackHarness(); h.context.current.creditsAt = null; h.video.currentTime = 999;
+test('Next uses the end-window fallback without chapters and is suppressed in incompatible playback modes', () => {
+  const h = playbackHarness(); h.context.current.creditsAt = null; h.video.currentTime = 960;
   h.run('updateUpNext()'); assert.equal(h.$('#up-next').hidden, true);
+  h.video.currentTime = 971;
+  h.run('updateUpNext()'); assert.equal(h.$('#up-next').hidden, false);
   h.video.ended = true; h.run('updateUpNext()'); assert.equal(h.$('#up-next').hidden, false);
   for (const [key, value] of [['party', {}], ['nativeSubs', true], ['seeking', 900]]) {
     h.context[key] = value; h.run('updateUpNext()'); assert.equal(h.$('#up-next').hidden, true); h.context[key] = key === 'nativeSubs' ? false : null;

@@ -18,8 +18,18 @@ export function nextLibraryEpisode(playing, library, shows) {
   return positiveInteger(total) && current.episode === total ? choose(current.season + 1, 1) : null;
 }
 
+// Prefer actual chapter metadata. Most TV releases don't label their closing credits,
+// so use a conservative end-window estimate rather than waiting for the ended event.
+export function nextEpisodePromptAt(duration, creditsAt) {
+  if (!Number.isFinite(duration) || duration <= 0) return null;
+  if (Number.isFinite(creditsAt) && creditsAt > duration / 2 && creditsAt < duration) return creditsAt;
+  if (duration < 300) return null; // Avoid popups in short extras or clips.
+  // ~2.5% of runtime, bounded to 30–75 seconds for normal TV episodes.
+  return duration - Math.min(75, Math.max(30, duration * 0.025));
+}
+
 export function isNextEpisodeTime({ ended, time, duration, creditsAt }) {
   if (ended) return true;
-  return Number.isFinite(duration) && duration > 0 && Number.isFinite(time)
-    && Number.isFinite(creditsAt) && creditsAt > 0 && creditsAt < duration && time >= creditsAt;
+  const promptAt = nextEpisodePromptAt(duration, creditsAt);
+  return promptAt !== null && Number.isFinite(time) && time >= promptAt;
 }

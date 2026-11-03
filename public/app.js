@@ -2,6 +2,8 @@
 import { WatchSession, offsetCues } from './watch-sync.js';
 import { createNotesView } from './notes-view.js';
 import { nextLibraryEpisode, isNextEpisodeTime } from './player-next.js';
+import { audioChoices, nativeAudioMapping } from './player-audio.js';
+import { libraryUnion, libraryAvailability, filterLibrary, transferState, transferAttention, transferPaused } from './library-downloads.js';
 
 const $ = (sel, el = document) => el.querySelector(sel);
 
@@ -118,7 +120,7 @@ function fmtAgo(ms) {
   return `${yrs} year${yrs > 1 ? 's' : ''} ago`;
 }
 const pad2 = (n) => String(n).padStart(2, '0');
-const episodeLabel = (f) => (f.season != null ? `S${pad2(f.season)} E${pad2(f.episode)}` : null);
+const episodeLabel = (f) => (f.season != null ? f.episode != null ? `S${pad2(f.season)} E${pad2(f.episode)}` : `Season ${f.season}` : null);
 const norm = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   .toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, '');
 
@@ -140,6 +142,7 @@ const state = {
   rules: null,      // the server's auto-delete rules
   progress: {},     // where this person stopped watching, from any device
   libFilter: 'all',
+  libAvailability: 'all',
 };
 const canDownload = () => state.status.downloads && state.me?.canDownload !== false;
 const prefs = () => state.me?.settings || {};
@@ -148,7 +151,7 @@ const prefs = () => state.me?.settings || {};
 function localFiles() {
   return [
     ...state.library.map((f) => ({ ...f, kind: 'lib', key: f.id, done: true })),
-    ...state.downloads.filter((d) => d.mine !== false).map((d) => ({ ...d, kind: 'dl', key: d.hash, file: d.name })),
+    ...state.downloads.filter((d) => d.mine !== false).map((d) => ({ ...d, title: d.canonicalTitle || d.title, show: d.showId || d.show, kind: 'dl', key: d.hash, file: d.name })),
   ];
 }
 const sameTitle = (t) => {
@@ -160,6 +163,7 @@ const sameTitle = (t) => {
       if (t.id != null) return f.tmdbId != null && Number(f.tmdbId) === Number(t.id);
       return norm(f.title) === n && (!f.year || !t.year || f.year === t.year);
     }
+    if (f.mediaType === 'tv' && f.tmdbId != null) return Number(f.tmdbId) === Number(t.id);
     if (f.tmdbId && f.season == null) return false;
     if (f.show?.startsWith('tv-')) return f.show === `tv-${t.id}`;
     return f.season != null && norm(f.title) === n;
@@ -538,6 +542,9 @@ async function renderDiscover() {
 
 // ---------- Library ----------
 let libraryRequest = null;
+let libraryLastChecked = 0;
+let libraryProgressRevision = 0;
+function invalidateLibraryProgress() { libraryProgressRevision++; }
 let librarySignature = null;
 let libraryRenderPending = false;
 let libraryRefreshNeeded = false;
@@ -549,6 +556,7 @@ const libraryContentSignature = (data) => JSON.stringify([
 function loadLibrary() {
   if (!state.status.library) return Promise.resolve(false);
   if (libraryRequest) return libraryRequest;
+  libraryLastChecked = Date.now();
   libraryRequest = (async () => {
     try {
       const data = await api('/api/library', { signal: AbortSignal.timeout(15000) });
@@ -591,7 +599,7 @@ function renderUpdatedLibrary() {
 }
 
 async function loadConvert() {
-  try { state.convert = await api('/api/convert'); } catch { state.convert = null; }
+  try { const next = await api('/api/convert'); if (state.convert?.current?.name && state.convert.current.name !== next.current?.name) libraryRefreshNeeded = true; state.convert = next; } catch { state.convert = null; }
 }
 
 // Conversion progress banner shown at the top of the library.
@@ -608,7 +616,7 @@ function renderConvertBanner() {
       cur.eta != null && fmtEta(cur.eta),
       c.queued > 0 && `${c.queued} more waiting`];
     parts.push(
-      h('div', { class: 'row-title' }, `Converting ${cur.name}`),
+      h('div', { class: 'row-title' }, `Preparing playback: ${cur.name}`),
       h('div', { class: 'dl-state' }, 'Making an MP4 copy that plays on iPhone and Apple TV'),
       h('div', { class: 'bulbs', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100',
         'aria-valuenow': String(Math.floor(cur.percent || 0)), 'aria-label': 'Conversion progress',
@@ -626,91 +634,139 @@ function renderConvertBanner() {
   el.replaceChildren(...parts);
 }
 
+const libraryCards = new Map();
+let libraryUI = null;
+const unifiedLibrary = () => libraryUnion(state.library, state.libraryShows, state.downloads);
 function renderLibrary() {
   libraryRenderPending = false;
   const body = $('#library-body');
-  if (!state.status.library) {
-    body.replaceChildren(notice('No media folder yet', 'Set MEDIA_DIR in the .env file to the folder with your videos, then restart the server.'));
-    return;
+  if (!libraryUI || !body.contains(libraryUI.root)) {
+    const filters = segmented(LIB_FILTERS, state.libFilter, v => { state.libFilter = v; renderLibrary(); }, 'Show');
+    const availability = select([['all', 'All titles'], ['ready', 'Ready to watch'], ['downloading', 'Downloading'], ['attention', 'Needs attention']], state.libAvailability, v => { state.libAvailability = v; renderLibrary(); }, 'Availability');
+    const groups = new Map(['movie', 'tv', 'unknown'].map(type => {
+      const list = h('ul', { class: 'grid library-grid' });
+      return [type, { list, section: h('section', { class: 'lib-group' }, h('h3', { class: 'lib-subhead' }, { movie: 'Films', tv: 'Shows', unknown: 'Unidentified' }[type]), list) }];
+    }));
+    const root = h('div', { class: 'unified-library' });
+    libraryUI = { root, groups, filters, availability, notices: h('div'), shelves: h('div'), summary: h('button', { class: 'library-summary', onclick: () => { state.libAvailability = 'downloading'; renderLibrary(); } }), empty: h('div') };
+    root.append(h('div', { class: 'dl convert-banner', id: 'convert-banner', hidden: true }),
+      h('div', { class: 'library-toolbar' }, filters, h('label', { class: 'library-availability' }, 'Availability', availability)), libraryUI.summary, libraryUI.notices, libraryUI.shelves, ...[...groups.values()].map(g => g.section), libraryUI.empty);
+    body.replaceChildren(root);
+    libraryCards.clear();
   }
-  if (state.libraryError) {
-    body.replaceChildren(notice('Couldn’t read the library', state.libraryError, async () => { await loadLibrary(); renderLibrary(); }));
-    return;
+  const ui = libraryUI;
+  ui.availability.value = state.libAvailability;
+  ui.filters.querySelectorAll('button').forEach((button, i) => { button.setAttribute('data-library-focus', `filter-${LIB_FILTERS[i][0]}`); button.setAttribute('aria-pressed', String(state.libFilter === LIB_FILTERS[i][0])); button.classList.toggle('active', state.libFilter === LIB_FILTERS[i][0]); });
+  const all = unifiedLibrary();
+  const entries = filterLibrary(all, { type: state.libFilter, availability: state.libAvailability, query: state.query, sort: prefs().librarySort });
+  const active = all.flatMap(e => e.active).length, attention = all.filter(e => e.attention).length;
+  ui.summary.hidden = !active;
+  ui.summary.textContent = `${active} downloading${attention ? ` · ${attention} needs attention` : ''}`;
+  const errors = [state.libraryError && `Library scan unavailable: ${state.libraryError}`, state.downloadsError && `Downloads unavailable: ${state.downloadsError}`, !state.status.library && 'No media folder is configured. Downloads will still appear here.'].filter(Boolean);
+  const noticeText = errors.join(' ');
+  if (ui.notices.textContent !== noticeText) ui.notices.replaceChildren(...errors.map(message => h('p', { class: 'library-source-notice', role: 'status' }, message)));
+  const seen = new Set(), positions = new Map(), aliases = new Map(), latestByKey = new Map(all.map(entry => [entry.key, entry])), latestByAlias = new Map(), focusedAnchors = new Map();
+  for (const entry of all) for (const alias of entry.aliases) latestByAlias.set(alias, entry);
+  const visibleKeys = new Set(entries.map(entry => entry.key));
+  for (const [type, group] of ui.groups) {
+    const index = [...group.list.children].findIndex(card => card.contains(document.activeElement) && !visibleKeys.has(card._entry?.key));
+    if (index >= 0) focusedAnchors.set(type, index);
   }
-  // Open details follow extensions and deletions, including removal of the last library item.
-  if (showView.id) renderShow();
-  if (filmView.id) renderFilm();
-  const q = norm(state.query);
-  const showsById = new Map(state.libraryShows.map((x) => [x.id, x]));
-  const isShow = (f) => Boolean(f.show && showsById.get(f.show)) || f.season != null;
-  const items = state.library.filter((f) => (!q || norm(f.title).includes(q) || norm(f.filmTitle).includes(q) || norm(f.file).includes(q)
-    || norm(showsById.get(f.show)?.title).includes(q) || norm(f.episodeName).includes(q))
-    && (state.libFilter === 'all' || (state.libFilter === 'tv') === isShow(f)));
-  const filters = segmented(LIB_FILTERS, state.libFilter, (v) => { state.libFilter = v; renderLibrary(); }, 'Show');
-  filters.querySelectorAll('button').forEach((button, i) => button.setAttribute('data-library-focus', `filter-${LIB_FILTERS[i][0]}`));
-  if (!state.library.length) {
-    body.replaceChildren(notice('Your library is empty',
-      state.server.length
-        ? `Search for something in Discover. ${plural(state.server.length, 'video is', 'videos are')} already on the server: add those to your library and watch straight away, or download something new.`
-        : 'Find something in Discover and download it. It shows up here when it’s ready.'));
-    return;
-  }
-  if (!items.length) {
-    body.replaceChildren(filters, notice(q ? `Nothing matches “${state.query.trim()}”` : `No ${state.libFilter === 'tv' ? 'shows' : 'films'} in your library`, q ? 'Try part of the title instead.' : 'Try the other filter.'));
-    return;
-  }
-  // Your own downloads first, then what you added from the server, then (the owner's) collection that
-  // was there before accounts. In each: one entry per show (its seasons and episodes are behind it),
-  // films as poster cards, in the order picked in Settings.
-  const sort = prefs().librarySort || 'newest';
-  const soonest = (files) => Math.min(...files.map((f) => f.expiresAt ?? Infinity));
-  const newest = (files) => Math.max(...files.map((f) => f.addedAt || f.added || 0));
-  const order = (a, b) => (sort === 'expiring' ? soonest(a.files) - soonest(b.files) || newest(b.files) - newest(a.files)
-    : sort === 'title' ? a.name.localeCompare(b.name) : newest(b.files) - newest(a.files));
-  const sections = LIB_SECTIONS.map(([source, title, hint]) => {
-    const entries = [];
-    const byShow = new Map();
-    for (const f of items.filter((x) => (x.source || 'existing') === source)) {
-      const show = f.show && showsById.get(f.show);
-      if (!show) { entries.push({ name: f.filmTitle || f.title, files: [f] }); continue; }
-      if (!byShow.has(show.id)) { const e = { show, name: show.title, files: [] }; byShow.set(show.id, e); entries.push(e); }
-      byShow.get(show.id).files.push(f);
+  for (const card of libraryCards.values()) for (const alias of card._entry?.aliases || []) aliases.set(alias, card);
+  for (const entry of entries) {
+    let card = libraryCards.get(entry.key);
+    if (!card) {
+      const prior = entry.aliases.map(key => aliases.get(key)).find(Boolean);
+      card = prior || makeUnifiedCard(entry);
+      if (prior) libraryCards.delete(prior._entry.key);
+      libraryCards.set(entry.key, card);
     }
-    if (!entries.length) return null;
-    entries.sort(order);
-    return h('section', { class: 'lib-section', 'aria-label': title },
-      h('div', { class: 'lib-section-head' },
-        h('h3', {}, title, h('span', { class: 'lib-count' }, String(entries.length))),
-        h('p', { class: 'muted' }, typeof hint === 'function' ? hint() : hint)),
-      libraryGroups(entries));
-  });
-  const watching = items.map((f) => ({ f, progress: savedProgress(libraryFile(f)) }))
-    .filter((x) => partlyWatched(x.progress)).sort((a, b) => (b.progress.at || 0) - (a.progress.at || 0)).slice(0, 12);
-  const leaving = libraryEntries(items.filter((f) => f.expiresAt != null && f.expiresAt - Date.now() < 48 * 3600000))
-    .sort((a, b) => nextExpiry(a.files) - nextExpiry(b.files));
-  const shelves = [
-    watching.length > 0 && libraryShelf('Continue watching', watching.map(({ f, progress }) => {
-      const show = showsById.get(f.show);
-      const poster = show?.seasons.find((s) => s.number === f.season)?.poster || show?.poster || f.poster;
-      const remaining = Math.max(1, Math.ceil((progress.duration - progress.time) / 60));
-      return libraryCard({ name: show?.title || f.title, files: [f], poster,
-        subtitle: [episodeLabel(f), `${remaining} min left`].filter(Boolean).join(' · '), resume: true });
-    })),
-    leaving.length > 0 && libraryShelf('Leaving soon', leaving.map((e) => libraryCard(e, true))),
-  ].filter(Boolean);
-  body.replaceChildren(h('div', { class: 'dl convert-banner', id: 'convert-banner', hidden: true }), filters, ...shelves, ...sections.filter(Boolean));
+    updateUnifiedCard(card, entry);
+    seen.add(entry.key);
+    const list = ui.groups.get(entry.type).list;
+    const position = positions.get(entry.type) || 0; positions.set(entry.type, position + 1);
+    const anchor = focusedAnchors.get(entry.type);
+    const index = position + (anchor != null && position >= anchor ? 1 : 0);
+    if (list.children[index] !== card) list.insertBefore(card, list.children[index] || null);
+  }
+  for (const [key, card] of libraryCards) if (!seen.has(key)) {
+    if (card.contains(document.activeElement)) {
+      const latest = latestByKey.get(key) || card._entry?.aliases.map(alias => latestByAlias.get(alias)).find(Boolean);
+      if (latest) updateUnifiedCard(card, latest);
+      card.addEventListener('focusout', () => queueMicrotask(() => { if (!card.contains(document.activeElement)) renderLibrary(); }), { once: true });
+      continue;
+    }
+    card.remove(); libraryCards.delete(key);
+  }
+  for (const group of ui.groups.values()) group.section.hidden = !group.list.children.length;
+  const emptyText = entries.length || [...libraryCards.values()].some(c => c.contains(document.activeElement)) ? '' : all.length ? 'No titles match these filters.' : 'Your library is empty. Find something in Discover or use Find torrents to add your first title.';
+  if (ui.empty.textContent !== emptyText) ui.empty.replaceChildren(emptyText ? notice(all.length ? 'No matching titles' : 'Your library is empty', emptyText) : '');
+  // Shelves use ready files only; transfers never create fake playback progress.
+  const shelfKey = JSON.stringify([librarySignature, state.libFilter, state.query, libraryProgressRevision]);
+  if (ui.shelfKey !== shelfKey) {
+    ui.shelfKey = shelfKey;
+    const q = norm(state.query), ready = state.library.filter(f => (!q || norm(`${f.title} ${f.filmTitle || ''} ${f.file}`).includes(q)) && (state.libFilter === 'all' || (state.libFilter === 'tv') === (f.season != null)));
+    const watching = ready.map(f => ({ f, progress: savedProgress(libraryFile(f)) })).filter(x => partlyWatched(x.progress)).sort((a,b) => (b.progress.at || 0) - (a.progress.at || 0)).slice(0,12);
+    const leaving = libraryEntries(ready.filter(f => f.expiresAt != null && f.expiresAt - Date.now() < 48 * 3600000));
+    ui.shelves.replaceChildren(...[watching.length && libraryShelf('Continue watching', watching.map(({f, progress}) => libraryCard({ name: state.libraryShows.find(s => s.id === f.show)?.title || f.title, files: [f], poster: f.poster, subtitle: [episodeLabel(f), `${Math.max(1, Math.ceil((progress.duration-progress.time)/60))} min left`].filter(Boolean).join(' · '), resume: true }))), leaving.length && libraryShelf('Leaving soon', leaving.map(e => libraryCard(e, true)))].filter(Boolean));
+  }
+  ui.shelves.hidden = state.libAvailability !== 'all' && state.libAvailability !== 'ready';
+  if (showView.id) updateOpenShow();
+  if (filmView.id) updateOpenFilm();
   renderConvertBanner();
 }
+function makeUnifiedCard(entry) {
+  const card = h('li', { class: 'library-card unified-card' });
+  const button = h('button', { class: 'title-card', type: 'button', onclick: e => openUnifiedTitle(card._entry, e.currentTarget) },
+    h('div', { class: 'poster' }), h('div', { class: 'name' }), h('div', { class: 'sub' }));
+  const panel = h('div', { class: 'library-transfer' }, h('div', { class: 'transfer-line' }, h('span', { class: 'transfer-state' }), h('span', { class: 'transfer-percent' })),
+    h('div', { class: 'transfer-track', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100' }, h('i')), h('div', { class: 'transfer-stats' }));
+  card.append(button, panel, h('button', { class: 'library-more', type: 'button', 'aria-label': `Download details for ${entry.name}`, onclick: e => openTransferDetails(card._entry, e.currentTarget) }, '•••'));
+  return card;
+}
+function updateUnifiedCard(card, entry) {
+  const old = card._entry;
+  card._entry = entry;
+  const paint = JSON.stringify([entry.key, entry.type, entry.transfers.map(d => [d.hash, d.done]), entry.name, entry.poster, entry.ready, entry.state, entry.progress, entry.speed, entry.attention, entry.active.map(d => [d.hash, d.eta]), entry.files.map(f => [f.id, f.expiresAt, savedProgress(libraryFile(f))]), libraryAvailability(entry)]);
+  if (card._paint === paint) return; card._paint = paint;
+  const button = $('.title-card', card), poster = $('.poster', card), panel = $('.library-transfer', card);
+  button.setAttribute('data-library-focus', entry.key);
+  if (!old || old.poster !== entry.poster || old.name !== entry.name) poster.replaceChildren(entry.poster ? h('img', { src: entry.poster, alt: '', loading: 'lazy', decoding: 'async', onerror: e => e.currentTarget.replaceWith(h('div', { class: 'poster-fallback' }, entry.name)) }) : h('div', { class: 'poster-fallback' }, entry.name));
+  $('.name', card).textContent = entry.name;
+  $('.sub', card).textContent = libraryAvailability(entry);
+  const next = nextExpiry(entry.files), hours = (next-Date.now())/3600000;
+  let expiry = $('.poster-expiry', card);
+  if (Number.isFinite(next)) { if (!expiry) { expiry = h('span', { class: 'poster-expiry' }); poster.append(expiry); } expiry.textContent = hours < 1 ? 'Leaving soon' : hours < 48 ? `${Math.ceil(hours)}h left` : `${Math.ceil(hours/24)}d left`; expiry.classList.toggle('is-soon', hours < 24); } else expiry?.remove();
+  let watched = $('.poster-progress', card);
+  const progress = entry.files[0] && savedProgress(libraryFile(entry.files[0]));
+  if (partlyWatched(progress)) { if (!watched) { watched = h('span', { class: 'poster-progress' }, h('i')); poster.append(watched); } watched.setAttribute('aria-label', `${Math.round(progress.time/progress.duration*100)}% watched`); watched.firstChild.style.width = `${progress.time/progress.duration*100}%`; } else watched?.remove();
+  panel.hidden = !entry.active.length && !entry.preparing;
+  $('.library-more', card).hidden = !entry.transfers.length;
+  $('.library-more', card).setAttribute('aria-label', `Download details for ${entry.name}`);
+  $('.transfer-state', card).textContent = entry.state;
+  $('.transfer-percent', card).textContent = entry.progress == null ? '' : `${Math.floor(entry.progress * 100)}%`;
+  panel.classList.toggle('is-paused', entry.state === 'Paused'); panel.classList.toggle('is-error', entry.attention);
+  const track = $('.transfer-track', card);
+  track.setAttribute('aria-label', `${entry.name} download progress`);
+  track.setAttribute('aria-valuetext', `${entry.state}${entry.progress == null ? '' : `, ${Math.floor(entry.progress*100)} percent`}`);
+  if (entry.progress == null) track.removeAttribute('aria-valuenow'); else track.setAttribute('aria-valuenow', String(Math.floor(entry.progress*100)));
+  track.firstChild.style.width = entry.progress == null ? '0%' : `${entry.progress*100}%`;
+  const eta = entry.active.length === 1 && entry.speed > 0 ? entry.active[0].eta : null;
+  $('.transfer-stats', card).textContent = [entry.speed > 0 && `${fmtBytes(entry.speed)}/s`, Number.isFinite(eta) && eta >= 0 && eta < 8640000 && fmtEta(eta)].filter(Boolean).join(' · ');
+  let pill = $('.transfer-pill', poster);
+  const pillText = entry.attention ? 'Needs attention' : entry.state === 'Paused' ? 'Paused' : /Preparing|Checking/.test(entry.state) ? 'Preparing' : '';
+  if (pillText) { if (!pill) { pill = h('span', { class: 'transfer-pill' }); poster.append(pill); } pill.textContent = pillText; } else pill?.remove();
+  if (old && (old.ready !== entry.ready || old.attention !== entry.attention)) $('#library-live').textContent = `${entry.name}: ${entry.attention ? 'needs attention' : entry.ready ? 'ready to watch' : entry.state}`;
+}
+function openUnifiedTitle(entry, opener) {
+  if (entry.show) { showView.hashes = entry.transfers.map(d => d.hash); return openShow(entry.show.id, opener); }
+  if (entry.files.length) return openFilm(entry.files[0], opener);
+  filmView.hashes = entry.transfers.map(d => d.hash);
+  filmView.id = `entry:${entry.key}`;
+  renderFilm();
+  pushOverlay(showSheet($('#sheet'), $('#sheet-backdrop'), () => { filmView.id = null; opener?.focus({ preventScroll: true }); }));
+}
 const LIB_FILTERS = [['all', 'All'], ['movie', 'Films'], ['tv', 'Shows']];
-const autoDeleteHint = () => (state.rules?.retentionDays
-  ? `Ready to watch. Keep them longer before the countdown runs out.`
-  : 'Kept until you delete them.');
-const LIB_SECTIONS = [
-  ['download', 'Your downloads', autoDeleteHint],
-  ['added', 'Added from the server', 'Ready to watch, without another download.'],
-  ['existing', 'Your collection', 'Kept until you choose to delete them.'],
-];
-
 // ---------- Library: shows ----------
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const episodeCount = (files) => new Set(files.map((f) => `${f.season}:${f.episode}`)).size;
@@ -802,7 +858,14 @@ function keepBar(files, onDone) {
 }
 
 const filmView = { id: null };
+let filmStructure = '';
+function updateOpenFilm() {
+  const entry = unifiedLibrary().find(e => filmView.id === `entry:${e.key}` || e.files.some(f => f.id === filmView.id) || filmView.hashes?.some(hash => e.transfers.some(d => d.hash === hash)));
+  const signature = JSON.stringify([filmView.id, entry?.files, entry?.transfers.map(d => d.hash)]);
+  if (filmStructure !== signature && !$('#sheet-body').contains(document.activeElement)) { const top = $('#sheet').scrollTop; renderFilm(); $('#sheet').scrollTop = top; }
+}
 function openFilm(f, opener) {
+  filmView.hashes = null;
   filmView.id = f.id;
   renderFilm();
   pushOverlay(showSheet($('#sheet'), $('#sheet-backdrop'), () => {
@@ -811,7 +874,13 @@ function openFilm(f, opener) {
   }));
 }
 function renderFilm() {
-  const f = state.library.find((f) => f.id === filmView.id);
+  const entry = unifiedLibrary().find(e => filmView.id === `entry:${e.key}` || e.files.some(f => f.id === filmView.id) || filmView.hashes?.some(hash => e.transfers.some(d => d.hash === hash)));
+  filmStructure = JSON.stringify([filmView.id, entry?.files, entry?.transfers.map(d => d.hash)]);
+  const f = entry?.files[0] || state.library.find((f) => f.id === filmView.id);
+  if (!f && entry) {
+    const d = entry.transfers[0];
+    $('#sheet-body').replaceChildren(h('div', { class: `sheet-hero${d?.backdrop ? '' : ' no-image'}`, style: d?.backdrop ? `background-image:url("${d.backdrop}")` : null }), h('div', { class: 'sheet-content' }, h('h2', { id: 'sheet-title' }, entry.name), h('p', { class: 'muted' }, libraryAvailability(entry)), transferPanel(entry), state.status.torrents && canDownload() && h('button', { class: 'chip', onclick: e => openTorrents({ query: entry.name, opener: e.currentTarget }) }, 'Find another release'))); return;
+  }
   if (!f) {
     $('#sheet-body').replaceChildren(h('div', { class: 'sheet-content' }, h('h2', { id: 'sheet-title' }, 'Removed from your library')));
     return;
@@ -824,13 +893,14 @@ function renderFilm() {
       h('h2', { id: 'sheet-title' }, f.filmTitle || f.title),
       h('ul', { class: 'facts' }, [f.year, f.season != null ? episodeLabel(f) : 'Film', f.rating && `★ ${f.rating}`, f.format?.toUpperCase(), fmtBytes(f.size)]
         .filter(Boolean).map((text) => h('li', {}, text))),
+      transferPanel(unifiedLibrary().find(e => e.files.some(file => file.id === f.id))),
       keepBar([f], renderFilm),
       f.movieAmbiguous && h('p', { class: 'identity-note' }, state.me?.isOwner
         ? 'Several films match this filename. Choose “Identify film” to select the right one.'
         : 'Several films match this filename. The server’s owner can identify this file.'),
       h('div', { class: 'library-film-actions' },
         h('button', { class: 'play-btn', disabled: f.converting, onclick: () => openPlayer(file) }, icon('play'),
-          f.converting ? 'Converting…' : partlyWatched(progress) ? `Resume at ${fmtTime(progress.time)}` : 'Play'),
+          f.converting ? 'Preparing playback…' : partlyWatched(progress) ? `Resume at ${fmtTime(progress.time)}` : 'Play'),
         h('button', { class: 'chip', onclick: (e) => openPicker(file, e.currentTarget) }, icon('tv'), 'Play on TV'),
         h('button', { class: 'chip', onclick: (e) => openDelete(file, e.currentTarget) }, icon('trash'), 'Delete'),
         state.me?.isOwner && h('button', { class: 'chip', onclick: (e) => openFilmIdentity(f, e.currentTarget) }, 'Identify film')),
@@ -890,91 +960,73 @@ function openShow(id, opener) {
   }));
 }
 
+let showStructure = '';
+function showEntry() { return unifiedLibrary().find(e => e.show && (e.show.id === showView.id || showView.hashes?.some(hash => e.transfers.some(d => d.hash === hash)))); }
+function updateOpenShow() {
+  const entry = showEntry();
+  const signature = JSON.stringify([showView.id, showView.season, entry?.files, entry?.transfers.map(d => [d.hash, d.season, (d.episodes || []).map(ep => [ep.season, ep.episode, ep.available, ep.libraryId])])]);
+  if (signature !== showStructure && !$('#sheet-body').contains(document.activeElement)) { const top = $('#sheet').scrollTop; renderShow(); $('#sheet').scrollTop = top; }
+}
+function transferPanel(entry) {
+  if (!entry?.transfers.length) return entry?.preparing ? h('p', { class: 'pack-transfer' }, 'Preparing playback. Follow conversion progress in Library.') : null;
+  return h('section', { class: 'title-transfers', 'aria-label': `${entry.name} downloads` },
+    h('h3', {}, 'Download progress'),
+    h('ul', { class: 'rows' }, entry.transfers.map(d => {
+      const card = makeDlCard(d); updateDlCard(card, d); transferNodes.add(card); return card;
+    })));
+}
 function renderShow() {
-  const show = state.libraryShows.find((x) => x.id === showView.id);
-  const files = state.library.filter((f) => f.show === showView.id);
-  if (!show || !files.length) { // its last episode was just deleted
-    $('#sheet-body').replaceChildren(h('div', { class: 'sheet-content' }, h('h2', { id: 'sheet-title' }, show?.title || 'Show'),
-      h('p', { class: 'muted' }, 'No episodes of this show are left on the server.')));
-    return;
-  }
-  const seasons = show.seasons.filter((se) => files.some((f) => f.season === se.number));
+  const entry = showEntry(), show = entry?.show;
+  const files = entry?.files || [];
+  if (!show) { $('#sheet-body').replaceChildren(h('div', { class: 'sheet-content' }, h('h2', { id: 'sheet-title' }, 'Show'), h('p', {}, 'This show is no longer in your library.'))); return; }
+  const numbers = new Set(files.map(f => f.season));
+  for (const d of entry.transfers) { if (d.season != null) numbers.add(d.season); for (const ep of d.episodes || []) if (ep.season != null) numbers.add(ep.season); }
+  const seasons = [...numbers].sort((a,b) => a-b).map(number => ({ ...(show.seasons || []).find(se => se.number === number), number, name: (show.seasons || []).find(se => se.number === number)?.name || seasonName(number) }));
   const single = seasons.length === 1;
-  let open = single ? seasons[0] : seasons.find((se) => se.number === showView.season);
-  const pick = (n) => { showView.season = n; renderShow(); $('#sheet').scrollTo({ top: 0, behavior: 'smooth' }); };
-
+  const open = single ? seasons[0] : seasons.find(se => se.number === showView.season);
+  const pick = n => { showView.season = n; renderShow(); $('#sheet').scrollTo({ top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); };
+  const pendingFor = n => entry.transfers.filter(d => d.season === n || (d.episodes || []).some(ep => ep.season === n));
   let content;
-  if (!open) {
-    content = [
-      h('h3', {}, 'Seasons'),
-      h('ul', { class: 'grid season-grid' }, seasons.map((se) => {
-        const n = episodeCount(files.filter((f) => f.season === se.number));
-        return h('li', {},
-          h('button', { class: 'title-card', onclick: () => pick(se.number) },
-            h('div', { class: 'poster' },
-              se.poster ? h('img', { src: se.poster, alt: '', loading: 'lazy', decoding: 'async' }) : h('div', { class: 'poster-fallback' }, se.name)),
-            h('div', { class: 'name' }, se.name),
-            h('div', { class: 'sub' }, se.total ? `${n} of ${se.total} episodes` : plural(n, 'episode'))));
-      })),
-    ];
-  } else {
-    const eps = files.filter((f) => f.season === open.number)
-      .sort((a, b) => a.episode - b.episode || a.file.localeCompare(b.file));
-    const n = episodeCount(eps);
-    content = [
-      !single && h('button', { class: 'chip season-back', onclick: () => pick(null) }, icon('back'), 'All seasons'),
-      h('div', { class: 'season-head' },
-        h('div', { class: 'poster season-poster' },
-          open.poster ? h('img', { src: open.poster, alt: '' }) : h('div', { class: 'poster-fallback' }, open.name)),
-        h('div', {},
-          h('h3', {}, open.name),
-          h('p', { class: 'muted' }, open.total ? `${n} of ${open.total} episodes in your library` : `${plural(n, 'episode')} in your library`))),
-      h('ul', { class: 'rows' }, eps.map((f) => {
-        const row = fileRow({ ...f, kind: 'lib', key: f.id, done: true });
-        row.querySelector('.row-title').textContent = `${f.episode}. ${f.episodeName || `Episode ${f.episode}`}`;
-        row.querySelector('.row-title').title = f.file;
-        row.querySelector('.row-meta').prepend(h('span', {}, episodeLabel(f)));
-        return row;
-      })),
-    ];
+  if (!open) content = [h('h3', {}, 'Seasons'), h('ul', { class: 'grid season-grid' }, seasons.map(se => {
+    const ready = episodeCount(files.filter(f => f.season === se.number)), transfers = pendingFor(se.number).filter(d => !d.done);
+    const pending = new Set(transfers.flatMap(d => (d.episodes || []).filter(ep => ep.season === se.number && !ep.available).map(ep => ep.episode))).size;
+    return h('li', {}, h('button', { class: 'title-card', onclick: () => pick(se.number) }, h('div', { class: 'poster' }, se.poster ? h('img', { src: se.poster, alt: '', loading: 'lazy' }) : h('div', { class: 'poster-fallback' }, se.name)), h('div', { class: 'name' }, se.name), h('div', { class: 'sub' }, `${se.total ? `${ready} of ${se.total}` : ready} ready${pending ? ` · ${pending} downloading` : transfers.length ? ' · Season pack downloading' : ''}`)));
+  }))];
+  else {
+    const versions = files.filter(f => f.season === open.number).sort((a,b) => a.episode-b.episode || String(a.id).localeCompare(String(b.id)));
+    const ready = [...new Map(versions.map(f => [f.episode, f])).values()];
+    const byEpisode = new Map();
+    for (const d of pendingFor(open.number)) for (const ep of d.episodes || []) if (ep.season === open.number && !ready.some(f => f.episode === ep.episode) && !byEpisode.has(ep.episode)) byEpisode.set(ep.episode, { d, ep });
+    const rows = ready.map(f => ({ number: f.episode, node: (() => { const row = fileRow(libraryFile(f)); $('.row-title', row).textContent = `${f.episode}. ${f.episodeName || `Episode ${f.episode}`}`; $('.row-title', row).title = f.file; return row; })() }));
+    for (const {d,ep} of byEpisode.values()) rows.push({ number: ep.episode, node: h('li', { class: 'row pending-episode', 'data-transfer-hash': d.hash, 'data-episode-number': ep.episode, 'data-episode-season': ep.season }, h('div', { class: 'row-text' }, h('div', { class: 'row-title' }, `${ep.episode}. Episode ${ep.episode}`), h('div', { class: 'row-meta episode-transfer-state' }, ep.available ? 'Ready in download details' : `${transferState(d)}${Number.isFinite(ep.progress) ? ` · ${Math.floor(ep.progress*100)}%` : ''}`)), h('button', { class: 'chip', onclick: e => openTransferDetails({ ...entry, transfers: [d] }, e.currentTarget) }, 'Details')) });
+    if (Number.isInteger(open.total) && open.total > 0 && open.total <= 1000) for (let number = 1; number <= open.total; number++) if (!rows.some(row => row.number === number)) rows.push({ number, node: h('li', { class: 'row missing-episode' }, h('div', { class: 'row-text' }, h('div', { class: 'row-title' }, `${number}. Episode ${number}`), h('div', { class: 'row-meta' }, 'Not in library'))) });
+    content = [!single && h('button', { class: 'chip season-back', onclick: () => pick(null) }, icon('back'), 'All seasons'), h('h3', {}, open.name),
+      h('p', { class: 'muted' }, `${open.total ? `${episodeCount(ready)} of ${open.total}` : episodeCount(ready)} episodes ready`),
+      ...pendingFor(open.number).filter(d => !(d.episodes || []).some(ep => ep.season === open.number)).map(d => h('div', { class: 'pack-transfer' }, h('strong', {}, `${open.name} pack`), h('p', {}, 'Episode availability is shown when individual files are verified.'), h('button', { class: 'chip', onclick: e => openTransferDetails({ ...entry, transfers: [d] }, e.currentTarget) }, 'Season pack details'))),
+      h('ul', { class: 'rows' }, rows.sort((a,b) => a.number-b.number).map(r => r.node))];
   }
-
-  $('#sheet-body').replaceChildren(
-    h('div', { class: `sheet-hero${show.backdrop ? '' : ' no-image'}`, style: show.backdrop ? `background-image:url("${show.backdrop}")` : null }),
-    h('div', { class: 'sheet-content' },
-      h('h2', { id: 'sheet-title' }, show.title),
-      h('ul', { class: 'facts' },
-        show.year && h('li', {}, show.year),
-        h('li', {}, 'Series'),
-        show.rating && h('li', {}, `★ ${show.rating}`),
-        h('li', {}, `${plural(episodeCount(files), 'episode')} here`)),
-      keepBar(files, renderShow),
-      show.overview && h('p', { class: 'overview' }, show.overview),
-      !open || single ? state.status.torrents && canDownload() && seasonStrip({ id: show.tmdbId, title: show.title }, files) : null,
-      ...content));
+  $('#sheet-body').replaceChildren(h('div', { class: `sheet-hero${show.backdrop ? '' : ' no-image'}`, style: show.backdrop ? `background-image:url("${show.backdrop}")` : null }),
+    h('div', { class: 'sheet-content' }, h('h2', { id: 'sheet-title' }, show.title), h('ul', { class: 'facts' }, [show.year, 'Series', libraryAvailability(entry)].filter(Boolean).map(text => h('li', {}, text))),
+      transferPanel(entry), files.length > 0 && keepBar(files, renderShow), show.overview && h('p', { class: 'overview' }, show.overview),
+      (!open || single) && state.status.torrents && canDownload() && show.tmdbId && seasonStrip({ id: show.tmdbId, title: show.title }, files), ...content));
+  showStructure = JSON.stringify([showView.id, showView.season, entry.files, entry.transfers.map(d => [d.hash, d.season, (d.episodes || []).map(ep => [ep.season, ep.episode, ep.available, ep.libraryId])])]);
 }
 
 // ---------- Downloads ----------
 // Cards are updated in place so progress animates and focus is preserved.
-const STATE_LABELS = {
-  downloading: 'Downloading', forcedDL: 'Downloading',
-  metaDL: 'Getting file info', forcedMetaDL: 'Getting file info',
-  stalledDL: 'Waiting for peers',
-  queuedDL: 'Queued', queuedUP: 'Queued',
-  pausedDL: 'Paused', stoppedDL: 'Paused',
-  checkingDL: 'Checking files', checkingUP: 'Checking files', checkingResumeData: 'Checking files',
-  moving: 'Moving files',
-  error: 'Error', missingFiles: 'Files missing',
-};
 const dlCards = new Map();
+const transferNodes = new Set();
 
 let downloadsRequest = null;
 let downloadsGeneration = 0;
+// Mutations make every older in-flight snapshot stale, even within the same scope.
+function invalidateDownloadsRead() { downloadsGeneration++; downloadsRequest = null; }
 function downloadsChangedLibrary(before, after) {
   const own = (items) => items.filter((d) => d.mine !== false);
   const previous = new Map(own(before).map((d) => [d.hash, d]));
   const latest = new Map(own(after).map((d) => [d.hash, d]));
-  return [...latest.values()].some((d) => d.done && !previous.get(d.hash)?.done)
+  const availability = d => JSON.stringify([(d?.libraryIds || []).slice().sort(), (d?.episodes || []).map(ep => [ep.season, ep.episode, ep.available, ep.libraryId])]);
+  return [...latest.values()].some((d) => d.done && !previous.get(d.hash)?.done || availability(d) !== availability(previous.get(d.hash)))
     || [...previous.keys()].some((hash) => !latest.has(hash));
 }
 function loadDownloads() {
@@ -995,6 +1047,7 @@ function loadDownloads() {
     const badge = $('#dl-badge');
     badge.hidden = !active;
     badge.textContent = active;
+    badge.setAttribute('aria-label', `${active} unfinished downloads`);
   })();
   downloadsRequest = { scope, promise };
   return promise;
@@ -1013,30 +1066,48 @@ function makeDlCard(d) {
           if (refs.data.converting) { toast('Cannot play while converting'); return; }
           openPlayer({ ...refs.data, kind: 'dl', key: refs.data.hash });
         } }, icon('play'), 'Play'))),
+    refs.release = h('p', { class: 'transfer-release' }),
+    refs.files = h('details', { class: 'transfer-files' }, h('summary', {}, 'Files'), h('ul')),
+    refs.error = h('p', { class: 'transfer-action-error', role: 'status' }),
     refs.bar = h('div', { class: 'bulbs', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100' }, h('i')),
     h('div', { class: 'dl-foot' },
       refs.stats = h('div', { class: 'dl-stats' }),
       h('div', { class: 'dl-controls' },
         refs.pause = h('button', { type: 'button', class: 'chip dl-ctl', onclick: () => togglePause(refs.data, refs.pause) }),
-        refs.del = h('button', { type: 'button', class: 'chip dl-ctl', onclick: (e) => openDeleteDownload(refs.data, e.currentTarget) }, 'Delete'))));
+        refs.del = h('button', { type: 'button', class: 'chip dl-ctl', onclick: (e) => openDeleteDownload(refs.data, e.currentTarget) }, 'Delete'),
+        refs.retry = h('button', { type: 'button', class: 'chip dl-ctl', onclick: () => { if (transferOperations.get(refs.data.hash)?.label) return; transferOperations.delete(refs.data.hash); runTransferAction(refs.data, 'retry'); } }, 'Retry'))));
   el._refs = refs;
   return el;
 }
 
 const isPaused = (d) => /^(paused|stopped)/.test(d.state || '');
 
-async function togglePause(d, btn) {
-  const resume = isPaused(d);
-  btn.disabled = true;
+const transferOperations = new Map();
+async function runTransferAction(d, action) {
+  if (d.canManage === false || transferOperations.has(d.hash)) return;
+  const opener = document.activeElement, actionCard = opener?.closest?.('.dl');
+  const operation = { label: action === 'pause' ? 'Pausing…' : action === 'resume' ? 'Resuming…' : 'Checking files…' };
+  transferOperations.set(d.hash, operation); patchTransferNodes();
   try {
-    await api(`/api/downloads/${d.hash}/${resume ? 'resume' : 'pause'}`, jsonPost({}));
-    d.state = resume ? 'downloading' : 'pausedDL'; // shown right away; the next refresh has qBittorrent's own state
-    updateDlCard(dlCards.get(d.hash), d);
-    toast(resume ? 'Download resumed' : 'Download paused');
-  } catch (err) { toast(err.message); } finally { btn.disabled = false; }
+    await api(`/api/downloads/${encodeURIComponent(d.hash)}/${action}`, jsonPost({}));
+    invalidateDownloadsRead();
+    const latest = state.downloads.find(item => item.hash === d.hash);
+    if (latest) latest.state = action === 'pause' ? 'pausedDL' : action === 'resume' ? 'downloading' : 'checkingDL';
+    operation.error = null;
+  } catch (err) { operation.error = err.message; }
+  finally {
+    if (operation.error) { operation.label = ''; } else transferOperations.delete(d.hash); patchUnifiedLibrary();
+    if (document.activeElement === document.body) {
+      const target = opener?.isConnected && !opener.hidden && !opener.disabled ? opener : [...(actionCard?.querySelectorAll('button') || [])].find(button => !button.hidden && !button.disabled && button.getClientRects().length > 0);
+      target?.focus({ preventScroll: true });
+    }
+  }
 }
+async function togglePause(d) { const prior = transferOperations.get(d.hash); if (prior?.error) transferOperations.delete(d.hash); await runTransferAction(d, isPaused(d) ? 'resume' : 'pause'); }
 
 function openDeleteDownload(d, opener) {
+  if (transferOperations.get(d.hash)?.label || d.canManage === false) return;
+  const restoreManager = pickerManagerSubview(opener);
   const body = $('#picker-body');
   const status = h('p', { class: 'device-status', role: 'status' });
   const label = [d.title, episodeLabel(d), d.year && !d.season ? `(${d.year})` : null].filter(Boolean).join(' ');
@@ -1045,9 +1116,12 @@ function openDeleteDownload(d, opener) {
     btn.textContent = 'Deleting…';
     try {
       await api(`/api/downloads/${d.hash}/delete`, jsonPost({ files }));
-      closeTopOverlay();
+      invalidateDownloadsRead();
+      if (!restoreManager) closeTopOverlay();
       toast(files ? 'Download and files deleted' : 'Removed from downloads; files kept');
       state.downloads = state.downloads.filter((x) => x.hash !== d.hash);
+      restoreManager?.();
+      if (state.view === 'library') renderLibrary();
       if (state.view === 'downloads') renderDownloads();
       setTimeout(async () => { await Promise.all([loadLibrary(), loadDownloads()]); renderView(); }, 4000);
     } catch (err) {
@@ -1055,6 +1129,7 @@ function openDeleteDownload(d, opener) {
       btn.textContent = btn.dataset.label;
       status.className = 'device-status is-error';
       status.textContent = err.message;
+      if (document.activeElement === document.body) btn.focus({ preventScroll: true });
     }
   };
   const button = (text, cls, files) => {
@@ -1062,101 +1137,113 @@ function openDeleteDownload(d, opener) {
     b.addEventListener('click', () => run(files, b));
     return b;
   };
-  const cancel = h('button', { class: 'del-cancel', onclick: () => closeTopOverlay() }, 'Keep it');
-  body.replaceChildren(
+  const cancel = h('button', { class: 'del-cancel', onclick: () => restoreManager ? restoreManager() : closeTopOverlay() }, 'Keep it');
+  body.replaceChildren(...[
     h('h2', { id: 'picker-title' }, d.done ? 'Delete this download?' : 'Cancel this download?'),
     h('p', { class: 'del-name' }, label),
+    h('p', { class: 'muted' }, d.name),
+    d.season != null && d.episode == null && h('p', { class: 'muted' }, 'This action affects every file in this season pack.'),
+    d.libraryIds?.length && h('p', { class: 'muted' }, 'Files still used by another person’s library are protected. The server will refuse file deletion while they are shared.'),
     h('p', { class: 'muted' }, d.done
       ? `Removes it from qBittorrent, so it stops seeding, and deletes its files (${fmtBytes(d.size)}). This can’t be undone.`
       : `Stops the download and deletes what has been downloaded so far (${Math.floor(d.progress * 100)}% of ${fmtBytes(d.size)}).`),
     h('div', { class: 'del-actions' },
-      button(d.done ? 'Delete download and files' : 'Cancel and delete', 'del-confirm', true),
+      button(d.done ? 'Remove transfer and delete files' : 'Cancel and delete downloaded files', 'del-confirm', true),
       button('Remove from list, keep files', 'del-confirm del-secondary', false),
       cancel),
-    status);
-  pushOverlay(showSheet($('#picker'), $('#picker-backdrop'), () => opener?.focus({ preventScroll: true })));
+    status].filter(Boolean));
+  if (!restoreManager) pushOverlay(showSheet($('#picker'), $('#picker-backdrop'), () => opener?.focus({ preventScroll: true })));
   cancel.focus();
 }
 
 function updateDlCard(el, d) {
+  if (!el) return;
   const r = el._refs;
   r.data = d;
-  const pct = Math.floor(d.progress * 1000) / 10;
-  const label = d.done ? 'Ready to watch' : (STATE_LABELS[d.state] || 'Downloading');
-  r.title.textContent = [d.title, episodeLabel(d), d.year && !d.season ? `(${d.year})` : null].filter(Boolean).join(' ');
+  const pct = Math.floor(Math.max(0, Math.min(1, Number(d.progress) || 0)) * 100);
+  const operation = transferOperations.get(d.hash);
+  const label = operation?.label || (d.ready ? (d.converting ? 'Preparing playback' : 'Ready to watch') : transferState(d));
+  r.release.textContent = d.name;
+  r.error.textContent = operation?.error || (d.ready && d.mediaType === 'tv' && d.episode == null && !(d.libraryIds || []).length ? 'Verified files are outside the media library. Add the download folder to the media library to play individual episodes.' : '') || (d.canManage === false ? 'Shared download. Only the person who started it can change the transfer.' : '');
+  const fileKey = JSON.stringify(d.files || []);
+  if (r.fileKey !== fileKey) { r.fileKey = fileKey; r.files.hidden = !(d.files || []).length; r.files.querySelector('ul').replaceChildren(...(d.files || []).map(f => h('li', {}, `${f.name} · ${fmtBytes(f.size)} · ${f.available ? 'File ready' : `${Math.floor((f.progress || 0)*100)}%`}`))); }
+  r.title.textContent = [d.canonicalTitle || d.title, d.season != null && d.episode == null ? `${seasonName(d.season)} pack` : episodeLabel(d), d.year && !d.season ? `(${d.year})` : null].filter(Boolean).join(' ');
   r.title.title = d.name;
-  r.state.textContent = d.owner && !d.mine ? `${label} · for ${d.owner}` : label;
+  r.state.textContent = state.dlScope === 'all' && d.owner ? `${label} · for ${d.owner}` : label;
   r.state.classList.toggle('is-error', d.state === 'error' || d.state === 'missingFiles');
-  r.actions.hidden = !d.done;
+  r.actions.hidden = !d.ready || d.mediaType === 'tv' && d.episode == null;
   r.play.setAttribute('aria-label', `Play ${d.title} here`);
   r.cast.setAttribute('aria-label', `Play ${d.title} on a TV`);
   r.bar.hidden = d.done;
   r.bar.style.setProperty('--p', `${pct}%`);
-  r.bar.setAttribute('aria-valuenow', String(Math.floor(pct)));
+  if (Number.isFinite(d.progress) && d.size > 0) r.bar.setAttribute('aria-valuenow', String(Math.floor(pct))); else r.bar.removeAttribute('aria-valuenow');
+  r.bar.setAttribute('aria-valuetext', `${label}${Number.isFinite(d.progress) && d.size > 0 ? `, ${pct} percent` : ''}`);
   r.bar.setAttribute('aria-label', `${d.title} download progress`);
   const SUB_STATE = { waiting: 'subtitles when done', ready: 'subtitles ready', missing: 'subtitles not found', error: 'subtitles failed' };
   const subs = (d.subs || []).map((x) => h('span', { class: `sub-state sub-${x.state}` }, `${x.name} ${SUB_STATE[x.state] || ''}`));
   const stats = d.done
     ? [fmtBytes(d.size), ...subs]
-    : [h('strong', {}, `${pct}%`), `of ${fmtBytes(d.size)}`, !isPaused(d) && d.speed > 0 && `${fmtBytes(d.speed)}/s`, !isPaused(d) && fmtEta(d.eta), ...subs];
+    : [h('strong', {}, Number.isFinite(d.progress) && d.size > 0 ? `${pct}%` : label), d.size > 0 && `${fmtBytes(Math.round(d.size * (Number(d.progress) || 0)))} / ${fmtBytes(d.size)}`, !isPaused(d) && !transferAttention(d) && !/checking/.test(d.state || '') && d.speed > 0 && `${fmtBytes(d.speed)}/s`, !isPaused(d) && !transferAttention(d) && !/checking/.test(d.state || '') && Number.isFinite(d.eta) && d.eta >= 0 && d.eta < 8640000 && fmtEta(d.eta), ...subs];
   r.stats.replaceChildren(...stats.filter(Boolean).map((s) => (s instanceof Node ? s : h('span', {}, s))));
   r.pause.hidden = d.done;
-  r.del.hidden = d.done; // finished downloads are deleted from the Library
+  r.del.hidden = d.canManage === false;
+  r.del.textContent = d.done ? 'Remove transfer' : d.season != null && d.episode == null ? 'Cancel season pack' : 'Cancel download';
+  r.pause.disabled = d.canManage === false; r.del.disabled = false;
+  r.pause.setAttribute('aria-disabled', String(d.canManage === false || Boolean(operation?.label))); r.del.setAttribute('aria-disabled', String(Boolean(operation?.label)));
+  r.retry.hidden = !transferAttention(d) && !operation?.error; r.retry.disabled = d.canManage === false; r.retry.setAttribute('aria-disabled', String(d.canManage === false || Boolean(operation?.label)));
   r.play.classList.toggle('is-disabled', Boolean(d.converting));
   r.play.setAttribute('aria-disabled', String(Boolean(d.converting)));
   r.play.title = d.converting ? 'Cannot play while converting' : '';
-  r.pause.textContent = isPaused(d) ? 'Resume' : 'Pause';
+  r.pause.textContent = operation?.label || (isPaused(d) ? 'Resume' : 'Pause');
   r.pause.setAttribute('aria-label', `${isPaused(d) ? 'Resume' : 'Pause'} ${d.title}`);
 }
 
-function renderDownloads() {
-  const body = $('#downloads-body');
-  // The owner can see everyone's downloads; everybody else only ever gets their own from the server.
-  const scope = $('#dl-scope');
-  if (state.me?.isOwner && scope && !scope.firstChild) {
-    scope.append(segmented([['mine', 'Mine'], ['all', 'Everyone']], state.dlScope, async (v) => {
-      state.dlScope = v;
-      scope.replaceChildren();
-      dlCards.clear();
-      $('#downloads-body').replaceChildren();
-      renderDownloads();
-      await loadDownloads();
-      renderDownloads();
-    }, 'Whose downloads'));
-  }
-  if (!state.status.downloads) {
-    dlCards.clear();
-    body.replaceChildren(notice('Downloads aren’t connected',
-      'Turn on qBittorrent’s Web UI, add QBIT_URL, QBIT_USER and QBIT_PASS to the .env file, then restart the server.'));
-    return;
-  }
-  if (state.downloadsError) {
-    dlCards.clear();
-    body.replaceChildren(notice('Couldn’t get downloads', state.downloadsError));
-    return;
-  }
-  const q = norm(state.query);
-  const items = state.downloads.filter((d) => !q || norm(d.name).includes(q));
-  if (!items.length) {
-    dlCards.clear();
-    body.replaceChildren(notice(q ? `Nothing matches “${state.query.trim()}”` : 'No downloads',
-      q ? 'Try part of the title instead.' : state.status.torrents ? 'Use “Find torrents” above, or add something in qBittorrent. Progress shows up here.' : 'Anything added in qBittorrent shows up here with its progress.'));
-    return;
-  }
-
-  let list = body.querySelector('ul.rows');
-  if (!list) { list = h('ul', { class: 'rows' }); body.replaceChildren(list); }
-
-  const seen = new Set();
-  items.forEach((d, i) => {
-    seen.add(d.hash);
-    let el = dlCards.get(d.hash);
-    if (!el) { el = makeDlCard(d); dlCards.set(d.hash, el); }
-    updateDlCard(el, d);
-    if (list.children[i] !== el) list.insertBefore(el, list.children[i] || null);
-  });
-  for (const [hash, el] of dlCards) if (!seen.has(hash)) { el.remove(); dlCards.delete(hash); }
+let managerView = null;
+function pickerManagerSubview(opener) {
+  if (!managerView || !$('#picker-body').contains(opener)) return null;
+  const manager = managerView, content = [...$('#picker-body').childNodes];
+  manager.suspended = true;
+  return () => {
+    if (managerView !== manager) return;
+    $('#picker-body').replaceChildren(...content); manager.suspended = false; drawTransferDetails();
+    (opener?.isConnected ? opener : $('#picker-body').querySelector('button') || $('#picker').querySelector('.sheet-close'))?.focus({ preventScroll: true });
+  };
 }
+function renderDownloads() { if (state.view === 'downloads') { state.libAvailability = 'downloading'; setView('library'); } patchTransferNodes(); }
+function openTransferDetails(entry, opener) {
+  const list = h('ul', { class: 'rows transfer-detail-list' });
+  const scope = h('div');
+  $('#picker-body').replaceChildren(h('h2', { id: 'picker-title' }, entry ? `${entry.name} downloads` : 'Manage server downloads'), scope, list);
+  managerView = { list, entryKey: entry?.key || null, hashes: entry?.transfers.map(d => d.hash) || null, scope };
+  if (!entry && state.me?.isOwner) scope.append(segmented([['mine', 'Mine'], ['all', 'Everyone']], state.dlScope, async v => { state.dlScope = v; scope.querySelectorAll('button').forEach((b,i) => b.setAttribute('aria-pressed', String((i ? 'all' : 'mine') === v))); await loadDownloads(); drawTransferDetails(); }, 'Whose downloads'));
+  drawTransferDetails();
+  pushOverlay(showSheet($('#picker'), $('#picker-backdrop'), () => { managerView = null; if (state.dlScope !== 'mine') { state.dlScope = 'mine'; loadDownloads().then(patchUnifiedLibrary); } opener?.focus({ preventScroll: true }); }));
+}
+function drawTransferDetails() {
+  if (!managerView || managerView.suspended) return;
+  const { list, hashes } = managerView;
+  const items = state.downloads.filter(d => hashes ? hashes.includes(d.hash) : true);
+  if (items.length) for (const child of [...list.children]) if (!child._refs) child.remove();
+  const seen = new Set();
+  for (const [index,d] of items.entries()) {
+    let card = dlCards.get(d.hash); if (!card || !list.contains(card)) { card = makeDlCard(d); dlCards.set(d.hash, card); transferNodes.add(card); }
+    transferNodes.add(card); updateDlCard(card,d); seen.add(d.hash); if (list.children[index] !== card) list.insertBefore(card,list.children[index] || null);
+  }
+  for (const child of [...list.children]) if (child._refs && !seen.has(child._refs.data.hash)) child.remove();
+  if (!items.length && !list.children.length) list.append(h('li', { class: 'muted' }, state.downloadsError || 'No downloads in this view.'));
+}
+function patchTransferNodes() {
+  for (const node of transferNodes) {
+    if (!node.isConnected) { transferNodes.delete(node); continue; }
+    const d = state.downloads.find(d => d.hash === node._refs.data.hash); if (d) updateDlCard(node, d);
+  }
+  for (const row of document.querySelectorAll('.pending-episode')) {
+    const d = state.downloads.find(d => d.hash === row.dataset.transferHash), ep = d?.episodes?.find(ep => String(ep.season) === row.dataset.episodeSeason && String(ep.episode) === row.dataset.episodeNumber);
+    if (ep) $('.episode-transfer-state', row).textContent = ep.available ? 'Ready in download details' : `${transferState(d)}${Number.isFinite(ep.progress) ? ` · ${Math.floor(ep.progress*100)}%` : ''}`;
+  }
+  drawTransferDetails();
+}
+function patchUnifiedLibrary() { if (state.view === 'library') renderLibrary(); patchTransferNodes(); }
 
 // Downloads claims completed files before replying, so read it before refreshing the library.
 let mediaRefreshRequest = null;
@@ -1165,12 +1252,13 @@ function refreshMediaLibrary() {
   mediaRefreshRequest = (async () => {
     await loadDownloads();
     if (state.view === 'downloads') renderDownloads();
-    if (state.view === 'library' || libraryRefreshNeeded || current) {
+    if (libraryRefreshNeeded || (state.view === 'library' || current) && Date.now() - libraryLastChecked >= 30000) {
       libraryRefreshNeeded = false;
       await loadLibrary();
       libraryRefreshNeeded ||= Boolean(state.libraryError);
       renderUpdatedLibrary();
     }
+    if (typeof patchUnifiedLibrary === 'function') patchUnifiedLibrary();
   })().finally(() => { mediaRefreshRequest = null; });
   return mediaRefreshRequest;
 }
@@ -1231,7 +1319,7 @@ window.addEventListener('popstate', () => { overlayStack.pop()?.(); renderUpdate
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
   if (!ccMenu.hidden) { closeCcMenu(); ccBtn.focus(); return; }
-  if (!syncMenu.hidden) { closeSyncMenu(); syncBtn.focus(); return; }
+  if (!audioMenu.hidden) { closeAudioMenu(); audioBtn.focus(); return; }
   if (!helpEl.hidden) { helpEl.hidden = true; return; }
   if (watchPanelOpen) { setWatchPanel(false); $('#watch-btn').focus(); return; }
   if (fsElement()) { toggleFullscreen(); return; }
@@ -1283,11 +1371,14 @@ function renderDetails(t) {
       query: isTv ? t.title : [t.title, t.year].filter(Boolean).join(' '),
       type: isTv ? 'tv' : 'movie',
       movieId: !isTv ? t.id : null,
+      tvId: isTv ? t.id : null,
+      canonicalTitle: t.title,
       label: t.title,
       opener: e.currentTarget,
     }),
   }, icon('download'), files.some((f) => f.done) || onServer.length ? 'Find another version' : 'Find a download');
-  const getIt = findBtn && h('div', { class: 'dl-actions' }, bestDownload(t, files, onServer), findBtn);
+  const recommended = findBtn && bestDownload(t, files, onServer);
+  const getIt = findBtn && h('div', { class: 'dl-actions' }, recommended, findBtn);
   $('#sheet-body').replaceChildren(
     h('div', { class: `sheet-hero${t.backdrop ? '' : ' no-image'}`, style: t.backdrop ? `background-image:url("${t.backdrop}")` : null }),
     h('div', { class: 'sheet-content' },
@@ -1301,7 +1392,7 @@ function renderDetails(t) {
       onServer.length > 0 && serverOffer(t, onServer),
       // Shows: downloading comes first (a season chip per season), then what's here folded by season,
       // so a show with many episodes on the server doesn't push the buttons far down.
-      ...(isTv ? [getIt, state.status.torrents && canDownload() && seasonStrip(t, [...files, ...onServer])] : []),
+      ...(isTv ? [getIt, state.status.torrents && canDownload() && seasonStrip(t, [...files, ...onServer], (n) => recommended?.selectSeason?.(n))] : []),
       h('h3', {}, 'In your library'),
       !files.length ? h('p', { class: 'muted' }, onServer.length ? 'Not in your library yet.' : 'Not on this server yet.')
         : isTv ? seasonGroups(files)
@@ -1397,7 +1488,7 @@ function seasonGroups(files) {
 
 // "Get a season": a chip per TMDB season (✓ complete here, 3/10 partly here, soon = not aired yet);
 // a tap searches torrents for that season, where "Get all episodes" can fetch it episode by episode.
-function seasonStrip(t, files) {
+function seasonStrip(t, files, onSelect = null) {
   const box = h('div', { class: 'season-strip' });
   if (!t.id) return box;
   tvSeasons(t.id).then((seasons) => {
@@ -1411,7 +1502,7 @@ function seasonStrip(t, files) {
         class: `chip season-chip${full ? ' is-full' : have ? ' is-partial' : ''}`,
         title: `${se.name}${se.episodes ? `, ${plural(se.episodes, 'episode')}` : ''}${have ? `, ${have} on the server` : ''}`,
         disabled: se.upcoming && !have ? true : null,
-        onclick: (e) => openTorrents({ query: `${t.title} S${pad2(se.number)}`, type: 'tv', label: `${t.title}, ${se.name}`, opener: e.currentTarget }),
+        onclick: (e) => onSelect ? onSelect(se.number) : openTorrents({ query: `${t.title} S${pad2(se.number)}`, type: 'tv', tvId: t.id, canonicalTitle: t.title, label: `${t.title}, ${se.name}`, opener: e.currentTarget }),
       }, se.upcoming && !have ? `${label} · soon` : label);
     });
     box.replaceChildren(h('h3', {}, 'Get a season'), h('div', { class: 'season-chips' }, chips));
@@ -1443,7 +1534,26 @@ function bestDownload(t, files, onServer) {
   const subs = () => (state.status.subtitles && prefs().subLang ? [prefs().subLang] : []);
   const qualityName = (q) => (q === '2160p' ? '4K' : q || 'Unknown quality');
   let quality = ['2160p', '1440p', '1080p', '720p'].includes(prefs().quality) ? prefs().quality : 'all';
-  let se = null, have = 0, request = 0;
+  let se = null, have = 0, request = 0, seasons = [], selectedSeason = null;
+  const here = [...files, ...onServer].filter((f) => f.episode != null);
+  const count = (n) => episodeCount(here.filter((f) => f.season === n));
+  const seasonSelect = h('select', { 'aria-label': 'Recommended download season' });
+  const seasonRow = h('label', { class: 'best-season' }, h('span', {}, 'Season'), seasonSelect);
+  seasonSelect.addEventListener('change', () => chooseSeason(Number(seasonSelect.value)));
+  function chooseSeason(number) {
+    const next = seasons.find((s) => s.number === number && !s.upcoming);
+    if (!next) return;
+    selectedSeason = number;
+    se = next;
+    have = count(number);
+    seasonSelect.value = String(number);
+    box.hidden = false;
+    refresh();
+  }
+  box.selectSeason = (number) => {
+    if (seasons.length) chooseSeason(number);
+    else selectedSeason = number; // A chip can be pressed before the season list has loaded.
+  };
   const qualityRail = segmented([['all', 'Auto'], ['2160p', '4K'], ['1440p', '1440p'], ['1080p', '1080p'], ['720p', '720p']], quality,
     (value) => {
       if (quality === value) return;
@@ -1454,15 +1564,22 @@ function bestDownload(t, files, onServer) {
   qualityRail.classList.add('quality-rail');
   qualityRail.querySelectorAll('button').forEach((button, i) => { button.dataset.quality = ['all', '2160p', '1440p', '1080p', '720p'][i]; });
   const lockQuality = (locked) => qualityRail.querySelectorAll('button').forEach((button) => { button.disabled = locked; });
+  if (isTv) box.append(seasonRow);
   box.append(h('div', { class: 'best-quality' }, h('span', {}, 'Download quality'), qualityRail), result);
 
   (async () => {
     if (isTv) {
       if (!t.id) return;
-      const here = [...files, ...onServer].filter((f) => f.episode != null);
-      const count = (n) => episodeCount(here.filter((f) => f.season === n));
-      se = (await tvSeasons(t.id)).find((s) => !s.upcoming && !(s.episodes && count(s.number) >= s.episodes));
-      if (!se) return;
+      seasons = (await tvSeasons(t.id)).filter((s) => !s.upcoming && s.number > 0);
+      if (!seasons.length) return;
+      seasonSelect.replaceChildren(...seasons.map((s) => h('option', { value: String(s.number) },
+        `${s.name}${s.episodes ? ` · ${count(s.number)}/${s.episodes} here` : ''}`)));
+      const initial = seasons.find((s) => s.number === selectedSeason)
+        || seasons.find((s) => !(s.episodes && count(s.number) >= s.episodes))
+        || seasons[0];
+      se = initial;
+      selectedSeason = se.number;
+      seasonSelect.value = String(se.number);
       have = count(se.number);
     }
     box.hidden = false;
@@ -1471,34 +1588,43 @@ function bestDownload(t, files, onServer) {
 
   async function refresh() {
     const current = ++request;
+    if (isTv && !se) return;
+    const targetSeason = se;
+    const alreadyHere = have;
     result.setAttribute('aria-busy', 'true');
     result.replaceChildren(h('p', { class: 'best-empty', role: 'status' }, 'Finding a download…'));
     try {
-      // A partly present season is filled episode by episode rather than downloaded twice.
-      const rec = have ? { pick: null } : await cachedFor(`/api/torrents/recommend?${new URLSearchParams({
+      // Always check for a complete season pack first, even if some episodes already exist.
+      // When partly present, offer a separate missing-only action to avoid duplicate downloads.
+      if (isTv && targetSeason.episodes && alreadyHere >= targetSeason.episodes) {
+        result.replaceChildren(h('p', { class: 'best-empty' }, 'All episodes of this season are already here.'));
+        return;
+      }
+      const rec = await cachedFor(`/api/torrents/recommend?${new URLSearchParams({
         type: isTv ? 'tv' : 'movie', title: t.title, quality,
-        ...(t.year ? { year: t.year } : {}), ...(se ? { season: se.number } : {}) })}`);
+        ...(t.year ? { year: t.year } : {}), ...(targetSeason ? { season: targetSeason.number } : {}) })}`);
       if (current !== request) return;
-      if (rec.pick) return showPick(rec);
+      if (rec.pick) return showPick(rec, targetSeason, alreadyHere);
       if (!isTv) {
         const name = quality === 'all' ? '' : `${qualityName(quality)} `;
         result.replaceChildren(h('p', { class: 'best-empty', role: 'status' }, `No ${name}download found`),
           h('p', { class: 'best-meta' }, rec.why || 'Choose another quality or find a download below.'));
         return;
       }
-      const label = `Download season ${se.number}`;
+      const label = `Download season ${targetSeason.number}`;
       const btn = h('button', { type: 'button', class: 'play-btn best-btn' }, icon('download'), label);
       btn.addEventListener('click', async () => {
+        seasonSelect.disabled = true;
         lockQuality(true);
-        try { await getSeason(`${t.title} S${pad2(se.number)}`, {
-          quality: quality === 'all' ? '' : quality, exactQuality: quality !== 'all',
+        try { await getSeason(`${t.title} S${pad2(targetSeason.number)}`, {
+          quality: quality === 'all' ? '' : quality, exactQuality: quality !== 'all', tvId: t.id, canonicalTitle: t.title,
           subs: subs(), btn, status, label, isOpen: () => btn.isConnected,
-        }); } finally { lockQuality(false); }
+        }); } finally { lockQuality(false); seasonSelect.disabled = false; }
       });
       const resolution = quality === 'all' ? '1080p where it can' : qualityName(quality);
-      status.textContent = have
-        ? `${have} of ${se.episodes || '?'} episodes are already here. Marquee finds the rest in ${resolution}.`
-        : `No complete ${se.name.toLowerCase()} with enough seeders, so Marquee finds each episode separately in ${resolution}.`;
+      status.textContent = alreadyHere
+        ? `${alreadyHere} of ${targetSeason.episodes || '?'} episodes are already here. Marquee finds only the missing ones in ${resolution}.`
+        : `No matching complete ${targetSeason.name.toLowerCase()} pack found, so Marquee finds each episode separately in ${resolution}.`;
       result.replaceChildren(btn, status);
     } catch (err) {
       if (current !== request) return;
@@ -1507,8 +1633,8 @@ function bestDownload(t, files, onServer) {
     } finally { if (current === request) result.removeAttribute('aria-busy'); }
   }
 
-  function showPick({ pick, why }) {
-    const label = isTv ? `Download season ${se.number}` : 'Download';
+  function showPick({ pick, why }, targetSeason, alreadyHere) {
+    const label = isTv ? `Download season ${targetSeason.number} pack` : 'Download';
     const btn = h('button', { type: 'button', class: 'play-btn best-btn', 'aria-label': `${label}, ${qualityName(pick.quality)}` },
       icon('download'), label, h('span', { class: 'best-q' }, qualityName(pick.quality)));
     status.replaceChildren(...[
@@ -1517,30 +1643,50 @@ function bestDownload(t, files, onServer) {
     ].filter(Boolean));
     btn.addEventListener('click', async () => {
       btn.disabled = true; lockQuality(true);
+      if (isTv) seasonSelect.disabled = true;
       btn.replaceChildren('Adding…');
       try {
-        await sendToQbit(await magnetOf(pick), { name: pick.name, subs: subs(), ...(!isTv && t.id ? { movieId: t.id } : {}) });
+        await sendToQbit(await magnetOf(pick), { name: pick.name, subs: subs(), mediaType: isTv ? 'tv' : 'movie', ...(t.id ? isTv ? { tvId: t.id, canonicalTitle: t.title } : { movieId: t.id } : {}) });
         btn.classList.add('is-added');
         btn.replaceChildren(icon('check'), 'Added');
-        toast(subs().length ? 'Added. Subtitles come when it finishes.' : 'Added to Downloads');
+        toast(subs().length ? 'Added. Subtitles come when it finishes.' : 'Added to Library');
       } catch (err) {
         btn.disabled = false; lockQuality(false);
+        if (isTv) seasonSelect.disabled = false;
         btn.replaceChildren(icon('download'), label, h('span', { class: 'best-q' }, qualityName(pick.quality)));
         status.textContent = err.message;
       }
     });
-    result.replaceChildren(btn, status, h('p', { class: 'best-name', title: pick.name }, pick.name));
+    const missingOnly = isTv && alreadyHere > 0 && (!targetSeason.episodes || alreadyHere < targetSeason.episodes)
+      ? h('button', { type: 'button', class: 'chip best-missing-btn', onclick: async () => {
+        const seasonNo = targetSeason.number;
+        const actionLabel = 'Get only missing episodes';
+        seasonSelect.disabled = true;
+        lockQuality(true);
+        try {
+          await getSeason(`${t.title} S${pad2(seasonNo)}`, {
+            quality: quality === 'all' ? '' : quality, exactQuality: quality !== 'all', tvId: t.id, canonicalTitle: t.title,
+            subs: subs(), btn: missingOnly, status, label: actionLabel, isOpen: () => missingOnly.isConnected,
+          });
+        } finally { seasonSelect.disabled = false; lockQuality(false); }
+      } }, icon('download'), 'Get only missing episodes') : null;
+    if (alreadyHere > 0 && isTv) {
+      status.append(h('span', { class: 'best-why' },
+        `${alreadyHere} episode(s) already here. The full pack may download duplicates; use “Get only missing episodes” to avoid that.`));
+    }
+    result.replaceChildren(...[btn, status, h('p', { class: 'best-name', title: pick.name }, pick.name), missingOnly].filter(Boolean));
+
   }
   return box;
 }
 
 // A whole season episode by episode (season.js), with progress in `status` while isOpen() holds.
-async function getSeason(query, { quality = '', exactQuality = false, subs = [], btn, status, label, isOpen }) {
+async function getSeason(query, { quality = '', exactQuality = false, subs = [], tvId = null, canonicalTitle = null, btn, status, label, isOpen }) {
   btn.disabled = true;
   btn.replaceChildren('Starting…');
   let job;
   try {
-    job = await api('/api/downloads/season', jsonPost({ query, quality, exactQuality, subs }));
+    job = await api('/api/downloads/season', jsonPost({ query, quality, exactQuality, subs, ...(tvId ? { tvId, canonicalTitle } : {}) }));
   } catch (err) {
     btn.disabled = false;
     btn.replaceChildren(icon('download'), label);
@@ -1567,13 +1713,19 @@ async function getSeason(query, { quality = '', exactQuality = false, subs = [],
     status.textContent = [
       n ? `Added ${plural(n, 'episode')}` : j.step || 'Nothing new to add',
       j.have.length && `${j.have.length} already here`,
-      j.missing.length && `not found: ${eps(j.missing)}`,
+      j.missing.length && `not added: ${eps(j.missing)}`,
+      j.errors?.length && `${j.errors.length} search/download errors`,
       j.upcoming && `${j.upcoming} not aired yet`,
     ].filter(Boolean).join(' · ');
-    btn.classList.add('is-added');
-    btn.replaceChildren(icon('check'), n ? 'Added' : 'Done');
+    btn.classList.toggle('is-added', !j.missing.length);
+    if (j.missing.length) {
+      btn.disabled = false;
+      btn.replaceChildren(icon('download'), 'Retry missing');
+    } else {
+      btn.replaceChildren(icon('check'), n ? 'Added' : 'Done');
+    }
     if (n) {
-      toast(`${j.title} season ${j.season}: ${plural(n, 'episode')} added to Downloads`);
+      toast(`${j.title} season ${j.season}: ${plural(n, 'episode')} added to Library`);
       loadDownloads().then(() => { if (state.view === 'downloads') renderDownloads(); });
     }
     break;
@@ -1584,6 +1736,7 @@ async function getSeason(query, { quality = '', exactQuality = false, subs = [],
 const jsonPost = (body) => ({ method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 
 function openPicker(file, opener) {
+  const restoreManager = pickerManagerSubview(opener);
   const name = [file.title, episodeLabel(file)].filter(Boolean).join(' ');
   const list = h('ul', { class: 'rows device-list' });
   const notes = h('div', { class: 'picker-notes' });
@@ -1602,7 +1755,8 @@ function openPicker(file, opener) {
     h('h2', { id: 'picker-title' }, 'Play on TV'),
     h('p', { class: 'muted picker-sub' }, name),
     ...[list, notes, again, nearby && nearbyWrap].filter(Boolean));
-  pushOverlay(showSheet($('#picker'), $('#picker-backdrop'), () => opener?.focus({ preventScroll: true })));
+  if (restoreManager) $('#picker-body').prepend(h('button', { class: 'chip', onclick: restoreManager }, icon('back'), 'Back to downloads'));
+  else pushOverlay(showSheet($('#picker'), $('#picker-backdrop'), () => opener?.focus({ preventScroll: true })));
 
   async function load(refresh) {
     again.disabled = true;
@@ -1728,6 +1882,9 @@ async function openDelete(f, opener) {
   if (info.others) {
     body.replaceChildren(h('h2', { id: 'picker-title' }, 'Remove from your library?'),
       h('p', { class: 'del-name' }, label),
+    h('p', { class: 'muted' }, d.name),
+    d.season != null && d.episode == null && h('p', { class: 'muted' }, 'This action affects every file in this season pack.'),
+    d.libraryIds?.length && h('p', { class: 'muted' }, 'Files still used by another person’s library are protected. The server will refuse file deletion while they are shared.'),
       h('p', { class: 'muted' }, `${plural(info.others, 'other person has', 'other people have')} this in their library, so the file stays on the server. You can add it back from Discover.`),
       h('div', { class: 'del-actions' },
         button('Remove from my library', 'del-confirm', 'file'),
@@ -1740,6 +1897,9 @@ async function openDelete(f, opener) {
 
   const lines = [
     h('p', { class: 'del-name' }, label),
+    h('p', { class: 'muted' }, d.name),
+    d.season != null && d.episode == null && h('p', { class: 'muted' }, 'This action affects every file in this season pack.'),
+    d.libraryIds?.length && h('p', { class: 'muted' }, 'Files still used by another person’s library are protected. The server will refuse file deletion while they are shared.'),
     h('p', { class: 'muted' }, pack
       ? `This is one of ${t.videos} videos in the torrent “${t.name}”. Deleting all of them also removes the torrent from qBittorrent.`
       : t ? `This also removes the torrent from qBittorrent, so it stops seeding. ${fmtBytes(t.size)} will be freed.`
@@ -1785,10 +1945,11 @@ async function magnetOf(t) {
 
 async function sendToQbit(link, extra = {}) {
   await api('/api/downloads/add', jsonPost({ link, ...extra }));
-  loadDownloads().then(() => { if (state.view === 'downloads') renderDownloads(); });
+  loadDownloads().then(patchUnifiedLibrary);
+  toast('Added to Library');
 }
 
-function openTorrents({ query = '', type = 'all', label = null, movieId = null, opener } = {}) {
+function openTorrents({ query = '', type = 'all', label = null, movieId = null, tvId = null, canonicalTitle = null, opener } = {}) {
   let results = [];
   let filter = prefs().quality || 'all'; // Settings → preferred quality
   let seasonQuery = '', seasonRunning = false;
@@ -1864,7 +2025,7 @@ function openTorrents({ query = '', type = 'all', label = null, movieId = null, 
     info.textContent = 'Searching 1337x and The Pirate Bay…';
     list.replaceChildren(...Array.from({ length: 5 }, () => h('li', { class: 'row tor skeleton-row', 'aria-hidden': 'true' })));
     try {
-      const data = await api(`/api/torrents/search?q=${encodeURIComponent(q)}&type=${type}`, { signal });
+      const data = await api(`/api/torrents/search?q=${encodeURIComponent(q)}&type=${type}${label ? '&strict=1' : ''}`, { signal });
       results = data.results;
       seasonQuery = q;
       renderList(data.problems);
@@ -1936,7 +2097,7 @@ function openTorrents({ query = '', type = 'all', label = null, movieId = null, 
       seasonRunning = true;
       chips.querySelectorAll('button').forEach((button) => { button.disabled = true; });
       try { await getSeason(q, {
-        quality: selectedQuality, exactQuality: !!selectedQuality,
+        quality: selectedQuality, exactQuality: !!selectedQuality, ...(input.value.trim() === query.trim() && tvId ? { tvId, canonicalTitle } : {}),
         subs: sub ? [sub] : [], btn, status, label: 'Get all episodes', isOpen: () => !closed,
       }); } finally {
         seasonRunning = false;
@@ -1982,11 +2143,13 @@ function openTorrents({ query = '', type = 'all', label = null, movieId = null, 
         const sub = subRow.hidden ? '' : subSelect.value;
         // Only carry the selected film while searching its original title; free searches can be anything.
         await sendToQbit(await magnetOf(t), { name: t.name, ...(sub ? { subs: [sub] } : {}),
-          ...(movieId && input.value.trim() === query.trim() ? { movieId } : {}) });
+          ...(input.value.trim() === query.trim() && type !== 'all' ? { mediaType: type } : {}),
+          ...(movieId && input.value.trim() === query.trim() ? { movieId } : {}),
+          ...(tvId && input.value.trim() === query.trim() ? { tvId, canonicalTitle } : {}) });
         added.add(t.id);
         markAdded();
         const subName = sub && subSelect.selectedOptions[0]?.textContent;
-        toast(subName ? `Added. ${subName} subtitles come when it finishes.` : 'Added to Downloads');
+        toast(subName ? `Added. ${subName} subtitles come when it finishes.` : 'Added to Library');
       } catch (err) {
         getBtn.disabled = false;
         getBtn.replaceChildren(icon('download'), 'Get');
@@ -2246,6 +2409,8 @@ function renderParty() {
   roomButton.setAttribute('aria-label', party ? 'Watch Together room controls' : 'Start Watch Together');
   playerEl.classList.toggle('in-party', Boolean(party));
   updateUpNext();
+  if (party) cancelAudioIntent(current);
+  renderAudioControls();
   if (!party) return;
   updatePlayState();
   const room = party.state;
@@ -2262,7 +2427,7 @@ function renderParty() {
   $('#watch-ready').hidden = !party.blocked;
   playerEl.classList.toggle('party-guest', !party.isHost);
   airplayBtn.hidden = true;
-  syncBtn.hidden = true;
+  audioBtn.hidden = true;
   seekEl.setAttribute('aria-disabled', String(!party.isHost));
   seekEl.tabIndex = party.isHost ? 0 : -1;
   for (const b of playBtns) {
@@ -2386,6 +2551,7 @@ function saveProgress(force = false) {
   const ref = progressRef(current);
   if (done) delete state.progress[ref];
   else state.progress[ref] = { time: video.currentTime, duration: video.duration, at: now };
+  invalidateLibraryProgress();
   api('/api/me/progress', { ...jsonPost({ ref, time: done ? null : video.currentTime, duration: video.duration }), keepalive: true }).catch(() => {});
 }
 let lastPush = 0;
@@ -2404,6 +2570,7 @@ const canCastFromBrowser = hasAirPlay || hasRemotePlayback;
 let remoteWatchId = null;
 let onTvVersion = false;   // AirPlay is playing the TV version (original audio)
 let castWatch = null;
+let castGeneration = 0;
 
 airplayBtn.setAttribute('aria-label', hasAirPlay ? 'AirPlay' : 'Cast to a TV');
 airplayBtn.addEventListener('click', () => {
@@ -2435,6 +2602,7 @@ function watchCastTargets() {
 }
 
 function resetCasting() {
+  castGeneration++;
   castWatch = null;
   airplayBtn.hidden = true;
   airplayBtn.classList.remove('is-hint');
@@ -2464,23 +2632,39 @@ function setPlayerSource(url, session, onMetadata) {
   video.src = url;
 }
 
-// Keeps position and play state while switching to a compatible or TV version.
-function swapSource(url) {
+function capturePlayback(session = current) {
+  if (!session?.ready && session?.sourceSnapshot) return { ...session.sourceSnapshot };
+  return { url: video.currentSrc || video.src, time: video.currentTime || 0, playing: !video.paused && !video.ended,
+    muted: video.muted, volume: video.volume, rate: video.playbackRate };
+}
+function restorePlayback(snapshot) {
+  if (Number.isFinite(snapshot.time)) video.currentTime = Math.max(0, Math.min(snapshot.time, Number.isFinite(video.duration) ? Math.max(0, video.duration - .05) : snapshot.time));
+  video.muted = snapshot.muted;
+  if (canSetVolume) video.volume = snapshot.volume;
+  video.playbackRate = snapshot.rate;
+  applySubModes();
+  if (party) { party.pulse(); party.sync(); }
+  else if (snapshot.playing) video.play().catch(() => {});
+  else video.pause();
+}
+function swapSource(url, onReady) {
   const session = current;
   if (!session) return;
-  const at = video.currentTime;
-  const wasPlaying = !video.paused;
+  const snapshot = session.sourceSnapshot = capturePlayback(session);
   setPlayerSource(url, session, () => {
-    if (!party && at > 1) video.currentTime = at;
-    if (party) { party.pulse(); party.sync(); }
-    else if (wasPlaying) video.play().catch(() => {});
+    session.sourceSnapshot = null;
+    restorePlayback(snapshot);
+    onReady?.();
   });
 }
 
 async function onWireless(on) {
+  const generation = ++castGeneration;
   if (on && party) { leaveWatchRoom(); toast('Left Watch Together: casting is not synchronized.'); }
   const session = current;
   if (!session) return;
+  if (on) cancelAudioIntent(session);
+  renderAudioControls();
   const note = $('#player-note');
   if (on) {
     note.textContent = 'Playing on your TV. The controls here work as a remote.';
@@ -2493,11 +2677,12 @@ async function onWireless(on) {
   if (!hasAirPlay || on === onTvVersion) return;
   try {
     const link = await api(`/api/play-link?kind=${session.kind}&id=${encodeURIComponent(mediaId(session))}&variant=${on ? 'tv' : 'browser'}`);
-    if (current !== session) return;
+    if (current !== session || generation !== castGeneration) return;
     const tvCanPlay = ['mp4', 'm4v', 'mov'].includes(link.ext);
     if (on && (!tvCanPlay || link.name === session.browserName)) return; // nothing better to send
-    swapSource(link.url);
+    swapSource(link.url, () => refreshAudioMetadata(session, true));
     onTvVersion = on;
+    renderAudioControls();
   } catch { /* keep playing the current version */ }
 }
 
@@ -2505,6 +2690,7 @@ const ccBtn = $('#cc-btn');
 const ccMenu = $('#cc-menu');
 let ccLangs = [];
 let ccActive = null;
+let subtitleGeneration = 0;
 
 // Subtitles are drawn by the page (#player-subs) rather than the browser, so they stay inside the
 // picture and move up out of the way while the controls are showing. The track runs in 'hidden'
@@ -2565,6 +2751,7 @@ video.addEventListener('enterpictureinpicture', () => { nativeSubs = true; apply
 video.addEventListener('leavepictureinpicture', () => { nativeSubs = false; applySubModes(); });
 
 function clearSubTracks() {
+  subtitleGeneration++;
   video.querySelectorAll('track').forEach((t) => t.remove());
   ccActive = null;
   ccSync = null;
@@ -2575,7 +2762,7 @@ function closeCcMenu() { ccMenu.hidden = true; ccBtn.setAttribute('aria-expanded
 ccBtn.addEventListener('click', (e) => {
   e.stopPropagation();
   const open = ccMenu.hidden;
-  closeSyncMenu();
+  closeAudioMenu();
   ccMenu.hidden = !open;
   ccBtn.setAttribute('aria-expanded', String(open));
   if (open) (ccMenu.querySelector('[aria-checked="true"]') || ccMenu.querySelector('button'))?.focus();
@@ -2658,34 +2845,37 @@ function subSyncItems(f, session) {
 // Taps are applied one after another, so quick repeated taps all count.
 let nudgeChain = Promise.resolve();
 function subSyncNudge(f, session, l, seconds) {
+  const generation = subtitleGeneration;
   nudgeChain = nudgeChain.then(async () => {
-    if (current !== session) return;
+    if (current !== session || generation !== subtitleGeneration || ccActive !== l.code) return;
     try {
       const result = await api('/api/subs/sync', jsonPost({ kind: f.kind, id: mediaId(f), lang: l.code, action: 'shift', seconds }));
-      if (current !== session) return;
+      if (current !== session || generation !== subtitleGeneration || ccActive !== l.code) return;
       ccSync = result;
       reloadSubTrack(l);
       renderCcMenu(f, session);
-    } catch (err) { if (current === session) toast(err.message); }
+    } catch (err) { if (current === session && generation === subtitleGeneration && ccActive === l.code) toast(err.message); }
   });
 }
 
 async function subSyncAction(f, session, l, act) {
+  const generation = subtitleGeneration;
   try {
     const result = await api('/api/subs/sync', jsonPost({ kind: f.kind, id: mediaId(f), lang: l.code, action: act }));
-    if (current !== session) return;
+    if (current !== session || generation !== subtitleGeneration || ccActive !== l.code) return;
     ccSync = result;
     if (act === 'undo') { reloadSubTrack(l); toast('Back to the original subtitle timing'); }
     renderCcMenu(f, session);
     if (subSyncBusy(ccSync)) watchSubSync(f, session, l, true);
-  } catch (err) { if (current === session) toast(err.message); }
+  } catch (err) { if (current === session && generation === subtitleGeneration && ccActive === l.code) toast(err.message); }
 }
 
 async function watchSubSync(f, session, l, wasBusy = false) {
+  const generation = subtitleGeneration;
   clearTimeout(ccSyncTimer);
   let s;
   try { s = await api(`/api/subs/sync?kind=${f.kind}&id=${encodeURIComponent(mediaId(f))}&lang=${l.code}`); } catch { return; }
-  if (current !== session || ccActive !== l.code) return;
+  if (current !== session || generation !== subtitleGeneration || ccActive !== l.code) return;
   ccSync = s;
   if (subSyncBusy(s)) {
     ccSyncTimer = setTimeout(() => watchSubSync(f, session, l, true), 3000);
@@ -2735,11 +2925,12 @@ async function pickPlayerSub(f, session, l, { quiet = false } = {}) {
   if (!quiet) closeCcMenu();
   try { localStorage.setItem('subs:lang', l.code || ''); } catch { /* blocked */ }
   clearSubTracks();
+  const generation = subtitleGeneration;
   if (!l.code) { renderCcMenu(f, session); return; }
   if (!quiet) toast(`Getting ${l.name} subtitles…`);
   try {
     const { url } = await api('/api/subs/fetch', jsonPost({ kind: f.kind, id: mediaId(f), lang: l.code }));
-    if (current !== session) return;
+    if (current !== session || generation !== subtitleGeneration) return;
     const track = h('track', { kind: 'subtitles', srclang: l.code, label: l.name, src: url, default: true });
     video.append(track);
     ccActive = l.code;
@@ -2750,7 +2941,7 @@ async function pickPlayerSub(f, session, l, { quiet = false } = {}) {
     if (!quiet) toast(`${l.name} subtitles on`);
     watchSubSync(f, session, l);
   } catch (err) {
-    if (current !== session) return;
+    if (current !== session || generation !== subtitleGeneration) return;
     renderCcMenu(f, session, err.message);
     if (!quiet) toast(err.message);
   }
@@ -2765,79 +2956,276 @@ const browserPlays = (codec) => Boolean(CODEC_MIME[codec] && video.canPlayType(`
 const playsHevc = () => Boolean(video.canPlayType('video/mp4; codecs="hvc1.1.6.L93.B0"'));
 const extraPlayable = () => [...Object.keys(CODEC_MIME).filter(browserPlays), playsHevc() && 'hevc'].filter(Boolean).join(',');
 
-// ---- audio sync ----
-const syncBtn = $('#sync-btn');
-const syncMenu = $('#sync-menu');
-const SYNC_STEPS = [0.1, 0.25, 0.5, 1, 2];
-let syncShift = 0;
-let audioWatch = null; // token for the running watchAudio loop
-
-function closeSyncMenu() { syncMenu.hidden = true; syncBtn.setAttribute('aria-expanded', 'false'); }
-syncBtn.addEventListener('click', (e) => {
+// ---- audio selection ----
+const audioBtn = $('#sync-btn');
+const audioMenu = $('#sync-menu');
+const audioStatus = $('#audio-status');
+let audioWatch = null;
+let audioMenuSignature = '';
+let audioRows = new Map();
+let audioMessage = null;
+let audioRetry = null;
+const audioCasting = () => Boolean(onTvVersion || video.webkitCurrentPlaybackTargetIsWireless || video.remote?.state === 'connected');
+const audioSuppressed = () => Boolean(party || audioCasting());
+function closeAudioMenu() { audioMenu.hidden = true; audioBtn.setAttribute('aria-expanded', 'false'); }
+function announceAudio(message) { if (audioStatus.textContent !== message) audioStatus.textContent = message; }
+function audioLabel(a, index) { return audioChoices(a.tracks).find(t => t.index === index)?.label || 'Audio'; }
+function renderAudioControls() {
+  const a = current?.audio;
+  audioBtn.hidden = !a || a.tracks.length < 2 || audioSuppressed() || nativeSubs;
+  if (audioBtn.hidden) closeAudioMenu();
+  audioBtn.setAttribute('aria-label', a?.activeLabel ? `Audio: ${a.activeLabel}` : 'Audio');
+  if (!a) return;
+  const choices = audioChoices(a.tracks);
+  const signature = JSON.stringify([a.source, choices]);
+  if (signature !== audioMenuSignature) {
+    const focused = audioMenu.contains(document.activeElement) ? document.activeElement?.dataset?.audioIndex : null;
+    audioMenuSignature = signature;
+    audioRows = new Map();
+    const rows = choices.map(track => {
+      const status = h('span', { class: 'audio-row-status' });
+      const button = h('button', { type: 'button', role: 'menuitemradio', class: 'cc-item', tabindex: '-1',
+        'data-audio-index': track.index, onclick: () => selectAudioTrack(track.index) }, h('span', {}, track.label), status);
+      audioRows.set(track.index, { button, status });
+      return button;
+    });
+    audioMessage = h('p', { class: 'cc-message audio-message', hidden: true });
+    audioRetry = h('button', { type: 'button', role: 'menuitem', class: 'cc-item audio-retry', tabindex: '-1', hidden: true,
+      onclick: () => { if (current?.audio?.failed != null) selectAudioTrack(current.audio.failed); } }, 'Retry');
+    audioMenu.replaceChildren(h('p', { class: 'audio-title' }, 'Audio'), ...rows, audioMessage, audioRetry);
+    if (focused != null && !audioMenu.hidden) audioRows.get(Number(focused))?.button.focus({ preventScroll: true });
+  }
+  for (const [index, row] of audioRows) {
+    row.button.setAttribute('aria-checked', String(index === a.actual));
+    const text = index === a.pending ? a.swap ? 'Switching…' : 'Preparing…' : '';
+    if (row.status.textContent !== text) row.status.textContent = text;
+  }
+  const message = a.error || (a.pending != null ? a.swap ? `Switching to ${audioLabel(a, a.pending)} audio…` : `Preparing ${audioLabel(a, a.pending)} audio. Playback continues.` : '');
+  if (audioMessage.textContent !== message) audioMessage.textContent = message;
+  audioMessage.hidden = !message;
+  audioRetry.hidden = !a.error || a.failed == null;
+}
+audioBtn.addEventListener('click', e => {
   e.stopPropagation();
-  const open = syncMenu.hidden;
+  const open = audioMenu.hidden;
   closeCcMenu();
-  syncMenu.hidden = !open;
-  syncBtn.setAttribute('aria-expanded', String(open));
-  if (open) syncMenu.querySelector('button')?.focus();
+  renderAudioControls();
+  if (audioBtn.hidden) return;
+  audioMenu.hidden = !open;
+  audioBtn.setAttribute('aria-expanded', String(open));
+  if (open) (audioMenu.querySelector('[aria-checked="true"]') || audioMenu.querySelector('button'))?.focus();
 });
-document.addEventListener('click', (e) => { if (!syncMenu.hidden && !syncMenu.contains(e.target)) closeSyncMenu(); });
+audioMenu.addEventListener('keydown', e => {
+  const items = [...audioMenu.querySelectorAll('button')].filter(b => !b.hidden && !b.disabled);
+  const index = items.indexOf(document.activeElement);
+  const target = e.key === 'Home' ? 0 : e.key === 'End' ? items.length - 1
+    : e.key === 'ArrowDown' ? (index + 1) % items.length : e.key === 'ArrowUp' ? (index - 1 + items.length) % items.length : null;
+  if (target != null && items.length) { e.preventDefault(); items[target].focus(); }
+});
+audioMenu.addEventListener('focusout', () => setTimeout(() => { if (!audioMenu.contains(document.activeElement)) closeAudioMenu(); }, 0));
+document.addEventListener('click', e => { if (!audioMenu.hidden && !audioMenu.contains(e.target)) closeAudioMenu(); });
 
-const fmtShift = (s) => (s === 0 ? 'No correction'
-  : `Sound moved ${Math.abs(s)} s ${s < 0 ? 'earlier' : 'later'}`);
-
-function renderSyncMenu(f, session) {
-  const row = (label, sign) => h('div', { class: 'sync-row' },
-    h('span', { class: 'sync-label' }, label),
-    h('div', { class: 'sync-steps' }, SYNC_STEPS.map((step) => h('button', {
-      class: 'chip', 'aria-label': `${label} by ${step} seconds`,
-      onclick: () => applySync(f, session, Math.round((syncShift + sign * step) * 1000) / 1000),
-    }, `${step}s`))));
-  syncMenu.replaceChildren(...[
-    h('p', { class: 'sync-title' }, 'Audio out of sync?'),
-    h('p', { class: 'cc-message' }, fmtShift(syncShift)),
-    row('Sound is late', -1),
-    row('Sound is early', +1),
-    syncShift !== 0 && h('button', { class: 'cc-item', onclick: () => applySync(f, session, 0) }, 'Remove correction'),
-    h('p', { class: 'cc-message' }, 'Saves a corrected copy. The video switches over by itself when it’s ready.'),
-  ].filter(Boolean));
+function cancelAudioIntent(session, restore = true) {
+  const a = session?.audio;
+  if (!a) return;
+  a.generation++;
+  a.abort?.abort();
+  a.abort = null;
+  a.pending = null;
+  if (a.intentUserChoice != null) a.userChoice = a.intentUserChoice;
+  a.intentUserChoice = null;
+  const swap = a.swap;
+  a.swap = null;
+  swap?.cancel(restore);
+}
+function recoverAudioOwnership(session, a) {
+  if (a.intentUserChoice != null) a.userChoice = a.intentUserChoice;
+  a.intentUserChoice = null;
+  if (current === session && !a.userChoice && !audioSuppressed()) watchAudio(session, session);
+}
+function resetAudioSelection(session) {
+  cancelAudioIntent(session, false);
+  audioMenuSignature = '';
+  audioRows.clear();
+  closeAudioMenu();
+  audioBtn.hidden = true;
+  announceAudio('');
+}
+function installAudioMetadata(session, data, reset = false) {
+  if (current !== session || !data.audioSource || !Array.isArray(data.tracks)) return;
+  const tracks = data.tracks.filter(t => Number.isSafeInteger(t.index) && Number.isSafeInteger(t.audioIndex));
+  let a = session.audio;
+  if (!a) a = session.audio = { generation: 0, source: data.audioSource, actual: data.defaultAudio,
+    tracks, default: data.defaultAudio, pending: null, failed: null, error: '', usingFallback: false, sourceMatches: true, userChoice: false };
+  else if (a.source !== data.audioSource || reset) {
+    const changedChoice = a.userChoice && !reset;
+    cancelAudioIntent(session);
+    a.source = data.audioSource;
+    a.actual = changedChoice ? null : data.defaultAudio;
+    a.usingFallback = changedChoice && a.usingFallback;
+    a.sourceMatches = !changedChoice;
+    a.error = changedChoice ? 'Audio tracks changed. Choose a track again.' : '';
+    a.failed = null;
+    if (!changedChoice) { a.userChoice = false; a.activeLabel = null; }
+  }
+  a.tracks = tracks;
+  a.default = data.defaultAudio;
+  if (a.actual != null) a.activeLabel = audioLabel(a, a.actual);
+  renderAudioControls();
+  reflectNativeAudio();
+}
+async function refreshAudioMetadata(session, reset = false) {
+  const audio = session.audio;
+  const generation = audio?.generation;
+  try {
+    const data = await api(`/api/media/${session.kind}/${encodeURIComponent(mediaId(session))}/audio?plays=${extraPlayable()}`, { signal: session.abort.signal });
+    if (current === session && session.audio === audio && audio?.generation === generation) { installAudioMetadata(session, data, reset); return true; }
+  } catch { /* playback remains available */ }
+  return false;
+}
+function reflectNativeAudio() {
+  const a = current?.audio;
+  if (!a || a.usingFallback || !a.sourceMatches || a.pending != null || audioSuppressed()) return;
+  const mapping = nativeAudioMapping(a.tracks, video.audioTracks);
+  if (!mapping) return;
+  const enabled = [...mapping].filter(([, track]) => track.enabled);
+  if (enabled.length === 1) {
+    a.actual = enabled[0][0];
+    a.activeLabel = audioLabel(a, a.actual);
+    a.userChoice = a.actual !== a.default;
+    renderAudioControls();
+  }
+}
+video.audioTracks?.addEventListener?.('change', reflectNativeAudio);
+video.addEventListener('loadedmetadata', reflectNativeAudio);
+for (const event of ['webkitbeginfullscreen', 'webkitendfullscreen', 'enterpictureinpicture', 'leavepictureinpicture']) video.addEventListener(event, () => { reflectNativeAudio(); renderAudioControls(); });
+if (hasRemotePlayback) for (const event of ['connect', 'disconnect']) video.remote.addEventListener(event, () => {
+  if (audioSuppressed()) cancelAudioIntent(current);
+  renderAudioControls();
+});
+function audioPrepareDelay(signal) {
+  return new Promise(resolve => {
+    const done = () => { clearTimeout(timer); signal.removeEventListener('abort', done); resolve(); };
+    const timer = setTimeout(done, 1000);
+    signal.addEventListener('abort', done, { once: true });
+    if (signal.aborted) done();
+  });
+}
+function switchAudioSource(session, a, generation, link, valid) {
+  return new Promise(resolve => {
+    const snapshot = capturePlayback(session);
+    const previous = { actual: a.actual, activeLabel: a.activeLabel, usingFallback: a.usingFallback };
+    session.sourceSnapshot = snapshot;
+    let timer, metadataReady = false;
+    const cleanup = () => { clearTimeout(timer); video.removeEventListener('error', failed); video.removeEventListener('canplay', commit); };
+    const restore = () => {
+      Object.assign(a, previous);
+      session.sourceSnapshot = snapshot;
+      setPlayerSource(snapshot.url, session, () => { session.sourceSnapshot = null; restorePlayback(snapshot); $('#player-error').hidden = true; });
+    };
+    const failed = () => {
+      if (!valid() || a.swap !== swap) return;
+      cleanup(); a.swap = null;
+      a.error = 'This audio couldn’t play. Restoring your previous audio.';
+      a.failed = link.track; a.pending = null;
+      $('#player-error').hidden = true;
+      restore(); renderAudioControls(); announceAudio(a.error); resolve(false);
+      recoverAudioOwnership(session, a);
+    };
+    const commit = () => {
+      if (!metadataReady || !valid() || a.swap !== swap) return;
+      cleanup(); a.swap = null; session.sourceSnapshot = null;
+      a.actual = link.track; a.pending = null; a.failed = null; a.error = ''; a.usingFallback = true;
+      a.intentUserChoice = null;
+      a.activeLabel = audioLabel(a, a.actual);
+      renderAudioControls(); announceAudio(`${a.activeLabel} audio selected.`); resolve(true);
+    };
+    const swap = { cancel: restoreSource => { cleanup(); if (restoreSource && current === session) restore(); resolve(false); } };
+    a.swap = swap;
+    video.addEventListener('error', failed);
+    video.addEventListener('canplay', commit);
+    timer = setTimeout(failed, 15000);
+    setPlayerSource(link.url, session, () => {
+      if (!valid() || a.swap !== swap) return;
+      metadataReady = true;
+      restorePlayback(snapshot);
+      if (video.readyState >= 3) commit();
+    });
+    renderAudioControls();
+  });
 }
 
-async function applySync(f, session, shift) {
-  closeSyncMenu();
-  try {
-    await api(`/api/media/${f.kind}/${encodeURIComponent(mediaId(f))}/sync`, jsonPost({ shift }));
-  } catch (err) {
-    if (current === session) toast(err.message);
+async function selectAudioTrack(index) {
+  const session = current, a = session?.audio;
+  if (!a || audioSuppressed() || !a.tracks.some(t => t.index === index)) return;
+  cancelAudioIntent(session);
+  a.error = ''; a.failed = null;
+  if (index === a.actual) {
+    a.userChoice = a.usingFallback || a.actual !== a.default;
+    renderAudioControls(); announceAudio('Audio preparation cancelled.');
+    if (!a.userChoice) watchAudio(session, session);
     return;
   }
-  if (current !== session) return;
-  syncShift = shift;
-  renderSyncMenu(f, session);
-  watchAudio(f, session, shift);
+  a.intentUserChoice = a.userChoice;
+  a.userChoice = true;
+  const mapping = !a.usingFallback && a.sourceMatches ? nativeAudioMapping(a.tracks, video.audioTracks) : null;
+  if (mapping?.has(index)) {
+    const before = [...mapping].map(([, track]) => [track, track.enabled]);
+    try {
+      for (const [id, track] of mapping) track.enabled = id === index;
+      if (mapping.get(index).enabled && [...mapping].every(([id, track]) => track.enabled === (id === index))) {
+        a.actual = index; a.activeLabel = audioLabel(a, index);
+        a.intentUserChoice = null;
+        renderAudioControls(); announceAudio(`${a.activeLabel} audio selected.`); return;
+      }
+    } catch { /* use the server-prepared rendition */ }
+    for (const [track, enabled] of before) try { track.enabled = enabled; } catch { /* read-only implementation */ }
+  }
+  const generation = a.generation;
+  const controller = a.abort = new AbortController();
+  const valid = () => current === session && session.audio === a && a.generation === generation && !controller.signal.aborted && !audioSuppressed();
+  a.pending = index;
+  renderAudioControls(); announceAudio(`Preparing ${audioLabel(a, index)} audio. Playback continues.`);
+  let retry = true;
+  try {
+    while (valid()) {
+      const link = await api(`/api/play-link?kind=${session.kind}&id=${encodeURIComponent(mediaId(session))}&variant=browser&audio=${index}&audioSource=${encodeURIComponent(a.source)}${retry ? '&audioRetry=1' : ''}`, { signal: controller.signal });
+      if (!valid()) return;
+      retry = false;
+      if (!link.ready) { await audioPrepareDelay(controller.signal); continue; }
+      if (link.track !== index || link.audioSource !== a.source) throw new Error('Audio tracks changed. Choose a track again.');
+      await switchAudioSource(session, a, generation, link, valid);
+      return;
+    }
+  } catch (error) {
+    if (!valid()) return;
+    if (error.status === 409) {
+      const refreshed = await refreshAudioMetadata(session);
+      if (current !== session || session.audio !== a || (!refreshed && !valid())) return;
+      a.error = 'Audio tracks changed. Choose a track again.'; a.failed = null;
+    } else { a.error = error.message || 'Couldn’t prepare this audio.'; a.failed = index; }
+    a.pending = null;
+    renderAudioControls(); announceAudio(a.error);
+    recoverAudioOwnership(session, a);
+  }
 }
 
 // Polls the server while a corrected copy is made, then switches to it at the current position.
-// Covers unplayable audio, automatic timing fixes and manual sync corrections (target).
-async function watchAudio(f, session, target = null) {
+// Covers unplayable audio and automatic timing fixes. Explicit audio choices own the source.
+async function watchAudio(f, session) {
   const token = audioWatch = {};
   let videoFixing = false;
   const note = $('#player-note');
   note.hidden = true;
-  let changed = false;
-  while (current === session && audioWatch === token) {
+  let changed = Boolean(session.compatibilityPending);
+  while (current === session && audioWatch === token && !session.audio?.userChoice) {
     let a;
     try { a = await api(`/api/media/${f.kind}/${encodeURIComponent(mediaId(f))}/audio?plays=${extraPlayable()}`); } catch { return; }
-    if (current !== session || audioWatch !== token || !a.known) return;
-    if (target === null) {
-      syncShift = a.sync?.shift || 0;
-      renderSyncMenu(f, session);
-      syncBtn.hidden = Boolean(party);
-    }
-    const pendingSync = target !== null && (a.sync?.applied !== target || a.job);
+    if (current !== session || audioWatch !== token || session.audio?.userChoice || !a.known) return;
+    installAudioMetadata(session, a);
     const videoOk = a.videoSafe !== false;
-    if (a.browserSafe && a.aligned && videoOk && !pendingSync) {
-      if (changed) switchToFixedAudio(session, target !== null ? 'Audio sync corrected' : videoFixing ? 'Ready to play' : 'Audio fixed');
+    if (a.browserSafe && a.aligned && videoOk) {
+      if (changed) switchToFixedAudio(session, videoFixing ? 'Ready to play' : 'Audio fixed');
       else note.hidden = true;
       return;
     }
@@ -2851,7 +3239,7 @@ async function watchAudio(f, session, target = null) {
         : `This video is ${a.videoCodec}, which this browser can’t play. ${a.error ? `Marquee couldn’t convert it: ${a.error}` : 'It should still play on a TV.'}`;
       note.hidden = false;
       if (!a.fixable) return;
-      changed = true;
+      changed = session.compatibilityPending = true;
       await new Promise((r) => setTimeout(r, 3000));
       continue;
     }
@@ -2862,20 +3250,21 @@ async function watchAudio(f, session, target = null) {
       note.hidden = false;
       return;
     }
-    if (!a.fixable && !pendingSync) return; // nothing Marquee can do
-    if (pendingSync) note.textContent = `Applying your audio sync correction…${progress} It switches over by itself.`;
-    else if (!a.browserSafe) note.textContent = `No sound? This file’s audio is ${CODEC_NAMES[a.codec] || a.codec}, which this browser can’t play. Adding normal stereo sound…${progress} It switches over by itself.`;
+    if (!a.fixable) return; // nothing Marquee can do
+    if (!a.browserSafe) note.textContent = `No sound? This file’s audio is ${CODEC_NAMES[a.codec] || a.codec}, which this browser can’t play. Adding normal stereo sound…${progress} It switches over by itself.`;
     else note.textContent = `Correcting this file’s audio timing…${progress} It switches over by itself.`;
     note.hidden = false;
-    changed = true;
+    changed = session.compatibilityPending = true;
     await new Promise((r) => setTimeout(r, 3000));
   }
 }
 
 function switchToFixedAudio(session, message) {
-  if (current !== session) return;
+  if (current !== session || session.audio?.userChoice || audioSuppressed()) return;
   const base = video.src.replace(/[?&]v=\d+$/, '');
-  swapSource(`${base}${base.includes('?') ? '&' : '?'}v=${Date.now()}`);
+  swapSource(`${base}${base.includes('?') ? '&' : '?'}v=${Date.now()}`, () => {
+    if (!session.audio?.userChoice) { session.compatibilityPending = false; refreshAudioMetadata(session, true); }
+  });
   $('#player-note').hidden = true;
   $('#player-error').hidden = true;
   toast(message);
@@ -2920,7 +3309,7 @@ const osdEl = $('#player-osd');
 const spinner = $('#player-spinner');
 const helpEl = $('#player-help');
 
-const menuOpen = () => !ccMenu.hidden || !syncMenu.hidden || !helpEl.hidden || watchPanelOpen;
+const menuOpen = () => !ccMenu.hidden || !audioMenu.hidden || !helpEl.hidden || watchPanelOpen;
 let lastPointer = 'mouse';
 let overControls = false;
 let uiTimer = null;
@@ -3309,6 +3698,7 @@ document.addEventListener('keyup', (e) => { if (e.key === ' ' && playerKeyTarget
 function resetPlayerMedia() {
   saveProgress(true);
   const old = current;
+  resetAudioSelection(old);
   current = null;
   old?.abort?.abort();
   old?.nextAbort?.abort();
@@ -3321,9 +3711,8 @@ function resetPlayerMedia() {
   ccLangs = [];
   closeCcMenu();
   ccBtn.hidden = true;
-  closeSyncMenu();
-  syncBtn.hidden = true;
-  syncShift = 0;
+  closeAudioMenu();
+  audioBtn.hidden = true;
   helpEl.hidden = true;
   endSeek(false);
   audioWatch = null;
@@ -3440,7 +3829,7 @@ async function loadPlayerCredits(session) {
     if (current !== session) return;
     session.creditsAt = Number.isFinite(data.creditsAt) && data.creditsAt > 0 ? data.creditsAt : null;
     updateUpNext();
-  } catch { /* Missing chapters or ffprobe leaves the prompt at the actual end. */ }
+  } catch { /* No chapter metadata: use the conservative end-window estimate. */ }
 }
 
 function updateUpNext() {
@@ -3679,7 +4068,7 @@ function renderSettings() {
   out.push(settingsRow('Subtitles', 'Turned on automatically when a video has them in this language.',
     select([['', 'Off'], ...(state.status.subLangs || []).map((l) => [l.code, l.name])], p.subLang || '', (v) => saveMe({ subLang: v }), 'Default subtitles')));
   out.push(settingsRow('Open Marquee on', null,
-    segmented([['discover', 'Discover'], ['library', 'Library'], ['downloads', 'Downloads']], p.startView || 'discover', (v) => saveMe({ startView: v }).then(renderSettings), 'Open Marquee on')));
+    segmented([['discover', 'Discover'], ['library', 'Library']], p.startView === 'downloads' ? 'library' : p.startView || 'discover', (v) => saveMe({ startView: v }).then(renderSettings), 'Open Marquee on')));
   out.push(settingsRow('Library order', null,
     segmented([['newest', 'Newest'], ['expiring', 'Leaving soonest'], ['title', 'A–Z']], p.librarySort || 'newest', (v) => saveMe({ librarySort: v }).then(renderSettings), 'Library order')));
   if (canDownload()) {
@@ -4364,6 +4753,8 @@ $('#q-clear').addEventListener('click', () => {
 });
 
 async function setView(view) {
+  if (view === 'library' || view === 'downloads') invalidateLibraryProgress();
+  if (view === 'downloads') { state.libAvailability = 'downloading'; view = 'library'; }
   if (view === state.view) { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
   state.view = view;
   document.querySelectorAll('.tab').forEach((t) => {
@@ -4380,7 +4771,7 @@ async function setView(view) {
 
   renderView(); // render cached data, then refresh
   revealSectionTab();
-  if (view === 'library') await Promise.all([loadLibrary(), loadConvert()]);
+  if (view === 'library') { await loadDownloads(); await Promise.all([loadLibrary(), loadConvert()]); }
   if (view === 'downloads') await loadDownloads();
   if (view === 'activity') await loadActivity();
   if (view === 'house') await loadHouse();
@@ -4414,6 +4805,7 @@ $('#home-link').addEventListener('click', async (e) => {
   if (state.view === 'discover') { await renderDiscover(); window.scrollTo({ top: 0 }); }
   else await setView('discover');
 });
+$('#manage-downloads').addEventListener('click', e => openTransferDetails(null, e.currentTarget));
 $('#find-torrents').addEventListener('click', (e) => openTorrents({ query: state.query.trim(), opener: e.currentTarget }));
 
 // ---------- start ----------
@@ -4428,6 +4820,7 @@ $('#find-torrents').addEventListener('click', (e) => openTorrents({ query: state
   state.rules = state.status.rules;
   applyTheme(prefs().theme);
   $('#find-torrents').hidden = !state.status.torrents || !canDownload();
+  $('#manage-downloads').hidden = !state.me?.isOwner;
   if (state.status.admin) { enableActivityTab(); enableHouseTab(); enableNotesTab(); }
   if (state.status.clips) enableClipsTab();
   updateTabOverflow();

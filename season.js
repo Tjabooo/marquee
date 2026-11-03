@@ -28,32 +28,69 @@ export function parseSeasonQuery(q) {
 }
 
 // Episodes a release name covers: "S18E01" -> [1], "S18E01E02" / "S18E01-E03" -> [1, 2(, 3)].
-function episodesIn(name, season) {
-  const m = new RegExp(`\\bS0?${season}\\s?E(\\d{1,3})(?:\\s?-?\\s?E?(\\d{1,3}))?(?![\\dp])`, 'i').exec(name.replace(/[._]+/g, ' '));
+export function episodesIn(name, season) {
+  if (!Number.isInteger(season) || season < 0 || season > 99) return [];
+  const normalized = String(name).replace(/[._]+/g, ' ');
+  const x = new RegExp(`\\b0?${season}x(\\d{1,3})(?!\\d)`, 'i').exec(normalized);
+  if (x) return [Number(x[1])];
+  const long = new RegExp(`\\bSeason\\s*0?${season}\\s+Episode\\s*(\\d{1,3})(?!\\d)`, 'i').exec(normalized);
+  if (long) return [Number(long[1])];
+  const m = new RegExp(`\\bS0?${season}\\s?E(\\d{1,3})(?![\\dp])`, 'i').exec(normalized);
   if (!m) return [];
-  const a = Number(m[1]);
-  const b = m[2] ? Number(m[2]) : a;
-  if (b < a || b - a > 5) return [a];
-  return Array.from({ length: b - a + 1 }, (_, i) => a + i);
+  const episodes = [Number(m[1])];
+  let tail = normalized.slice(m.index + m[0].length);
+  for (;;) {
+    const next = /^\s*(-\s*E?|E)\s*(\d{1,3})(?![\dp])/i.exec(tail);
+    if (!next) break;
+    const ep = Number(next[2]), previous = episodes.at(-1);
+    if (next[1].trim().startsWith('-') && ep > previous && ep - previous <= 100) {
+      for (let n = previous + 1; n <= ep; n++) episodes.push(n);
+    } else episodes.push(ep);
+    tail = tail.slice(next[0].length);
+  }
+  return [...new Set(episodes)];
 }
 
-export function seasonJob(id) {
+// Some shows have established release aliases (notably House / House M.D.).
+// Never compare only the first word: House of the Dragon must not match House.
+export function sameShow(a, b) {
+  const normalize = (value) => {
+    const key = showKey(value);
+    return key === 'housemd' ? 'house' : key;
+  };
+  return Boolean(normalize(a)) && normalize(a) === normalize(b);
+}
+
+// Search variants are attempted only after the exact title/episode search fails.
+function episodeQueries(title, season, episode) {
+  const s = String(season).padStart(2, '0');
+  const e = String(episode).padStart(2, '0');
+  const titles = [title];
+  if (showKey(title) === 'house') titles.push('House MD');
+  if (showKey(title) === 'housemd') titles.push('House');
+  return [...new Set(titles.flatMap((name) => [
+    `${name} S${s}E${e}`, `${name} ${season}x${e}`,
+  ]))];
+}
+
+export function seasonJob(id, { userId, owner = false } = {}) {
   const j = jobs.get(id);
   if (!j) return null;
-  const { cancelled, ...view } = j;
+  if (userId != null && !owner && j.requester !== userId) return null;
+  const { cancelled, requester, ...view } = j;
   return view;
 }
 
 // deps: { parseName, searchTorrents, magnetFor1337x, addDownload, wantSubtitles, haveEpisodes, tmdb, seasonEpisodes, log }
-export function startSeasonJob({ title, year, season, quality, exactQuality = false, subs }, deps) {
-  for (const [id, j] of jobs) if (Date.now() - j.started > JOB_TTL) jobs.delete(id);
+export function startSeasonJob({ title, year, season, quality, exactQuality = false, subs, requester = null }, deps) {
+  for (const [id, j] of jobs) if (j.state !== 'running' && Date.now() - j.started > JOB_TTL) jobs.delete(id);
   const key = showKey(title);
-  const running = [...jobs.values()].find((j) => j.state === 'running' && j.key === key && j.season === season);
+  const running = [...jobs.values()].find((j) => j.state === 'running' && j.requester === requester && sameShow(j.key, key) && j.season === season);
   if (running) return running.id; // pressing the button twice doesn't download everything twice
   const job = {
-    id: crypto.randomBytes(6).toString('hex'), key, title, season, started: Date.now(),
+    id: crypto.randomBytes(6).toString('hex'), key, title, season, requester, started: Date.now(),
     state: 'running', step: 'Checking which episodes there are…', total: null, checked: 0,
-    added: [], have: [], missing: [], upcoming: 0, error: null,
+    added: [], have: [], missing: [], errors: [], upcoming: 0, error: null,
   };
   jobs.set(job.id, job);
   run(job, { year, quality, exactQuality, subs }, deps).catch((e) => {
@@ -65,11 +102,11 @@ export function startSeasonJob({ title, year, season, quality, exactQuality = fa
 }
 
 async function run(job, { year, quality, exactQuality, subs }, deps) {
-  const plan = await deps.seasonEpisodes(job.title, year, job.season, deps.tmdb).catch(() => null);
+  const plan = await deps.seasonEpisodes(job.title, year, job.season, deps.tmdb);
   if (plan?.title) job.title = plan.title;
   let episodes = null;
-  if (plan?.episodes?.length) {
-    episodes = plan.episodes.filter((e) => e.aired).map((e) => e.episode);
+  if (Array.isArray(plan?.episodes)) {
+    episodes = [...new Set(plan.episodes.filter((e) => e.aired && Number.isInteger(e.episode) && e.episode > 0).map((e) => e.episode))].sort((a, b) => a - b);
     job.upcoming = plan.episodes.length - episodes.length;
   }
   job.total = episodes ? episodes.length : null;
@@ -93,16 +130,30 @@ async function run(job, { year, quality, exactQuality, subs }, deps) {
       continue;
     }
     job.step = `Looking for episode ${ep}${job.total ? ` of ${job.total}` : ''}…`;
-    let results = [];
-    try {
-      results = (await deps.searchTorrents(`${job.title} ${label}`, 'tv')).results;
-    } catch (e) {
-      if (e.status === 503) throw e; // torrent search turned off
-      try { results = (await deps.searchTorrents(`${job.title} ${label}`, 'all')).results; } catch { results = []; }
-    }
-    const fits = results.filter((r) => !r.cam && r.seeders > 0 && (!exactQuality || r.quality === quality)
-      && showKey(deps.parseName(r.name).title) === job.key
+    const fitsFor = (results) => results.filter((r) => !r.cam && r.seeders > 0
+      && (!exactQuality || r.quality === quality)
+      && sameShow(deps.parseName(r.name).title, job.title)
       && episodesIn(r.name, job.season).includes(ep));
+    let fits = [];
+    let searchError = null;
+    // Prefer the precise SxxExx query. If it finds no matching releases, try
+    // an alternate episode numbering style and known title aliases.
+    for (const query of episodeQueries(job.title, job.season, ep)) {
+      for (const type of ['tv', 'all']) {
+        try {
+          const found = (await deps.searchTorrents(query, type)).results || [];
+          fits = fitsFor(found);
+          if (fits.length) break;
+        } catch (e) {
+          if (e.status === 503) throw e;
+          searchError = e;
+        }
+      }
+      if (fits.length) break;
+    }
+    if (searchError && !fits.length) {
+      job.errors.push({ episode: ep, message: searchError.message || String(searchError) });
+    }
     // Quality only counts among healthy torrents (5+ seeders): a 1080p with one seeder can stall forever.
     const healthy = fits.filter((r) => r.seeders >= 5);
     const pool = healthy.length ? healthy : fits;
@@ -120,12 +171,18 @@ async function run(job, { year, quality, exactQuality, subs }, deps) {
       continue;
     }
     missesInARow = 0;
-    const magnet = best.magnet || await deps.magnetFor1337x(best.ref);
-    await deps.addDownload({ link: magnet });
-    if (subs?.length) deps.wantSubtitles(magnet, subs, best.name);
-    const eps = episodesIn(best.name, job.season);
-    eps.forEach((e) => covered.add(e));
-    job.added.push({ episode: ep, episodes: eps, name: best.name, seeders: best.seeders, quality: best.quality });
+    try {
+      const magnet = best.magnet || await deps.magnetFor1337x(best.ref);
+      if (!magnet) throw new Error('No download link was available.');
+      await deps.addDownload({ link: magnet, name: best.name, mediaType: 'tv' });
+      if (subs?.length) deps.wantSubtitles(magnet, subs, best.name);
+      const eps = episodesIn(best.name, job.season);
+      eps.forEach((e) => covered.add(e));
+      job.added.push({ episode: ep, episodes: eps, name: best.name, seeders: best.seeders, quality: best.quality });
+    } catch (e) {
+      job.missing.push(ep);
+      job.errors.push({ episode: ep, message: e.message || String(e) });
+    }
   }
   if (!episodes) job.total = job.checked - job.missing.length;
   job.state = 'done';

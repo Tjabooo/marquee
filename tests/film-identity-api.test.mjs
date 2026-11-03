@@ -17,13 +17,17 @@ test('film identification API requires owner access and changes only the selecte
   const root = fileURLToPath(new URL('../', import.meta.url));
   const app = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-api-'));
   const media = path.join(app, 'media'); await fs.mkdir(media);
+  let lastTorrentForm = '', torrentAdded = false;
   const mock = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://localhost');
     if (url.pathname === '/api/v2/auth/login') { res.writeHead(200, { 'Set-Cookie': 'SID=test' }); res.end('Ok.'); return; }
-    if (url.pathname === '/api/v2/torrents/add') { req.resume(); res.end('Ok.'); return; }
+    if (url.pathname === '/api/v2/torrents/add') {
+      const chunks = []; req.on('data', (c) => chunks.push(c));
+      req.on('end', () => { lastTorrentForm = Buffer.concat(chunks).toString(); torrentAdded = true; res.end('Ok.'); }); return;
+    }
     if (url.pathname === '/api/v2/torrents/info') {
       res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify([{ hash: 'a'.repeat(40), name: 'Verity.2026.1080p', progress: 0, size: 1000, tags: '' }]));
+      res.end(JSON.stringify(torrentAdded ? [{ hash: 'a'.repeat(40), name: 'Verity.2026.1080p', progress: 0, size: 1000, tags: '' }] : []));
       return;
     }
     const result = url.pathname === '/search/movie' ? { results: movies } : movies.find((m) => url.pathname === `/movie/${m.id}`);
@@ -72,6 +76,8 @@ test('film identification API requires owner access and changes only the selecte
     assert.equal(extended.entries[0].expiresAt, before + 7 * 86400000);
     assert.equal((await request('/api/library', undefined, 'member@test.local')).items.length, 0);
     await request('/api/downloads/add', { link: `magnet:?xt=urn:btih:${'a'.repeat(40)}`, name: 'Verity.2026.1080p', movieId: movies[0].id });
+    assert.match(lastTorrentForm, /name="savepath"/);
+    assert.ok(lastTorrentForm.includes(path.join(media, 'Movies')), 'film download requests the Movies folder');
     const downloads = await request('/api/downloads');
     assert.equal(downloads.items[0].tmdbId, movies[0].id, 'Download carries the selected catalogue identity');
 

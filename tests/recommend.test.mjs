@@ -126,3 +126,9 @@ test('a show gets a pack of exactly the season asked for', () => {
   assert.equal(pick([['The.Office.US.S03.1080p.BluRay.x265', 378], ['The.Office.S03.1080p.WEB', 40]], office),
     'The.Office.S03.1080p.WEB', 'The plain name wins over a country-tagged one');
 });
+
+test('recommended season packs support House / House MD aliases without accepting other House shows', () => {
+  const want = { type: 'tv', title: 'House', season: 2 };
+  assert.equal(pick([['House.MD.S02.1080p.WEB-DL', 15], ['House.of.the.Dragon.S02.1080p.WEB', 5000]], want), 'House.MD.S02.1080p.WEB-DL');
+  assert.equal(pick([['House.of.the.Dragon.S02.1080p.WEB', 5000]], want), null);
+});

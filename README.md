@@ -14,12 +14,13 @@ Marquee is a single Node.js process with no dependencies, served as a mobile-fir
 - **Watch Together**: open a library title in the player, press **Watch together**, then **Room → Copy invite**. Family members sign in normally, join and press **Play** to enable playback. The host controls play, pause and seek; subtitle language, size, visibility, offsets and volume stay personal. Rooms wait for buffering viewers and correct small playback drift. Room details stay collapsed beside the subtitle/volume controls; **Hide**, Escape or a click outside closes them.
 - **Torrent search**: searches The Pirate Bay and 1337x in parallel, ranked by seeders, with quality filters (4K, 1440p, 1080p, 720p) and cinema recordings flagged. One tap sends a result to qBittorrent. Searching for a season (“South Park S18”) adds **Get all episodes**: Marquee finds the best torrent for every aired episode and downloads them all, for when there's no good complete-season torrent. A specific quality strictly applies to episodes too; unavailable episodes are skipped.
 - **Recommended downloads**: the best-download card on a film or show's details has a resolution rail: Auto, 4K, 1440p, 1080p or 720p. Auto ranks available high-resolution releases; a specific quality only recommends that resolution. Episode-by-episode fallback also respects the selected resolution, leaving unavailable episodes out. Explicit 1440p, QHD and 2560×1440 release labels count as 1440p; generic 2K does not.
-- **Downloads**: live qBittorrent progress, speed and time remaining, for your own downloads (the owner can switch to everyone's).
+- **Unified Library**: films and shows appear as soon as downloading begins, with live progress and contextual transfer controls. Availability filters separate ready, downloading and attention-needed titles. The owner can inspect everyone's transfers in **Manage downloads** without mixing them into their personal Library.
 - **Auto-delete**: downloads are deleted 7 days after they finish (the owner can change this), counted per person; a video someone else still has in their library stays.
 - **Settings**: colour themes (nine presets, or pick your own four colours), default subtitles, preferred torrent quality, start page and library order. The owner also sets the auto-delete rules, who may download, and sees everyone's library size.
 - **Subtitles**: pick a language in the player or TV remote and Marquee fetches the best match from OpenSubtitles, preferring subtitles timed for your exact file. Downloaded subtitles that weren't made for your exact file have their timing checked and fixed automatically. Subtitles can also be requested when starting a download and are fetched automatically when it finishes.
 - **Casting**: play on DLNA smart TVs (Samsung, LG, Sony and others) and Apple TV, with a full-screen remote for play/pause, seeking, volume and subtitles.
 - **Automatic conversion**: MKV, AVI, WebM and similar files get an MP4 copy that plays on iPhone and Apple TV. Streams are copied where possible; video is re-encoded on an NVIDIA GPU (NVENC) or CPU only when needed.
+- **Audio languages**: the speaker button beside Subtitles lists a video’s available audio languages, with Stereo/5.1 labels when the same language has multiple renditions. Pick a track without losing your position. Playback continues while a browser-safe rendition is prepared; the checked row changes when the new audio is playable. Selecting the active row cancels preparation. The control is hidden for single-track videos, Watch Together and casting.
 - **Browser audio fix**: Chrome and Firefox can't decode Dolby (AC3/E-AC3) or DTS. Marquee adds a stereo AAC track so these files play with sound, while TVs still receive the original surround audio.
 - **House** (owner only): the server's disks, qBittorrent, FlareSolverr and AdGuard Home at a glance, plus the Linux machines at home (disk space, failed services, updates, battery, Secure Boot, backups), with anything that needs a look listed at the top. **Power** turns a dual-boot PC on (Wake-on-LAN) into the system you pick, or restarts it into another one.
 - **Clips** (owner only): game clips synced from a PC, grouped by game. **Share** gives a clip a public link that embeds and plays in Discord; sharing makes a Discord-friendly H.264 copy (all audio tracks mixed into one) and unsharing kills the link. **Delete** (two taps) removes a clip: it waits 30 days in a hidden `.deleted` folder before it's gone for good. **Trim** cuts a clip without re-encoding (ffmpeg stream copy: identical quality, every audio track kept, no GPU needed); the start snaps to the nearest keyframe before the chosen point, which the trimmer shows, and the result goes to `Trimmed Clips/<Game>/`.
@@ -150,7 +151,7 @@ All settings live in `.env`. Changes take effect after a restart.
 1. In qBittorrent, open **Tools > Options > Web UI** and enable the Web User Interface.
 2. Choose a port other than Marquee's (for example `8081`) and set a username and password.
 3. Set `QBIT_URL`, `QBIT_USER` and `QBIT_PASS` in `.env`.
-4. Recommended: under **Options > Downloads**, set the default save path to your `MEDIA_DIR` so finished downloads appear in the library.
+4. Recommended: under **Options > Downloads**, set the default save path to a `Downloads` subfolder inside `MEDIA_DIR` (for example `E:\Media\Downloads`). Marquee overrides this per torrent for recognized movies (`Movies`) and shows (`TV`). Unclassified torrents retain qBittorrent's default.
 
 If Marquee signs in but is still refused, enable **Bypass authentication for clients on localhost** in the Web UI settings.
 
@@ -345,7 +346,7 @@ powershell -ExecutionPolicy Bypass -File .\setup-autostart.ps1
 
 Output is written to `logs/marquee.log`.
 
-Restarting is safe at any time. Downloads run in qBittorrent and carry on regardless. A conversion in progress is stopped together with the server (`restart-marquee.ps1` also stops any ffmpeg Marquee started) and starts again from the beginning shortly after the server is back; the MP4 is written under a temporary name and only renamed once complete, so an interrupted conversion never leaves a broken file, and leftover temporary files are cleaned up automatically. Subtitles waiting for downloads and subtitle timing checks also pick up where they left off.
+Restarting ends active Watch Together rooms. Downloads run in qBittorrent and carry on regardless. A conversion in progress is stopped together with the server (`restart-marquee.ps1` also stops any ffmpeg Marquee started) and starts again from the beginning shortly after the server is back; the MP4 is written under a temporary name and only renamed once complete, so an interrupted conversion never leaves a broken file, and leftover temporary files are cleaned up automatically. Subtitles waiting for downloads and subtitle timing checks also pick up where they left off.
 
 To remove the task:
 
@@ -366,6 +367,8 @@ Videos are streamed with HTTP range requests, so seeking works in every browser 
 The converter scans the library and finished downloads every two minutes. Any MKV, AVI, WebM, WMV, FLV, TS or MPEG file gets an MP4 copy next to it; once that exists, the library lists the copy instead. H.264 and HEVC video are copied without re-encoding; other codecs are re-encoded. Text subtitles are saved beside the copy as `.srt` files (some TVs refuse MP4s with many subtitle tracks) and image-based subtitles are dropped.
 
 ### Browser audio
+
+The player’s **Audio** menu uses the tracks from the browser version actually being played, including any stereo copy conversion added. Browsers that expose a verifiable native audio-track mapping switch directly. Other browsers prepare a separate copy with the chosen audio in AAC and copied video, then switch at the current position while preserving pause, subtitles, volume and fullscreen. Failed preparation keeps the current audio available and offers **Retry**. Audio choices reset for each video. Automatic audio compatibility and timing fixes continue to work; the old manual **Audio out of sync** menu has been replaced.
 
 Output files start with a stereo AAC track, followed by the original tracks, so browsers play them with sound and receivers still get surround. MP4 files downloaded as-is are never modified because qBittorrent may be seeding them; if their audio isn't browser-compatible, a fixed copy is written to `AUDIO_FIX_DIR` and served only to browsers. When you open such a file, it moves to the front of the queue and the player switches to the fixed copy when it's ready.
 
@@ -401,7 +404,7 @@ Episodes are recognised from `S01E05`, `S01E01E02`, `1x05` and `Season 1 Episode
 
 ### Finished downloads
 
-With `QBIT_REMOVE_FINISHED=on` (the default), a finished download is removed from qBittorrent within a minute, with its files kept, so it never seeds. Downloads go into `MEDIA_DIR`, so the video stays in the Library and gets its MP4 copy as usual. A download still waiting for subtitles requested with it is stopped first and removed once they're fetched (at most 2 hours later). Downloads saved outside `MEDIA_DIR` are only stopped, so they stay playable from the Downloads tab. Give a torrent the tag `seed` in qBittorrent to keep it seeding. Once a download is removed, its files count as ordinary library files, so `CONVERT_DELETE_ORIGINAL=on` applies to them.
+With `QBIT_REMOVE_FINISHED=on` (the default), a finished download is removed from qBittorrent within a minute, with its files kept, so it never seeds. Categorized downloads go into `MEDIA_DIR/Movies` or `MEDIA_DIR/TV` (unclassified ones use qBittorrent's default, ideally `MEDIA_DIR/Downloads`), so the video stays in the Library and gets its MP4 copy as usual. A download still waiting for subtitles requested with it is stopped first and removed once they're fetched (at most 2 hours later). Downloads saved outside `MEDIA_DIR` are only stopped, so they stay accessible from Library transfer details. Give a torrent the tag `seed` in qBittorrent to keep it seeding. Once a download is removed, its files count as ordinary library files, so `CONVERT_DELETE_ORIGINAL=on` applies to them.
 
 ### Accounts
 
@@ -461,6 +464,7 @@ marquee/
 ├── public/
 │   ├── index.html
 │   ├── app.js            Web client
+│   ├── player-audio.js   Audio track labels and verified native track mapping
 │   ├── player-next.js    Safe next-episode ordering and explicit credits timing
 │   ├── watch-sync.js     Clock compensation, player synchronization and personal subtitle offsets
 │   └── style.css
@@ -532,7 +536,7 @@ The web client uses a JSON API that can also be scripted. `<kind>` is `lib` for 
 | `GET` | `/api/subs/sync` | Timing check state for saved subtitles (`kind`, `id`, `lang`) |
 | `POST` | `/api/subs/sync` | Fix, undo or shift subtitle timing (`{ kind, id, lang, action: 'sync' \| 'undo' \| 'shift', seconds }`) |
 | `GET` | `/api/stream/<kind>/<id>` | Video stream with range support |
-| `GET` | `/api/play-link?kind=&id=&variant=` | Signed `/play/` link (`variant`: `browser` or `tv`) |
+| `GET` | `/api/play-link?kind=&id=&variant=` | Signed `/play/` link (`variant`: `browser` or `tv`). Optional `audio` stream index + `audioSource` fingerprint prepares a selected-audio browser variant; 202 while preparing, 200 when ready. |
 | `GET` | `/play/...` | Video stream through a signed link; works without signing in |
 | `GET` | `/api/cast/devices`, `/api/cast/sessions` | TVs and what's playing |
 | `GET` | `/api/network` | Whether the request is from the home network, for troubleshooting |
@@ -578,3 +582,9 @@ Keep `.env` private: it contains your API keys and passwords, and it is excluded
 ## Disclaimer
 
 Marquee is a media management tool. The torrent search queries third-party sites and does not host, index or distribute any content. Downloading copyrighted material without permission is illegal in many countries. You are responsible for how you use this software and for complying with the laws that apply to you.
+
+### Using a separate media drive (Windows)
+
+Set `MEDIA_DIR=E:\Media` in Marquee's `.env`, and set qBittorrent's default save path to `E:\Media\Downloads`. Restart Marquee. For **new** downloads, Marquee creates `E:\Media\Movies` and `E:\Media\TV` when needed and sends their absolute paths to qBittorrent's per-torrent `savepath` field. Episode-by-episode batches always use `TV`; downloads from an identified film or TV page use the corresponding folder; recognized episode/season filenames are also treated as TV. Generic magnets and unclassified torrents use qBittorrent's default save path. All three folders are scanned by the existing library scanner.
+
+This change **does not move existing files**. For existing torrents still registered in qBittorrent, use its **Set Location** command to relocate them safely and preserve seeding. Move only torrents that are finished and not actively checking/downloading, and let qBittorrent complete any move before changing another setting. For older media no longer managed by qBittorrent, you may move files to `Movies` and `TV` manually; Marquee scans both. Moving existing files changes their paths/IDs and may affect watch progress and existing library ownership entries, so back up Marquee's application data first and test a few files before migrating the rest. Avoid making duplicate copies when storage is limited.

@@ -15,7 +15,7 @@ function harness({ view = 'library', request = async () => ({ items: [], shows: 
     current: null, overlayStack: [],
     document: { hidden: false, activeElement: {}, addEventListener: (event, fn) => listeners.set(event, fn) },
     window: { scrollX: 12, scrollY: 456, scrollTo: (x, y) => logs.push(['scroll', x, y]), addEventListener: (event, fn) => listeners.set(event, fn) },
-    $: key => key === '#library-body' ? body : {},
+    $: key => key === '#library-body' ? body : { setAttribute() {} },
     api: (path, opts) => { logs.push(['request', path]); return request(path, opts); },
     updateUpNext: () => logs.push(['next']),
     renderLibrary: () => { logs.push(['render']); vm.runInContext('libraryRenderPending = false', context); },
@@ -114,4 +114,20 @@ test('a late downloads response for the previous scope cannot overwrite the new 
   all.resolve({ items: [{ hash: 'all', done: false, mine: false }] }); await fresh;
   mine.resolve({ items: [{ hash: 'mine', done: true, mine: true }] }); await old;
   assert.equal(h.context.state.downloads[0].hash, 'all');
+});
+
+test('byte progress polls patch cards without reading full library; partial-pack membership refreshes immediately', async () => {
+  let downloads = [{ hash: 'pack', done: false, mine: true, progress: .1, libraryIds: [], episodes: [] }];
+  const h = harness({ request: async path => path === '/api/downloads' ? { items: downloads } : data([{ id: 'ready' }]) });
+  await h.run('refreshMediaLibrary()');
+  const initialReads = h.logs.filter(x => x[1] === '/api/library').length;
+  downloads = [{ ...downloads[0], progress: .2, speed: 8000 }];
+  await h.run('refreshMediaLibrary()');
+  assert.equal(h.logs.filter(x => x[1] === '/api/library').length, initialReads);
+  downloads = [{ ...downloads[0], progress: .3, libraryIds: ['episode-2'], episodes: [{season: 1, episode: 2, available: true, libraryId: 'episode-2'}] }];
+  await h.run('refreshMediaLibrary()');
+  assert.equal(h.logs.filter(x => x[1] === '/api/library').length, initialReads + 1);
+  h.run('libraryLastChecked = Date.now() - 30001');
+  await h.run('refreshMediaLibrary()');
+  assert.equal(h.logs.filter(x => x[1] === '/api/library').length, initialReads + 2, 'external filesystem additions still discovered on the bounded fallback');
 });

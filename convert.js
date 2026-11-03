@@ -40,6 +40,9 @@ const SYNC_TOLERANCE = 0.04; // seconds; below one video frame
 let onConvertedHook = null;
 let onSidecarHook = null;
 let fixDir = null;     // cache directory for audio-fixed copies
+let audioTrackDir = null;
+let audioTrackBusy = false;
+const audioTrackJobs = new Map();
 let nvencBroken = false;
 let running = false;
 let currentFile = null;
@@ -143,6 +146,14 @@ export function forget(file) {
   const i = queue.findIndex((q) => q.file === file);
   if (i >= 0) queue.splice(i, 1);
   const fixed = fixPath(file);
+  if (audioTrackDir) {
+    const sources = new Set([audioSourceKey(file), audioSourceKey(preferConverted(file, { browser: true }))]);
+    try {
+      for (const name of fs.readdirSync(audioTrackDir)) if ([...sources].some((key) => name.startsWith(`${key}-`))) {
+        try { fs.rmSync(path.join(audioTrackDir, name), { force: true }); } catch { /* in use; stale cleanup retries */ }
+      }
+    } catch { /* no selections cached */ }
+  }
   if (fixed) fs.rmSync(fixed, { force: true });
 }
 export const isBusy = (file) => file === currentFile;
@@ -151,7 +162,6 @@ export const isBusy = (file) => file === currentFile;
 export const isAligned = (tracks) => !tracks?.length || Math.abs(tracks[0].offset || 0) <= SYNC_TOLERANCE;
 const audioCache = new Map();
 export async function probeAudio(file) {
-  if (!status.enabled) return null;
   const key = failureKey(file);
   if (audioCache.has(key)) return audioCache.get(key);
   const info = await probe(file);
@@ -161,11 +171,79 @@ export async function probeAudio(file) {
   const audios = streams.filter((s) => s.codec_type === 'audio');
   const main = audios.find((a) => a.disposition?.default) || audios[0];
   const out = main ? [main, ...audios.filter((a) => a !== main)].map((a) => ({
+    index: a.index, audioIndex: audios.indexOf(a), streamId: a.id || null,
+    title: a.tags?.title || (a.tags?.handler_name && a.tags.handler_name !== 'SoundHandler' ? a.tags.handler_name : null), default: Boolean(a.disposition?.default),
     codec: a.codec_name, channels: a.channels || null, language: a.tags?.language || null,
     offset: Math.round(((Number(a.start_time) || 0) - videoStart) * 1000) / 1000, // start relative to video
   })) : [];
   audioCache.set(key, out);
   return out;
+}
+
+// Selections refer to the exact browser file: conversion can insert/reorder audio streams.
+export function audioSourceKey(file) {
+  return crypto.createHash('sha256').update(failureKey(file)).digest('hex').slice(0, 24);
+}
+
+export function selectedAudioPath(file, index, source) {
+  if (!audioTrackDir || !Number.isSafeInteger(index) || index < 0 || !/^[a-f0-9]{24}$/.test(source)) return null;
+  if (audioSourceKey(file) !== source) return null;
+  const output = path.join(audioTrackDir, `${source}-${index}.mp4`);
+  return fs.existsSync(output) ? output : null;
+}
+
+// On browsers without audioTracks, keep the picture bit-for-bit and make one selected AAC track.
+// Work happens while the existing stream keeps playing. Copies never replace a shared source.
+export async function requestAudioTrack(file, index, source, { retry = false } = {}) {
+  if (!Number.isSafeInteger(index) || index < 0) throw Object.assign(new Error('Invalid audio track.'), { status: 400 });
+  if (source !== audioSourceKey(file)) throw Object.assign(new Error('Audio tracks changed. Open Audio and choose the language again.'), { status: 409 });
+  const tracks = await probeAudio(file);
+  if (!tracks?.some((track) => track.index === index)) throw Object.assign(new Error('That audio track is not available.'), { status: 400 });
+  const existing = selectedAudioPath(file, index, source);
+  if (existing) return { ready: true, file: existing };
+  if (!audioTrackDir) throw Object.assign(new Error('Audio preparation is not ready yet. Try again.'), { status: 503 });
+  const key = `${source}-${index}`;
+  let job = audioTrackJobs.get(key);
+  if (job?.error && retry) { audioTrackJobs.delete(key); job = null; }
+  if (job?.error) throw Object.assign(new Error(job.error), { status: 503 });
+  if (job) return { ready: false, state: 'preparing' };
+  if (audioTrackBusy) return { ready: false, state: 'queued' };
+  audioTrackBusy = true;
+  job = {};
+  audioTrackJobs.set(key, job);
+  const output = path.join(audioTrackDir, `${key}.mp4`);
+  const tmp = output.replace(/\.mp4$/, `${TMP_TAG}.mp4`);
+  (async () => {
+    try {
+      const info = await probe(file);
+      const video = info.streams?.find((s) => s.codec_type === 'video' && !s.disposition?.attached_pic);
+      const audio = info.streams?.find((s) => s.codec_type === 'audio' && s.index === index);
+      if (!video || !audio || source !== audioSourceKey(file)) throw new Error('Source changed');
+      fs.mkdirSync(audioTrackDir, { recursive: true });
+      // Remove stale selections lazily. Recently streamed copies are touched by handlePlay.
+      for (const name of fs.readdirSync(audioTrackDir)) {
+        const old = path.join(audioTrackDir, name);
+        try { if (Date.now() - fs.statSync(old).mtimeMs > 7 * 86400000) fs.rmSync(old, { force: true }); } catch { /* in use */ }
+      }
+      await run(FFMPEG, ['-hide_banner', '-nostdin', '-y', '-i', file,
+        '-map', `0:${video.index}`, '-map', `0:${index}`, '-map_chapters', '0',
+        '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-ac:a', '2',
+        '-filter:a', 'aresample=async=1000:first_pts=0',
+        '-metadata:s:a:0', `language=${audio.tags?.language || 'und'}`, '-disposition:a:0', 'default',
+        '-avoid_negative_ts', 'disabled', '-movflags', '+faststart', '-f', 'mp4', tmp], { priorityLow: true });
+      if (source !== audioSourceKey(file)) throw new Error('Source changed');
+      fs.renameSync(tmp, output);
+      audioTrackJobs.delete(key);
+    } catch {
+      try { fs.rmSync(tmp, { force: true }); } catch { /* later cleanup */ }
+      job.error = 'Couldn’t prepare this audio track. Try again.';
+      // Do not expose ffmpeg stderr or filesystem paths in the player's error.
+    } finally {
+      audioTrackBusy = false;
+      if (audioTrackJobs.size > 32) audioTrackJobs.delete(audioTrackJobs.keys().next().value);
+    }
+  })();
+  return { ready: false, state: 'preparing' };
 }
 
 // Video every Apple device plays: 8-bit H.264, or HEVC labelled "hvc1". Downloads often carry HEVC
@@ -585,6 +663,8 @@ async function drain(onConverted) {
 // listCandidates(): Promise<[{ file, deleteOriginal }]>
 export async function startConverter({ dataDir, listCandidates, onConverted, onSidecar }) {
   onSidecarHook = onSidecar || null;
+  const audioRoot = process.env.AUDIO_FIX_DIR ? path.resolve(process.env.AUDIO_FIX_DIR) : path.join(dataDir, 'cache', 'audio');
+  audioTrackDir = path.join(audioRoot, 'tracks');
   if ((process.env.CONVERT || 'on').toLowerCase() === 'off') {
     status.reason = 'Turned off (CONVERT=off in .env).';
     return;

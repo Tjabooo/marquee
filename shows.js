@@ -21,7 +21,7 @@ const MISS_TTL = DAY;
 const DETAILS_TTL = 7 * DAY;
 
 let file = null;
-let cache = { names: {}, shows: {}, films: {}, filmFiles: {}, filmDownloads: {} };
+let cache = { names: {}, shows: {}, films: {}, filmFiles: {}, filmDownloads: {}, showDownloads: {} };
 const pending = new Map();             // in-flight lookups, so a name is never looked up twice at once
 let saveTimer = null;
 
@@ -29,7 +29,7 @@ export function initShows({ dataDir }) {
   file = path.join(dataDir, '.marquee-shows.json');
   try {
     const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
-    cache = { names: saved.names || {}, shows: saved.shows || {}, films: saved.films || {}, filmFiles: saved.filmFiles || {}, filmDownloads: saved.filmDownloads || {} };
+    cache = { names: saved.names || {}, shows: saved.shows || {}, films: saved.films || {}, filmFiles: saved.filmFiles || {}, filmDownloads: saved.filmDownloads || {}, showDownloads: saved.showDownloads || {} };
   } catch { /* first run */ }
 }
 
@@ -222,7 +222,10 @@ export async function seasonEpisodes(title, year, season, tmdb) {
   const id = await lookupName(key, title, year, tmdb);
   if (!id) return null;
   let d;
-  try { d = await tmdb(`/tv/${id}/season/${season}`); } catch { return { id, title, episodes: [] }; }
+  try { d = await tmdb(`/tv/${id}/season/${season}`); } catch (error) {
+    if (error.status === 404) return { id, title, episodes: [] };
+    throw error; // A temporary catalogue outage must not masquerade as an empty season.
+  }
   const today = new Date().toISOString().slice(0, 10);
   const show = cache.shows[id];
   return {
@@ -257,6 +260,22 @@ export function rememberFilmDownload(hash, details) {
   save();
 }
 export const filmDownload = (hash) => cache.filmDownloads[String(hash).toLowerCase()] || null;
+export function rememberShowDownload(hash, details, release = {}) {
+  if (!hash || !details?.id) return;
+  cache.showDownloads[String(hash).toLowerCase()] = details;
+  const title = release.title || details.name;
+  cache.names[`${showKey(title)}|${release.year || ''}`] = { id: details.id, at: Date.now() };
+  if (!cache.shows[details.id]) {
+    cache.shows[details.id] = {
+      at: 0, id: details.id, title: details.name,
+      year: details.first_air_date ? Number(details.first_air_date.slice(0, 4)) : null,
+      overview: details.overview || '', poster: img('w342', details.poster_path), backdrop: img('w780', details.backdrop_path),
+      seasons: {}, episodes: {},
+    };
+  }
+  save();
+}
+export const showDownload = (hash) => cache.showDownloads[String(hash).toLowerCase()] || null;
 
 // A show's cached details by name, without asking TMDB (link previews must answer fast).
 export function knownShow(title, year) {

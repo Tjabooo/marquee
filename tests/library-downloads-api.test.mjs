@@ -12,15 +12,15 @@ test('download polling adds complete episodes to their owner library before the 
   const app = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-library-'));
   const root = fileURLToPath(new URL('../', import.meta.url));
   const media = path.join(app, 'media'); await fs.mkdir(media);
-  let complete = false, fileReady = false, removed = false;
+  let complete = false, fileReady = false, removed = false, added = false;
   const hash = 'c'.repeat(40), name = 'Example.Show.S01E01.mp4';
   const mock = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://localhost');
     if (url.pathname === '/api/v2/auth/login') { res.setHeader('Set-Cookie', 'SID=test'); res.end('Ok.'); return; }
-    if (url.pathname === '/api/v2/torrents/add') { req.resume(); res.end('Ok.'); return; }
+    if (url.pathname === '/api/v2/torrents/add') { added = true; req.resume(); res.end('Ok.'); return; }
     res.setHeader('Content-Type', 'application/json');
     if (url.pathname === '/api/v2/torrents/info') {
-      res.end(JSON.stringify(removed ? [] : [{ hash, name, tags: '', progress: complete ? 1 : 0.5,
+      res.end(JSON.stringify(removed || !added ? [] : [{ hash, name, tags: '', progress: complete ? 1 : 0.5,
         state: complete ? 'stoppedUP' : 'downloading', save_path: media, content_path: path.join(media, name), size: 1000 }]));
       return;
     }

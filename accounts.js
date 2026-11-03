@@ -88,6 +88,12 @@ export function initAccounts({ dataDir, adminEmails, mediaDir: dir }) {
       added_at INTEGER NOT NULL,
       claimed_at INTEGER
     );
+    CREATE TABLE IF NOT EXISTS torrent_requests (
+      hash TEXT NOT NULL REFERENCES torrents(hash) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      claimed_at INTEGER,
+      PRIMARY KEY (hash, user_id)
+    );
     CREATE TABLE IF NOT EXISTS media (
       key TEXT PRIMARY KEY,
       state TEXT NOT NULL DEFAULT 'tracked',
@@ -377,7 +383,32 @@ export function recordTorrent(hash, userId, name) {
 export function torrentRow(hash) {
   return db.prepare('SELECT * FROM torrents WHERE hash = ?').get(String(hash).toLowerCase()) || null;
 }
-export const markClaimed = (hash) => db.prepare('UPDATE torrents SET claimed_at = ? WHERE hash = ?').run(Date.now(), String(hash).toLowerCase());
+// A second viewer can request an existing torrent without downloading a second copy. Keep that
+// request across restarts until the finished files can be added to their own library.
+export function requestTorrent(hash, userId, name, { restart = false } = {}) {
+  if (!hash || !userId) return;
+  hash = String(hash).toLowerCase();
+  recordTorrent(hash, userId, name);
+  if (restart) {
+    db.prepare('DELETE FROM torrent_requests WHERE hash = ?').run(hash);
+    db.prepare('UPDATE torrents SET user_id = ?, name = ?, added_at = ?, claimed_at = NULL WHERE hash = ?')
+      .run(userId, String(name || '').slice(0, 300), Date.now(), hash);
+  }
+  db.prepare('INSERT INTO torrent_requests (hash, user_id) VALUES (?, ?) ON CONFLICT(hash, user_id) DO UPDATE SET claimed_at = NULL')
+    .run(hash, userId);
+}
+export const torrentRequesters = (hash) => db.prepare('SELECT user_id FROM torrent_requests WHERE hash = ?').all(String(hash).toLowerCase()).map((r) => r.user_id);
+export function torrentClaimants(hash) {
+  const row = torrentRow(hash);
+  const pending = db.prepare('SELECT user_id FROM torrent_requests WHERE hash = ? AND claimed_at IS NULL').all(String(hash).toLowerCase()).map((r) => r.user_id);
+  return [...new Set([...(!row?.claimed_at && row?.user_id ? [row.user_id] : []), ...pending])];
+}
+export function markClaimed(hash) {
+  hash = String(hash).toLowerCase();
+  const now = Date.now();
+  db.prepare('UPDATE torrents SET claimed_at = ? WHERE hash = ?').run(now, hash);
+  db.prepare('UPDATE torrent_requests SET claimed_at = ? WHERE hash = ? AND claimed_at IS NULL').run(now, hash);
+}
 
 // ---------- watch progress ----------
 const REF = /^[a-z]:[^\u0000-\u001f]{1,400}$/i; // m:<media key>, d:<torrent hash>, l:<library id>
