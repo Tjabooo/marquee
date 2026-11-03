@@ -25,6 +25,7 @@ import { NotesStore } from './notes.js';
 import { NotesUploads, mediaType } from './notes-media.js';
 import { WatchRooms } from './watch.js';
 import { handleWatchPage } from './watch-page.js';
+import { creditsFor } from './credits.js';
 import { isHomeRequest, describeRequest } from './network.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -476,6 +477,9 @@ const torrentOwner = (t) => accounts.torrentRow(t.hash)?.user_id ?? accounts.use
 // The user's own downloads; `all` (the owner only) lists everyone's, with whose each one is.
 async function listDownloads(user, all = false) {
   const torrents = await qbit('/api/v2/torrents/info?sort=added_on&reverse=true');
+  // The browser polls this every few seconds. Claim completed files before returning so the
+  // next library refresh doesn't wait for the minute-long maintenance round.
+  await claimCompletedTorrents(torrents);
   const names = new Map();
   const nameOf = (id) => {
     if (!names.has(id)) names.set(id, id == null ? null : accounts.userById(id)?.name || null);
@@ -1304,6 +1308,12 @@ async function handleApi(req, res, url) {
     return res.end(req.method === 'HEAD' ? undefined : vtt ? subtitles.srtToVtt(text) : text);
   }
 
+  // Chapters belong to the original release, even when its browser copy lost chapter tags.
+  if ((m = p.match(/^\/api\/media\/(lib|dl)\/([A-Za-z0-9_-]+)\/credits$/))) {
+    const listed = await sourceFile(m[1], m[2]);
+    return sendJson(res, 200, { creditsAt: await creditsFor(converter.originalFor(listed) || listed) });
+  }
+
   // ---- browser audio compatibility ----
   if ((m = p.match(/^\/api\/media\/(lib|dl)\/([A-Za-z0-9_-]+)\/audio$/))) {
     const source = await sourceFile(m[1], m[2]);
@@ -1698,31 +1708,56 @@ async function stopSeeding() {
 // the infohash recorded when it was added). Torrents added straight in qBittorrent belong to the owner.
 // Videos that turn up in MEDIA_DIR any other way (copied in by hand, or there before accounts
 // existed) go into the owner's library as kept, so nothing that was already there gets auto-deleted.
-async function claimFiles() {
-  if (!MEDIA_DIR) return;
-  const first = !accounts.migrated();
-  const torrentContent = []; // where torrents still in qBittorrent keep their files
-  if (QBIT_URL) {
-    try {
-      for (const t of await qbit('/api/v2/torrents/info')) {
-        torrentContent.push(t.content_path || path.join(t.save_path, t.name));
-        let row = accounts.torrentRow(t.hash);
-        if (!row) {
-          accounts.recordTorrent(t.hash, accounts.userFromTags(t.tags) ?? accounts.ownerUser()?.id ?? null, t.name);
-          row = accounts.torrentRow(t.hash);
-        }
-        if (row.claimed_at || t.progress < 1 || BUSY_STATES.test(t.state || '')) continue;
-        for (const f of await qbit(`/api/v2/torrents/files?hash=${t.hash}`)) {
+let completedClaims = null;
+function claimCompletedTorrents(torrents) {
+  if (!MEDIA_DIR) return Promise.resolve();
+  // Polling and maintenance can overlap. Keep ownership/claimed_at writes in one sequence.
+  const task = (completedClaims || Promise.resolve()).then(async () => {
+    const first = !accounts.migrated();
+    for (const t of torrents) {
+      let row = accounts.torrentRow(t.hash);
+      if (!row) {
+        accounts.recordTorrent(t.hash, accounts.userFromTags(t.tags) ?? accounts.ownerUser()?.id ?? null, t.name);
+        row = accounts.torrentRow(t.hash);
+      }
+      if (row.claimed_at || !row.user_id || t.progress < 1 || BUSY_STATES.test(t.state || '')) continue;
+      try {
+        const files = await qbit(`/api/v2/torrents/files?hash=${t.hash}`);
+        const videos = files.filter((f) => f.priority !== 0 && isVideo(f.name));
+        if (!videos.length) continue;
+        for (const f of videos) {
           const full = path.join(t.save_path, f.name);
-          if (f.priority === 0 || !isVideo(full)) continue;
-          // On the first run, what's already downloaded counts as being there before accounts.
+          // Rechecking/moving torrents can briefly report complete before files are ready.
+          if (f.progress < 1 || !fs.existsSync(full)) throw new Error('File not ready');
+        }
+        for (const f of videos) {
+          const full = path.join(t.save_path, f.name);
           accounts.addEntry(row.user_id, accounts.mediaKey(full), first ? 'existing' : 'download');
           const film = shows.filmDownload(t.hash);
           if (film && parseFile(full).season == null) shows.identifyFilm(accounts.mediaKey(full), film);
         }
         accounts.markClaimed(t.hash);
-        if (row.user_id && !first) console.log(`[accounts] "${t.name}" is in ${accounts.userById(row.user_id)?.name}’s library`);
+        libraryCache.at = 0;
+      } catch {
+        // A transient qBittorrent/filesystem failure is retried on the next poll.
+        libraryCache.at = 0;
       }
+    }
+  });
+  const done = task.finally(() => { if (completedClaims === done) completedClaims = null; });
+  completedClaims = done;
+  return done;
+}
+
+async function claimFiles() {
+  if (!MEDIA_DIR) return;
+  const first = !accounts.migrated();
+  let torrentContent = []; // where torrents still in qBittorrent keep their files
+  if (QBIT_URL) {
+    try {
+      const torrents = await qbit('/api/v2/torrents/info');
+      torrentContent = torrents.map((t) => t.content_path || path.join(t.save_path, t.name));
+      await claimCompletedTorrents(torrents);
     } catch {
       return; // qBittorrent unreachable: can't tell downloads from hand-copied files, so wait
     }

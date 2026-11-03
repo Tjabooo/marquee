@@ -10,6 +10,7 @@ Marquee is a single Node.js process with no dependencies, served as a mobile-fir
 - **Discover**: trending titles, search, posters and descriptions from TMDB. Titles in your library are marked **In your library**; titles someone else already has on the server are marked **On server** and can be added to your library with one tap instead of being downloaded again.
 - **Film identity**: availability follows the film's TMDB ID. If two films share a title and year, the owner can open **Library → film → Identify film** and choose by poster, release date and description. That choice is saved for that file alone. Downloads started from a film's details remember the selected identity, too. Discover carousels have previous/next arrows as well as touch scrolling.
 - **Library**: poster covers for films and shows, with **Continue watching** and **Leaving soon** shelves, then your downloads, titles added from the server and your collection. Filter by films or shows. Open a title to play, resume or **Keep 7 more days**; shows have a keep-all button above their seasons as well as individual episode controls.
+- **Next episode**: a small **Up next** card offers the immediately following episode from your library. It appears at an explicit credits chapter when the original file has one, otherwise when playback ends. **Keep watching** dismisses it for that playback session. It never skips missing episodes or advances automatically; a next-season episode is offered only when metadata confirms the season finale. The card is hidden during Watch Together and native fullscreen, picture in picture or casting.
 - **Watch Together**: open a library title in the player, press **Watch together**, then **Room → Copy invite**. Family members sign in normally, join and press **Play** to enable playback. The host controls play, pause and seek; subtitle language, size, visibility, offsets and volume stay personal. Rooms wait for buffering viewers and correct small playback drift. Room details stay collapsed beside the subtitle/volume controls; **Hide**, Escape or a click outside closes them.
 - **Torrent search**: searches The Pirate Bay and 1337x in parallel, ranked by seeders, with quality filters (4K, 1440p, 1080p, 720p) and cinema recordings flagged. One tap sends a result to qBittorrent. Searching for a season (“South Park S18”) adds **Get all episodes**: Marquee finds the best torrent for every aired episode and downloads them all, for when there's no good complete-season torrent. A specific quality strictly applies to episodes too; unavailable episodes are skipped.
 - **Recommended downloads**: the best-download card on a film or show's details has a resolution rail: Auto, 4K, 1440p, 1080p or 720p. Auto ranks available high-resolution releases; a specific quality only recommends that resolution. Episode-by-episode fallback also respects the selected resolution, leaving unavailable episodes out. Explicit 1440p, QHD and 2560×1440 release labels count as 1440p; generic 2K does not.
@@ -356,6 +357,8 @@ Unregister-ScheduledTask -TaskName Marquee -Confirm:$false
 
 ### Playback
 
+The Library refreshes automatically while open and after downloads complete or leave the download list. Returning to the page on a phone refreshes it too; unchanged responses preserve the current cards, focus and scroll position.
+
 Videos are streamed with HTTP range requests, so seeking works in every browser and on iOS. Watch progress is stored in the browser, and playback resumes where you left off.
 
 ### Conversion
@@ -458,6 +461,7 @@ marquee/
 ├── public/
 │   ├── index.html
 │   ├── app.js            Web client
+│   ├── player-next.js    Safe next-episode ordering and explicit credits timing
 │   ├── watch-sync.js     Clock compensation, player synchronization and personal subtitle offsets
 │   └── style.css
 ├── .env.example          Configuration template

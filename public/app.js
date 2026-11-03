@@ -1,6 +1,7 @@
 // Marquee web client. Plain ES modules, no build step.
 import { WatchSession, offsetCues } from './watch-sync.js';
 import { createNotesView } from './notes-view.js';
+import { nextLibraryEpisode, isNextEpisodeTime } from './player-next.js';
 
 const $ = (sel, el = document) => el.querySelector(sel);
 
@@ -536,17 +537,57 @@ async function renderDiscover() {
 }
 
 // ---------- Library ----------
-async function loadLibrary() {
-  if (!state.status.library) return;
-  try {
-    const data = await api('/api/library');
-    state.library = data.items;
-    state.server = data.server || [];
-    state.libraryShows = data.shows || [];
-    state.libraryError = null;
-  } catch (err) {
-    state.libraryError = err.message;
-  }
+let libraryRequest = null;
+let librarySignature = null;
+let libraryRenderPending = false;
+let libraryRefreshNeeded = false;
+const libraryContentSignature = (data) => JSON.stringify([
+  [...data.items].sort((a, b) => String(a.id).localeCompare(String(b.id))),
+  [...(data.server || [])].sort((a, b) => String(a.id).localeCompare(String(b.id))),
+  [...(data.shows || [])].sort((a, b) => String(a.id).localeCompare(String(b.id))),
+]);
+function loadLibrary() {
+  if (!state.status.library) return Promise.resolve(false);
+  if (libraryRequest) return libraryRequest;
+  libraryRequest = (async () => {
+    try {
+      const data = await api('/api/library', { signal: AbortSignal.timeout(15000) });
+      const signature = libraryContentSignature(data);
+      const changed = signature !== librarySignature || state.libraryError !== null;
+      if (signature !== librarySignature) {
+        state.library = data.items;
+        state.server = data.server || [];
+        state.libraryShows = data.shows || [];
+        librarySignature = signature;
+      }
+      state.libraryError = null;
+      libraryRenderPending ||= changed;
+      updateUpNext();
+      return changed;
+    } catch (err) {
+      const changed = state.libraryError !== err.message;
+      state.libraryError = err.message;
+      libraryRenderPending ||= changed;
+      return changed;
+    } finally { libraryRequest = null; }
+  })();
+  return libraryRequest;
+}
+
+// Background refreshes leave open sheets and the player intact. Restore the focused card and
+// scroll position when the library itself changes; unchanged responses never rebuild its DOM.
+function renderUpdatedLibrary() {
+  if (!libraryRenderPending || state.view !== 'library' || overlayStack.length) return;
+  const body = $('#library-body');
+  const focused = document.activeElement;
+  const key = focused?.getAttribute?.('data-library-focus');
+  if (body.contains(focused) && !key) return; // an unkeyed control is currently being used
+  const matches = key ? [...body.querySelectorAll('[data-library-focus]')].filter((el) => el.getAttribute('data-library-focus') === key) : [];
+  const index = matches.indexOf(focused);
+  const x = window.scrollX, y = window.scrollY;
+  renderLibrary();
+  if (key) [...body.querySelectorAll('[data-library-focus]')].filter((el) => el.getAttribute('data-library-focus') === key)[Math.max(0, index)]?.focus({ preventScroll: true });
+  window.scrollTo(x, y);
 }
 
 async function loadConvert() {
@@ -586,6 +627,7 @@ function renderConvertBanner() {
 }
 
 function renderLibrary() {
+  libraryRenderPending = false;
   const body = $('#library-body');
   if (!state.status.library) {
     body.replaceChildren(notice('No media folder yet', 'Set MEDIA_DIR in the .env file to the folder with your videos, then restart the server.'));
@@ -605,6 +647,7 @@ function renderLibrary() {
     || norm(showsById.get(f.show)?.title).includes(q) || norm(f.episodeName).includes(q))
     && (state.libFilter === 'all' || (state.libFilter === 'tv') === isShow(f)));
   const filters = segmented(LIB_FILTERS, state.libFilter, (v) => { state.libFilter = v; renderLibrary(); }, 'Show');
+  filters.querySelectorAll('button').forEach((button, i) => button.setAttribute('data-library-focus', `filter-${LIB_FILTERS[i][0]}`));
   if (!state.library.length) {
     body.replaceChildren(notice('Your library is empty',
       state.server.length
@@ -723,7 +766,7 @@ function libraryCard(entry, keep = false) {
   const expiry = hours <= 0 ? 'Leaving soon' : hours < 1 ? '<1h left' : hours < 48 ? `${Math.ceil(hours)}h left` : `${Math.ceil(hours / 24)}d left`;
   const eligible = files.filter(canExtend);
   return h('li', { class: 'library-card' },
-    h('button', { type: 'button', class: 'title-card', onclick: (e) => entry.resume
+    h('button', { type: 'button', class: 'title-card', 'data-library-focus': `play-${f.id}`, onclick: (e) => entry.resume
       ? openPlayer(libraryFile(f)) : show ? openShow(show.id, e.currentTarget) : openFilm(f, e.currentTarget) },
       h('div', { class: 'poster' },
         poster ? h('img', { src: poster, alt: '', loading: 'lazy', decoding: 'async', onerror: (e) => e.currentTarget.replaceWith(h('div', { class: 'poster-fallback' }, name)) })
@@ -732,7 +775,7 @@ function libraryCard(entry, keep = false) {
         partlyWatched(progress) && h('span', { class: 'poster-progress', 'aria-label': `${Math.round(progress.time / progress.duration * 100)}% watched` },
           h('i', { style: `width:${progress.time / progress.duration * 100}%` }))),
       h('div', { class: 'name' }, name), h('div', { class: 'sub' }, subtitle)),
-    keep && eligible.length > 0 && h('button', { type: 'button', class: 'chip library-keep', onclick: async (e) => {
+    keep && eligible.length > 0 && h('button', { type: 'button', class: 'chip library-keep', 'data-library-focus': `keep-${f.id}`, onclick: async (e) => {
       const btn = e.currentTarget;
       btn.disabled = true;
       await extendItems(eligible);
@@ -925,18 +968,36 @@ const STATE_LABELS = {
 };
 const dlCards = new Map();
 
-async function loadDownloads() {
-  if (!state.status.downloads) return;
-  try {
-    state.downloads = (await api(`/api/downloads${state.dlScope === 'all' ? '?all=1' : ''}`)).items;
-    state.downloadsError = null;
-  } catch (err) {
-    state.downloadsError = err.message;
-  }
-  const active = state.downloads.filter((d) => !d.done && d.mine !== false).length;
-  const badge = $('#dl-badge');
-  badge.hidden = !active;
-  badge.textContent = active;
+let downloadsRequest = null;
+let downloadsGeneration = 0;
+function downloadsChangedLibrary(before, after) {
+  const own = (items) => items.filter((d) => d.mine !== false);
+  const previous = new Map(own(before).map((d) => [d.hash, d]));
+  const latest = new Map(own(after).map((d) => [d.hash, d]));
+  return [...latest.values()].some((d) => d.done && !previous.get(d.hash)?.done)
+    || [...previous.keys()].some((hash) => !latest.has(hash));
+}
+function loadDownloads() {
+  if (!state.status.downloads) return Promise.resolve();
+  const scope = state.dlScope;
+  if (downloadsRequest?.scope === scope) return downloadsRequest.promise;
+  const generation = ++downloadsGeneration;
+  const promise = (async () => {
+    try {
+      const data = await api(`/api/downloads${scope === 'all' ? '?all=1' : ''}`, { signal: AbortSignal.timeout(15000) });
+      if (generation !== downloadsGeneration || state.dlScope !== scope) return;
+      libraryRefreshNeeded ||= downloadsChangedLibrary(state.downloads, data.items);
+      state.downloads = data.items;
+      state.downloadsError = null;
+    } catch (err) { if (generation === downloadsGeneration) state.downloadsError = err.message; }
+    finally { if (generation === downloadsGeneration) downloadsRequest = null; }
+    const active = state.downloads.filter((d) => !d.done && d.mine !== false).length;
+    const badge = $('#dl-badge');
+    badge.hidden = !active;
+    badge.textContent = active;
+  })();
+  downloadsRequest = { scope, promise };
+  return promise;
 }
 
 function makeDlCard(d) {
@@ -1097,34 +1158,50 @@ function renderDownloads() {
   for (const [hash, el] of dlCards) if (!seen.has(hash)) { el.remove(); dlCards.delete(hash); }
 }
 
-// Polls quickly while Downloads is open, slowly otherwise.
+// Downloads claims completed files before replying, so read it before refreshing the library.
+let mediaRefreshRequest = null;
+function refreshMediaLibrary() {
+  if (mediaRefreshRequest) return mediaRefreshRequest;
+  mediaRefreshRequest = (async () => {
+    await loadDownloads();
+    if (state.view === 'downloads') renderDownloads();
+    if (state.view === 'library' || libraryRefreshNeeded || current) {
+      libraryRefreshNeeded = false;
+      await loadLibrary();
+      libraryRefreshNeeded ||= Boolean(state.libraryError);
+      renderUpdatedLibrary();
+    }
+  })().finally(() => { mediaRefreshRequest = null; });
+  return mediaRefreshRequest;
+}
 let pollTimer;
 function schedulePoll() {
   clearTimeout(pollTimer);
   const clipsBusy = state.view === 'clips' && state.clips?.clips?.some((c) => c.share && !c.share.ready && !c.share.error);
   const powerBusy = state.view === 'house' && state.house?.power?.some((pw) => pw.pending);
-  const delay = state.view === 'downloads' ? 2000 : state.view === 'notes' ? 5000 : state.view === 'library' || clipsBusy || powerBusy ? 3000 : ['activity', 'house'].includes(state.view) ? 10000 : 15000;
+  const downloading = state.downloads.some((d) => d.mine !== false && !d.done);
+  const delay = state.view === 'downloads' ? 2000 : state.view === 'notes' ? 5000 : state.view === 'library' || downloading || current || clipsBusy || powerBusy ? 3000 : ['activity', 'house'].includes(state.view) ? 10000 : 15000;
   pollTimer = setTimeout(async () => {
-    if (!document.hidden) {
-      const before = state.convert?.current?.name;
-      await Promise.all([loadDownloads(), loadSessions(), state.view === 'library' ? loadConvert() : null]);
-      if (state.view === 'downloads') renderDownloads();
-      if (state.view === 'activity') { await loadActivity(); if (state.view === 'activity') renderActivity(); }
-      if (state.view === 'house') { await loadHouse(); if (state.view === 'house') renderHouse(); }
-      if (state.view === 'notes') await notesView.poll();
-      if (state.view === 'clips' && clipsBusy && !$('#clips-body .clip-rename-form')) { await loadClips(); if (state.view === 'clips') renderClips(); }
-      if (state.view === 'library') {
-        // A conversion finished: refresh so the new MP4 appears.
-        // A conversion started or finished: refresh so Play is disabled / the new MP4 appears.
-        if (before !== state.convert?.current?.name) { await loadLibrary(); renderLibrary(); } else renderConvertBanner();
+    try {
+      if (!document.hidden) {
+        await Promise.all([refreshMediaLibrary(), loadSessions(), state.view === 'library' ? loadConvert() : null]);
+        if (state.view === 'activity') { await loadActivity(); if (state.view === 'activity') renderActivity(); }
+        if (state.view === 'house') { await loadHouse(); if (state.view === 'house') renderHouse(); }
+        if (state.view === 'notes') await notesView.poll();
+        if (state.view === 'clips' && clipsBusy && !$('#clips-body .clip-rename-form')) { await loadClips(); if (state.view === 'clips') renderClips(); }
+        if (state.view === 'library') renderConvertBanner();
       }
-    }
-    schedulePoll();
+    } finally { schedulePoll(); }
   }, delay);
 }
-document.addEventListener('visibilitychange', async () => {
-  if (!document.hidden && state.view === 'downloads') { await loadDownloads(); renderDownloads(); }
-});
+function refreshOnReturn() {
+  if (document.hidden) return;
+  refreshMediaLibrary().catch(() => {}).finally(schedulePoll);
+  updateUpNext();
+}
+document.addEventListener('visibilitychange', refreshOnReturn);
+window.addEventListener('pageshow', refreshOnReturn);
+document.addEventListener('focusout', () => { if (libraryRenderPending) setTimeout(renderUpdatedLibrary, 0); });
 
 // ---------- overlays ----------
 // Each overlay pushes a history entry so the browser/phone back gesture closes it.
@@ -1150,7 +1227,7 @@ function swapTopOverlay(close) {
   overlayStack.push(close);
   history.replaceState({ overlay: overlayStack.length }, '');
 }
-window.addEventListener('popstate', () => { overlayStack.pop()?.(); });
+window.addEventListener('popstate', () => { overlayStack.pop()?.(); renderUpdatedLibrary(); });
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
   if (!ccMenu.hidden) { closeCcMenu(); ccBtn.focus(); return; }
@@ -2168,6 +2245,7 @@ function renderParty() {
   roomButton.setAttribute('aria-expanded', String(Boolean(party && watchPanelOpen)));
   roomButton.setAttribute('aria-label', party ? 'Watch Together room controls' : 'Start Watch Together');
   playerEl.classList.toggle('in-party', Boolean(party));
+  updateUpNext();
   if (!party) return;
   updatePlayState();
   const room = party.state;
@@ -2293,7 +2371,7 @@ $('#watch-leave').addEventListener('click', () => { leaveWatchRoom(); video.paus
 document.addEventListener('visibilitychange', () => { if (!document.hidden && party) { party.clock().then(() => party?.pulse()).catch(() => {}); } });
 
 function saveProgress(force = false) {
-  if (!current || !video.duration || !isFinite(video.duration)) return;
+  if (!current?.ready || video.currentSrc !== current.sourceUrl || !video.duration || !isFinite(video.duration)) return;
   const now = Date.now();
   if (!force && now - lastSave < 5000) return;
   lastSave = now;
@@ -2325,7 +2403,7 @@ const hasRemotePlayback = !hasAirPlay && 'remote' in HTMLMediaElement.prototype;
 const canCastFromBrowser = hasAirPlay || hasRemotePlayback;
 let remoteWatchId = null;
 let onTvVersion = false;   // AirPlay is playing the TV version (original audio)
-let swappingSource = false;
+let castWatch = null;
 
 airplayBtn.setAttribute('aria-label', hasAirPlay ? 'AirPlay' : 'Cast to a TV');
 airplayBtn.addEventListener('click', () => {
@@ -2345,13 +2423,19 @@ if (hasRemotePlayback) {
 }
 
 function watchCastTargets() {
-  if (!hasRemotePlayback) return; // Safari reports availability through the event above
-  video.remote.watchAvailability((available) => { airplayBtn.hidden = Boolean(party) || !available; })
-    .then((id) => { remoteWatchId = id; })
-    .catch(() => { airplayBtn.hidden = true; });
+  if (!hasRemotePlayback || !current) return; // Safari reports availability through its own event
+  const session = current;
+  const token = castWatch = {};
+  video.remote.watchAvailability((available) => {
+    if (current === session && castWatch === token) airplayBtn.hidden = Boolean(party) || !available;
+  }).then((id) => {
+    if (current !== session || castWatch !== token) video.remote.cancelWatchAvailability(id).catch(() => {});
+    else remoteWatchId = id;
+  }).catch(() => { if (current === session && castWatch === token) airplayBtn.hidden = true; });
 }
 
 function resetCasting() {
+  castWatch = null;
   airplayBtn.hidden = true;
   airplayBtn.classList.remove('is-hint');
   if (hasRemotePlayback && remoteWatchId != null) video.remote.cancelWatchAvailability(remoteWatchId).catch(() => {});
@@ -2359,17 +2443,38 @@ function resetCasting() {
   onTvVersion = false;
 }
 
-// Keeps the position and play state while changing the video's source.
+// Only the current source may restore its position. Replacing a source removes the previous
+// metadata continuation, including AirPlay and audio-fix swaps still waiting for metadata.
+let sourceMetadataHandler = null;
+function setPlayerSource(url, session, onMetadata) {
+  if (current !== session) return;
+  if (sourceMetadataHandler) video.removeEventListener('loadedmetadata', sourceMetadataHandler);
+  session.ready = false;
+  const expected = session.sourceUrl = new URL(url, location.href).href;
+  const handler = () => {
+    if (sourceMetadataHandler !== handler || current !== session || video.currentSrc !== expected || video.readyState < 1) return;
+    video.removeEventListener('loadedmetadata', handler);
+    sourceMetadataHandler = null;
+    session.ready = true;
+    onMetadata?.();
+    updateUpNext();
+  };
+  sourceMetadataHandler = handler;
+  video.addEventListener('loadedmetadata', handler);
+  video.src = url;
+}
+
+// Keeps position and play state while switching to a compatible or TV version.
 function swapSource(url) {
+  const session = current;
+  if (!session) return;
   const at = video.currentTime;
   const wasPlaying = !video.paused;
-  swappingSource = true;
-  video.addEventListener('loadedmetadata', () => {
-    swappingSource = false;
+  setPlayerSource(url, session, () => {
     if (!party && at > 1) video.currentTime = at;
-    if (wasPlaying) video.play().catch(() => {});
-  }, { once: true });
-  video.src = url;
+    if (party) { party.pulse(); party.sync(); }
+    else if (wasPlaying) video.play().catch(() => {});
+  });
 }
 
 async function onWireless(on) {
@@ -2554,23 +2659,26 @@ function subSyncItems(f, session) {
 let nudgeChain = Promise.resolve();
 function subSyncNudge(f, session, l, seconds) {
   nudgeChain = nudgeChain.then(async () => {
+    if (current !== session) return;
     try {
-      ccSync = await api('/api/subs/sync', jsonPost({ kind: f.kind, id: mediaId(f), lang: l.code, action: 'shift', seconds }));
+      const result = await api('/api/subs/sync', jsonPost({ kind: f.kind, id: mediaId(f), lang: l.code, action: 'shift', seconds }));
       if (current !== session) return;
+      ccSync = result;
       reloadSubTrack(l);
       renderCcMenu(f, session);
-    } catch (err) { toast(err.message); }
+    } catch (err) { if (current === session) toast(err.message); }
   });
 }
 
 async function subSyncAction(f, session, l, act) {
   try {
-    ccSync = await api('/api/subs/sync', jsonPost({ kind: f.kind, id: mediaId(f), lang: l.code, action: act }));
+    const result = await api('/api/subs/sync', jsonPost({ kind: f.kind, id: mediaId(f), lang: l.code, action: act }));
     if (current !== session) return;
+    ccSync = result;
     if (act === 'undo') { reloadSubTrack(l); toast('Back to the original subtitle timing'); }
     renderCcMenu(f, session);
     if (subSyncBusy(ccSync)) watchSubSync(f, session, l, true);
-  } catch (err) { toast(err.message); }
+  } catch (err) { if (current === session) toast(err.message); }
 }
 
 async function watchSubSync(f, session, l, wasBusy = false) {
@@ -2623,6 +2731,7 @@ async function setupPlayerSubs(f, session) {
 }
 
 async function pickPlayerSub(f, session, l, { quiet = false } = {}) {
+  if (current !== session) return;
   if (!quiet) closeCcMenu();
   try { localStorage.setItem('subs:lang', l.code || ''); } catch { /* blocked */ }
   clearSubTracks();
@@ -2641,6 +2750,7 @@ async function pickPlayerSub(f, session, l, { quiet = false } = {}) {
     if (!quiet) toast(`${l.name} subtitles on`);
     watchSubSync(f, session, l);
   } catch (err) {
+    if (current !== session) return;
     renderCcMenu(f, session, err.message);
     if (!quiet) toast(err.message);
   }
@@ -2698,9 +2808,10 @@ async function applySync(f, session, shift) {
   try {
     await api(`/api/media/${f.kind}/${encodeURIComponent(mediaId(f))}/sync`, jsonPost({ shift }));
   } catch (err) {
-    toast(err.message);
+    if (current === session) toast(err.message);
     return;
   }
+  if (current !== session) return;
   syncShift = shift;
   renderSyncMenu(f, session);
   watchAudio(f, session, shift);
@@ -2762,16 +2873,9 @@ async function watchAudio(f, session, target = null) {
 }
 
 function switchToFixedAudio(session, message) {
-  const at = video.currentTime;
-  const wasPlaying = !video.paused;
+  if (current !== session) return;
   const base = video.src.replace(/[?&]v=\d+$/, '');
-  video.addEventListener('loadedmetadata', () => {
-    if (current !== session) return;
-    if (!party && at > 1) video.currentTime = at;
-    if (party) { party.pulse(); party.sync(); }
-    else if (wasPlaying) video.play().catch(() => {});
-  }, { once: true });
-  video.src = `${base}${base.includes('?') ? '&' : '?'}v=${Date.now()}`; // cache-busting URL
+  swapSource(`${base}${base.includes('?') ? '&' : '?'}v=${Date.now()}`);
   $('#player-note').hidden = true;
   $('#player-error').hidden = true;
   toast(message);
@@ -2923,6 +3027,7 @@ function updateTime() {
   seekEl.setAttribute('aria-valuemax', String(Math.floor(d)));
   seekEl.setAttribute('aria-valuenow', String(Math.floor(t)));
   seekEl.setAttribute('aria-valuetext', d ? `${fmtTime(t)} of ${fmtTime(d)}` : fmtTime(t));
+  updateUpNext();
 }
 function updateBuffer() {
   const d = video.duration;
@@ -3073,6 +3178,11 @@ try { subSize = Number(localStorage.getItem('subs:size')) || 1; } catch { /* blo
 function layoutSubs() {
   if (playerEl.hidden) return;
   const box = stage.getBoundingClientRect();
+  const seekTop = seekRow.getBoundingClientRect().top;
+  if (!upNextEl.hidden) {
+    playerEl.style.setProperty('--up-next-bottom', `${Math.max(16, playerEl.getBoundingClientRect().bottom - seekTop + 12)}px`);
+  }
+  const subtitleBottom = upNextEl.hidden ? seekTop - 10 : Math.min(seekTop - 10, upNextEl.getBoundingClientRect().top - 10);
   const vr = video.getBoundingClientRect();
   let { left, top, width, height } = vr;
   if (video.videoWidth && video.videoHeight) {
@@ -3085,7 +3195,7 @@ function layoutSubs() {
   // A phone held upright shows a short strip of picture with empty black above and below: when
   // three lines fit between the picture and the controls, the dialogue goes there instead of over
   // the picture. (The controls take up their space even while faded, so this doesn't jump around.)
-  const below = seekRow.getBoundingClientRect().top - 10 - (top + height);
+  const below = subtitleBottom - (top + height);
   const sizeOver = Math.min(Math.max(height * 0.05, 15), 52) * subSize; // ~1/20 of the picture's height
   const sizeUnder = Math.min(Math.max(width * 0.045, 15), 26) * subSize;
   const outside = below >= sizeUnder * 1.25 * 3 + sizeUnder; // three lines and a gap
@@ -3096,16 +3206,17 @@ function layoutSubs() {
   });
   let lift = 0;
   let drop = 0;
-  if (playerEl.classList.contains('ui-visible')) {
-    // Measured from the controls themselves, not the fade behind them.
-    const gap = height * 0.05; // where lines sit without the controls: 5% in from the edge
-    lift = Math.max(0, top + height - gap - (seekRow.getBoundingClientRect().top - 10));
-    drop = Math.max(0, $('#player-close').getBoundingClientRect().bottom + 10 - (top + gap));
+  if (playerEl.classList.contains('ui-visible') || !upNextEl.hidden) {
+    const gap = height * 0.05;
+    lift = Math.max(0, top + height - gap - subtitleBottom);
+    if (playerEl.classList.contains('ui-visible')) drop = Math.max(0, $('#player-close').getBoundingClientRect().bottom + 10 - (top + gap));
   }
   subsEl.style.setProperty('--lift', `${lift}px`);
   subsEl.style.setProperty('--drop', `${drop}px`);
 }
-new ResizeObserver(layoutSubs).observe(stage);
+const playerResize = new ResizeObserver(layoutSubs);
+playerResize.observe(stage);
+playerResize.observe(controlsEl);
 video.addEventListener('loadedmetadata', layoutSubs);
 
 function setSubSize(v) {
@@ -3180,7 +3291,7 @@ const PLAYER_KEYS = {
 };
 // Keys typed into a menu or a text field are left alone.
 const playerKeyTarget = (e) => !playerEl.hidden && !e.ctrlKey && !e.metaKey && !e.altKey
-  && !e.target.closest?.('.cc-menu') && !e.target.matches?.('input:not([type="range"]), textarea, select');
+  && !e.target.closest?.('.cc-menu, #up-next') && !e.target.matches?.('input:not([type="range"]), textarea, select');
 document.addEventListener('keydown', (e) => {
   if (!playerKeyTarget(e)) return;
   if (e.key === 'Tab') { showPlayerUi(); return; } // hidden controls can't take focus
@@ -3193,78 +3304,89 @@ document.addEventListener('keydown', (e) => {
 });
 document.addEventListener('keyup', (e) => { if (e.key === ' ' && playerKeyTarget(e)) e.preventDefault(); });
 
-async function openPlayer(f, opts = {}) {
-  if (party) leaveWatchRoom();
-  let src = null; // signed link to the browser version (audio-fixed copy when one exists)
-  const opener = document.activeElement;
+// Save and pause the old file before installing a new identity. This runs for both ordinary
+// closes and Next episode, which keeps the same overlay, fullscreen element and history entry.
+function resetPlayerMedia() {
+  saveProgress(true);
+  const old = current;
+  current = null;
+  old?.abort?.abort();
+  old?.nextAbort?.abort();
+  leaveWatchRoom();
+  video.pause();
+  if (sourceMetadataHandler) video.removeEventListener('loadedmetadata', sourceMetadataHandler);
+  sourceMetadataHandler = null;
+  resetCasting();
+  clearSubTracks();
+  ccLangs = [];
+  closeCcMenu();
+  ccBtn.hidden = true;
+  closeSyncMenu();
+  syncBtn.hidden = true;
+  syncShift = 0;
+  helpEl.hidden = true;
+  endSeek(false);
+  audioWatch = null;
+  lastSave = lastPush = 0;
+  lastTap = { at: 0, side: 0, uiWas: false, skipped: false };
+  skipTotal = skipAt = 0;
+  clearTimeout(osdTimer);
+  osdEl.classList.remove('show');
+  $('#player-note').hidden = true;
+  $('#player-error').hidden = true;
+  setSpinner(false);
+  video.removeAttribute('src');
+  video.load();
+  updateUpNext();
+}
+
+async function preparePlayerSource(f, watchSession, signal) {
+  const link = await api(watchSession ? `${watchSession.base}/play-link?clientId=${encodeURIComponent(watchClient)}`
+    : `/api/play-link?kind=${f.kind}&id=${encodeURIComponent(mediaId(f))}&variant=browser`, { signal });
+  const response = await fetch(link.url, { headers: { Range: 'bytes=0-0' }, signal });
+  if (!response.ok) {
+    let message = `The server responded with ${response.status}.`;
+    try { message = (await response.json()).error || message; } catch { /* keep default */ }
+    throw new Error(message);
+  }
+  response.body?.cancel()?.catch(() => {});
+  return link;
+}
+
+async function loadPlayerMedia(f, opts = {}) {
+  resetPlayerMedia();
+  const session = current = { ...f, ready: false, abort: new AbortController(), creditsAt: null,
+    upNextDismissed: false, upNextBusy: false, upNextError: '', upNextAnnounced: null };
   const err = $('#player-error');
-  const session = current = { ...f };
-
   $('#player-title').textContent = [f.title, episodeLabel(f)].filter(Boolean).join(' ');
-  err.hidden = true;
-  $('#player').hidden = false;
-  document.body.style.overflow = 'hidden';
-  document.body.classList.add('in-player');
-  $('#player-close').focus({ preventScroll: true });
-
-  setTheme('#000000');
   updatePlayState();
   updateTime();
   showPlayerUi();
   setSpinner(true);
-  (opts.replace ? swapTopOverlay : pushOverlay)(() => {
-    leaveWatchRoom();
-    setTheme(pageThemeColor);
-    saveProgress(true);
-    video.pause();
-    if (fsElement()) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
-    if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {});
-    resetCasting();
-    clearSubTracks();
-    closeCcMenu();
-    ccBtn.hidden = true;
-    closeSyncMenu();
-    syncBtn.hidden = true;
-    helpEl.hidden = true;
-    endSeek(false);
-    audioWatch = null;
-    $('#player-note').hidden = true;
-    video.removeAttribute('src');
-    video.load(); // stops the network stream
-    $('#player').hidden = true;
-    document.body.style.overflow = '';
-    document.body.classList.remove('in-player');
-    current = null;
-    opener?.focus?.({ preventScroll: true });
-    if (state.view === 'library') renderLibrary(); // refresh watched bars
-  });
   const watchSession = opts.watchRoom ? attachWatchRoom(opts.watchRoom) : null;
   renderParty();
-
-  // Get a signed link, then request one byte so server errors can be shown as text.
-  try {
-    const link = await api(watchSession ? `${watchSession.base}/play-link?clientId=${encodeURIComponent(watchClient)}`
-      : `/api/play-link?kind=${f.kind}&id=${encodeURIComponent(mediaId(f))}&variant=browser`);
-    src = link.url;
-    session.browserName = link.name;
-    const r = await fetch(src, { headers: { Range: 'bytes=0-0' } });
-    if (!r.ok) {
-      let msg = `The server responded with ${r.status}.`;
-      try { msg = (await r.json()).error || msg; } catch { /* keep default */ }
-      throw new Error(msg);
-    }
-    r.body?.cancel();
-  } catch (e) {
+  // Chapter lookup is optional and never delays playback.
+  loadPlayerCredits(session);
+  let link;
+  try { link = opts.prepared || await preparePlayerSource(f, watchSession, session.abort.signal); }
+  catch (error) {
     if (current !== session) return;
     if (party === watchSession && watchSession) leaveWatchRoom();
     setSpinner(false);
-    err.textContent = e.message;
+    err.textContent = error.message;
     err.hidden = false;
     return;
   }
-
-  if (current !== session) return; // closed while we were checking
-  video.src = src;
+  if (current !== session) return;
+  session.browserName = link.name;
+  setPlayerSource(link.url, session, () => {
+    if (party) { party.sync(); return; }
+    const saved = savedProgress(session);
+    if (saved && saved.time > 30 && saved.time < video.duration - 90) {
+      video.currentTime = saved.time;
+      toast(`Resuming at ${fmtTime(saved.time)}`);
+    }
+  });
   if (!party) watchCastTargets();
   if (opts.castHint && canCastFromBrowser) {
     const note = $('#player-note');
@@ -3275,27 +3397,124 @@ async function openPlayer(f, opts = {}) {
     airplayBtn.classList.add('is-hint');
   }
   setupPlayerSubs(f, session);
-  syncBtn.hidden = true;
   watchAudio(f, session);
   if (watchSession) {
     try { await watchSession.start(); }
-    catch (error) { if (party === watchSession) { leaveWatchRoom(); video.pause(); err.textContent = error.message; err.hidden = false; } }
+    catch (error) { if (current === session && party === watchSession) { leaveWatchRoom(); video.pause(); err.textContent = error.message; err.hidden = false; } }
   } else video.play().catch(() => { /* autoplay blocked: the controls are there */ });
 }
 
-video.addEventListener('loadedmetadata', () => {
-  if (party) { party.sync(); return; }
-  if (swappingSource) return; // swapSource restores the position itself
-  const saved = current && savedProgress(current);
-  if (saved && saved.time > 30 && saved.time < video.duration - 90) {
-    video.currentTime = saved.time;
-    toast(`Resuming at ${fmtTime(saved.time)}`);
+async function openPlayer(f, opts = {}) {
+  const opener = document.activeElement;
+  (opts.replace ? swapTopOverlay : pushOverlay)(() => {
+    resetPlayerMedia();
+    setTheme(pageThemeColor);
+    if (fsElement()) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {});
+    playerEl.hidden = true;
+    document.body.style.overflow = '';
+    document.body.classList.remove('in-player');
+    opener?.focus?.({ preventScroll: true });
+    if (state.view === 'library') { libraryRenderPending = true; renderUpdatedLibrary(); }
+  });
+  playerEl.hidden = false;
+  document.body.style.overflow = 'hidden';
+  document.body.classList.add('in-player');
+  setTheme('#000000');
+  $('#player-close').focus({ preventScroll: true });
+  return loadPlayerMedia(f, opts);
+}
+
+// ---- Up next ----
+const upNextEl = $('#up-next');
+const upNextTitle = $('#up-next-title');
+const upNextPlay = $('#up-next-play');
+const upNextDismiss = $('#up-next-dismiss');
+const upNextError = $('#up-next-error');
+const upNextStatus = $('#up-next-status');
+let upNextLayoutSignature = '';
+
+async function loadPlayerCredits(session) {
+  try {
+    const data = await api(`/api/media/${session.kind}/${encodeURIComponent(mediaId(session))}/credits`, { signal: session.abort.signal });
+    if (current !== session) return;
+    session.creditsAt = Number.isFinite(data.creditsAt) && data.creditsAt > 0 ? data.creditsAt : null;
+    updateUpNext();
+  } catch { /* Missing chapters or ffprobe leaves the prompt at the actual end. */ }
+}
+
+function updateUpNext() {
+  const session = current;
+  const next = session && nextLibraryEpisode(session, state.library, state.libraryShows);
+  const externalPlayer = nativeSubs || video.webkitDisplayingFullscreen || document.pictureInPictureElement === video
+    || video.webkitCurrentPlaybackTargetIsWireless || video.remote?.state === 'connected' || onTvVersion;
+  const show = Boolean(session?.ready && next && !party && !session.upNextDismissed && !externalPlayer && seeking == null && !video.seeking
+    && isNextEpisodeTime({ ended: video.ended, time: video.currentTime, duration: video.duration, creditsAt: session.creditsAt }));
+  upNextEl.hidden = !show;
+  playerEl.classList.toggle('has-up-next', show);
+  if (show) {
+    const title = [episodeLabel(next), next.episodeName || next.title].filter(Boolean).join(' · ');
+    if (upNextTitle.textContent !== title) upNextTitle.textContent = title;
+    upNextPlay.disabled = session.upNextBusy;
+    upNextPlay.textContent = session.upNextBusy ? 'Starting…' : 'Next episode';
+    upNextPlay.setAttribute('aria-busy', String(session.upNextBusy));
+    upNextDismiss.textContent = video.ended ? 'Dismiss' : 'Keep watching';
+    upNextError.textContent = session.upNextError;
+    upNextError.hidden = !session.upNextError;
+    if (session.upNextAnnounced !== next.id) {
+      session.upNextAnnounced = next.id;
+      upNextStatus.textContent = `Up next: ${title}. Next episode is available.`;
+    }
+  } else if (!session) upNextStatus.textContent = '';
+  const signature = show ? `${next.id}|${video.ended}|${session.upNextBusy}|${session.upNextError}` : '';
+  if (signature !== upNextLayoutSignature) { upNextLayoutSignature = signature; layoutSubs(); }
+}
+
+async function playNextEpisode() {
+  const session = current;
+  if (!session || session.upNextBusy || party || session.upNextDismissed) return;
+  const next = nextLibraryEpisode(session, state.library, state.libraryShows);
+  if (!next) { updateUpNext(); return; }
+  session.upNextBusy = true; // synchronous, including a second click before the first await
+  session.upNextError = '';
+  updateUpNext();
+  video.pause();
+  saveProgress(true);
+  session.nextAbort = new AbortController();
+  const timeout = setTimeout(() => session.nextAbort?.abort(), 15000);
+  try {
+    // Keep the paused current file available if signing or checking the next stream fails.
+    const file = libraryFile(next);
+    const prepared = await preparePlayerSource(file, null, session.nextAbort.signal);
+    if (current !== session || party || session.upNextDismissed) return;
+    const stillNext = nextLibraryEpisode(session, state.library, state.libraryShows);
+    if (stillNext?.id !== next.id) throw new Error('This episode is no longer available. Try again after the library updates.');
+    await loadPlayerMedia(file, { prepared });
+  } catch (error) {
+    if (current !== session || session.upNextDismissed) return;
+    session.upNextError = error.name === 'AbortError' ? 'Starting took too long. Try Next episode again.' : `${error.message} Try Next episode again.`;
+    upNextStatus.textContent = session.upNextError;
+  } finally {
+    clearTimeout(timeout);
+    if (current === session) { session.upNextBusy = false; session.nextAbort = null; updateUpNext(); }
   }
+}
+upNextPlay.addEventListener('click', playNextEpisode);
+upNextDismiss.addEventListener('click', () => {
+  if (!current) return;
+  current.upNextDismissed = true;
+  current.nextAbort?.abort();
+  updateUpNext();
 });
+for (const event of ['timeupdate', 'ended', 'seeking', 'seeked', 'durationchange', 'loadedmetadata',
+  'webkitbeginfullscreen', 'webkitendfullscreen', 'enterpictureinpicture', 'leavepictureinpicture',
+  'webkitcurrentplaybacktargetiswirelesschanged']) video.addEventListener(event, updateUpNext);
+if (hasRemotePlayback) for (const event of ['connect', 'disconnect']) video.remote.addEventListener(event, updateUpNext);
+
 video.addEventListener('timeupdate', () => saveProgress());
 video.addEventListener('pause', () => saveProgress(true));
 video.addEventListener('error', () => {
-  if (!current) return;
+  if (!current?.sourceUrl || video.currentSrc !== current.sourceUrl) return;
   const err = $('#player-error');
   err.textContent = 'This video can’t play in this browser yet. Marquee makes a version that plays here automatically; you can follow its progress in the Library tab.';
   // When the note below the video says a version is being made, that note is the explanation.

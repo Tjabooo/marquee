@@ -75,7 +75,7 @@ test('blocked guests can press Play to unlock their browser; ordinary guest play
   const context = vm.createContext({ $, party: { isHost: false, blocked: true, connected: true, online: true,
     state: { host: 'host', intentPlaying: false, playing: false, waitingFor: [], members: [] }, unlock: () => unlocks++ },
     watchPanelOpen: false, current: { kind: 'lib', id: 'movie' }, state: { library: [] }, mediaId: (f) => f.id,
-    playerEl: new Element('div'), playBtns: [play], airplayBtn: new Element('button'), syncBtn: new Element('button'), seekEl: new Element('div'), updatePlayState() {},
+    playerEl: new Element('div'), playBtns: [play], airplayBtn: new Element('button'), syncBtn: new Element('button'), seekEl: new Element('div'), updatePlayState() {}, updateUpNext() {},
   });
   vm.runInContext(source.slice(source.indexOf('function renderParty()'), source.indexOf('function leaveWatchRoom(')), context);
   vm.runInContext(source.slice(source.indexOf('function togglePlay('), source.indexOf('function updatePlayState(')), context);
@@ -88,7 +88,7 @@ test('blocked guests can press Play to unlock their browser; ordinary guest play
 
 test('dismissal waits for the browser popstate before a new player can be pushed', async () => {
   const win = new EventTarget(); let closed = 0;
-  const context = vm.createContext({ window: win, setTimeout, clearTimeout,
+  const context = vm.createContext({ window: win, setTimeout, clearTimeout, renderUpdatedLibrary() {},
     history: { pushState() {}, replaceState() {}, back() { setImmediate(() => win.dispatchEvent(new Event('popstate'))); } },
     closed: () => closed++,
   });

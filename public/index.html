@@ -195,6 +195,18 @@
         <button class="pc-btn" id="pc-fs" aria-label="Fullscreen (F)"></button>
       </div>
     </div>
+    <section class="up-next" id="up-next" aria-labelledby="up-next-label up-next-title" hidden>
+      <div class="up-next-copy">
+        <p class="up-next-label" id="up-next-label">Up next</p>
+        <h2 id="up-next-title"></h2>
+      </div>
+      <div class="up-next-actions">
+        <button class="up-next-play" id="up-next-play" type="button">Next episode</button>
+        <button class="up-next-dismiss" id="up-next-dismiss" type="button">Keep watching</button>
+      </div>
+      <p class="up-next-error" id="up-next-error" hidden></p>
+    </section>
+    <p class="sr-only" id="up-next-status" role="status" aria-live="polite" aria-atomic="true"></p>
     <div class="player-help" id="player-help" role="dialog" aria-label="Keyboard shortcuts" hidden></div>
     <p class="player-error" id="player-error" hidden></p>
   </div>
