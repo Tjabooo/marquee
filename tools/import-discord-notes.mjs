@@ -23,7 +23,7 @@ const summary = { messages: messages.length, first: new Date(dates[0]).toISOStri
 if (args.includes('--dry-run')) { console.log(JSON.stringify(summary)); process.exit(0); }
 const actor = (process.env.ADMIN_EMAILS || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)[0];
 if (!actor) throw new Error('Configure ADMIN_EMAILS before importing private notes.');
-const store = new NotesStore(root);
+const store = new NotesStore(root, { fileDir:process.env.NOTES_FILES_DIR });
 const failures = [];
 let archived = 0, processed = 0;
 const jobs = new Map();

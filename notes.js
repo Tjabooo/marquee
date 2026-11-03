@@ -15,6 +15,8 @@ function objectBody(body) {
 function attachmentsOf(value = [], fileExists = () => false) {
   if (!Array.isArray(value) || value.length > 50) fail(400, 'A note can have up to 50 attachment links.');
   return value.map((a) => {
+    const file = /^[a-f0-9]{64}$/.test(a?.fileId || '') && fileExists(a.fileId);
+    if (file && !a.url) return { fileId:a.fileId, name:file.name, mime:file.mime, size:file.size };
     if (!a || typeof a.url !== 'string' || a.url.length > 4096) fail(400, 'Invalid attachment link.');
     let url; try { url = new URL(a.url); } catch { fail(400, 'Invalid attachment link.'); }
     if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) fail(400, 'Attachment links must use HTTP or HTTPS.');
@@ -34,8 +36,8 @@ function reminderOf(value) {
 }
 
 export class NotesStore {
-  constructor(dataDir) {
-    this.fileDir = path.join(dataDir, '.marquee-notes-files');
+  constructor(dataDir, { fileDir } = {}) {
+    this.fileDir = fileDir ? path.resolve(fileDir) : path.join(dataDir, '.marquee-notes-files');
     this.db = new DatabaseSync(path.join(dataDir, '.marquee.db'));
     this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;
       CREATE TABLE IF NOT EXISTS note_files(id TEXT PRIMARY KEY, name TEXT NOT NULL, mime TEXT NOT NULL, size INTEGER NOT NULL);
@@ -70,7 +72,11 @@ export class NotesStore {
   }
   public(row) {
     if (!row) return null;
-    return { id: row.id, text: row.body, attachments: JSON.parse(row.attachments), author: row.author,
+    const attachments = JSON.parse(row.attachments).map((a) => {
+      const file = a.fileId && this.file(a.fileId);
+      return file ? { ...a, mime:file.mime, size:file.size } : a;
+    });
+    return { id: row.id, text: row.body, attachments, author: row.author,
       createdAt: row.created_at, updatedAt: row.updated_at, version: row.version, pinned: Boolean(row.pinned),
       reminderAt: row.reminder_at, doneAt: row.done_at, deletedAt: row.deleted_at,
       sourceId: row.source_id, sourceChannel: row.source_channel, originalEditedAt: row.original_edited_at };
@@ -112,7 +118,7 @@ export class NotesStore {
   create(body, actor) {
     objectBody(body);
     const attachments = attachmentsOf(body.attachments, (id) => this.file(id));
-    const text = textOf(body.text, attachments), now = Date.now();
+    const text = textOf(body.text ?? '', attachments), now = Date.now();
     const r = this.db.prepare('INSERT INTO notes(body,attachments,author,created_at,updated_at,reminder_at) VALUES(?,?,?,?,?,?)')
       .run(text, JSON.stringify(attachments), actor, now, now, body.reminderAt == null ? null : reminderOf(body.reminderAt));
     return this.get(Number(r.lastInsertRowid));

@@ -22,6 +22,7 @@ import * as season from './season.js';
 import * as recommend from './recommend.js';
 import * as accounts from './accounts.js';
 import { NotesStore } from './notes.js';
+import { NotesUploads, mediaType } from './notes-media.js';
 import { WatchRooms } from './watch.js';
 import { handleWatchPage } from './watch-page.js';
 import { isHomeRequest, describeRequest } from './network.js';
@@ -63,7 +64,9 @@ function watchArtwork(media) {
 setInterval(() => watchRooms.cleanup(), 3000).unref();
 activity.initActivity({ dataDir: ROOT, nameForUser: accounts.displayNameFor });
 accounts.initAccounts({ dataDir: ROOT, adminEmails: activity.adminEmails(), mediaDir: MEDIA_DIR });
-const notes = new NotesStore(ROOT);
+const notes = new NotesStore(ROOT, { fileDir:process.env.NOTES_FILES_DIR });
+const notesUploads = new NotesUploads(notes);
+setInterval(() => { try { notesUploads.prune(); } catch { /* retried on the next upload */ } }, 3600000).unref();
 house.initHouse({
   dataDir: ROOT,
   mediaDir: MEDIA_DIR,
@@ -587,7 +590,7 @@ const infoFor = (file) => {
 };
 
 // ---------- streaming (HTTP range requests) ----------
-async function sendVideo(req, res, file, { captionUrl } = {}) {
+async function sendVideo(req, res, file, { captionUrl, headers = {} } = {}) {
   let stat;
   try { stat = await fs.promises.stat(file); } catch { throw new HttpError(404, 'That file is no longer on the server.'); }
   const size = stat.size;
@@ -600,6 +603,7 @@ async function sendVideo(req, res, file, { captionUrl } = {}) {
     // Required by DLNA renderers.
     'transferMode.dlna.org': 'Streaming',
     'contentFeatures.dlna.org': 'DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01700000000000000000000000000000',
+    ...headers,
   };
   if (captionUrl) base['CaptionInfo.sec'] = captionUrl; // Samsung subtitle header
 
@@ -816,14 +820,23 @@ async function handleApi(req, res, url) {
     if (!user.isOwner) throw new HttpError(403, 'Only the server’s owner can change this.');
     // All configured admins share this inbox. No note content is put in Activity logs.
     const noteFor = (note) => ({ ...note, authorName: accounts.displayNameFor(note.author) });
+    if (p === '/api/admin/notes/uploads' && req.method === 'POST') return sendJson(res,201,notesUploads.start(await readJson(req),user.email));
+    if ((m = p.match(/^\/api\/admin\/notes\/uploads\/([a-f0-9]{32})(?:\/(finish|cancel))?$/))) {
+      if (req.method === 'GET' && !m[2]) return sendJson(res,200,notesUploads.status(m[1],user.email));
+      if (req.method === 'POST') {
+        const result = m[2] === 'finish' ? notesUploads.finish(m[1],user.email)
+          : m[2] === 'cancel' ? notesUploads.cancel(m[1],user.email)
+          : await notesUploads.append(m[1],user.email,Number(url.searchParams.get('offset')),req);
+        return sendJson(res,200,result);
+      }
+    }
     if ((m = p.match(/^\/api\/admin\/notes\/files\/([a-f0-9]{64})$/))) {
       const file = notes.file(m[1]);
       if (!file) throw new HttpError(404, 'Attachment not found.');
-      res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Length': fs.statSync(file.full).size,
-        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(file.name)}`,
-        'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store' });
-      if (req.method === 'HEAD') res.end(); else pipeline(fs.createReadStream(file.full), res, () => {});
-      return;
+      const type = url.searchParams.get('view') === '1' && mediaType(file.full,file.mime);
+      return sendVideo(req,res,file.full,{headers:{ 'Content-Type':type || 'application/octet-stream',
+        'Content-Disposition': `${type ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(file.name)}`,
+        'X-Content-Type-Options':'nosniff', 'Cache-Control':'no-store' }});
     }
     if (p === '/api/admin/notes') {
       if (req.method === 'GET') {
@@ -1409,6 +1422,7 @@ const server = http.createServer(async (req, res) => {
         || /^\/api\/access\/(invite|remove|invite\/\w+\/revoke)$/.test(url.pathname) || /^\/c\/i\/[\w-]+\/?$/.test(url.pathname)
         || /^\/api\/(me|me\/progress|library\/add|library\/extend|library\/identify|admin\/settings|admin\/users\/\d+)$/.test(url.pathname)
         || /^\/api\/admin\/notes(?:\/import|\/\d+(?:\/(?:trash|restore))?)?$/.test(url.pathname)
+        || /^\/api\/admin\/notes\/uploads(?:\/[a-f0-9]{32}(?:\/(?:finish|cancel))?)?$/.test(url.pathname)
         || /^\/api\/watch(?:\/[A-Za-z0-9_-]{24}\/(join|heartbeat|control|leave))?$/.test(url.pathname)));
     if (!allowed) throw new HttpError(405, 'Method not allowed.');
     if (url.pathname.startsWith('/api/')) await handleApi(req, res, url);

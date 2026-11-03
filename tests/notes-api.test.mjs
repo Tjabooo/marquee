@@ -11,16 +11,17 @@ import { NotesStore } from '../notes.js';
 test('notes API denies non-admins and shares messages safely between admins', { timeout: 20000 }, async () => {
   const root = fileURLToPath(new URL('../', import.meta.url));
   const app = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-notes-api-'));
+  const fileDir = await fs.mkdtemp(path.join(os.tmpdir(),'marquee-notes-external-'));
   for (const name of await fs.readdir(root)) if (name.endsWith('.js') || name === 'package.json') await fs.copyFile(path.join(root, name), path.join(app, name));
   await fs.cp(path.join(root, 'public'), path.join(app, 'public'), { recursive: true });
   const fileId = 'a'.repeat(64), privateFile = 'Private attachment fixture';
-  const files = new NotesStore(app); await fs.mkdir(files.fileDir, { recursive: true });
+  const files = new NotesStore(app,{fileDir}); await fs.mkdir(files.fileDir, { recursive: true });
   await fs.writeFile(path.join(files.fileDir, `${fileId}.bin`), privateFile);
   files.registerFile(fileId, { name: 'private.txt', mime: 'text/plain', size: privateFile.length }); files.close();
   const reserve = net.createServer(); await new Promise((r) => reserve.listen(0, '127.0.0.1', r));
   const port = reserve.address().port; await new Promise((r) => reserve.close(r));
   const env = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, WINDIR: process.env.WINDIR, TEMP: process.env.TEMP, TMP: process.env.TMP,
-    PORT: String(port), ADMIN_EMAILS: 'owner@notes.test,admin@notes.test', CONVERT: 'off', SUBSYNC: 'off', TORRENTS: 'off', CAST_APPLETV: 'off', SERVER_IP: '127.0.0.1' };
+    PORT: String(port), NOTES_FILES_DIR:fileDir, ADMIN_EMAILS: 'owner@notes.test,admin@notes.test', CONVERT: 'off', SUBSYNC: 'off', TORRENTS: 'off', CAST_APPLETV: 'off', SERVER_IP: '127.0.0.1' };
   const child = spawn(process.execPath, ['server.js'], { cwd: app, env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
   let logs = ''; child.stdout.on('data', (c) => { logs += c; }); child.stderr.on('data', (c) => { logs += c; });
   try {
@@ -42,6 +43,7 @@ test('notes API denies non-admins and shares messages safely between admins', { 
       await request('', undefined, email, 403);
       await request('', { text: 'not allowed' }, email, 403);
       await request('/import', { messages: [] }, email, 403);
+      await request('/uploads',{name:'denied.png',size:10},email,403);
       await request('/1', undefined, email, 403);
       await request(`/files/${fileId}`, undefined, email, 403);
     }
@@ -65,8 +67,24 @@ test('notes API denies non-admins and shares messages safely between admins', { 
     const download = await fetch(`http://127.0.0.1:${port}/api/admin/notes/files/${fileId}`, { headers: { 'cf-access-authenticated-user-email': 'owner@notes.test' } });
     assert.equal(download.status, 200); assert.match(download.headers.get('content-disposition'), /^attachment;/);
     assert.equal(download.headers.get('x-content-type-options'), 'nosniff'); assert.equal(await download.text(), privateFile);
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aK1cAAAAASUVORK5CYII=','base64');
+    const upload = await request('/uploads',{name:'Phone.png',size:png.length,type:'image/png'},undefined,201);
+    await request(`/uploads/${upload.id}`,undefined,'admin@notes.test',404);
+    const chunk = await fetch(`http://127.0.0.1:${port}/api/admin/notes/uploads/${upload.id}?offset=0`,{
+      method:'POST',headers:{'cf-access-authenticated-user-email':'owner@notes.test','content-type':'application/octet-stream'},body:png,
+    });
+    assert.equal(chunk.status,200); assert.equal((await chunk.json()).offset,png.length);
+    const {attachment}=await request(`/uploads/${upload.id}/finish`,{});
+    assert.equal((await request('',{attachments:[attachment]},undefined,201)).note.attachments[0].mime,'image/png');
+    const inline = await fetch(`http://127.0.0.1:${port}/api/admin/notes/files/${attachment.fileId}?view=1`,{
+      headers:{'cf-access-authenticated-user-email':'admin@notes.test',range:'bytes=0-7'},
+    });
+    assert.equal(inline.status,206); assert.equal(inline.headers.get('content-type'),'image/png');
+    assert.match(inline.headers.get('content-disposition'),/^inline;/); assert.equal((await inline.arrayBuffer()).byteLength,8);
+    assert.equal((await fs.stat(fileDir)).isDirectory(),true);
   } finally {
     child.kill(); await new Promise((r) => child.once('exit', r));
     await fs.rm(app, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    await fs.rm(fileDir,{recursive:true,force:true,maxRetries:5,retryDelay:100});
   }
 });

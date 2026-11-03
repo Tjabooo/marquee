@@ -171,10 +171,26 @@ On first run the converter processes existing files in the background at below-n
 
 ### Shared admin notes and Discord imports
 
+The Notes toolbar is a compact filter selector and overflow menu; Refresh and
+Import Discord live in that menu. The single-row composer grows while typing,
+and reminder options open from its three-dot menu. On phones, the timeline gets
+the remaining screen space rather than being squeezed by permanent controls.
+
+Use **+** to attach photos, videos, audio or documents from your phone or computer.
+Multiple files and media-only notes work. Uploads show progress and use 8 MiB
+chunks (up to 1 GB per file), retry interrupted chunks, and stay private to
+admins. Photos, videos and audio have inline previews where the browser supports
+the original format; the original file is always available to download.
+
+Set `NOTES_FILES_DIR=D:\Marquee\Notes` in `.env` to keep all Notes media on D:.
+Copy the contents of the old media folder to the new location before restarting
+when changing this setting. Include that directory and `.marquee.db` in private
+backups. File names are metadata; stored media uses generated IDs.
+
 Everyone listed in `ADMIN_EMAILS` shares the **Notes** inbox. Ordinary accounts
 and the unauthenticated Home network account cannot read or change notes or
 fetch their archived files. Notes live in `.marquee.db`; archived attachments
-live in `.marquee-notes-files/`. Include both in private server backups.
+live in `NOTES_FILES_DIR` (default `.marquee-notes-files/`). Include both in private server backups.
 Neither the note text nor imported message contents go into the Activity log.
 
 Use the search field for words or word prefixes; several words must all match.
