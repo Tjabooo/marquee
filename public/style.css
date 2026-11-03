@@ -1422,9 +1422,16 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .adv-body > .chip svg { width: 18px; height: 18px; }
 .adv-browser:empty { display: none; }
 
-.transfer-summary { display: grid; gap: 0; font-size: 14px; color: var(--paper); font-variant-numeric: tabular-nums; }
+/* A title's download in its sheet: a quiet panel with room between status, bar and controls. */
+.transfer-summary {
+  display: grid; gap: 0; padding: 14px 16px 10px; font-size: 14px; color: var(--paper); font-variant-numeric: tabular-nums;
+  background: color-mix(in srgb, var(--paper) 3%, transparent); border: 1px solid var(--line); border-radius: 14px;
+}
 .transfer-summary[hidden] { display: none; }
-.transfer-summary .transfer-line { font-size: 14px; }
+.transfer-summary .transfer-line { font-size: 14px; font-weight: 600; }
+.transfer-summary .transfer-track { height: 6px; margin: 12px 0 14px; background: color-mix(in srgb, var(--paper) 10%, transparent); }
+.transfer-summary .transfer-controls { gap: 12px; }
+.sheet-transfer { margin: 6px 0 24px; }
 .transfer-summary .transfer-percent { color: var(--dust); }
 .transfer-summary.is-error .transfer-state { color: var(--alert); }
 .transfer-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }

@@ -913,7 +913,7 @@ function renderFilm() {
   const f = entry?.files[0] || state.library.find((f) => f.id === filmView.id);
   if (!f && entry) {
     const d = entry.transfers[0];
-    $('#sheet-body').replaceChildren(h('div', { class: `sheet-hero${d?.backdrop ? '' : ' no-image'}`, style: d?.backdrop ? `background-image:url("${d.backdrop}")` : null }), h('div', { class: 'sheet-content' }, h('h2', { id: 'sheet-title' }, entry.name), h('p', { class: 'muted' }, libraryAvailability(entry)), transferPanel(entry))); return;
+    $('#sheet-body').replaceChildren(h('div', { class: `sheet-hero${d?.backdrop ? '' : ' no-image'}`, style: d?.backdrop ? `background-image:url("${d.backdrop}")` : null }), h('div', { class: 'sheet-content' }, h('h2', { id: 'sheet-title' }, entry.name), h('ul', { class: 'facts' }, h('li', {}, libraryAvailability(entry))), h('div', { class: 'sheet-transfer' }, transferPanel(entry)))); return;
   }
   if (!f) {
     $('#sheet-body').replaceChildren(h('div', { class: 'sheet-content' }, h('h2', { id: 'sheet-title' }, 'Removed from your library')));
