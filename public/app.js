@@ -4150,13 +4150,9 @@ async function setView(view) {
   document.querySelectorAll('.tab').forEach((t) => {
     if (t.dataset.view === view) {
       t.setAttribute('aria-current', 'page');
-      const start = t.offsetLeft, end = start + t.offsetWidth;
-      if (start < sectionTabs.scrollLeft) sectionTabs.scrollLeft = start;
-      else if (end > sectionTabs.scrollLeft + sectionTabs.clientWidth) sectionTabs.scrollLeft = end - sectionTabs.clientWidth;
     }
     else t.removeAttribute('aria-current');
   });
-  updateTabOverflow();
   document.querySelectorAll('.view').forEach((v) => { v.hidden = v.id !== `view-${view}`; });
   input.value = state.query = '';
   $('#q-clear').hidden = true;
@@ -4164,6 +4160,7 @@ async function setView(view) {
   window.scrollTo(0, 0);
 
   renderView(); // render cached data, then refresh
+  revealSectionTab();
   if (view === 'library') await Promise.all([loadLibrary(), loadConvert()]);
   if (view === 'downloads') await loadDownloads();
   if (view === 'activity') await loadActivity();
@@ -4171,7 +4168,7 @@ async function setView(view) {
   if (view === 'clips') await loadClips();
   if (view === 'notes') await notesView.load();
   if (view === 'settings') await Promise.all([loadLibrary(), state.me?.isOwner ? loadPeople() : null]);
-  if (state.view === view) renderView();
+  if (state.view === view) { renderView(); revealSectionTab(); }
   schedulePoll();
 }
 const sectionTabs = $('.tabs');
@@ -4179,8 +4176,17 @@ function updateTabOverflow() {
   sectionTabs.classList.toggle('can-scroll-left', sectionTabs.scrollLeft > 1);
   sectionTabs.classList.toggle('can-scroll-right', sectionTabs.scrollLeft + sectionTabs.clientWidth < sectionTabs.scrollWidth - 1);
 }
+function revealSectionTab() {
+  const tab = sectionTabs.querySelector('[aria-current="page"]');
+  if (tab) {
+    const start = tab.offsetLeft, end = start + tab.offsetWidth;
+    if (start < sectionTabs.scrollLeft) sectionTabs.scrollLeft = start;
+    else if (end > sectionTabs.scrollLeft + sectionTabs.clientWidth) sectionTabs.scrollLeft = end - sectionTabs.clientWidth;
+  }
+  updateTabOverflow();
+}
 sectionTabs.addEventListener('scroll', updateTabOverflow, { passive: true });
-window.addEventListener('resize', updateTabOverflow);
+window.addEventListener('resize', revealSectionTab);
 document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => setView(t.dataset.view)));
 $('#home-link').addEventListener('click', async (e) => {
   e.preventDefault();
