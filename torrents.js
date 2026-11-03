@@ -72,6 +72,7 @@ function parseSize(text) {
 // Quality and tags parsed from the release name.
 function describe(name) {
   const quality = /\b(2160p|4k|uhd)\b/i.test(name) ? '2160p'
+    : /\b(1440p|qhd|2560\s*[x×]\s*1440)\b/i.test(name) ? '1440p'
     : /\b1080p\b/i.test(name) ? '1080p'
     : /\b720p\b/i.test(name) ? '720p'
     : /\b(480p|dvdrip|xvid|sd)\b/i.test(name) ? 'SD' : null;

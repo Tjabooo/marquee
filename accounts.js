@@ -40,7 +40,7 @@ const EXTEND_CHOICES = [1, 3, 7, 14, 30];
 
 // Per-person preferences (Settings tab).
 const USER_DEFAULTS = { theme: null, subLang: '', quality: 'all', startView: 'discover', librarySort: 'newest' };
-const QUALITIES = ['all', '2160p', '1080p', '720p'];
+const QUALITIES = ['all', '2160p', '1440p', '1080p', '720p'];
 const START_VIEWS = ['discover', 'library', 'downloads'];
 const LIBRARY_SORTS = ['newest', 'expiring', 'title'];
 const HEX = /^#[0-9a-f]{6}$/i;

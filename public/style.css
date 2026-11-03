@@ -143,6 +143,11 @@ main {
   background: none; border: 0; border-radius: 9px;
 }
 .segmented button[aria-pressed="true"] { color: var(--velvet); background: var(--paper); }
+.quality-rail { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 2px; width: 100%; padding: 3px; background: var(--curtain); border-radius: 12px; }
+.quality-rail button { min-width: 0; height: 44px; padding: 0 3px; color: var(--dust); background: transparent; border: 0; border-radius: 9px; font-size: 13px; font-weight: 600; white-space: nowrap; }
+.quality-rail button:hover:not(:disabled):not([aria-pressed="true"]) { color: var(--paper); background: var(--seat); }
+.quality-rail button[aria-pressed="true"] { color: var(--velvet); background: var(--paper); }
+.quality-rail button:disabled { cursor: default; opacity: .6; }
 .genre-chips {
   display: flex; gap: 6px; margin: 12px calc(-1 * var(--gutter)) 0; padding: 0 var(--gutter) 2px;
   overflow-x: auto; scrollbar-width: none; scroll-padding: 0 var(--gutter);
@@ -299,6 +304,9 @@ main {
   color: var(--dust); background: none; border: 0; border-radius: 12px;
 }
 .tab[aria-current="page"] { color: var(--bulb); }
+.tabs { --tab-edge-left: #000; --tab-edge-right: #000; mask-image: linear-gradient(to right, var(--tab-edge-left), #000 14px, #000 calc(100% - 14px), var(--tab-edge-right)); }
+.tabs.can-scroll-left { --tab-edge-left: transparent; }
+.tabs.can-scroll-right { --tab-edge-right: transparent; }
 .tab-badge {
   position: absolute; top: 4px; left: calc(50% + 8px);
   min-width: 18px; height: 18px; padding: 0 5px;
@@ -694,6 +702,7 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
   border: 0; border-radius: 10px;
 }
 .tor-filters { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.tor-filters.quality-rail { display: grid; gap: 2px; }
 .chip {
   height: 34px; padding: 0 14px;
   font-size: 14px; font-weight: 600; color: var(--dust);
@@ -963,9 +972,9 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .clip-title svg { flex: none; width: 15px; height: 15px; opacity: 0; color: var(--bulb); transition: opacity .12s; }
 .clip-title:hover, .clip-title:focus-visible { border-color: var(--line); background: var(--seat); }
 .clip-title:hover svg, .clip-title:focus-visible svg { opacity: 1; }
-.clip-rename-form input { width: 100%; min-width: 0; padding: 6px 8px; font-size: 16px; color: var(--paper); background: var(--velvet); border: 1px solid var(--bulb); border-radius: 6px; }
-.clip-rename-actions { display: flex; gap: 6px; margin-top: 6px; }
-.clip-rename-actions button { padding: 4px 10px; font-size: 13px; border: 1px solid var(--line); border-radius: 6px; background: var(--seat); }
+.clip-rename-form input { width: 100%; min-width: 0; padding: 4px 6px; font-size: 16px; font-weight: 600; line-height: 1.4; color: var(--paper); background: var(--velvet); border: 1px solid var(--bulb); border-radius: 8px; }
+.clip-rename-form input:focus-visible { outline: none; box-shadow: 0 0 0 1px var(--bulb); }
+.clip-rename-form input[readonly] { color: var(--dust); }
 .clip-rename-error { margin: 6px 0 0; color: var(--alert); font-size: 13px; }
 @media (hover: none) { .clip-title svg { opacity: 1; } .clip-title { border-color: var(--line); } }
 .clip-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px 12px; margin-top: auto; }
@@ -1115,6 +1124,8 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .set-label { font-weight: 600; }
 .set-control { flex: none; max-width: 100%; }
 .set-control .segmented { flex-wrap: wrap; }
+.set-quality .set-control { flex: 1 1 330px; width: 100%; }
+.set-quality .quality-rail { background: var(--velvet); }
 .set-card { padding: 14px; background: var(--curtain); border-radius: 14px; }
 .set-card p { margin: 0 0 6px; }
 .set-card p:last-child { margin-bottom: 0; }
@@ -1316,19 +1327,19 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .dl-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; margin: 14px 0 0; }
 .dl-actions .find-btn { margin: 0; }
 .best-dl {
-  align-self: stretch; display: grid; gap: 6px; min-width: 0;
-  padding: 12px 14px; background: var(--seat); border: 1px solid var(--bulb-dim); border-radius: 16px;
+  align-self: stretch; display: grid; gap: 12px; min-width: 0;
+  padding: 14px; background: var(--seat); border: 1px solid var(--bulb-dim); border-radius: 16px;
 }
 .best-dl[hidden] { display: none; }
 .best-result { display: grid; gap: 6px; min-width: 0; }
-.best-quality { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; color: var(--dust); }
-.best-quality select { padding: 5px 28px 5px 9px; color: var(--paper); background: var(--curtain); border: 1px solid var(--line); border-radius: 8px; font: inherit; }
-.best-btn { justify-self: start; max-width: 100%; height: auto; min-height: 46px; padding-block: 8px; text-align: left; }
+.best-quality { display: grid; gap: 7px; font-size: 13px; font-weight: 500; color: var(--dust); }
+.best-empty { display: flex; align-items: center; min-height: 48px; margin: 0; font-weight: 600; }
+.best-btn { width: 100%; max-width: 100%; height: auto; min-height: 48px; padding: 8px 14px; border-radius: 12px; text-align: left; justify-content: flex-start; }
 .best-btn svg { fill: none; stroke: currentColor; stroke-width: 2.4; }
 .best-btn:disabled:not(.is-added) { opacity: 0.6; }
 .best-q {
-  flex: none; margin-left: 2px; padding: 2px 7px; font-size: 12px; white-space: nowrap; font-weight: 800; letter-spacing: 0.02em;
-  border: 1.5px solid currentColor; border-radius: 6px;
+  flex: none; margin-left: auto; padding: 3px 8px; font-size: 12px; white-space: nowrap; font-weight: 700; letter-spacing: 0.02em;
+  color: var(--on-bulb); background: color-mix(in srgb, var(--on-bulb) 12%, transparent); border-radius: 6px;
 }
 .best-meta { margin: 0; font-size: 13px; color: var(--dust); }
 .best-meta:empty { display: none; }
@@ -1337,3 +1348,4 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 @media (max-width: 420px) {
   .best-btn { padding-inline: 14px; font-size: 14px; }
 }
+@media (max-width: 359px) { .quality-rail button { font-size: 12px; } }

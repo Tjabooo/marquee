@@ -125,7 +125,7 @@ function parseName(raw, { file = true, allowEmpty = false } = {}) {
   // The last year-like number wins: "Blade Runner 2049 2017" -> 2017.
   const year = [...name.matchAll(/[\s(\[]((?:19|20)\d{2})(?=[\s)\]]|$)/g)].at(-1);
   const cutAt = [ep?.index, year?.index,
-    name.search(/\b(2160p|1080p|720p|480p|4k|uhd|bluray|brrip|web[- ]?dl|webrip|hdtv|dvdrip|x26[45]|h ?26[45]|hevc|remux)\b/i)]
+    name.search(/\b(2160p|1440p|qhd|2560\s*[x×]\s*1440|1080p|720p|480p|4k|uhd|bluray|brrip|web[- ]?dl|webrip|hdtv|dvdrip|x26[45]|h ?26[45]|hevc|remux)\b/i)]
     .filter((i) => i !== undefined && i > 0);
   const bare = ep?.index === 0;
   let title = bare ? '' : cutAt.length ? name.slice(0, Math.min(...cutAt)) : name;
@@ -1127,7 +1127,7 @@ async function handleApi(req, res, url) {
     const body = await readJson(req);
     const want = season.parseSeasonQuery(body.query);
     if (!want) throw new HttpError(400, 'Search for a show and a season, like “South Park S18”.');
-    if (body.exactQuality && !['2160p', '1080p', '720p'].includes(body.quality)) throw new HttpError(400, 'Choose 4K, 1080p or 720p.');
+    if (body.exactQuality && !['2160p', '1440p', '1080p', '720p'].includes(body.quality)) throw new HttpError(400, 'Choose 4K, 1440p, 1080p or 720p.');
     const id = season.startSeasonJob({
       ...want,
       quality: String(body.quality || ''),
@@ -1160,7 +1160,7 @@ async function handleApi(req, res, url) {
     const year = Number(q.get('year')) || null;
     const seasonNo = Number(q.get('season')) || null;
     const quality = q.get('quality') || 'all';
-    if (!['all', '2160p', '1080p', '720p'].includes(quality)) throw new HttpError(400, 'Choose Auto, 4K, 1080p or 720p.');
+    if (!['all', '2160p', '1440p', '1080p', '720p'].includes(quality)) throw new HttpError(400, 'Choose Auto, 4K, 1440p, 1080p or 720p.');
     if (!title || (type === 'tv' && !seasonNo)) throw new HttpError(400, 'Which title, and for a show which season?');
     const query = type === 'tv' ? `${title} S${String(seasonNo).padStart(2, '0')}` : [title, year].filter(Boolean).join(' ');
     const { results } = await torrents.searchTorrents(query, type);

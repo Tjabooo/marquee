@@ -1,8 +1,9 @@
 import { parseDiscordExport } from './notes-import.js';
 
-export function createNotesView({ h, api, jsonPost, toast, query, clearQuery }) {
+export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQuery }) {
   const state = { items: [], filter: 'all', total: 0, due: 0, cursor: null, loaded: false, loading: false, draft: '', reminder: '', files: [], sending: false, follow: true, edit: null, request: 0 };
   let shell, history, list, summary, composer, draft, reminder, send, older, error, importing, fileInput, mediaInput, uploads, filterSelect, viewKey, fit;
+  let reminderToggle, reminderChip, reminderText, reminderRemove, reminderClear, attach;
   const date = (ms) => new Date(ms).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
   const localInput = (ms) => {
     if (!ms) return '';
@@ -74,6 +75,13 @@ export function createNotesView({ h, api, jsonPost, toast, query, clearQuery }) 
   function updateComposer() {
     if (!send) return;
     send.disabled = state.sending || state.files.some((f) => !f.attachment) || (!state.draft.trim() && !state.files.length);
+    draft.readOnly = state.sending;
+    attach.disabled = state.sending;
+    reminder.disabled = reminderToggle.disabled = reminderRemove.disabled = reminderClear.disabled = state.sending;
+    reminderToggle.classList.toggle('has-reminder', !!state.reminder);
+    reminderToggle.setAttribute('aria-label', state.reminder ? 'Edit reminder' : 'Add reminder');
+    reminderClear.hidden = reminderChip.hidden = !state.reminder;
+    reminderText.textContent = state.reminder ? new Date(state.reminder).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
     uploads.hidden = !state.files.length;
     uploads.replaceChildren(...state.files.map((f) => h('div', { class: `note-upload${f.error ? ' has-error' : ''}` },
       h('span', { class: 'note-upload-name' }, f.file.name),
@@ -145,27 +153,46 @@ export function createNotesView({ h, api, jsonPost, toast, query, clearQuery }) 
     });
     draft.addEventListener('paste', (e) => { if (e.clipboardData?.files.length) { e.preventDefault(); addFiles(e.clipboardData.files); } });
     reminder = h('input', { type: 'datetime-local', 'aria-label': 'Reminder date' }); reminder.value = state.reminder;
-    reminder.addEventListener('input', () => { state.reminder = reminder.value; options.classList.toggle('has-reminder',!!reminder.value); });
-    const options = h('details', { class: 'note-menu note-compose-options' },
-      h('summary', { 'aria-label': 'Note options', title: 'Reminder options' }, '⋯'),
-      h('div', { class: 'note-menu-panel' }, h('label', { class: 'note-reminder' }, 'Remind me', reminder),
-        h('p', { class: 'muted' }, 'Reminders appear in Due.'), button('Done', () => { options.open = false; })));
+    reminder.addEventListener('input', () => { state.reminder = reminder.value; updateComposer(); });
+    const closeReminder = (focus = false) => {
+      panel.hidden = true; reminderToggle.setAttribute('aria-expanded', 'false');
+      if (focus) reminderToggle.focus({ preventScroll: true });
+    };
+    const clearReminder = () => { reminder.value = state.reminder = ''; updateComposer(); };
+    reminderToggle = button([icon('bell'), h('span', { class: 'note-reminder-label' }, 'Reminder')], () => {
+      if (!panel.hidden) { closeReminder(); return; }
+      panel.hidden = false; reminderToggle.setAttribute('aria-expanded', 'true'); reminder.focus({ preventScroll: true });
+    }, { class: 'note-reminder-toggle', 'aria-label': 'Add reminder', 'aria-expanded': 'false', 'aria-controls': 'note-reminder-panel' });
+    reminderClear = button('Remove reminder', clearReminder, { hidden: true });
+    const panel = h('div', { id: 'note-reminder-panel', class: 'note-menu-panel note-reminder-panel', hidden: true },
+      h('label', { class: 'note-reminder' }, 'Remind me', reminder),
+      h('p', { class: 'muted' }, 'Appears in Due at this time.'),
+      h('div', { class: 'note-reminder-actions' }, reminderClear, button('Done', () => closeReminder(true))));
+    const options = h('div', { class: 'note-compose-options' }, reminderToggle, panel);
+    reminder.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); closeReminder(true); } });
+    document.addEventListener('pointerdown', (e) => { if (!panel.hidden && !options.contains(e.target)) closeReminder(); });
+    options.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !panel.hidden) { e.preventDefault(); e.stopPropagation(); closeReminder(true); }
+    });
+    reminderText = h('span');
+    reminderRemove = button('×', clearReminder, { 'aria-label': 'Remove reminder', class: 'note-reminder-remove' });
+    reminderChip = h('div', { class: 'note-reminder-chip', hidden: true }, icon('bell'), reminderText, reminderRemove);
     mediaInput = h('input', { type:'file', multiple:true, accept:'image/*,video/*,audio/*,.pdf', hidden:true, 'aria-label':'Attach media files' });
     mediaInput.addEventListener('change', () => { addFiles(mediaInput.files); mediaInput.value = ''; });
-    send = h('button', { type: 'submit', class: 'note-send', 'aria-label':'Send', title:'Send', disabled:true }, '↑');
+    send = h('button', { type: 'submit', class: 'note-send', 'aria-label':'Send', title:'Send', disabled:true }, icon('send'));
+    attach = button(icon('plus'), () => mediaInput.click(), { class:'note-attach', 'aria-label':'Attach media', title:'Attach photos, videos or files' });
     uploads = h('div', { class:'note-uploads', hidden:true });
     composer = h('form', { class: 'note-composer', onsubmit: async (e) => {
       e.preventDefault(); if (send.disabled || state.sending) return;
-      state.sending = true; updateComposer(); showError('');
+      state.sending = true; closeReminder(); updateComposer(); showError('');
       try {
         await api('/api/admin/notes', jsonPost({ text:draft.value, attachments:state.files.map((f) => f.attachment), reminderAt:reminder.value ? new Date(reminder.value).getTime() : null }));
         draft.value = state.draft = ''; draft.style.height = ''; reminder.value = state.reminder = ''; state.files = []; state.filter = 'all';
-        options.classList.remove('has-reminder'); options.open = false;
+        updateComposer();
         clearQuery(); await load(); history.scrollTop = history.scrollHeight;
       } catch (err) { showError(err.message); }
       finally { state.sending = false; updateComposer(); }
-    } }, uploads, h('div', { class:'note-compose-row' },
-      button('+', () => mediaInput.click(), { class:'note-attach', 'aria-label':'Attach media', title:'Attach photos, videos or files' }), draft, options, send), mediaInput);
+    } }, uploads, reminderChip, h('div', { class:'note-compose-row' }, attach, draft, options, send), mediaInput);
     fileInput = h('input', { type: 'file', accept: '.json,.csv,application/json,text/csv', hidden: true, 'aria-label': 'Discord message export' });
     fileInput.addEventListener('change', () => prepareImport(fileInput.files?.[0]));
     importing = h('div', { class: 'note-import', hidden: true });

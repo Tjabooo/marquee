@@ -16,7 +16,7 @@ test('clip renames persist without moving files or breaking public links; recomm
   // Only the external torrent service is replaced, in this isolated copy.
   await fs.writeFile(path.join(app, 'torrents.js'), `
     export const torrentsEnabled = () => true;
-    export const searchTorrents = async () => ({ results: ['720p','1080p'].map((quality) => ({
+    export const searchTorrents = async () => ({ results: ['720p','1080p','1440p'].map((quality) => ({
       name: 'The.Matrix.1999.' + quality + '.BluRay', quality, seeders: quality === '720p' ? 500 : 40,
       size: 2 * 1024 ** 3, tags: [], cam: false, source: 'tpb'
     })) });
@@ -74,6 +74,10 @@ test('clip renames persist without moving files or breaking public links; recomm
     assert.equal((await request(rec)).pick.quality, '1080p');
     assert.equal((await request(rec + '&quality=720p')).pick.quality, '720p');
     assert.equal((await request(rec + '&quality=1080p')).pick.quality, '1080p');
+    assert.equal((await request(rec + '&quality=1440p')).pick.quality, '1440p');
+    assert.equal((await request('/api/me', { quality: '1440p' })).me.settings.quality, '1440p');
+    assert.equal((await request('/api/me')).me.settings.quality, '1440p');
+    assert.equal((await request(rec)).pick.quality, '1440p', 'Stored quality is used by Auto ranking');
     assert.equal((await request(rec + '&quality=2160p')).pick, null);
     await request(rec + '&quality=garbage', undefined, undefined, 400);
   } finally {

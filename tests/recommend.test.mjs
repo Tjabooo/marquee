@@ -38,7 +38,27 @@ test('a film never gets a 720p download while a 1080p or 4K one exists', () => {
     ['The.Matrix.1999.1080p.WEB-DL', 1],
   ], film), 'The.Matrix.1999.720p.BluRay.x264', 'One seeder is as good as none, so 720p it is');
   const low = pickBest(results([['The.Matrix.1999.720p.BluRay.x264', 20]]), film, parseName);
-  assert.match(low.why, /Nothing in 1080p or 4K/);
+  assert.match(low.why, /Nothing in 1080p, 1440p or 4K/);
+});
+
+test('1440p aliases are classified and stripped from titles; generic 2K is not assumed to be 1440p', () => {
+  for (const alias of ['1440p', 'QHD', '2560x1440', '2560×1440']) {
+    const name = `The.Matrix.${alias}.WEB-DL`;
+    assert.equal(results([[name, 30]])[0].quality, '1440p', alias);
+    assert.equal(parseName(name, { file: false }).title, 'The Matrix', alias);
+  }
+  assert.equal(results([['The.Matrix.2K.WEB-DL', 30]])[0].quality, null);
+});
+
+test('1440p participates in Auto ranking and explicit film and season choices are strict', () => {
+  const rows = [['The.Matrix.1999.720p.WEB', 1000], ['The.Matrix.1999.1440p.WEB', 10]];
+  assert.equal(pick(rows, film), rows[1][0], 'Auto includes 1440p before lower resolutions');
+  assert.equal(pick([...rows, ['The.Matrix.1999.1080p.WEB', 500]], { ...film, prefer: '1440p' }), rows[1][0]);
+  assert.equal(pick(rows, { ...film, quality: '1440p' }), rows[1][0]);
+  assert.equal(pick(rows.slice(0, 1), { ...film, quality: '1440p' }), null);
+  const show = { type: 'tv', title: 'Severance', season: 2, quality: '1440p' };
+  assert.equal(pick([['Severance.S02.1080p.WEB', 100]], show), null);
+  assert.equal(pick([['Severance.S02.QHD.WEB', 3], ['Severance.S02.1080p.WEB', 100]], show), 'Severance.S02.QHD.WEB');
 });
 
 test('4K first when Settings prefers it; healthy torrents before thin ones', () => {
@@ -61,18 +81,18 @@ test('an explicit recommended quality never falls back to another resolution', (
   }), 'Severance.S02.720p.WEB');
 });
 
-test('episode fallback respects an explicitly selected quality and skips unavailable episodes', async () => {
+for (const quality of ['2160p', '1440p']) test(`episode fallback respects ${quality} and skips unavailable episodes`, async () => {
   const added = [];
-  const id = startSeasonJob({ title: 'Severance', season: 2, quality: '2160p', exactQuality: true }, {
+  const id = startSeasonJob({ title: 'Severance', season: 2, quality, exactQuality: true }, {
     parseName, seasonEpisodes: async () => ({ episodes: [{ episode: 1, aired: true }, { episode: 2, aired: true }] }),
     haveEpisodes: async () => new Set(), searchTorrents: async (query) => ({ results: results([
-      [query + '.1080p.WEB', 500], ...(query.endsWith('E01') ? [[query + '.2160p.WEB', 2, 20 * GB]] : []),
+      [query + '.1080p.WEB', 500], ...(query.endsWith('E01') ? [[query + `.${quality}.WEB`, 2, 20 * GB]] : []),
     ]) }), addDownload: async (download) => added.push(download),
   });
   for (let tries = 0; seasonJob(id).state === 'running' && tries < 100; tries++) await new Promise((r) => setTimeout(r, 5));
   const job = seasonJob(id);
   assert.equal(job.state, 'done'); assert.deepEqual(job.missing, [2]);
-  assert.deepEqual(job.added.map((r) => r.quality), ['2160p']); assert.equal(added.length, 1);
+  assert.deepEqual(job.added.map((r) => r.quality), [quality]); assert.equal(added.length, 1);
 });
 
 test('wrong films, cams, remuxes, burned-in subtitles and fakes are passed over', () => {

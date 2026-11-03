@@ -5,15 +5,15 @@
 //
 // "Best match" for an episode: the release name parses to the same show (loose name, as in the
 // Library) and exactly that season and episode; no cinema recordings; at least one seeder. Among
-// those with 5+ seeders (or all, if none has), the quality you filtered on (else 1080p, then 720p,
-// 4K, SD), then the most seeders.
+// those with 5+ seeders (or all, if none has), the quality you filtered on (else 1080p, then 1440p,
+// 720p, 4K, SD), then the most seeders. An exact quality never falls back to another resolution.
 import crypto from 'node:crypto';
 import { showKey } from './shows.js';
 
 const jobs = new Map();       // id -> job
 const JOB_TTL = 60 * 60 * 1000;
 const MAX_EPISODES = 40;      // without TMDB, episodes are probed until two in a row aren't found
-const QUALITY_RANK = { '1080p': 4, '720p': 3, '2160p': 2, SD: 1 };
+const QUALITY_RANK = { '1080p': 5, '1440p': 4, '720p': 3, '2160p': 2, SD: 1 };
 
 // "South Park S18", "South Park season 18", "south.park.s18.complete" -> { title, year, season }
 export function parseSeasonQuery(q) {

@@ -11,8 +11,8 @@ Marquee is a single Node.js process with no dependencies, served as a mobile-fir
 - **Film identity**: availability follows the film's TMDB ID. If two films share a title and year, the owner can open **Library → film → Identify film** and choose by poster, release date and description. That choice is saved for that file alone. Downloads started from a film's details remember the selected identity, too. Discover carousels have previous/next arrows as well as touch scrolling.
 - **Library**: poster covers for films and shows, with **Continue watching** and **Leaving soon** shelves, then your downloads, titles added from the server and your collection. Filter by films or shows. Open a title to play, resume or **Keep 7 more days**; shows have a keep-all button above their seasons as well as individual episode controls.
 - **Watch Together**: open a library title in the player, press **Watch together**, then **Room → Copy invite**. Family members sign in normally, join and press **Play** to enable playback. The host controls play, pause and seek; subtitle language, size, visibility, offsets and volume stay personal. Rooms wait for buffering viewers and correct small playback drift. Room details stay collapsed beside the subtitle/volume controls; **Hide**, Escape or a click outside closes them.
-- **Torrent search**: searches The Pirate Bay and 1337x in parallel, ranked by seeders, with quality filters (4K, 1080p, 720p) and cinema recordings flagged. One tap sends a result to qBittorrent. Searching for a season (“South Park S18”) adds **Get all episodes**: Marquee finds the best torrent for every aired episode and downloads them all, for when there's no good complete-season torrent.
-- **Recommended downloads**: the best-download card on a film or show's details has a Quality selector: Auto, 4K, 1080p or 720p. Auto keeps the normal ranking; a specific quality only recommends that resolution. Episode-by-episode fallback from this card also respects the selected resolution, leaving unavailable episodes out.
+- **Torrent search**: searches The Pirate Bay and 1337x in parallel, ranked by seeders, with quality filters (4K, 1440p, 1080p, 720p) and cinema recordings flagged. One tap sends a result to qBittorrent. Searching for a season (“South Park S18”) adds **Get all episodes**: Marquee finds the best torrent for every aired episode and downloads them all, for when there's no good complete-season torrent. A specific quality strictly applies to episodes too; unavailable episodes are skipped.
+- **Recommended downloads**: the best-download card on a film or show's details has a resolution rail: Auto, 4K, 1440p, 1080p or 720p. Auto ranks available high-resolution releases; a specific quality only recommends that resolution. Episode-by-episode fallback also respects the selected resolution, leaving unavailable episodes out. Explicit 1440p, QHD and 2560×1440 release labels count as 1440p; generic 2K does not.
 - **Downloads**: live qBittorrent progress, speed and time remaining, for your own downloads (the owner can switch to everyone's).
 - **Auto-delete**: downloads are deleted 7 days after they finish (the owner can change this), counted per person; a video someone else still has in their library stays.
 - **Settings**: colour themes (nine presets, or pick your own four colours), default subtitles, preferred torrent quality, start page and library order. The owner also sets the auto-delete rules, who may download, and sees everyone's library size.
@@ -294,8 +294,9 @@ While the PC is in Windows, Marquee sees it as "Off, or in Windows": Windows doe
 Set `CLIPS_DIR` and the owner gets a **Clips** tab. Shared clips live under `/c/<token>`: a page with the video, the video itself and a thumbnail. For those links to work for everyone (and for Discord to embed them), let `/c/` past Cloudflare Access, the same way as `/play/`:
 
 Hover over a clip's name to reveal its outline and pencil, then click to rename it.
-On touchscreens the pencil stays visible. Enter saves, Escape cancels, and Save
-and Cancel buttons are also available. Names persist across restarts and appear
+On touchscreens the pencil stays visible. Clicking outside the field or pressing
+Enter saves; Escape cancels before a save starts. Errors keep the draft available
+for correction and retry. Names persist across restarts and appear
 in search and shared pages. Original files, clip IDs and existing share links
 stay unchanged. Include `.marquee-clip-titles.json` in server backups.
 
@@ -387,7 +388,7 @@ HEVC episodes keep their HEVC video in the MP4 copy: that's lossless and quick, 
 
 ### A whole season, episode by episode
 
-When a torrent search looks like a season (`South Park S18`, `South Park season 18`), the results start with **Get all episodes**. It's highlighted when no complete-season torrent has at least 10 seeders, and a quiet extra otherwise. One tap starts a background job: TMDB says which episodes have aired, episodes already in the library or in qBittorrent (singly or in a season pack) are skipped, and every other episode is searched on its own. The pick for each episode is a release of the same show (loose name match, as in the library) for exactly that season and episode, never a cinema recording, with at least one seeder; among those with 5+ seeders, the quality filter you chose wins (otherwise 1080p, then 720p, 4K, SD), then the most seeders. Multi-episode releases (`S18E03E04`) count for every episode they hold. The card shows progress and finishes with what was added, what was already there and what couldn't be found. Without TMDB, episodes are tried in order until two in a row aren't found. The subtitle language picked above the results is requested for every episode.
+When a torrent search looks like a season (`South Park S18`, `South Park season 18`), the results start with **Get all episodes**. It's highlighted when no complete-season torrent in the selected quality has at least 10 seeders, and a quiet extra otherwise. One tap starts a background job: TMDB says which episodes have aired, episodes already in the library or in qBittorrent (singly or in a season pack) are skipped, and every other episode is searched on its own. The pick for each episode is a release of the same show (loose name match, as in the library) for exactly that season and episode, never a cinema recording, with at least one seeder. A specific quality strictly filters the candidates, leaving unavailable episodes out; Auto prefers 1080p, then 1440p, 720p, 4K, SD. Among candidates with 5+ seeders (or all if none have that many), the preferred quality wins, then the most seeders. Multi-episode releases (`S18E03E04`) count for every episode they hold. The card shows progress and finishes with what was added, what was already there and what couldn't be found. Without TMDB, episodes are tried in order until two in a row aren't found. The subtitle language picked above the results is requested for every episode.
 
 ### Shows in the library
 
@@ -519,7 +520,7 @@ The web client uses a JSON API that can also be scripted. `<kind>` is `lib` for 
 | `GET` | `/api/downloads/season/:id` | That job's progress: added, already here, not found |
 | `GET` | `/api/torrents/search?q=&type=` | Torrent search (`type`: `movie`, `tv` or `all`) |
 | `GET` | `/api/torrents/magnet?ref=` | Magnet link for a 1337x result |
-| `GET` | `/api/torrents/recommend?title=&type=&year=&season=&quality=` | Recommended film or season pack; quality is `all` (Auto), `2160p`, `1080p` or `720p` |
+| `GET` | `/api/torrents/recommend?title=&type=&year=&season=&quality=` | Recommended film or season pack; quality is `all` (Auto), `2160p`, `1440p`, `1080p` or `720p` |
 | `GET` | `/api/convert` | Conversion progress |
 | `GET` | `/api/subs/langs` | Subtitle languages for a file (`kind`, `id`) or title (`q`, `type`) |
 | `POST` | `/api/subs/fetch` | Download subtitles (`{ kind, id, lang }`) |

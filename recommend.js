@@ -5,7 +5,7 @@
 // one of the film's), no cinema recordings, at least two seeders. For a season, a pack of exactly
 // that season (not single episodes, not multi-season sets).
 //
-// Quality: 1080p or 4K whenever one exists (1080p first, 4K first if Settings asks for it); 720p,
+// Quality: 1080p, 1440p or 4K whenever one exists (1080p first, or the preferred resolution); 720p,
 // unlabelled and SD only when nothing 1080p or better is out there. Torrents with 5+ seeders are
 // tried before thin ones within each step, so a dead 1080p doesn't beat a lively one.
 // Among those: more seeders, trusted uploaders, sane sizes; remuxes (huge), burned-in subtitles
@@ -16,7 +16,10 @@ const HEALTHY = 5;
 const ALIVE = 2;
 const GB = 1024 ** 3;
 
-const qualityOrder = (prefer) => (prefer === '2160p' ? ['2160p', '1080p'] : ['1080p', '2160p']);
+const qualityOrder = (prefer) => {
+  const order = ['1080p', '1440p', '2160p'];
+  return order.includes(prefer) ? [prefer, ...order.filter((q) => q !== prefer)] : order;
+};
 
 // "Severance S02 1080p", "Severance Season 2 Complete" -> "Severance" (null when it's no season pack).
 function packTitle(name, season) {
@@ -37,7 +40,7 @@ function score(r, type) {
   if (r.size && type === 'movie') {
     const cap = r.quality === '2160p' ? 30 * GB : 16 * GB;
     if (r.size > cap) s -= 1;
-    if (r.size < 0.5 * GB && ['1080p', '2160p'].includes(r.quality)) s -= 1.5; // too small to be real
+    if (r.size < 0.5 * GB && ['1080p', '1440p', '2160p'].includes(r.quality)) s -= 1.5; // too small to be real
   }
   return s;
 }
@@ -83,8 +86,8 @@ function choose(fits, want) {
     pool.sort((a, b) => (qualities.indexOf(a.quality ?? null) - qualities.indexOf(b.quality ?? null))
       || score(b, want.type) - score(a, want.type));
     const pick = pool[0];
-    const low = !['1080p', '2160p'].includes(pick.quality);
-    return { pick, why: low ? 'Nothing in 1080p or 4K is available, so this is the best there is.' : null };
+    const low = !['1080p', '1440p', '2160p'].includes(pick.quality);
+    return { pick, why: low ? 'Nothing in 1080p, 1440p or 4K is available, so this is the best there is.' : null };
   }
   return { pick: null, why: 'No release that clearly matches.' };
 }
