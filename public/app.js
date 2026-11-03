@@ -1949,9 +1949,6 @@ async function openDelete(f, opener) {
   if (info.others) {
     body.replaceChildren(h('h2', { id: 'picker-title' }, 'Remove from your library?'),
       h('p', { class: 'del-name' }, label),
-    h('p', { class: 'muted' }, d.name),
-    d.season != null && d.episode == null && h('p', { class: 'muted' }, 'This action affects every file in this season pack.'),
-    d.libraryIds?.length && h('p', { class: 'muted' }, 'Files still used by another person’s library are protected. The server will refuse file deletion while they are shared.'),
       h('p', { class: 'muted' }, `${plural(info.others, 'other person has', 'other people have')} this in their library, so the file stays on the server. You can add it back from Discover.`),
       h('div', { class: 'del-actions' },
         button('Remove from my library', 'del-confirm', 'file'),
@@ -1964,9 +1961,6 @@ async function openDelete(f, opener) {
 
   const lines = [
     h('p', { class: 'del-name' }, label),
-    h('p', { class: 'muted' }, d.name),
-    d.season != null && d.episode == null && h('p', { class: 'muted' }, 'This action affects every file in this season pack.'),
-    d.libraryIds?.length && h('p', { class: 'muted' }, 'Files still used by another person’s library are protected. The server will refuse file deletion while they are shared.'),
     h('p', { class: 'muted' }, pack
       ? `This is one of ${t.videos} videos in the torrent “${t.name}”. Deleting all of them also removes the torrent from qBittorrent.`
       : t ? `This also removes the torrent from qBittorrent, so it stops seeding. ${fmtBytes(t.size)} will be freed.`
