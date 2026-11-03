@@ -12,6 +12,7 @@ Marquee is a single Node.js process with no dependencies, served as a mobile-fir
 - **Library**: poster covers for films and shows, with **Continue watching** and **Leaving soon** shelves, then your downloads, titles added from the server and your collection. Filter by films or shows. Open a title to play, resume or **Keep 7 more days**; shows have a keep-all button above their seasons as well as individual episode controls.
 - **Watch Together**: open a library title in the player, press **Watch together**, then **Room → Copy invite**. Family members sign in normally, join and press **Play** to enable playback. The host controls play, pause and seek; subtitle language, size, visibility, offsets and volume stay personal. Rooms wait for buffering viewers and correct small playback drift. Room details stay collapsed beside the subtitle/volume controls; **Hide**, Escape or a click outside closes them.
 - **Torrent search**: searches The Pirate Bay and 1337x in parallel, ranked by seeders, with quality filters (4K, 1080p, 720p) and cinema recordings flagged. One tap sends a result to qBittorrent. Searching for a season (“South Park S18”) adds **Get all episodes**: Marquee finds the best torrent for every aired episode and downloads them all, for when there's no good complete-season torrent.
+- **Recommended downloads**: the best-download card on a film or show's details has a Quality selector: Auto, 4K, 1080p or 720p. Auto keeps the normal ranking; a specific quality only recommends that resolution. Episode-by-episode fallback from this card also respects the selected resolution, leaving unavailable episodes out.
 - **Downloads**: live qBittorrent progress, speed and time remaining, for your own downloads (the owner can switch to everyone's).
 - **Auto-delete**: downloads are deleted 7 days after they finish (the owner can change this), counted per person; a video someone else still has in their library stays.
 - **Settings**: colour themes (nine presets, or pick your own four colours), default subtitles, preferred torrent quality, start page and library order. The owner also sets the auto-delete rules, who may download, and sees everyone's library size.
@@ -21,6 +22,7 @@ Marquee is a single Node.js process with no dependencies, served as a mobile-fir
 - **Browser audio fix**: Chrome and Firefox can't decode Dolby (AC3/E-AC3) or DTS. Marquee adds a stereo AAC track so these files play with sound, while TVs still receive the original surround audio.
 - **House** (owner only): the server's disks, qBittorrent, FlareSolverr and AdGuard Home at a glance, plus the Linux machines at home (disk space, failed services, updates, battery, Secure Boot, backups), with anything that needs a look listed at the top. **Power** turns a dual-boot PC on (Wake-on-LAN) into the system you pick, or restarts it into another one.
 - **Clips** (owner only): game clips synced from a PC, grouped by game. **Share** gives a clip a public link that embeds and plays in Discord; sharing makes a Discord-friendly H.264 copy (all audio tracks mixed into one) and unsharing kills the link. **Delete** (two taps) removes a clip: it waits 30 days in a hidden `.deleted` folder before it's gone for good. **Trim** cuts a clip without re-encoding (ffmpeg stream copy: identical quality, every audio track kept, no GPU needed); the start snaps to the nearest keyframe before the chosen point, which the trimmer shows, and the result goes to `Trimmed Clips/<Game>/`.
+- **Notes** (admins only): a shared message-style inbox for information and reminders. Enter sends a note (Shift+Enter adds a line); search finds keywords across the entire history. Edit messages, pin important ones, add reminder dates, mark them done, or move notes to recoverable Trash. Dates stay unchanged when editing. Conflicting edits are rejected instead of overwriting someone else's changes. Notes refresh while idle and are hidden from ordinary members, including direct API and attachment access.
 - **Invites** (owner only): make a one-time link, send it, and the person enters their email and is added to the Cloudflare email list your Access policy allows, so they can sign in from then on (Google, a one-time email code, whatever you've enabled). Who has access is listed in the Activity tab, with a Remove button.
 - **Discord embeds**: shared clips show up as playable videos, and `/c/` is an invite card for Marquee itself.
 - **Library management**: delete films, single episodes or whole torrents. Files are removed through qBittorrent, together with any copies and subtitles Marquee created.
@@ -167,6 +169,43 @@ winget install Gyan.FFmpeg
 
 On first run the converter processes existing files in the background at below-normal priority. NVENC is used automatically when an NVIDIA GPU is available.
 
+### Shared admin notes and Discord imports
+
+Everyone listed in `ADMIN_EMAILS` shares the **Notes** inbox. Ordinary accounts
+and the unauthenticated Home network account cannot read or change notes or
+fetch their archived files. Notes live in `.marquee.db`; archived attachments
+live in `.marquee-notes-files/`. Include both in private server backups.
+Neither the note text nor imported message contents go into the Activity log.
+
+Use the search field for words or word prefixes; several words must all match.
+**Pinned**, **Due**, and **Trash** narrow the view. Reminder dates are shown in
+local time, with due reminders highlighted when Notes is open; these are not
+background push notifications. Deleted notes can be restored from Trash.
+
+**Import Discord** accepts the MEE6 conversation's `messages.json` or
+`messages.csv` from Discord's data package, or a common JSON conversation
+export. Preview the count and choose your own author when the file includes
+other people or bot replies. Original message IDs and UTC dates are retained;
+retrying an import skips existing IDs and never resurrects trashed notes.
+Browser uploads preserve attachment links. Those links may expire on Discord.
+
+For an archive that also keeps actual Discord attachments on the server, run:
+
+```powershell
+node tools/import-discord-notes.mjs C:\path\to\mee6.json --dry-run
+node tools/import-discord-notes.mjs C:\path\to\mee6.json
+```
+
+The command uses the first configured admin as the importing account. If a
+conversation export has multiple human authors, pass `--author-id YOUR_ID`.
+It downloads only HTTPS files from Discord's attachment CDN and image/video
+files from Tenor/Giphy, follows only approved-CDN redirects, and limits each file
+to 100 MB. Successful files are served
+through an admin-only download route with `no-store` and `nosniff`; originals
+stay unchanged in Discord. Unavailable files retain their original links and
+are counted in a private import report under `.marquee-notes-imports/`.
+Do not commit exports, reports, database files, or archived attachments.
+
 ### Away from home
 
 TVs are only offered to visitors on the server's home network, since that's the only network the server can see. Direct visits are judged by their LAN address. Visits through Cloudflare Tunnel are compared with the home network's public IPv4 address and IPv6 /64, which the server looks up every 10 minutes through icanhazip.com, Cloudflare or ipify. If no lookup succeeds, casting stays available. Set `CAST_WHEN_AWAY=on` to allow casting from anywhere; `GET /api/network` shows how a request was classified.
@@ -237,6 +276,12 @@ While the PC is in Windows, Marquee sees it as "Off, or in Windows": Windows doe
 ### Clips and Discord share links
 
 Set `CLIPS_DIR` and the owner gets a **Clips** tab. Shared clips live under `/c/<token>`: a page with the video, the video itself and a thumbnail. For those links to work for everyone (and for Discord to embed them), let `/c/` past Cloudflare Access, the same way as `/play/`:
+
+Hover over a clip's name to reveal its outline and pencil, then click to rename it.
+On touchscreens the pencil stays visible. Enter saves, Escape cancels, and Save
+and Cancel buttons are also available. Names persist across restarts and appear
+in search and shared pages. Original files, clip IDs and existing share links
+stay unchanged. Include `.marquee-clip-titles.json` in server backups.
 
 1. Cloudflare Zero Trust → **Access → Applications → Add an application → Self-hosted**.
 2. Application domain: your Marquee hostname, path `c`.
@@ -454,10 +499,11 @@ The web client uses a JSON API that can also be scripted. `<kind>` is `lib` for 
 | `POST` | `/api/admin/users/<id>` | `{ canDownload?, keep? }` (`ADMIN_EMAILS` only) |
 | `GET` | `/api/downloads` | Your qBittorrent downloads (`?all=1`: everyone's, owner only) |
 | `POST` | `/api/downloads/add` | Add a magnet or `.torrent` URL (`{ link, subs?, movieId? }`); `movieId` carries the selected TMDB film identity |
-| `POST` | `/api/downloads/season` | Get a whole season episode by episode (`{ query: "South Park S18", quality?, subs? }`), returns `{ id }` |
+| `POST` | `/api/downloads/season` | Get a whole season episode by episode (`{ query: "South Park S18", quality?, exactQuality?, subs? }`), returns `{ id }` |
 | `GET` | `/api/downloads/season/:id` | That job's progress: added, already here, not found |
 | `GET` | `/api/torrents/search?q=&type=` | Torrent search (`type`: `movie`, `tv` or `all`) |
 | `GET` | `/api/torrents/magnet?ref=` | Magnet link for a 1337x result |
+| `GET` | `/api/torrents/recommend?title=&type=&year=&season=&quality=` | Recommended film or season pack; quality is `all` (Auto), `2160p`, `1080p` or `720p` |
 | `GET` | `/api/convert` | Conversion progress |
 | `GET` | `/api/subs/langs` | Subtitle languages for a file (`kind`, `id`) or title (`q`, `type`) |
 | `POST` | `/api/subs/fetch` | Download subtitles (`{ kind, id, lang }`) |
@@ -476,6 +522,7 @@ The web client uses a JSON API that can also be scripted. `<kind>` is `lib` for 
 | `POST` | `/api/house/boot` | A dual-boot machine's boot menu and network card; the reply says whether to restart, and into what (`X-Marquee-Token`, home network only) |
 | `POST` | `/api/house/power` | `{ host, action: "wake" \| "restart", entry? }`: wake a machine into a boot entry, or restart it (`ADMIN_EMAILS` only) |
 | `GET` | `/api/clips` | Clips and their share state (`ADMIN_EMAILS` only) |
+| `POST` | `/api/clips/<id>/rename` | Set a display name (`{ title, previousTitle? }`); keeps files and share links unchanged (`ADMIN_EMAILS` only) |
 | `GET` | `/api/clips/<id>/thumb.jpg`, `/api/clips/<id>/video` | Thumbnail and video (`ADMIN_EMAILS` only) |
 | `POST` | `/api/clips/<id>/share`, `/api/clips/<id>/unshare` | Create or remove a public link (`ADMIN_EMAILS` only) |
 | `GET` | `/api/clips/<id>/keyframes` | Duration and keyframe times, for the trimmer (`ADMIN_EMAILS` only) |

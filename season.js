@@ -45,7 +45,7 @@ export function seasonJob(id) {
 }
 
 // deps: { parseName, searchTorrents, magnetFor1337x, addDownload, wantSubtitles, haveEpisodes, tmdb, seasonEpisodes, log }
-export function startSeasonJob({ title, year, season, quality, subs }, deps) {
+export function startSeasonJob({ title, year, season, quality, exactQuality = false, subs }, deps) {
   for (const [id, j] of jobs) if (Date.now() - j.started > JOB_TTL) jobs.delete(id);
   const key = showKey(title);
   const running = [...jobs.values()].find((j) => j.state === 'running' && j.key === key && j.season === season);
@@ -56,7 +56,7 @@ export function startSeasonJob({ title, year, season, quality, subs }, deps) {
     added: [], have: [], missing: [], upcoming: 0, error: null,
   };
   jobs.set(job.id, job);
-  run(job, { year, quality, subs }, deps).catch((e) => {
+  run(job, { year, quality, exactQuality, subs }, deps).catch((e) => {
     job.state = 'failed';
     job.error = e.message || String(e);
     deps.log?.(`[season] ${title} S${season}: ${job.error}`);
@@ -64,7 +64,7 @@ export function startSeasonJob({ title, year, season, quality, subs }, deps) {
   return job.id;
 }
 
-async function run(job, { year, quality, subs }, deps) {
+async function run(job, { year, quality, exactQuality, subs }, deps) {
   const plan = await deps.seasonEpisodes(job.title, year, job.season, deps.tmdb).catch(() => null);
   if (plan?.title) job.title = plan.title;
   let episodes = null;
@@ -100,7 +100,7 @@ async function run(job, { year, quality, subs }, deps) {
       if (e.status === 503) throw e; // torrent search turned off
       try { results = (await deps.searchTorrents(`${job.title} ${label}`, 'all')).results; } catch { results = []; }
     }
-    const fits = results.filter((r) => !r.cam && r.seeders > 0
+    const fits = results.filter((r) => !r.cam && r.seeders > 0 && (!exactQuality || r.quality === quality)
       && showKey(deps.parseName(r.name).title) === job.key
       && episodesIn(r.name, job.season).includes(ep));
     // Quality only counts among healthy torrents (5+ seeders): a 1080p with one seeder can stall forever.

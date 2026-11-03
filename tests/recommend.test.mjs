@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import vm from 'node:vm';
 import { pickBest } from '../recommend.js';
 import { parseTpb } from '../torrents.js';
+import { startSeasonJob, seasonJob } from '../season.js';
 
 // The server's own release-name parser, taken from server.js so the test can't drift from it.
 const server = await fs.readFile(new URL('../server.js', import.meta.url), 'utf8');
@@ -47,6 +48,31 @@ test('4K first when Settings prefers it; healthy torrents before thin ones', () 
     ['The.Matrix.1999.1080p.WEB-DL', 3],
     ['The.Matrix.1999.2160p.UHD.BluRay.x265', 60, 20 * GB],
   ], film), 'The.Matrix.1999.2160p.UHD.BluRay.x265', 'A 3-seeder 1080p loses to a healthy 4K');
+});
+
+test('an explicit recommended quality never falls back to another resolution', () => {
+  const rows = [['The.Matrix.1999.720p.BluRay', 2000], ['The.Matrix.1999.1080p.BluRay', 300], ['The.Matrix.1999.2160p.BluRay', 3, 20 * GB]];
+  assert.equal(pick(rows, { ...film, quality: '720p' }), rows[0][0]);
+  assert.equal(pick(rows, { ...film, quality: '2160p' }), rows[2][0], 'Selected 4K can use a thin but live release');
+  assert.equal(pick(rows.slice(0, 2), { ...film, quality: '2160p' }), null);
+  assert.match(pickBest(results(rows.slice(0, 2)), { ...film, quality: '2160p' }, parseName).why, /No matching 4K/);
+  assert.equal(pick([['Severance.S02.720p.WEB', 40], ['Severance.S02.1080p.WEB', 100]], {
+    type: 'tv', title: 'Severance', season: 2, quality: '720p',
+  }), 'Severance.S02.720p.WEB');
+});
+
+test('episode fallback respects an explicitly selected quality and skips unavailable episodes', async () => {
+  const added = [];
+  const id = startSeasonJob({ title: 'Severance', season: 2, quality: '2160p', exactQuality: true }, {
+    parseName, seasonEpisodes: async () => ({ episodes: [{ episode: 1, aired: true }, { episode: 2, aired: true }] }),
+    haveEpisodes: async () => new Set(), searchTorrents: async (query) => ({ results: results([
+      [query + '.1080p.WEB', 500], ...(query.endsWith('E01') ? [[query + '.2160p.WEB', 2, 20 * GB]] : []),
+    ]) }), addDownload: async (download) => added.push(download),
+  });
+  for (let tries = 0; seasonJob(id).state === 'running' && tries < 100; tries++) await new Promise((r) => setTimeout(r, 5));
+  const job = seasonJob(id);
+  assert.equal(job.state, 'done'); assert.deepEqual(job.missing, [2]);
+  assert.deepEqual(job.added.map((r) => r.quality), ['2160p']); assert.equal(added.length, 1);
 });
 
 test('wrong films, cams, remuxes, burned-in subtitles and fakes are passed over', () => {

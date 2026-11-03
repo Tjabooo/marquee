@@ -62,6 +62,13 @@ export function pickBest(results, want, parseName) {
 const COUNTRIES = new Set(['us', 'uk', 'au', 'nz', 'ca']);
 
 function choose(fits, want) {
+  if (want.quality && want.quality !== 'all') {
+    fits = fits.filter((r) => r.quality === want.quality);
+    if (!fits.length) return { pick: null, why: `No matching ${want.quality === '2160p' ? '4K' : want.quality} release has enough seeders.` };
+    const healthy = fits.filter((r) => r.seeders >= HEALTHY);
+    const pool = healthy.length ? healthy : fits;
+    return { pick: pool.sort((a, b) => score(b, want.type) - score(a, want.type))[0], why: null };
+  }
   if (!fits.length) return { pick: null, why: 'No release that clearly matches.' };
   const top = qualityOrder(want.prefer);
   const steps = [

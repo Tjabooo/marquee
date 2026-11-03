@@ -24,6 +24,8 @@ const TRASH_DAYS = 30;       // deleted clips wait in CLIPS_DIR/.deleted this lo
 let cacheDir = null;
 let sharesFile = null;
 let shares = {};          // token -> { rel, at }
+let titlesFile = null;
+let titles = {};          // stable clip id -> display name; files and public links stay put
 let encoder = () => null; // 'nvenc' | 'x264' | null, from the converter
 let scanned = { at: 0, list: [] };
 const jobs = new Map();   // clip id -> Promise (share copy being made)
@@ -33,6 +35,10 @@ export function initClips({ dataDir, getEncoder }) {
   cacheDir = path.join(dataDir, 'cache', 'clips');
   sharesFile = path.join(dataDir, '.marquee-shares.json');
   try { shares = JSON.parse(fs.readFileSync(sharesFile, 'utf8')); } catch { shares = {}; }
+  titlesFile = path.join(dataDir, '.marquee-clip-titles.json');
+  try { titles = JSON.parse(fs.readFileSync(titlesFile, 'utf8')); } catch { titles = {}; }
+  if (!titles || typeof titles !== 'object' || Array.isArray(titles)) titles = {};
+  scanned = { at: 0, list: [] };
   encoder = getEncoder;
   for (const d of ['thumbs', 'share']) fs.mkdirSync(path.join(cacheDir, d), { recursive: true });
 }
@@ -71,6 +77,7 @@ function gameOf(rel) {
 }
 // Desktop clip names look like "Replay_2026-11-01_21-14-03.mp4" or "<game> 2026-11-01 21-14.mp4".
 const titleOf = (rel) => path.basename(rel, path.extname(rel)).replace(/[_]+/g, ' ').trim();
+const displayTitle = (rel) => typeof titles[idOf(rel)] === 'string' && titles[idOf(rel)] ? titles[idOf(rel)] : titleOf(rel);
 
 export async function scan(force = false) {
   if (!CLIPS_DIR) return [];
@@ -80,7 +87,7 @@ export async function scan(force = false) {
   scanned = {
     at: Date.now(),
     list: files.sort((a, b) => b.mtime - a.mtime).map((f) => ({
-      id: idOf(f.rel), rel: f.rel, title: titleOf(f.rel), game: gameOf(f.rel), size: f.size, mtime: f.mtime,
+      id: idOf(f.rel), rel: f.rel, title: displayTitle(f.rel), game: gameOf(f.rel), size: f.size, mtime: f.mtime,
     })),
   };
   return scanned.list;
@@ -187,6 +194,23 @@ export async function listClips() {
 }
 export const clipFile = async (id) => fullPath((await byId(id)).rel);
 
+export async function renameClip(id, title, previousTitle) {
+  if (typeof title !== 'string' || !title.trim() || title.trim().length > 120 || /[\u0000-\u001f\u007f]/.test(title)) {
+    throw Object.assign(new Error('Give the clip a name of 1–120 characters, on one line.'), { status: 400 });
+  }
+  const c = await byId(id);
+  const current = displayTitle(c.rel);
+  if (previousTitle !== undefined && previousTitle !== current) {
+    throw Object.assign(new Error('This clip was renamed on another device. Refresh before renaming it.'), { status: 409 });
+  }
+  const next = { ...titles, [c.id]: title.trim() };
+  const temp = `${titlesFile}.tmp`;
+  try { fs.writeFileSync(temp, JSON.stringify(next)); fs.renameSync(temp, titlesFile); }
+  finally { fs.rmSync(temp, { force: true }); }
+  titles = next; scanned.at = 0;
+  return { id: c.id, title: next[c.id] };
+}
+
 export async function share(id) {
   const c = await byId(id);
   let token = tokenFor(c.rel);
@@ -239,7 +263,8 @@ export async function trim(id, start, end, { deleteOriginal = false } = {}) {
   const from = keyframes.filter((k) => k <= start + 0.001).pop() ?? 0;
   const dir = path.join(CLIPS_DIR, 'Trimmed Clips', c.game === 'Trimmed' ? '' : c.game);
   await fs.promises.mkdir(dir, { recursive: true });
-  const base = `${c.title} (trim)`;
+  const stem = c.title.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '-').replace(/[ .]+$/, '').slice(0, 100) || 'Clip';
+  const base = `${stem} (trim)`;
   let name = `${base}.mp4`;
   for (let i = 2; fs.existsSync(path.join(dir, name)); i++) name = `${base} ${i}.mp4`;
   const dest = path.join(dir, name);
@@ -291,7 +316,7 @@ export const baseUrl = (req) => PUBLIC_URL || `${req.headers['cf-ray'] || req.he
 function sharedClip(token) {
   if (!/^[A-Za-z0-9_-]{16}$/.test(token) || !Object.hasOwn(shares, token)) return null;
   const rel = shares[token].rel;
-  return { token, rel, id: idOf(rel), title: titleOf(rel), game: gameOf(rel) };
+  return { token, rel, id: idOf(rel), title: displayTitle(rel), game: gameOf(rel) };
 }
 
 const PAGE_CSS = `

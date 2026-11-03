@@ -1,0 +1,45 @@
+/* Shared notes use Marquee's existing theme, on phone and desktop. */
+.notes-app { max-width: 800px; margin: 0 auto; display: flex; flex-direction: column; height: calc(100dvh - 262px - var(--safe-top) - var(--safe-bottom)); min-height: 420px; }
+.notes-app > .muted { margin: 0; }
+.notes-app > :not(.notes-history) { flex-shrink: 0; }
+.notes-history { flex: 1; min-height: 100px; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding: 0 4px; }
+.notes-toolbar, .note-filters, .note-actions, .note-compose-footer { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.notes-toolbar { justify-content: space-between; margin: 12px 0 6px; }
+.note-action { padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--curtain); font-size: 13px; }
+.note-action:hover { border-color: var(--bulb); }
+.note-action[aria-pressed="true"] { color: var(--on-bulb); background: var(--bulb); border-color: var(--bulb); }
+.note-summary, .note-meta, .note-reminder-hint, .note-keyboard-hint { color: var(--dust); font-size: 12px; }
+.note-error { color: var(--alert); padding: 12px; border: 1px solid var(--alert); border-radius: 10px; }
+.note-day { text-align: center; margin: 14px 0 10px; color: var(--dust); font-size: 12px; font-weight: 500; }
+.note-message { padding: 16px 18px; margin: 10px 0; background: var(--curtain); border: 1px solid var(--line); border-radius: 14px; overflow-wrap: anywhere; }
+.note-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; margin-bottom: 9px; }
+.note-meta strong { color: var(--paper); font-size: 13px; }
+.note-text { white-space: pre-wrap; line-height: 1.65; tab-size: 4; }
+.note-text a, .note-attachments a { color: var(--bulb); text-underline-offset: 3px; }
+.note-message > .note-actions { margin-top: 14px; }
+.note-message > .note-actions .note-action { padding: 3px 8px; color: var(--dust); background: none; border-color: transparent; }
+.note-message > .note-actions .note-action:hover { color: var(--paper); border-color: var(--line); }
+.note-tag { background: var(--seat); padding: 2px 6px; border-radius: 5px; font-size: 10px; }
+.note-attachments { padding-left: 20px; font-size: 14px; }
+.note-deadline { color: var(--dust); margin: 12px 0 0; font-size: 13px; }
+.note-deadline.is-due { color: var(--bulb); }
+.note-message.is-done .note-deadline { text-decoration: line-through; }
+.note-composer { margin-top: 12px; padding: 12px; background: var(--curtain); border: 1px solid var(--line); border-radius: 16px; }
+.note-draft, .note-edit { display: block; width: 100%; min-height: 110px; resize: vertical; padding: 10px; color: var(--paper); background: var(--velvet); border: 1px solid var(--line); border-radius: 9px; font-size: 16px; line-height: 1.5; }
+.note-draft { min-height: 64px; max-height: 25dvh; }
+.note-compose-footer { justify-content: space-between; margin-top: 12px; }
+.note-compose-footer .note-reminder { display: grid; gap: 2px; flex: 1; min-width: 0; max-width: 240px; }
+.note-compose-footer .note-reminder input { width: 100%; min-width: 0; }
+.note-reminder { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; color: var(--dust); }
+.note-reminder input, .note-import select { max-width: 100%; padding: 6px 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--velvet); font-size: 14px; }
+.note-keyboard-hint, .note-reminder-hint { margin: 8px 0 0; }
+.note-edit-form > * + * { margin-top: 12px; }
+.note-import { padding: 16px; margin: 14px 0; border: 1px solid var(--bulb); background: var(--curtain); border-radius: 12px; }
+.note-import h3 { margin-top: 0; }
+.note-import p { font-size: 13px; }
+.notes-empty { text-align: center; padding: 40px 12px; color: var(--dust); }
+.tabs:has(.tab:nth-child(8)) { overflow-x: auto; scrollbar-width: none; }
+.tabs:has(.tab:nth-child(8)) .tab { flex: 1 0 56px; }
+@media (pointer: coarse) { .note-keyboard-hint { display: none; } }
+@media (max-width: 600px) { .note-keyboard-hint { display: none; } .notes-app > .muted { font-size: 14px; } }
+@media (max-width: 420px) { .note-message { padding: 13px; } .notes-toolbar > .note-actions { margin-left: auto; } }

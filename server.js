@@ -21,6 +21,7 @@ import * as shows from './shows.js';
 import * as season from './season.js';
 import * as recommend from './recommend.js';
 import * as accounts from './accounts.js';
+import { NotesStore } from './notes.js';
 import { WatchRooms } from './watch.js';
 import { handleWatchPage } from './watch-page.js';
 import { isHomeRequest, describeRequest } from './network.js';
@@ -62,6 +63,7 @@ function watchArtwork(media) {
 setInterval(() => watchRooms.cleanup(), 3000).unref();
 activity.initActivity({ dataDir: ROOT, nameForUser: accounts.displayNameFor });
 accounts.initAccounts({ dataDir: ROOT, adminEmails: activity.adminEmails(), mediaDir: MEDIA_DIR });
+const notes = new NotesStore(ROOT);
 house.initHouse({
   dataDir: ROOT,
   mediaDir: MEDIA_DIR,
@@ -667,12 +669,12 @@ async function resolveMedia(kind, id, subLang = null) {
   };
 }
 
-async function readJson(req) {
+async function readJson(req, maxBytes = 100_000) {
   const chunks = [];
   let size = 0;
   for await (const c of req) {
     size += c.length;
-    if (size > 100_000) throw new HttpError(413, 'Request too large.');
+    if (size > maxBytes) throw new HttpError(413, 'Request too large.');
     chunks.push(c);
   }
   try { return JSON.parse(Buffer.concat(chunks).toString() || '{}'); } catch { throw new HttpError(400, 'Invalid JSON.'); }
@@ -812,6 +814,33 @@ async function handleApi(req, res, url) {
   // ---- the owner's settings: server rules and people ----
   if (p.startsWith('/api/admin/')) {
     if (!user.isOwner) throw new HttpError(403, 'Only the server’s owner can change this.');
+    // All configured admins share this inbox. No note content is put in Activity logs.
+    const noteFor = (note) => ({ ...note, authorName: accounts.displayNameFor(note.author) });
+    if ((m = p.match(/^\/api\/admin\/notes\/files\/([a-f0-9]{64})$/))) {
+      const file = notes.file(m[1]);
+      if (!file) throw new HttpError(404, 'Attachment not found.');
+      res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Length': fs.statSync(file.full).size,
+        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(file.name)}`,
+        'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store' });
+      if (req.method === 'HEAD') res.end(); else pipeline(fs.createReadStream(file.full), res, () => {});
+      return;
+    }
+    if (p === '/api/admin/notes') {
+      if (req.method === 'GET') {
+        const result = notes.list(Object.fromEntries(url.searchParams));
+        return sendJson(res, 200, { ...result, notes: result.notes.map(noteFor) });
+      }
+      if (req.method === 'POST') return sendJson(res, 201, { note: noteFor(notes.create(await readJson(req), user.email)) });
+    }
+    if (p === '/api/admin/notes/import' && req.method === 'POST') {
+      const result = notes.import(await readJson(req, 20 * 1024 * 1024), user.email);
+      activity.record(req, 'notes-import', `imported ${result.added} notes`);
+      return sendJson(res, 200, result);
+    }
+    if ((m = p.match(/^\/api\/admin\/notes\/(\d+)(?:\/(trash|restore))?$/))) {
+      if (req.method === 'GET' && !m[2]) return sendJson(res, 200, { note: noteFor(notes.get(m[1])) });
+      if (req.method === 'POST') return sendJson(res, 200, { note: noteFor(notes.update(m[1], await readJson(req), m[2] || 'edit')) });
+    }
     if (p === '/api/admin/settings') {
       if (req.method === 'POST') {
         const next = accounts.updateServerSettings(await readJson(req));
@@ -891,6 +920,11 @@ async function handleApi(req, res, url) {
     }
     if ((m = p.match(/^\/api\/clips\/([\w-]{16})\/video$/))) return sendVideo(req, res, await clips.clipFile(m[1]));
     if ((m = p.match(/^\/api\/clips\/([\w-]{16})\/keyframes$/))) return sendJson(res, 200, await clips.trimInfo(m[1]));
+    if ((m = p.match(/^\/api\/clips\/([\w-]{16})\/rename$/)) && req.method === 'POST') {
+      const body = await readJson(req);
+      if (!body || typeof body !== 'object') throw new HttpError(400, 'Send a clip name.');
+      return sendJson(res, 200, await clips.renameClip(m[1], body.title, body.previousTitle));
+    }
     if ((m = p.match(/^\/api\/clips\/([\w-]{16})\/trim$/)) && req.method === 'POST') {
       const { start, end, deleteOriginal } = await readJson(req);
       const r = await clips.trim(m[1], start, end, { deleteOriginal: Boolean(deleteOriginal) });
@@ -1080,9 +1114,11 @@ async function handleApi(req, res, url) {
     const body = await readJson(req);
     const want = season.parseSeasonQuery(body.query);
     if (!want) throw new HttpError(400, 'Search for a show and a season, like “South Park S18”.');
+    if (body.exactQuality && !['2160p', '1080p', '720p'].includes(body.quality)) throw new HttpError(400, 'Choose 4K, 1080p or 720p.');
     const id = season.startSeasonJob({
       ...want,
       quality: String(body.quality || ''),
+      exactQuality: Boolean(body.exactQuality),
       subs: Array.isArray(body.subs) ? body.subs.map(String).slice(0, 3) : [],
     }, {
       parseName, tmdb: TMDB_TOKEN || TMDB_KEY ? tmdb : null, seasonEpisodes: shows.seasonEpisodes,
@@ -1110,10 +1146,12 @@ async function handleApi(req, res, url) {
     const title = String(q.get('title') || '').trim().slice(0, 100);
     const year = Number(q.get('year')) || null;
     const seasonNo = Number(q.get('season')) || null;
+    const quality = q.get('quality') || 'all';
+    if (!['all', '2160p', '1080p', '720p'].includes(quality)) throw new HttpError(400, 'Choose Auto, 4K, 1080p or 720p.');
     if (!title || (type === 'tv' && !seasonNo)) throw new HttpError(400, 'Which title, and for a show which season?');
     const query = type === 'tv' ? `${title} S${String(seasonNo).padStart(2, '0')}` : [title, year].filter(Boolean).join(' ');
     const { results } = await torrents.searchTorrents(query, type);
-    const { pick, why } = recommend.pickBest(results, { type, title, year, season: seasonNo, prefer: user.settings?.quality }, parseName);
+    const { pick, why } = recommend.pickBest(results, { type, title, year, season: seasonNo, quality, prefer: user.settings?.quality }, parseName);
     return sendJson(res, 200, { pick, why, query, of: results.length });
   }
   if (p === '/api/torrents/magnet') {
@@ -1367,9 +1405,10 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost');
     const allowed = req.method === 'GET' || req.method === 'HEAD'
       || (req.method === 'POST' && (url.pathname.startsWith('/api/cast/') || url.pathname === '/api/downloads/add' || url.pathname === '/api/downloads/season' || url.pathname === '/api/subs/fetch' || url.pathname === '/api/subs/sync' || url.pathname === '/api/library/delete' || /^\/api\/downloads\/\w+\/(pause|resume|delete)$/.test(url.pathname) || /^\/api\/media\/\w+\/[\w-]+\/sync$/.test(url.pathname)
-        || /^\/api\/house\/(report|boot|power)$/.test(url.pathname) || /^\/api\/clips\/[\w-]+\/(share|unshare|delete|trim)$/.test(url.pathname)
+        || /^\/api\/house\/(report|boot|power)$/.test(url.pathname) || /^\/api\/clips\/[\w-]+\/(share|unshare|delete|trim|rename)$/.test(url.pathname)
         || /^\/api\/access\/(invite|remove|invite\/\w+\/revoke)$/.test(url.pathname) || /^\/c\/i\/[\w-]+\/?$/.test(url.pathname)
         || /^\/api\/(me|me\/progress|library\/add|library\/extend|library\/identify|admin\/settings|admin\/users\/\d+)$/.test(url.pathname)
+        || /^\/api\/admin\/notes(?:\/import|\/\d+(?:\/(?:trash|restore))?)?$/.test(url.pathname)
         || /^\/api\/watch(?:\/[A-Za-z0-9_-]{24}\/(join|heartbeat|control|leave))?$/.test(url.pathname)));
     if (!allowed) throw new HttpError(405, 'Method not allowed.');
     if (url.pathname.startsWith('/api/')) await handleApi(req, res, url);

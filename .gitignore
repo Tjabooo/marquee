@@ -13,10 +13,13 @@ cache/
 .marquee-house.json
 .marquee-power.json
 .marquee-shares.json
+.marquee-clip-titles.json
 .marquee-invites.json
 .marquee-shows.json
 .marquee.db
 .marquee.db-*
+.marquee-notes-files/
+.marquee-notes-imports/
 *.subsync-tmp
 *.marquee-tmp.mp4
 

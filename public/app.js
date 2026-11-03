@@ -1,5 +1,6 @@
 // Marquee web client. Plain ES modules, no build step.
 import { WatchSession, offsetCues } from './watch-sync.js';
+import { createNotesView } from './notes-view.js';
 
 const $ = (sel, el = document) => el.querySelector(sel);
 
@@ -1099,7 +1100,7 @@ function schedulePoll() {
   clearTimeout(pollTimer);
   const clipsBusy = state.view === 'clips' && state.clips?.clips?.some((c) => c.share && !c.share.ready && !c.share.error);
   const powerBusy = state.view === 'house' && state.house?.power?.some((pw) => pw.pending);
-  const delay = state.view === 'downloads' ? 2000 : state.view === 'library' || clipsBusy || powerBusy ? 3000 : ['activity', 'house'].includes(state.view) ? 10000 : 15000;
+  const delay = state.view === 'downloads' ? 2000 : state.view === 'notes' ? 5000 : state.view === 'library' || clipsBusy || powerBusy ? 3000 : ['activity', 'house'].includes(state.view) ? 10000 : 15000;
   pollTimer = setTimeout(async () => {
     if (!document.hidden) {
       const before = state.convert?.current?.name;
@@ -1107,7 +1108,8 @@ function schedulePoll() {
       if (state.view === 'downloads') renderDownloads();
       if (state.view === 'activity') { await loadActivity(); if (state.view === 'activity') renderActivity(); }
       if (state.view === 'house') { await loadHouse(); if (state.view === 'house') renderHouse(); }
-      if (state.view === 'clips' && clipsBusy) { await loadClips(); if (state.view === 'clips') renderClips(); }
+      if (state.view === 'notes') await notesView.poll();
+      if (state.view === 'clips' && clipsBusy && !$('#clips-body .clip-rename-form')) { await loadClips(); if (state.view === 'clips') renderClips(); }
       if (state.view === 'library') {
         // A conversion finished: refresh so the new MP4 appears.
         // A conversion started or finished: refresh so Play is disabled / the new MP4 appears.
@@ -1357,12 +1359,16 @@ function bestDownload(t, files, onServer) {
   const isTv = t.type === 'tv';
   if (!isTv && (files.length || onServer.length)) return box;
   const status = h('p', { class: 'best-meta', role: 'status' });
+  const result = h('div', { class: 'best-result' });
   const subs = () => (state.status.subtitles && prefs().subLang ? [prefs().subLang] : []);
   const qualityName = (q) => (q === '2160p' ? '4K' : q || 'Unknown quality');
-  let se = null; // the season on offer (shows)
+  let quality = ['2160p', '1080p', '720p'].includes(prefs().quality) ? prefs().quality : 'all';
+  let se = null, have = 0, request = 0;
+  const qualitySelect = select([['all', 'Auto'], ['2160p', '4K'], ['1080p', '1080p'], ['720p', '720p']], quality,
+    (value) => { quality = value; refresh(); }, 'Recommended download quality');
+  box.append(h('label', { class: 'best-quality' }, 'Quality', qualitySelect), result);
 
   (async () => {
-    let have = 0;
     if (isTv) {
       if (!t.id) return;
       const here = [...files, ...onServer].filter((f) => f.episode != null);
@@ -1372,24 +1378,45 @@ function bestDownload(t, files, onServer) {
       have = count(se.number);
     }
     box.hidden = false;
-    box.replaceChildren(h('button', { type: 'button', class: 'play-btn best-btn', disabled: true }, 'Finding the best download…'));
-    // Part of the season is already here: a pack would download those episodes again.
-    const rec = have ? { pick: null } : await cachedFor(`/api/torrents/recommend?${new URLSearchParams({
-      type: isTv ? 'tv' : 'movie', title: t.title, ...(t.year ? { year: t.year } : {}), ...(se ? { season: se.number } : {}) })}`);
-    if (rec.pick) return showPick(rec);
-    if (!isTv) {
-      box.replaceChildren(h('p', { class: 'best-meta' }, 'No download stood out, so pick one yourself.'));
-      return;
-    }
-    const btn = h('button', { type: 'button', class: 'play-btn best-btn' }, icon('download'), `Get ${se.name} episode by episode`);
-    btn.addEventListener('click', () => getSeason(`${t.title} S${pad2(se.number)}`, {
-      subs: subs(), btn, status, label: `Get ${se.name} episode by episode`, isOpen: () => btn.isConnected,
-    }));
-    status.textContent = have
-      ? `${have} of ${se.episodes || '?'} episodes are already here. Marquee finds the rest, in 1080p where it can.`
-      : `No complete ${se.name.toLowerCase()} with enough seeders, so Marquee finds each episode separately, in 1080p where it can.`;
-    box.replaceChildren(btn, status);
+    await refresh();
   })().catch(() => { box.hidden = true; });
+
+  async function refresh() {
+    const current = ++request;
+    result.replaceChildren(h('button', { type: 'button', class: 'play-btn best-btn', disabled: true }, 'Finding the best download…'));
+    try {
+      // A partly present season is filled episode by episode rather than downloaded twice.
+      const rec = have ? { pick: null } : await cachedFor(`/api/torrents/recommend?${new URLSearchParams({
+        type: isTv ? 'tv' : 'movie', title: t.title, quality,
+        ...(t.year ? { year: t.year } : {}), ...(se ? { season: se.number } : {}) })}`);
+      if (current !== request) return;
+      if (rec.pick) return showPick(rec);
+      if (!isTv) {
+        const name = quality === 'all' ? '' : `${qualityName(quality)} `;
+        result.replaceChildren(h('button', { type: 'button', class: 'play-btn best-btn', disabled: true }, `No ${name}download found`),
+          h('p', { class: 'best-meta' }, rec.why || 'Choose another quality or find a download below.'));
+        return;
+      }
+      const label = `Get ${se.name} episode by episode`;
+      const btn = h('button', { type: 'button', class: 'play-btn best-btn' }, icon('download'), label);
+      btn.addEventListener('click', async () => {
+        qualitySelect.disabled = true;
+        try { await getSeason(`${t.title} S${pad2(se.number)}`, {
+          quality: quality === 'all' ? '' : quality, exactQuality: quality !== 'all',
+          subs: subs(), btn, status, label, isOpen: () => btn.isConnected,
+        }); } finally { qualitySelect.disabled = false; }
+      });
+      const resolution = quality === 'all' ? '1080p where it can' : qualityName(quality);
+      status.textContent = have
+        ? `${have} of ${se.episodes || '?'} episodes are already here. Marquee finds the rest in ${resolution}.`
+        : `No complete ${se.name.toLowerCase()} with enough seeders, so Marquee finds each episode separately in ${resolution}.`;
+      result.replaceChildren(btn, status);
+    } catch (err) {
+      if (current !== request) return;
+      result.replaceChildren(h('p', { class: 'best-meta', role: 'status' }, err.message),
+        h('button', { type: 'button', class: 'retry', onclick: refresh }, 'Try again'));
+    }
+  }
 
   function showPick({ pick, why }) {
     const label = isTv ? `Get ${se.name}` : 'Get the best download';
@@ -1400,7 +1427,7 @@ function bestDownload(t, files, onServer) {
       why && h('span', { class: 'best-why' }, why),
     ].filter(Boolean));
     btn.addEventListener('click', async () => {
-      btn.disabled = true;
+      btn.disabled = true; qualitySelect.disabled = true;
       btn.replaceChildren('Adding…');
       try {
         await sendToQbit(await magnetOf(pick), { name: pick.name, subs: subs(), ...(!isTv && t.id ? { movieId: t.id } : {}) });
@@ -1408,23 +1435,23 @@ function bestDownload(t, files, onServer) {
         btn.replaceChildren(icon('check'), 'Added');
         toast(subs().length ? 'Added. Subtitles come when it finishes.' : 'Added to Downloads');
       } catch (err) {
-        btn.disabled = false;
+        btn.disabled = false; qualitySelect.disabled = false;
         btn.replaceChildren(icon('download'), label, h('span', { class: 'best-q' }, qualityName(pick.quality)));
         status.textContent = err.message;
       }
     });
-    box.replaceChildren(btn, status, h('p', { class: 'best-name', title: pick.name }, pick.name));
+    result.replaceChildren(btn, status, h('p', { class: 'best-name', title: pick.name }, pick.name));
   }
   return box;
 }
 
 // A whole season episode by episode (season.js), with progress in `status` while isOpen() holds.
-async function getSeason(query, { quality = '', subs = [], btn, status, label, isOpen }) {
+async function getSeason(query, { quality = '', exactQuality = false, subs = [], btn, status, label, isOpen }) {
   btn.disabled = true;
   btn.replaceChildren('Starting…');
   let job;
   try {
-    job = await api('/api/downloads/season', jsonPost({ query, quality, subs }));
+    job = await api('/api/downloads/season', jsonPost({ query, quality, exactQuality, subs }));
   } catch (err) {
     btn.disabled = false;
     btn.replaceChildren(icon('download'), label);
@@ -3259,7 +3286,9 @@ window.addEventListener('pageshow', (event) => {
 
 // ---------- search box + tabs ----------
 const input = $('#q');
-const PLACEHOLDERS = { discover: 'Search films and shows', library: 'Filter your library', downloads: 'Filter downloads', activity: 'Filter by person or title', house: 'Filter machines', clips: 'Filter by game or name', settings: 'Search films and shows' };
+const PLACEHOLDERS = { discover: 'Search films and shows', library: 'Filter your library', downloads: 'Filter downloads', activity: 'Filter by person or title', house: 'Filter machines', clips: 'Filter by game or name', settings: 'Search films and shows', notes: 'Search notes by keyword' };
+const notesView = createNotesView({ h, api, jsonPost, toast, query: () => state.query,
+  clearQuery: () => { input.value = state.query = ''; $('#q-clear').hidden = true; } });
 
 function renderView() {
   if (state.view === 'discover') renderDiscover();
@@ -3269,6 +3298,7 @@ function renderView() {
   if (state.view === 'house') renderHouse();
   if (state.view === 'clips') renderClips();
   if (state.view === 'settings') renderSettings();
+  if (state.view === 'notes') notesView.render();
 }
 
 // ---------- settings ----------
@@ -3890,6 +3920,42 @@ async function unshareClip(c) {
 }
 
 const UNLINK_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 14.5 7.8 16.2a3 3 0 0 1-4.2-4.2l2.6-2.6a3 3 0 0 1 4.2 0M14.5 9.5l1.7-1.7a3 3 0 0 1 4.2 4.2l-2.6 2.6a3 3 0 0 1-4.2 0M4 4l16 16"/></svg>';
+function clipTitle(c) {
+  const wrap = h('div', { class: 'clip-title-wrap' });
+  function display(focus = false) {
+    const button = h('button', { type: 'button', class: 'clip-title row-title', 'aria-label': `Rename clip: ${c.title}`, title: 'Rename clip' },
+      h('span', {}, c.title));
+    button.insertAdjacentHTML('beforeend', '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 4 4M4 20l4-1 12-12a2.8 2.8 0 0 0-4-4L4 15z"/></svg>');
+    button.addEventListener('click', edit);
+    wrap.replaceChildren(button); if (focus) button.focus({ preventScroll: true });
+  }
+  function edit() {
+    const input = h('input', { type: 'text', maxlength: 120, value: c.title, 'aria-label': 'Clip name', autocomplete: 'off' });
+    const save = h('button', { type: 'submit' }, 'Save');
+    const cancel = h('button', { type: 'button', onclick: () => display(true) }, 'Cancel');
+    const error = h('p', { class: 'clip-rename-error', role: 'alert', hidden: true });
+    const form = h('form', { class: 'clip-rename-form', onsubmit: async (e) => {
+      e.preventDefault(); if (save.disabled) return;
+      save.disabled = true; cancel.disabled = true; input.disabled = true; error.hidden = true;
+      try {
+        const renamed = await api(`/api/clips/${c.id}/rename`, jsonPost({ title: input.value, previousTitle: c.title }));
+        c.title = renamed.title;
+        const current = state.clips?.clips.find((item) => item.id === c.id); if (current) current.title = renamed.title;
+        const card = wrap.closest('.clip');
+        card?.querySelector('.clip-thumb')?.setAttribute('aria-label', `Play ${c.title}`);
+        card?.querySelector('.clip-delete')?.setAttribute('aria-label', `Delete ${c.title}`);
+        card?.querySelector('.clip-trim')?.setAttribute('aria-label', `Trim ${c.title}`);
+        display(true); toast('Clip renamed');
+      } catch (err) {
+        error.textContent = err.message; error.hidden = false;
+        save.disabled = false; cancel.disabled = false; input.disabled = false; input.focus();
+      }
+    } }, input, h('div', { class: 'clip-rename-actions' }, save, cancel), error);
+    input.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !save.disabled) { e.preventDefault(); display(true); } });
+    wrap.replaceChildren(form); input.focus(); input.select();
+  }
+  display(); return wrap;
+}
 function clipCard(c) {
   const when = new Date(c.mtime).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
   const thumb = h('button', { class: 'clip-thumb', 'aria-label': `Play ${c.title}` },
@@ -3923,7 +3989,7 @@ function clipCard(c) {
   actions.push(del);
   const card = h('li', { class: 'clip' }, thumb,
     h('div', { class: 'clip-text' },
-      h('div', { class: 'row-title' }, c.title),
+      clipTitle(c),
       h('div', { class: 'row-meta' }, h('span', {}, c.game), h('span', {}, when), h('span', {}, fmtBytes(c.size)), s?.ready && h('span', { class: 'clip-shared' }, 'shared'))),
     h('div', { class: 'clip-actions' }, actions));
   const un = $('.clip-unshare', card);
@@ -3968,6 +4034,11 @@ function addAdminTab(view, label, iconSvg) {
 const enableHouseTab = () => addAdminTab('house', 'House', '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 11 12 4l8.5 7"/><path d="M5.5 9.5V20h13V9.5"/><path d="M10 20v-5h4v5"/></svg>');
 const enableClipsTab = () => addAdminTab('clips', 'Clips', '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5.5" width="18" height="13" rx="2"/><path d="M10 9.5v5l4.5-2.5z"/></svg>');
 
+const enableNotesTab = () => {
+  addAdminTab('notes', 'Notes', '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14v18H5zM8 8h8M8 12h8M8 16h5"/></svg>');
+  $('.tabs').insertBefore($('.tab[data-view="notes"]'), $('.tab[data-view="library"]'));
+};
+
 // Adds the Activity tab for the server's owner (ADMIN_EMAILS in .env).
 function enableActivityTab() {
   if ($('#view-activity')) return;
@@ -3984,6 +4055,11 @@ input.addEventListener('input', () => {
   if (state.view === 'settings') { const q = input.value; setView('discover').then(() => { input.value = state.query = q; renderDiscover(); }); return; }
   state.query = input.value;
   $('#q-clear').hidden = !input.value;
+  if (state.view === 'notes') {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => notesView.load(), 250);
+    return;
+  }
   if (state.view === 'discover') {
     clearTimeout(searchTimer);
     searchTimer = setTimeout(renderDiscover, 300);
@@ -3995,6 +4071,7 @@ $('#search-form').addEventListener('submit', (e) => {
   e.preventDefault();
   clearTimeout(searchTimer);
   if (state.view === 'discover') renderDiscover();
+  if (state.view === 'notes') notesView.load();
   input.blur(); // hides the phone keyboard
 });
 $('#q-clear').addEventListener('click', () => {
@@ -4022,6 +4099,7 @@ async function setView(view) {
   if (view === 'activity') await loadActivity();
   if (view === 'house') await loadHouse();
   if (view === 'clips') await loadClips();
+  if (view === 'notes') await notesView.load();
   if (view === 'settings') await Promise.all([loadLibrary(), state.me?.isOwner ? loadPeople() : null]);
   if (state.view === view) renderView();
   schedulePoll();
@@ -4048,7 +4126,7 @@ $('#find-torrents').addEventListener('click', (e) => openTorrents({ query: state
   state.rules = state.status.rules;
   applyTheme(prefs().theme);
   $('#find-torrents').hidden = !state.status.torrents || !canDownload();
-  if (state.status.admin) { enableActivityTab(); enableHouseTab(); }
+  if (state.status.admin) { enableActivityTab(); enableHouseTab(); enableNotesTab(); }
   if (state.status.clips) enableClipsTab();
   await Promise.all([loadLibrary(), loadDownloads(), loadSessions(), loadProgress()]);
   const start = prefs().startView;
