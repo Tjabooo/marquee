@@ -4451,6 +4451,7 @@ function activityDevice(entry) {
 // ---------- house (server owner only) ----------
 // The home server's own health plus the machines that report in (laptop, desktop): house.js.
 async function loadHouse() {
+  if (state.houseTab === 'screentime') { await loadScreenTime(); return; }
   const [r, l] = await Promise.allSettled([api('/api/house'), api(`/api/house/load?hours=${state.houseHours || 1}`)]);
   if (r.status === 'fulfilled') { state.house = r.value; state.houseError = null; } else state.houseError = r.reason.message;
   state.houseLoad = l.status === 'fulfilled' ? l.value : null;
@@ -4654,11 +4655,12 @@ function diskRows(disks, label = (d) => d.label || d.mount) {
 
 function renderHouse() {
   const body = $('#house-body');
-  if (state.houseError) { body.replaceChildren(notice('Couldn’t check the house', state.houseError, () => loadHouse().then(renderHouse))); return; }
+  if (state.houseTab === 'screentime') { body.replaceChildren(houseTabs(), ...screenTimeView()); return; }
+  if (state.houseError) { body.replaceChildren(houseTabs(), notice('Couldn’t check the house', state.houseError, () => loadHouse().then(renderHouse))); return; }
   const r = state.house;
   if (!r) return;
   const q = norm(state.query);
-  const out = [];
+  const out = [houseTabs()];
   out.push(r.issues.length
     ? h('div', { class: 'house-status has-issues' },
       h('strong', {}, r.issues.length === 1 ? '1 thing needs a look' : `${r.issues.length} things need a look`),
@@ -4760,6 +4762,224 @@ async function doPower(host, action, entry, btn) {
   } catch (err) { toast(err.message); }
   await loadHouse();
   if (state.view === 'house') renderHouse();
+}
+
+// ---------- house → screen time (screentime.js) ----------
+// iPhone-style Screen Time from the `screentime` daemon on each machine: a day with hourly bars,
+// or a week with the daily average, plus most used apps, pickups and the longest session.
+const ST_COLORS = ['social', 'games', 'entertainment', 'web', 'development', 'productivity', 'creativity', 'education', 'utilities'];
+const stColor = (category) => {
+  const key = String(category || '').toLowerCase().split(/[^a-z]/)[0];
+  return ST_COLORS.includes(key) ? `st-c-${key}` : 'st-c-other';
+};
+const localDate = (d = new Date()) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+const shiftDate = (date, n) => { const d = new Date(`${date}T12:00:00`); d.setDate(d.getDate() + n); return localDate(d); };
+const stDate = (date, opts) => new Date(`${date}T12:00:00`).toLocaleDateString('en-GB', opts);
+function fmtDur(s) {
+  s = Math.round(s || 0);
+  if (!s) return '0m';
+  if (s < 60) return '<1m';
+  const hrs = Math.floor(s / 3600), min = Math.floor((s % 3600) / 60);
+  return hrs ? `${hrs}h ${pad2(min)}m` : `${min}m`;
+}
+
+const HOUR_AXIS = Array.from({ length: 24 }, (_, i) => (i % 6 ? null : pad2(i)));
+// Gridline labels like iOS: 30m, 60m, 1h 30m, 4h
+const stAxisLabel = (s) => (s <= 3600 ? `${Math.round(s / 60)}m` : s % 3600 ? fmtDur(s) : `${s / 3600}h`);
+
+async function loadScreenTime() {
+  const st = (state.st ||= { view: 'day', list: 'apps' });
+  const q = new URLSearchParams({ today: localDate() });
+  if (st.device) q.set('device', st.device);
+  if (st.date) q.set('date', st.date);
+  try { st.data = await api(`/api/house/screentime?${q}`); st.error = null; } catch (err) { st.error = err.message; }
+}
+
+async function stPick(changes) {
+  Object.assign(state.st, changes);
+  await loadScreenTime();
+  if (state.view === 'house') renderHouse();
+}
+
+function houseTabs() {
+  return h('div', { class: 'house-tabs' }, segmented([['overview', 'Overview'], ['screentime', 'Screen Time']], state.houseTab || 'overview', async (tab) => {
+    state.houseTab = tab;
+    await loadHouse();
+    if (state.view === 'house') renderHouse();
+  }, 'House page'));
+}
+
+// Top three categories get their colour; everything else is "Other", like iOS.
+function stLeaders(categories) {
+  return (categories || []).filter((c) => c.name !== 'Other').slice(0, 3).map((c) => c.name);
+}
+
+// Stacked bars as plain elements (themeable with CSS). cols: [{ label, title, parts: {cat: s}, total, onclick? }]
+function stChart(cols, { top, gridLabel, midLabel, avg, axis, label, leaders }) {
+  const chart = h('div', { class: `st-chart${cols.length > 7 ? ' is-hourly' : ''}`, role: 'img', 'aria-label': label });
+  const plot = h('div', { class: 'st-plot' },
+    h('i', { class: 'st-gridline is-top' }, h('span', {}, gridLabel)),
+    h('i', { class: 'st-gridline is-mid' }, midLabel && h('span', {}, midLabel)),
+    avg != null && avg > 0 && h('i', { class: 'st-avg', style: `bottom:${Math.min(100, (100 * avg) / top)}%` }, h('span', {}, 'avg')));
+  for (const c of cols) {
+    const segs = [];
+    let other = c.total || 0;
+    for (const name of leaders) {
+      const v = c.parts[name] || 0;
+      if (v > 0) { segs.push(h('i', { class: stColor(name), style: `height:${(100 * v) / (c.total || 1)}%` })); other -= v; }
+    }
+    if (other > 1) segs.push(h('i', { class: 'st-c-other', style: `height:${(100 * other) / (c.total || 1)}%` }));
+    const height = c.total ? Math.max(2, Math.min(100, (100 * c.total) / top)) : 0;
+    const bar = h(c.onclick ? 'button' : 'span', {
+      class: `st-col${c.current ? ' is-current' : ''}`, title: c.title, type: c.onclick ? 'button' : null, onclick: c.onclick,
+      'aria-label': c.onclick ? c.title : null,
+    }, h('span', { class: 'st-stack', style: `height:${height}%` }, segs.reverse()));
+    plot.append(bar);
+  }
+  chart.append(plot, h('div', { class: 'st-axis muted' }, axis.map((t) => h('span', {}, t || ''))));
+  return chart;
+}
+
+function stLegend(categories, leaders) {
+  const rows = leaders.map((name) => [name, categories.find((c) => c.name === name)?.seconds || 0]);
+  return h('div', { class: 'st-legend' }, rows.map(([name, s]) =>
+    h('span', {}, h('i', { class: `st-dot ${stColor(name)}` }), h('b', {}, name), ` ${fmtDur(s)}`)));
+}
+
+function stMostUsed(apps, categories) {
+  const st = state.st;
+  const showApps = st.list !== 'categories';
+  const items = showApps ? apps : categories.map((c) => ({ name: c.name, category: c.name, seconds: c.seconds }));
+  const best = items[0]?.seconds || 1;
+  const shown = st.more ? items : items.slice(0, 8);
+  return h('section', { class: 'st-card' },
+    h('div', { class: 'st-card-head' }, h('h4', {}, 'Most used'),
+      segmented([['apps', 'Apps'], ['categories', 'Categories']], showApps ? 'apps' : 'categories', (list) => { st.list = list; st.more = false; renderHouse(); }, 'Most used by')),
+    items.length ? h('ol', { class: 'st-apps' }, shown.map((a) => h('li', {},
+      h('span', { class: `st-icon ${stColor(a.category)}`, 'aria-hidden': 'true' }, (a.name || '?').trim().charAt(0).toUpperCase()),
+      h('span', { class: 'st-app-main' },
+        h('span', { class: 'st-app-line' }, h('span', { class: 'st-app-name' }, a.name), h('span', { class: 'st-app-time' }, fmtDur(a.seconds))),
+        h('span', { class: 'st-app-bar' }, h('i', { class: stColor(a.category), style: `width:${Math.max(1.5, (100 * a.seconds) / best)}%` })),
+        showApps && h('span', { class: 'st-app-cat muted' }, a.category)))))
+      : h('p', { class: 'muted' }, 'Nothing used yet.'),
+    items.length > 8 && h('button', { type: 'button', class: 'st-more', onclick: () => { st.more = !st.more; renderHouse(); } }, st.more ? 'Show less' : `Show ${items.length - 8} more`));
+}
+
+function stDayView(D) {
+  const s = D.day;
+  const out = [];
+  if (!s) {
+    out.push(h('section', { class: 'st-card st-hero' }, h('p', { class: 'st-eyebrow' }, 'Screen time'), h('p', { class: 'st-big' }, '0m'),
+      h('p', { class: 'muted' }, D.date === localDate() ? 'Nothing yet today on this device.' : 'Nothing recorded this day.')));
+    return out;
+  }
+  const leaders = stLeaders(s.categories);
+  const peak = Math.max(0, ...s.hourly.map((x) => x.seconds));
+  const top = Math.max(3600, Math.ceil(peak / 1800) * 1800);
+  const avg = D.week?.average;
+  const diff = avg ? Math.round((100 * (s.total - avg)) / avg) : null;
+  out.push(h('section', { class: 'st-card st-hero' },
+    h('p', { class: 'st-eyebrow' }, 'Screen time'),
+    h('div', { class: 'st-big-row' }, h('p', { class: 'st-big' }, fmtDur(s.total)),
+      diff != null && D.week.days.filter((d) => d.total != null).length > 1 && h('span', { class: 'st-pill' },
+        `${diff > 0 ? '↑' : diff < 0 ? '↓' : '='} ${Math.abs(diff)}% ${diff >= 0 ? 'above' : 'below'} this week’s average`)),
+    stChart(s.hourly.map((x, i) => ({ total: x.seconds, parts: x.categories, title: `${pad2(i)}:00 · ${fmtDur(x.seconds)}` })), {
+      top, gridLabel: stAxisLabel(top), midLabel: stAxisLabel(top / 2), axis: HOUR_AXIS, leaders,
+      label: `Screen time by hour: ${fmtDur(s.total)} in total, busiest hour ${fmtDur(peak)}`,
+    }),
+    stLegend(s.categories, leaders),
+    h('p', { class: 'st-updated muted' }, `${s.complete ? 'Complete day' : 'Updated'} · ${clock(s.generated * 1000)}${state.st.device === 'all' ? ` · ${D.devices.length} devices` : ''}`)));
+
+  const grid = h('div', { class: 'st-grid' }, stMostUsed(s.apps, s.categories));
+  const ptop = Math.max(1, ...s.pickupsHourly);
+  grid.append(h('section', { class: 'st-card' },
+    h('div', { class: 'st-card-head' }, h('h4', {}, 'Pickups')),
+    h('div', { class: 'st-stat-row' },
+      h('div', {}, h('p', { class: 'st-num' }, String(s.pickups)), h('p', { class: 'muted' }, 'wakes and unlocks')),
+      h('div', {}, h('p', { class: 'st-num' }, s.firstPickup || '—'), h('p', { class: 'muted' }, 'first pickup'))),
+    h('div', { class: 'st-ticks', role: 'img', 'aria-label': `Pickups by hour, at most ${ptop} in an hour` },
+      s.pickupsHourly.map((n, i) => h('i', { title: `${pad2(i)}:00 · ${n} pickup${n === 1 ? '' : 's'}`, style: `height:${n ? Math.max(12, (100 * n) / ptop) : 0}%` }))),
+    h('div', { class: 'st-axis muted' }, HOUR_AXIS.map((t) => h('span', {}, t || ''))),
+    s.afterPickup.length > 0 && h('div', { class: 'st-after' }, h('p', { class: 'st-sub' }, 'First used after pickup'),
+      h('ul', {}, s.afterPickup.slice(0, 4).map((a) => h('li', {}, h('span', {}, a.name), h('span', { class: 'muted' }, String(a.count)))))),
+    s.longest && h('div', { class: 'st-after' }, h('p', { class: 'st-sub' }, 'Longest session'),
+      h('p', { class: 'st-longest' }, h('b', {}, fmtDur(s.longest.seconds)),
+        h('span', { class: 'muted' }, ` ${s.longest.start}–${s.longest.end}${s.longest.name ? ` · mostly ${s.longest.name}` : ''}`)))));
+  out.push(grid);
+  return out;
+}
+
+function stWeekView(D) {
+  const w = D.week;
+  const leaders = stLeaders(w.categories);
+  const peak = Math.max(0, ...w.days.map((d) => d.total || 0), w.average || 0);
+  const top = Math.max(3600, Math.ceil(peak / 3600) * 3600);
+  const today = localDate();
+  const out = [h('section', { class: 'st-card st-hero' },
+    h('p', { class: 'st-eyebrow' }, 'Daily average'),
+    h('div', { class: 'st-big-row' }, h('p', { class: 'st-big' }, fmtDur(w.average)),
+      w.change != null && h('span', { class: 'st-pill' }, `${w.change > 0 ? '↑' : w.change < 0 ? '↓' : '='} ${Math.abs(w.change)}% from last week`)),
+    stChart(w.days.map((d) => ({
+      total: d.total || 0, parts: d.categories, current: d.date === today,
+      title: `${stDate(d.date, { weekday: 'long', day: 'numeric', month: 'short' })} · ${d.total == null ? 'no data' : fmtDur(d.total)}`,
+      onclick: d.total == null ? null : () => stPick({ view: 'day', date: d.date }),
+    })), {
+      top, gridLabel: stAxisLabel(top), midLabel: stAxisLabel(top / 2), avg: w.average, leaders,
+      axis: w.days.map((d) => stDate(d.date, { weekday: 'short' }).slice(0, 1)),
+      label: `Screen time per day: daily average ${fmtDur(w.average)}`,
+    }),
+    stLegend(w.categories, leaders),
+    h('div', { class: 'st-week-stats' },
+      h('span', {}, h('b', {}, fmtDur(w.total)), h('span', { class: 'muted' }, ' total')),
+      h('span', {}, h('b', {}, String(w.pickups)), h('span', { class: 'muted' }, ` pickups · ${w.pickupsAverage} a day`)),
+      w.longest && h('span', {}, h('b', {}, fmtDur(w.longest.seconds)), h('span', { class: 'muted' }, ' longest session'))))];
+  out.push(h('div', { class: 'st-grid' }, stMostUsed(w.apps, w.categories)));
+  return out;
+}
+
+function screenTimeView() {
+  const st = (state.st ||= { view: 'day', list: 'apps' });
+  const D = st.data;
+  if (st.error) return [notice('Couldn’t load Screen Time', st.error, () => stPick({}))];
+  if (!D) return [h('p', { class: 'muted' }, 'Loading…')];
+  if (!D.devices.length) {
+    return [h('section', { class: 'st-card st-setup' },
+      h('h4', {}, 'No Screen Time yet'),
+      h('p', { class: 'muted' }, D.configured
+        ? 'Install screentime on a machine and point its push at this server: set [push] url to /api/screentime here and the token to SCREENTIME_TOKEN.'
+        : 'Set SCREENTIME_TOKEN in .env, restart Marquee, then point each machine’s screentime push at /api/screentime with that token.'),
+      h('a', { href: 'https://github.com/Tjabooo/screentime', target: '_blank', rel: 'noopener' }, 'github.com/Tjabooo/screentime'))];
+  }
+  const today = localDate();
+  const devices = D.devices.length > 1 ? [['all', 'All devices'], ...D.devices.map((d) => [d.name, d.name])] : D.devices.map((d) => [d.name, d.name]);
+  const week = st.view === 'week';
+  const date = D.date;
+  let title;
+  if (week) {
+    const thisWeek = D.week.start <= today && today <= D.week.end;
+    const lastWeek = shiftDate(D.week.start, 7) <= today && today <= shiftDate(D.week.end, 7);
+    title = thisWeek ? 'This week' : lastWeek ? 'Last week'
+      : `${stDate(D.week.start, { day: 'numeric', month: 'short' })} – ${stDate(D.week.end, { day: 'numeric', month: 'short' })}`;
+  } else {
+    title = date === today ? 'Today' : date === shiftDate(today, -1) ? 'Yesterday' : stDate(date, { weekday: 'long', day: 'numeric', month: 'long' });
+  }
+  const step = week ? 7 : 1;
+  const first = D.dates[0] || date;
+  const canBack = week ? D.week.start > first : date > first;
+  const canForward = week ? D.week.end < today : date < today;
+  const seen = D.devices.find((d) => d.name === D.device);
+  const out = [
+    h('div', { class: 'st-controls' },
+      segmented(devices, D.device, (device) => stPick({ device }), 'Device'),
+      segmented([['day', 'Day'], ['week', 'Week']], week ? 'week' : 'day', (view) => stPick({ view }), 'Period')),
+    h('div', { class: 'st-datebar' },
+      h('button', { type: 'button', class: 'st-step', disabled: !canBack, 'aria-label': week ? 'Previous week' : 'Previous day', onclick: () => stPick({ date: shiftDate(date, -step) }) }, '‹'),
+      h('div', { class: 'st-date' }, h('strong', {}, title),
+        h('span', { class: 'muted' }, week ? `${stDate(D.week.start, { day: 'numeric', month: 'short' })} – ${stDate(D.week.end, { day: 'numeric', month: 'short' })}`
+          : seen?.lastSeen ? `${seen.name} last reported ${ago(seen.lastSeen)}` : stDate(date, { weekday: 'short', day: 'numeric', month: 'short' }))),
+      h('button', { type: 'button', class: 'st-step', disabled: !canForward, 'aria-label': week ? 'Next week' : 'Next day', onclick: () => stPick({ date: shiftDate(date, step) > today ? today : shiftDate(date, step) }) }, '›')),
+  ];
+  return out.concat(week ? stWeekView(D) : stDayView(D));
 }
 
 // ---------- clips (server owner only) ----------

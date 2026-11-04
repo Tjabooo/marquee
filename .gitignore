@@ -32,5 +32,7 @@ venv*/
 .DS_Store
 Thumbs.db
 desktop.ini
-.marquee-load.json 
+.marquee-load.json
+.marquee-screentime.json
+.marquee-screentime.json.tmp
 .marquee-episode-order.json 

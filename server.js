@@ -16,6 +16,7 @@ import * as subsync from './subsync.js';
 import * as activity from './activity.js';
 import * as house from './house.js';
 import * as load from './load.js';
+import * as screenTime from './screentime.js';
 import * as clips from './clips.js';
 import * as invites from './invites.js';
 import * as shows from './shows.js';
@@ -102,6 +103,7 @@ load.initLoad({
   } : null,
 });
 shows.initShows({ dataDir: ROOT });
+screenTime.initScreenTime({ dataDir: ROOT });
 clips.initClips({ dataDir: ROOT, getEncoder: () => converter.converterStatus().encoder });
 invites.initInvites({ dataDir: ROOT, onEvent: activity.record });
 cast.initCasting({ lanIp: LAN_IP });
@@ -1260,6 +1262,15 @@ async function handleApi(req, res, url) {
     if (!house.agentAllowed(req) && !activity.isAdmin(req)) throw new HttpError(403, 'Not allowed.');
     return sendJson(res, 200, load.loadReport({ hours: url.searchParams.get('hours') === '24' ? 24 : 1 }));
   }
+  // Daily summaries from the screentime daemon on each machine (screentime.js). Its own token, so
+  // a laptop can catch up on queued days; handled here so machines don't show up in Activity.
+  if (p === '/api/screentime' && req.method === 'POST') {
+    if (!screenTime.tokenAllowed(req)) throw new HttpError(screenTime.screenTimeConfigured() ? 403 : 404, screenTime.screenTimeConfigured() ? 'Wrong token.' : 'Set SCREENTIME_TOKEN in .env first.');
+    try { return sendJson(res, 200, screenTime.acceptSummary(await readJson(req, 400_000))); } catch (err) {
+      if (err.status) throw new HttpError(err.status, err.message);
+      throw err;
+    }
+  }
   // `marquee-house boot` (root, on a dual-boot machine): reports its boot menu + network card and
   // gets back whether to restart, and into what (house.js, "power").
   if (p === '/api/house/boot' && req.method === 'POST') {
@@ -1426,6 +1437,11 @@ async function handleApi(req, res, url) {
   if (p === '/api/house') {
     if (!activity.isAdmin(req)) throw new HttpError(403, 'Only the server’s owner can see the house.');
     return sendJson(res, 200, await house.houseReport());
+  }
+  if (p === '/api/house/screentime') {
+    if (!activity.isAdmin(req)) throw new HttpError(403, 'Only the server’s owner can see Screen Time.');
+    const q = url.searchParams;
+    return sendJson(res, 200, screenTime.screenTimeReport({ device: q.get('device') || '', date: q.get('date') || '', today: q.get('today') || '' }));
   }
   if (p === '/api/house/power' && req.method === 'POST') {
     if (!activity.isAdmin(req)) throw new HttpError(403, 'Only the server’s owner can turn machines on.');
@@ -2001,7 +2017,7 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost');
     const allowed = req.method === 'GET' || req.method === 'HEAD'
       || (req.method === 'POST' && (url.pathname.startsWith('/api/cast/') || url.pathname === '/api/downloads/add' || url.pathname === '/api/downloads/smart' || url.pathname === '/api/subs/fetch' || url.pathname === '/api/subs/sync' || url.pathname === '/api/library/delete' || /^\/api\/downloads\/\w+\/(pause|resume|retry|delete)$/.test(url.pathname) || /^\/api\/media\/\w+\/[\w-]+\/sync$/.test(url.pathname)
-        || /^\/api\/house\/(report|boot|power)$/.test(url.pathname) || /^\/api\/clips\/[\w-]+\/(share|unshare|delete|trim|rename)$/.test(url.pathname)
+        || /^\/api\/(house\/(report|boot|power)|screentime)$/.test(url.pathname) || /^\/api\/clips\/[\w-]+\/(share|unshare|delete|trim|rename)$/.test(url.pathname)
         || /^\/api\/access\/(invite|remove|rename|invite\/\w+\/revoke)$/.test(url.pathname) || /^\/c\/i\/[\w-]+\/?$/.test(url.pathname)
         || /^\/api\/(me|me\/progress|library\/add|library\/extend|library\/identify|admin\/settings|admin\/users\/\d+)$/.test(url.pathname)
         || /^\/api\/admin\/notes(?:\/import|\/\d+(?:\/(?:trash|restore|share|unshare))?)?$/.test(url.pathname)
