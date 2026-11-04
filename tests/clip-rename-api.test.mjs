@@ -28,7 +28,6 @@ test('clip renames persist without moving files or breaking public links; downlo
   const stat = await fs.stat(original);
   await fs.mkdir(path.join(app, 'cache/clips/share'), { recursive: true });
   await fs.writeFile(path.join(app, `cache/clips/share/${id}.mp4`), content);
-  await fs.writeFile(path.join(app, `cache/clips/share/${id}.embed.mp4`), `${content} (Discord copy)`);
   await fs.writeFile(path.join(app, '.marquee-shares.json'), JSON.stringify({ [token]: { rel, at: Date.now() } }));
   const reserve = net.createServer(); await new Promise((r) => reserve.listen(0, '127.0.0.1', r));
   const port = reserve.address().port; await new Promise((r) => reserve.close(r));
@@ -66,7 +65,6 @@ test('clip renames persist without moving files or breaking public links; downlo
     assert.equal(listed.title, title); assert.equal(listed.share.token, token); assert.equal(listed.share.ready, true);
     assert.equal(await fs.readFile(original, 'utf8'), content); assert.equal((await fs.stat(original)).mtimeMs, stat.mtimeMs);
     assert.equal(await (await fetch(`${base}/c/${token}/video.mp4`)).text(), content);
-    assert.equal(await (await fetch(`${base}/c/${token}/embed.mp4`)).text(), `${content} (Discord copy)`);
     const page = await (await fetch(`${base}/c/${token}`)).text();
     assert.ok(page.includes('Clutch &lt;ace &amp; win&gt; / Nuke')); assert.ok(!page.includes('<ace & win>'));
     child.kill(); await exited; await start();

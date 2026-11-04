@@ -4,9 +4,10 @@
 //
 // Sharing gives a clip an unguessable link, /c/<token>. That page, its video and its thumbnail
 // are the only public things on the server: they work without Cloudflare Access once /c/ is
-// bypassed there (see README), and they carry OpenGraph tags so the link embeds and plays in
-// Discord. The clips are AV1 with separate game / friends / mic tracks, which Discord can't play,
-// so sharing makes an H.264 copy with all tracks mixed into one (like `ember-clip share`).
+// bypassed there (see README). The page is Marquee's player with only that clip in it, so anyone
+// with the link can watch it (and nothing else); in Discord the link shows the clip's thumbnail.
+// The clips are AV1 with separate game / friends / mic tracks, which not every browser can play,
+// so sharing makes a full-resolution, near-lossless H.264 copy with the tracks mixed into one.
 // Unsharing kills the link and deletes that copy.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -152,59 +153,42 @@ export async function thumbnail(id) {
 // i5-14600KF, so a 90 s clip's copy needs ~6 minutes; the upload (~350 Mbit/s) streams it easily.
 const SHARE_X264 = ['-c:v', 'libx264', '-preset', 'slow', '-crf', '10', '-pix_fmt', 'yuv420p', '-profile:v', 'high'];
 const sharePath = (id) => path.join(cacheDir, 'share', `${id}.mp4`);
-// Discord doesn't embed external videos that big (a 70 s 1440p copy at CRF 10 is ~700 MB), so the
-// embed gets its own copy: at most 1080p and about EMBED_BYTES. It's made first, so the link is
-// ready in about a minute; the near-lossless copy follows and is what the clip's page plays.
-const EMBED_BYTES = 90e6;
-const embedPath = (id) => path.join(cacheDir, 'share', `${id}.embed.mp4`);
-function embedX264(duration) {
-  const kbps = Math.round(Math.min(20000, Math.max(3000, (EMBED_BYTES * 8 / Math.max(duration || 60, 1)) / 1000 - 320)));
-  return ['-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-maxrate', `${kbps}k`, '-bufsize', `${kbps * 2}k`, '-pix_fmt', 'yuv420p', '-profile:v', 'high'];
-}
-async function encodeShare(src, dest, { v, audio, duration }, { embed }) {
-  const tmp = `${dest}.marquee-tmp.mp4`;
-  const args = ['-hide_banner', '-nostdin', '-y', '-i', src, '-map', '0:v:0'];
-  // the one track that's already the mix: copy it when it's stereo-or-less AAC, else re-encode
-  const mix = audio.length >= 4 || audio.length === 1 ? audio[0] : null;
-  if (mix) args.push('-map', '0:a:0');
-  else if (audio.length > 1) {
-    args.push('-filter_complex', `${audio.map((_, i) => `[0:a:${i}]`).join('')}amix=inputs=${audio.length}:duration=longest:normalize=0,alimiter=limit=0.95[a]`, '-map', '[a]');
-  }
-  // 4:2:0 needs even sizes; the embed copy is also scaled down to fit 1920×1080
-  if (embed && ((v.width || 0) > 1920 || (v.height || 0) > 1080)) args.push('-vf', 'scale=w=1920:h=1080:force_original_aspect_ratio=decrease:force_divisible_by=2');
-  else if ((v.width || 0) % 2 || (v.height || 0) % 2) args.push('-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2');
-  const tail = embed ? embedX264(duration) : [...SHARE_X264];
-  if (mix && mix.codec_name === 'aac' && (Number(mix.channels) || 2) <= 2) tail.push('-c:a', 'copy');
-  else if (audio.length) tail.push('-c:a', 'aac', '-b:a', '320k', '-ac', '2');
-  tail.push('-movflags', '+faststart', tmp);
-  try {
-    await run(FFMPEG, [...args, ...tail]);
-    await fs.promises.rename(tmp, dest);
-  } finally {
-    await fs.promises.rm(tmp, { force: true });
-  }
-}
 function makeShareCopy(c) {
   if (jobs.has(c.id)) return jobs.get(c.id);
   failed.delete(c.id);
   const job = (async () => {
     const src = fullPath(c.rel);
-    const info = await probe(src);
-    if (!info.v) throw new Error('No video in this clip.');
-    if (!fs.existsSync(embedPath(c.id))) await encodeShare(src, embedPath(c.id), info, { embed: true });
-    if (!fs.existsSync(sharePath(c.id))) await encodeShare(src, sharePath(c.id), info, { embed: false });
+    const { v, audio } = await probe(src);
+    if (!v) throw new Error('No video in this clip.');
+    const tmp = `${sharePath(c.id)}.marquee-tmp.mp4`;
+    const args = ['-hide_banner', '-nostdin', '-y', '-i', src, '-map', '0:v:0'];
+    // the one track that's already the mix: copy it when it's stereo-or-less AAC, else re-encode
+    const mix = audio.length >= 4 || audio.length === 1 ? audio[0] : null;
+    if (mix) args.push('-map', '0:a:0');
+    else if (audio.length > 1) {
+      args.push('-filter_complex', `${audio.map((_, i) => `[0:a:${i}]`).join('')}amix=inputs=${audio.length}:duration=longest:normalize=0,alimiter=limit=0.95[a]`, '-map', '[a]');
+    }
+    if ((v.width || 0) % 2 || (v.height || 0) % 2) args.push('-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2'); // 4:2:0 needs even sizes
+    const tail = [...SHARE_X264];
+    if (mix && mix.codec_name === 'aac' && (Number(mix.channels) || 2) <= 2) tail.push('-c:a', 'copy');
+    else if (audio.length) tail.push('-c:a', 'aac', '-b:a', '320k', '-ac', '2');
+    tail.push('-movflags', '+faststart', tmp);
+    try {
+      await run(FFMPEG, [...args, ...tail]);
+      await fs.promises.rename(tmp, sharePath(c.id));
+    } finally {
+      await fs.promises.rm(tmp, { force: true });
+    }
   })().catch((e) => { failed.set(c.id, e.message); throw e; }).finally(() => jobs.delete(c.id));
   job.catch(() => {}); // failures are reported through clip state
   jobs.set(c.id, job);
   return job;
 }
 
-// Ready once Discord's copy exists. Shares from before the embed copy existed get one made here.
 function shareState(c) {
   const token = tokenFor(c.rel);
   if (!token) return null;
-  const ready = fs.existsSync(embedPath(c.id));
-  if ((!ready || !fs.existsSync(sharePath(c.id))) && !jobs.has(c.id) && !failed.has(c.id)) makeShareCopy(c);
+  const ready = fs.existsSync(sharePath(c.id));
   return { token, ready, working: jobs.has(c.id), error: failed.get(c.id) || null };
 }
 
@@ -239,7 +223,7 @@ export async function share(id) {
     shares[token] = { rel: c.rel, at: Date.now() };
     saveShares();
   }
-  failed.delete(c.id); // Share again = try again
+  if (!fs.existsSync(sharePath(c.id))) makeShareCopy(c);
   return { token, title: c.title, ...shareState(c) };
 }
 
@@ -248,7 +232,6 @@ export async function unshare(id) {
   for (const t of Object.keys(shares)) if (shares[t].rel === c.rel) delete shares[t];
   saveShares();
   await fs.promises.rm(sharePath(c.id), { force: true });
-  await fs.promises.rm(embedPath(c.id), { force: true });
   return { ok: true, title: c.title };
 }
 
@@ -440,12 +423,18 @@ export async function handlePublic(req, res, url, { sendVideo }) {
       body: `<h1>Marquee</h1><p>Opening…</p><script>location.replace('/')</script>`,
     }));
   }
+  // The shared clip player: Marquee's own stylesheet and a player script for one clip.
+  if (p === '/c/style.css' || p === '/c/player.js') {
+    const file = new URL(p === '/c/style.css' ? './public/style.css' : './public/clip-share.js', import.meta.url);
+    try { return send(200, p.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/javascript; charset=utf-8', await fs.promises.readFile(file), { 'Cache-Control': 'no-cache' }); }
+    catch { return send(404, 'text/plain', 'Not found.'); }
+  }
   if (p === '/c/marquee.png') {
     const file = new URL('./public/og-marquee.png', import.meta.url);
     try { return send(200, 'image/png', await fs.promises.readFile(file)); } catch { return send(404, 'text/plain', 'Not found.'); }
   }
 
-  const m = p.match(/^\/c\/([A-Za-z0-9_-]{16})(?:\/(video\.mp4|embed\.mp4|thumb\.jpg))?\/?$/);
+  const m = p.match(/^\/c\/([A-Za-z0-9_-]{16})(?:\/(video\.mp4|thumb\.jpg))?\/?$/);
   if (!m) return false;
   const clip = sharedClip(m[1]);
   if (!clip) return send(404, 'text/html; charset=utf-8', page({ title: 'Clip not found', desc: 'This link doesn’t work any more.', url: '', body: '<h1>This clip isn’t shared any more</h1><p>Ask whoever sent it for a new link.</p>' }), { 'Cache-Control': 'no-store' });
@@ -453,31 +442,91 @@ export async function handlePublic(req, res, url, { sendVideo }) {
   if (m[2] === 'thumb.jpg') {
     try { return send(200, 'image/jpeg', await fs.promises.readFile(await thumbnail(clip.id))); } catch { return send(404, 'text/plain', 'Not found.'); }
   }
-  const embed = embedPath(clip.id);
-  const ready = fs.existsSync(embed);
-  // the page plays the near-lossless copy once it's there; Discord always gets the embed copy
-  const best = fs.existsSync(sharePath(clip.id)) ? sharePath(clip.id) : embed;
-  if (m[2]) {
+  const copy = sharePath(clip.id);
+  const ready = fs.existsSync(copy);
+  if (m[2] === 'video.mp4') {
     if (!ready) return send(503, 'text/plain', 'Still being prepared.', { 'Retry-After': '30', 'Cache-Control': 'no-store' });
-    await sendVideo(req, res, m[2] === 'embed.mp4' ? embed : best);
+    await sendVideo(req, res, copy);
     return true;
   }
-  if (!jobs.has(clip.id) && (!ready || best === embed)) makeShareCopy({ id: clip.id, rel: clip.rel }); // e.g. a copy was deleted from the cache
 
   const base = baseUrl(req);
   const link = `${base}/c/${clip.token}`;
-  let video = null;
-  if (ready) {
-    let w = 1920, h = 1080;
-    try { const { v } = await probe(embed); w = v.width || w; h = v.height || h; } catch { /* defaults */ }
-    video = { url: `${link}/embed.mp4`, width: w, height: h };
+  if (!ready) {
+    if (!jobs.has(clip.id)) makeShareCopy({ id: clip.id, rel: clip.rel }); // e.g. the copy was deleted from the cache
+    return send(200, 'text/html; charset=utf-8', page({
+      title: clip.title, desc: `${clip.game} · clip from the home server`, url: link, image: `${link}/thumb.jpg`,
+      body: `<h1>${esc(clip.title)}</h1><p>${esc(clip.game)}</p><div class="wait"><p>This clip is still being prepared. Reload in a minute.</p></div><script>setTimeout(()=>location.reload(),15000)</script>`,
+    }), { 'Cache-Control': 'no-store' });
   }
-  const desc = `${clip.game} · clip from the home server`;
-  return send(200, 'text/html; charset=utf-8', page({
-    title: clip.title, desc, url: link, image: `${link}/thumb.jpg`, video,
-    body: `<h1>${esc(clip.title)}</h1><p>${esc(clip.game)}</p>${ready
-      ? `<video src="${esc(`${link}/video.mp4`)}" poster="${esc(`${link}/thumb.jpg`)}" controls playsinline preload="metadata"></video>`
-      : '<div class="wait"><p>This clip is still being prepared. Reload in a minute.</p></div><script>setTimeout(()=>location.reload(),15000)</script>'}
-      <p class="foot">Shared from <a class="brand" href="/c/">Marquee</a></p>`,
-  }), ready ? {} : { 'Cache-Control': 'no-store' });
+  return send(200, 'text/html; charset=utf-8', playerPage({ title: clip.title, game: clip.game, link }), { 'Cache-Control': 'no-store' });
+}
+
+// Discord shows the thumbnail as a large card; clicking it opens this page. The video is the
+// full-quality copy, played in Marquee's player, and the page has no way into the rest of Marquee.
+function playerPage({ title, game, link }) {
+  const local = new URL(link).pathname; // same host the viewer used
+  const og = [['og:site_name', 'Marquee'], ['og:title', title], ['og:description', `${game} · watch the clip`], ['og:url', link],
+    ['og:type', 'website'], ['og:image', `${link}/thumb.jpg`], ['twitter:card', 'summary_large_image'], ['twitter:image', `${link}/thumb.jpg`]]
+    .map(([k, v]) => `<meta ${k.startsWith('twitter:') ? 'name' : 'property'}="${k}" content="${esc(v)}">`).join('\n  ');
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <meta name="color-scheme" content="dark">
+  <meta name="robots" content="noindex">
+  <title>${esc(title)}</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎞️</text></svg>">
+  ${og}
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/c/style.css">
+</head>
+<body class="in-player">
+  <div class="player ui-visible is-paused" id="player" role="region" aria-label="${esc(title)}">
+    <div class="player-stage" id="player-stage">
+      <video id="video" src="${esc(`${local}/video.mp4`)}" poster="${esc(`${local}/thumb.jpg`)}" playsinline preload="auto"></video>
+      <div class="player-spinner" id="player-spinner" hidden></div>
+      <div class="player-osd" id="player-osd" aria-hidden="true"></div>
+    </div>
+    <div class="player-bar">
+      <p class="player-title" id="player-title">${esc(title)}<span class="player-game"> · ${esc(game)}</span></p>
+    </div>
+    <div class="player-center">
+      <button class="pc-btn pc-skip" data-skip="-10" aria-label="Back 10 seconds (J)"></button>
+      <button class="pc-btn pc-big-play" aria-label="Play (Space)"></button>
+      <button class="pc-btn pc-skip" data-skip="10" aria-label="Forward 10 seconds (L)"></button>
+    </div>
+    <div class="player-controls" id="player-controls">
+      <div class="seek-row">
+        <span class="pc-time" id="pc-time">0:00</span>
+        <div class="seek" id="seek" role="slider" tabindex="0" aria-label="Seek" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0">
+          <div class="seek-track"><div class="seek-buffer" id="seek-buffer"></div><div class="seek-fill" id="seek-fill"></div></div>
+          <div class="seek-thumb" id="seek-thumb"></div>
+          <div class="seek-tip" id="seek-tip" hidden></div>
+        </div>
+        <button class="pc-time pc-duration" id="pc-duration" title="Show time remaining">–:––</button>
+      </div>
+      <div class="pc-row">
+        <button class="pc-btn pc-play" id="pc-play" aria-label="Play (Space)"></button>
+        <button class="pc-btn pc-skip" data-skip="-10" aria-label="Back 10 seconds (J)"></button>
+        <button class="pc-btn pc-skip" data-skip="10" aria-label="Forward 10 seconds (L)"></button>
+        <div class="pc-volume" id="pc-volume">
+          <button class="pc-btn" id="pc-mute" aria-label="Mute (M)"></button>
+          <input type="range" id="pc-vol" min="0" max="1" step="0.05" value="1" aria-label="Volume">
+        </div>
+        <span class="pc-spacer"></span>
+        <button class="pc-btn" id="pc-pip" aria-label="Picture in picture (P)" hidden></button>
+        <button class="pc-btn" id="pc-fs" aria-label="Fullscreen (F)"></button>
+      </div>
+    </div>
+    <p class="player-error" id="player-error" role="alert" hidden></p>
+  </div>
+  <script src="/c/player.js" defer></script>
+</body>
+</html>`;
+
 }
