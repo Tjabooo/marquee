@@ -367,7 +367,7 @@ function run(cmd, args, { onStdout, priorityLow = false } = {}) {
     child.stdout.on('data', (d) => { out += d; onStdout?.(d.toString()); });
     child.stderr.on('data', (d) => { err = (err + d).slice(-4000); });
     child.on('error', reject);
-    child.on('close', (code) => (code === 0 ? resolve(out) : reject(new Error(lastLine(err) || `exit code ${code}`))));
+    child.on('close', (code) => (code === 0 ? resolve(out) : reject(Object.assign(new Error(lastLine(err) || `exit code ${code}`), { stderr: err }))));
   });
 }
 // Picks the meaningful error line from ffmpeg's stderr (the last line is usually generic).
@@ -381,10 +381,27 @@ async function probe(file) {
   return JSON.parse(out);
 }
 
+// Room reserved at the start of the MP4 for its index (moov), so ffmpeg writes the index there when
+// it finishes instead of rewriting the whole file afterwards: +faststart reads and writes every byte
+// a second time, a quarter of a conversion's time on the media HDD. A House episode's index is about
+// 15 bytes per packet; 32 plus 1 MB leaves plenty of room (the unused rest is a few MB of padding).
+// A file that still outgrows it is converted again with +faststart. null when the length is unknown.
+function moovReserve(info, video, audioRates) {
+  const duration = Number(info.format?.duration) || Number(video.duration);
+  if (!(duration > 0)) return null;
+  const [n, d] = String(video.avg_frame_rate || video.r_frame_rate || '').split('/').map(Number);
+  const fps = n > 0 && d > 0 ? Math.min(n / d, 240) : 60;
+  const audioPackets = audioRates.reduce((sum, rate) => sum + (Number(rate) || 48000) / 1024, 0);
+  return Math.ceil(duration * (fps + audioPackets) * 32 + 1024 * 1024);
+}
+
 // safeAudio: re-encode E-AC-3 instead of copying it. Some E-AC-3 tracks (notably Dolby Atmos,
 // which carries a dependent substream) can't be written into MP4 by ffmpeg and make the
 // muxer fail at the very end with "Error writing trailer: Invalid data found".
-function plan(input, output, info, encoder, shift = 0, safeAudio = false, sidecars = [], forceH264 = false) {
+// faststart: index written with a second pass instead of in reserved room (see moovReserve).
+// aacSurround: surround tracks that can't be copied become AAC instead of E-AC-3.
+function plan(input, output, info, encoder, shift = 0, safeAudio = false, sidecars = [], forceH264 = false,
+  { faststart = false, aacSurround = false } = {}) {
   const streams = info.streams || [];
   const video = streams.find((s) => s.codec_type === 'video' && !s.disposition?.attached_pic);
   if (!video) throw new Error('No video stream found.');
@@ -423,6 +440,7 @@ function plan(input, output, info, encoder, shift = 0, safeAudio = false, sideca
   }
 
   let out = 0;
+  let surroundEac3 = false;
   if (main) {
     const move = shift ? `asetpts=PTS${shift > 0 ? '+' : '-'}${Math.abs(shift)}/TB,` : '';
     args.push('-c:a:0', 'aac', '-b:a:0', '192k', '-ac:a:0', '2',
@@ -437,14 +455,24 @@ function plan(input, output, info, encoder, shift = 0, safeAudio = false, sideca
       // Plain Dolby Digital Plus keeps the surround channels; only the Atmos height data is lost.
       args.push(`-c:a:${i}`, 'eac3', `-b:a:${i}`, (a.channels || 2) > 2 ? '640k' : '224k');
     } else if (AUDIO_COPY.has(a.codec_name)) args.push(`-c:a:${i}`, 'copy');
-    else args.push(`-c:a:${i}`, 'aac', `-b:a:${i}`, (a.channels || 2) > 2 ? '384k' : '192k');
+    else if (!aacSurround && (a.channels || 2) > 2 && a.channels <= 6) {
+      // Surround that Apple devices can't play (DTS, TrueHD, FLAC, ...) becomes E-AC-3 640k: ~14x
+      // faster to encode than 5.1 AAC 384k, which held up the whole conversion, and measured closer
+      // to the DTS source on every channel with the full frequency range kept. (7.1 stays AAC:
+      // ffmpeg's E-AC-3 encoder stops at 5.1.)
+      surroundEac3 = true;
+      args.push(`-c:a:${i}`, 'eac3', `-b:a:${i}`, '640k');
+    } else args.push(`-c:a:${i}`, 'aac', `-b:a:${i}`, (a.channels || 2) > 2 ? '384k' : '192k');
   });
   // Only the first audio track is marked default.
   for (let i = 0; i < out; i++) args.push(`-disposition:a:${i}`, i === 0 ? 'default' : '0');
 
-  args.push('-avoid_negative_ts', 'disabled', '-movflags', '+faststart', '-progress', 'pipe:1', '-nostats', '-f', 'mp4', output);
+  const outRates = [...(main ? [main.sample_rate] : []), ...audios.filter((a) => a !== main || keepMain).map((a) => a.sample_rate)];
+  const reserve = faststart ? null : moovReserve(info, video, outRates);
+  args.push('-avoid_negative_ts', 'disabled', ...(reserve ? ['-moov_size', String(reserve)] : ['-movflags', '+faststart']),
+    '-progress', 'pipe:1', '-nostats', '-f', 'mp4', output);
   for (const sc of sidecars) args.push('-map', `0:${sc.index}`, '-c:s', 'srt', '-f', 'srt', sc.tmp);
-  return { args, reencode, duration: Number(info.format?.duration) || Number(video.duration) || null };
+  return { args, reencode, surroundEac3, duration: Number(info.format?.duration) || Number(video.duration) || null };
 }
 
 async function convert(job) {
@@ -470,8 +498,10 @@ async function convert(job) {
   let safeAudio = false;
   const sidecars = plannedSidecars(file, (info.streams || []).filter((st) => st.codec_type === 'subtitle' && TEXT_SUBS.has(st.codec_name)));
   const dropSidecarTemps = () => sidecars.forEach((sc) => fs.rmSync(sc.tmp, { force: true }));
+  const fallbacks = { faststart: false, aacSurround: false };
+  let lastPlan = null;
   const attempt = async (encoder) => {
-    const p = plan(file, tmp, info, encoder, shift, safeAudio, sidecars, Boolean(job.h264));
+    const p = lastPlan = plan(file, tmp, info, encoder, shift, safeAudio, sidecars, Boolean(job.h264), fallbacks);
     const started = Date.now();
     status.current = { name, mode: p.reencode ? 'Re-encoding' : job.fix ? 'Making a browser copy' : 'Repackaging', percent: 0, speed: null, eta: null };
     let buf = '';
@@ -501,24 +531,34 @@ async function convert(job) {
   let encoder = nvencBroken ? 'x264' : 'nvenc';
   const needsEncode = plan(file, tmp, info, encoder, 0, false, [], Boolean(job.h264)).reencode;
   try {
-    try {
-      await attempt(encoder);
-    } catch (e) {
-      fs.rmSync(tmp, { force: true });
-      // NVENC unavailable: fall back to x264 for this and all later jobs.
-      if (encoder === 'nvenc' && needsEncode) {
-        console.warn(`[convert] GPU encoding failed (${e.message}); using the CPU instead.`);
-        nvencBroken = true;
-        encoder = 'x264';
-        status.encoder = 'x264';
+    // Each fallback is tried at most once, so this always ends.
+    for (;;) {
+      try {
         await attempt(encoder);
-      } else if (/trailer|invalid data/i.test(e.message)
-        && (info.streams || []).some((st) => st.codec_type === 'audio' && st.codec_name === 'eac3')) {
-        console.warn(`[convert] ${name}: E-AC-3 audio couldn't be copied (${e.message}); re-encoding it instead.`);
-        safeAudio = true;
-        await attempt(encoder);
-      } else {
-        throw e;
+        break;
+      } catch (e) {
+        fs.rmSync(tmp, { force: true });
+        dropSidecarTemps();
+        if (!fallbacks.faststart && /reserved_moov_size is too small/i.test(e.stderr || '')) {
+          // Checked first: it also ends in "Error writing trailer", which isn't an audio or GPU problem.
+          console.warn(`[convert] ${name}: the reserved MP4 index room was too small; converting again with +faststart.`);
+          fallbacks.faststart = true;
+        } else if (encoder === 'nvenc' && needsEncode) {
+          // NVENC unavailable: fall back to x264 for this and all later jobs.
+          console.warn(`[convert] GPU encoding failed (${e.message}); using the CPU instead.`);
+          nvencBroken = true;
+          encoder = 'x264';
+          status.encoder = 'x264';
+        } else if (!safeAudio && /trailer|invalid data/i.test(e.message)
+          && (info.streams || []).some((st) => st.codec_type === 'audio' && st.codec_name === 'eac3')) {
+          console.warn(`[convert] ${name}: E-AC-3 audio couldn't be copied (${e.message}); re-encoding it instead.`);
+          safeAudio = true;
+        } else if (!fallbacks.aacSurround && lastPlan?.surroundEac3) {
+          console.warn(`[convert] ${name}: E-AC-3 surround encoding failed (${e.message}); using AAC instead.`);
+          fallbacks.aacSurround = true;
+        } else {
+          throw e;
+        }
       }
     }
   } catch (e) {
