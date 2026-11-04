@@ -226,12 +226,23 @@ export async function requestAudioTrack(file, index, source, { retry = false } =
         const old = path.join(audioTrackDir, name);
         try { if (Date.now() - fs.statSync(old).mtimeMs > 7 * 86400000) fs.rmSync(old, { force: true }); } catch { /* in use */ }
       }
-      await run(FFMPEG, ['-hide_banner', '-nostdin', '-y', '-i', file,
+      // The viewer waits for this copy, so the index goes in reserved room (see moovReserve) rather
+      // than a +faststart pass that rewrites the whole file once more; +faststart if it outgrows it.
+      const reserve = moovReserve(info, video, [audio.sample_rate]);
+      const copy = (faststart) => run(FFMPEG, ['-hide_banner', '-nostdin', '-y', '-i', file,
         '-map', `0:${video.index}`, '-map', `0:${index}`, '-map_chapters', '0',
         '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-ac:a', '2',
         '-filter:a', 'aresample=async=1000:first_pts=0',
         '-metadata:s:a:0', `language=${audio.tags?.language || 'und'}`, '-disposition:a:0', 'default',
-        '-avoid_negative_ts', 'disabled', '-movflags', '+faststart', '-f', 'mp4', tmp], { priorityLow: true });
+        '-avoid_negative_ts', 'disabled', ...(faststart ? ['-movflags', '+faststart'] : ['-moov_size', String(reserve)]),
+        '-f', 'mp4', tmp], { priorityLow: true });
+      try {
+        await copy(!reserve);
+      } catch (e) {
+        if (!reserve || !/reserved_moov_size is too small/i.test(e.stderr || '')) throw e;
+        fs.rmSync(tmp, { force: true });
+        await copy(true);
+      }
       if (source !== audioSourceKey(file)) throw new Error('Source changed');
       fs.renameSync(tmp, output);
       audioTrackJobs.delete(key);

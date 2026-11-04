@@ -43,6 +43,14 @@ test('audio selection uses actual served stream IDs and copies video without rep
   assert.equal(audio.length, 1);
   assert.equal(audio[0].tags.language, 'eng');
   assert.equal(audio[0].codec_name, 'aac');
+  const bytes = await fs.readFile(result.file);
+  const atoms = [];
+  for (let pos = 0; pos + 8 <= bytes.length && atoms.length < 8;) {
+    const size = bytes.readUInt32BE(pos);
+    atoms.push(bytes.toString('ascii', pos + 4, pos + 8));
+    pos += size === 1 ? Number(bytes.readBigUInt64BE(pos + 8)) : size || bytes.length;
+  }
+  assert.ok(atoms.indexOf('moov') >= 0 && atoms.indexOf('moov') < atoms.indexOf('mdat'), `index before media so playback starts at once: ${atoms}`);
   const hashVideo = async (input) => (await run(process.env.FFMPEG || 'ffmpeg', ['-v', 'error', '-i', input, '-map', '0:v:0', '-c', 'copy', '-f', 'hash', '-hash', 'sha256', '-'])).stdout;
   assert.equal(await hashVideo(file), await hashVideo(result.file), 'video packets are copied without a quality change');
   assert.deepEqual(await fs.readFile(file), before, 'selected copies never modify the original or another viewer’s default');
