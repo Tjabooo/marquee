@@ -416,7 +416,13 @@ main {
 .up-next h2 { margin: 0; font: 700 16px/1.35 var(--display); overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .up-next-actions { display: flex; gap: 8px; margin-top: 14px; }
 .up-next-actions button { flex: 1; min-width: 0; min-height: 44px; padding: 8px 10px; border: 1px solid transparent; border-radius: 9px; font-size: 14px; font-weight: 700; }
-.up-next-play { color: var(--on-bulb); background: var(--bulb); }
+.up-next-play { position: relative; isolation: isolate; overflow: hidden; color: var(--on-bulb); background: var(--bulb); font-variant-numeric: tabular-nums; }
+/* Countdown to the next episode: the bulb colour fills the button from the left. */
+.up-next-play.counting { background: #b98f3a; }
+.up-next-play.counting::before {
+  content: ''; position: absolute; inset: 0; z-index: -1; background: var(--bulb);
+  transform: scaleX(var(--auto-progress, 0)); transform-origin: left; transition: transform .25s linear;
+}
 .up-next-dismiss { color: #f6eadf; background: rgba(246, 234, 223, .09); border-color: rgba(246, 234, 223, .2) !important; }
 .up-next-error { margin: 10px 0 0; font-size: 13px; line-height: 1.4; color: #ffd4ba; }
 @media (max-height: 450px) and (min-width: 480px) {

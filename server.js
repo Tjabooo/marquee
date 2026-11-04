@@ -33,7 +33,7 @@ import { NotesOcr } from './notes-ocr.js';
 import * as noteShare from './note-share.js';
 import { WatchRooms } from './watch.js';
 import { handleWatchPage } from './watch-page.js';
-import { creditsFor } from './credits.js';
+import { creditsFor, initCredits } from './credits.js';
 import { isHomeRequest, describeRequest } from './network.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -103,6 +103,7 @@ load.initLoad({
   } : null,
 });
 shows.initShows({ dataDir: ROOT });
+initCredits({ dataDir: ROOT });
 screenTime.initScreenTime({ dataDir: ROOT });
 clips.initClips({ dataDir: ROOT, getEncoder: () => converter.converterStatus().encoder });
 invites.initInvites({ dataDir: ROOT, onEvent: activity.record });
@@ -1236,6 +1237,24 @@ async function prepareNextEpisodes(source, plays) {
   }
 }
 
+// Other episodes of the same show and season, nearest first (the next one before the previous one),
+// one file per episode, as originals; plus the next episode's file.
+async function creditPeers(file) {
+  const items = await scanLibrary();
+  const all = libraryCache.all || items || [];
+  const here = all.find((i) => samePath(i.full, file));
+  if (!here || here.season == null || here.episode == null) return { siblings: [] };
+  const key = shows.showKey(here.title);
+  const rank = (i) => Math.abs(i.episode - here.episode) * 2 + (i.episode < here.episode ? 1 : 0);
+  const seen = new Set([here.episode]);
+  const siblings = all
+    .filter((i) => i.season === here.season && i.episode != null && shows.showKey(i.title) === key)
+    .map((i) => ({ episode: i.episode, full: converter.originalFor(i.full) || i.full }))
+    .sort((a, b) => rank(a) - rank(b) || a.full.localeCompare(b.full))
+    .filter((i) => !seen.has(i.episode) && seen.add(i.episode));
+  return { siblings: siblings.slice(0, 2).map((i) => i.full), next: siblings.find((i) => i.episode === here.episode + 1)?.full };
+}
+
 function titleOf(file) {
   const info = parseName(path.basename(file));
   const ep = info.season != null ? ` S${String(info.season).padStart(2, '0')} E${String(info.episode).padStart(2, '0')}` : '';
@@ -1897,9 +1916,15 @@ async function handleApi(req, res, url) {
   }
 
   // Chapters belong to the original release, even when its browser copy lost chapter tags.
+  // Without a credits chapter, the closing-credits music is found by comparing the ending with
+  // other episodes of the season (see credits.js). The next episode gets its own lookup ready meanwhile.
   if ((m = p.match(/^\/api\/media\/(lib|dl)\/([A-Za-z0-9_-]+)\/credits$/))) {
     const listed = await sourceFile(m[1], m[2]);
-    return sendJson(res, 200, { creditsAt: await creditsFor(converter.originalFor(listed) || listed) });
+    const file = converter.originalFor(listed) || listed;
+    const peers = m[1] === 'lib' ? await creditPeers(file) : { siblings: [] };
+    const creditsAt = await creditsFor(file, peers.siblings);
+    if (peers.next) creditPeers(peers.next).then((n) => creditsFor(peers.next, n.siblings)).catch(() => {});
+    return sendJson(res, 200, { creditsAt });
   }
 
   // ---- browser audio compatibility ----

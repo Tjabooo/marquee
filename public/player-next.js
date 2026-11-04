@@ -18,14 +18,15 @@ export function nextLibraryEpisode(playing, library, shows) {
   return positiveInteger(total) && current.episode === total ? choose(current.season + 1, 1) : null;
 }
 
-// Prefer actual chapter metadata. Most TV releases don't label their closing credits,
-// so use a conservative end-window estimate rather than waiting for the ended event.
+// The prompt (and its countdown) starts exactly where the closing credits start: an ending chapter, or
+// the closing-credits music found by comparing episodes (server credits.js). No guessed end window:
+// when the credits start is unknown, the prompt waits for the real end of the file.
+export const AUTOPLAY_SECONDS = 10;
+export const AUTOPLAY_CHAIN = 3; // auto-played episodes in a row before it waits for a person again
+
 export function nextEpisodePromptAt(duration, creditsAt) {
   if (!Number.isFinite(duration) || duration <= 0) return null;
-  if (Number.isFinite(creditsAt) && creditsAt > duration / 2 && creditsAt < duration) return creditsAt;
-  if (duration < 300) return null; // Avoid popups in short extras or clips.
-  // ~2.5% of runtime, bounded to 30–75 seconds for normal TV episodes.
-  return duration - Math.min(75, Math.max(30, duration * 0.025));
+  return Number.isFinite(creditsAt) && creditsAt > duration / 2 && creditsAt < duration ? creditsAt : null;
 }
 
 export function isNextEpisodeTime({ ended, time, duration, creditsAt }) {

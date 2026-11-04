@@ -14,6 +14,7 @@ cache/
 .marquee-power.json
 .marquee-shares.json
 .marquee-clip-titles.json
+.marquee-credits.json
 .marquee-invites.json
 .marquee-shows.json
 .marquee.db

@@ -1,7 +1,7 @@
 // Marquee web client. Plain ES modules, no build step.
 import { WatchSession, offsetCues } from './watch-sync.js';
 import { createNotesView } from './notes-view.js';
-import { nextLibraryEpisode, isNextEpisodeTime } from './player-next.js';
+import { nextLibraryEpisode, isNextEpisodeTime, AUTOPLAY_SECONDS, AUTOPLAY_CHAIN } from './player-next.js';
 import { audioChoices, nativeAudioMapping } from './player-audio.js';
 import { libraryUnion, libraryAvailability, filterLibrary, transferState, transferAttention, transferPaused } from './library-downloads.js';
 
@@ -3824,7 +3824,7 @@ async function preparePlayerSource(f, watchSession, signal) {
 async function loadPlayerMedia(f, opts = {}) {
   resetPlayerMedia();
   const session = current = { ...f, ready: false, abort: new AbortController(), creditsAt: null,
-    upNextDismissed: false, upNextBusy: false, upNextError: '', upNextAnnounced: null };
+    upNextDismissed: false, upNextBusy: false, upNextError: '', upNextAnnounced: null, autoLeft: null, autoTimer: null };
   const err = $('#player-error');
   $('#player-title').textContent = [f.title, episodeLabel(f)].filter(Boolean).join(' ');
   playerEl.classList.toggle('is-clip', f.kind === 'clip');
@@ -3911,6 +3911,7 @@ const upNextDismiss = $('#up-next-dismiss');
 const upNextError = $('#up-next-error');
 const upNextStatus = $('#up-next-status');
 let upNextLayoutSignature = '';
+let autoChain = 0; // episodes started by the countdown since the last key press, click or tap
 
 async function loadPlayerCredits(session) {
   try {
@@ -3918,7 +3919,7 @@ async function loadPlayerCredits(session) {
     if (current !== session) return;
     session.creditsAt = Number.isFinite(data.creditsAt) && data.creditsAt > 0 ? data.creditsAt : null;
     updateUpNext();
-  } catch { /* No chapter metadata: use the conservative end-window estimate. */ }
+  } catch { /* Unknown credits start: Up next waits for the end of the file. */ }
 }
 
 function updateUpNext() {
@@ -3930,6 +3931,10 @@ function updateUpNext() {
     && isNextEpisodeTime({ ended: video.ended, time: video.currentTime, duration: video.duration, creditsAt: session.creditsAt }));
   upNextEl.hidden = !show;
   playerEl.classList.toggle('has-up-next', show);
+  // The countdown starts the moment the card does: at the credits, or at the end of the file.
+  const counting = show && !session.upNextBusy && !session.upNextError && autoChain < AUTOPLAY_CHAIN;
+  if (counting && session.autoLeft == null) startAutoplay(session);
+  else if (!counting && session) stopAutoplay(session);
   if (show) {
     const title = [episodeLabel(next), next.episodeName || next.title].filter(Boolean).join(' · ');
     if (upNextTitle.textContent !== title) upNextTitle.textContent = title;
@@ -3938,18 +3943,48 @@ function updateUpNext() {
       upNextArt.replaceChildren(episodeArt(next.still, state.libraryShows.find((s) => s.id === next.show)));
     }
     upNextPlay.disabled = session.upNextBusy;
-    upNextPlay.textContent = session.upNextBusy ? 'Starting…' : 'Next episode';
+    const left = session.autoLeft == null ? null : Math.max(1, Math.ceil(session.autoLeft));
+    const label = session.upNextBusy ? 'Starting…' : left ? `Next episode in ${left}` : 'Next episode';
+    if (upNextPlay.textContent !== label) upNextPlay.textContent = label;
+    upNextPlay.classList.toggle('counting', left != null);
+    upNextPlay.style.setProperty('--auto-progress', left == null ? '0' : String(1 - session.autoLeft / AUTOPLAY_SECONDS));
     upNextPlay.setAttribute('aria-busy', String(session.upNextBusy));
     upNextDismiss.textContent = video.ended ? 'Dismiss' : 'Keep watching';
     upNextError.textContent = session.upNextError;
     upNextError.hidden = !session.upNextError;
     if (session.upNextAnnounced !== next.id) {
       session.upNextAnnounced = next.id;
-      upNextStatus.textContent = `Up next: ${title}. Next episode is available.`;
+      upNextStatus.textContent = session.autoLeft == null ? `Up next: ${title}. Next episode is available.`
+        : `Up next: ${title}. Plays in ${AUTOPLAY_SECONDS} seconds unless you choose Keep watching.`;
     }
   } else if (!session) upNextStatus.textContent = '';
   const signature = show ? `${next.id}|${video.ended}|${session.upNextBusy}|${session.upNextError}` : '';
   if (signature !== upNextLayoutSignature) { upNextLayoutSignature = signature; layoutSubs(); }
+}
+
+// Counts real seconds while the credits play (or after the end); a pause during the credits pauses it.
+function startAutoplay(session) {
+  session.autoLeft = AUTOPLAY_SECONDS;
+  let last = Date.now();
+  const tick = () => {
+    if (current !== session || session.autoLeft == null) return;
+    const now = Date.now();
+    if (!video.paused || video.ended) session.autoLeft -= (now - last) / 1000;
+    last = now;
+    if (session.autoLeft <= 0) {
+      session.autoLeft = null; session.autoTimer = null;
+      autoChain++;
+      playNextEpisode();
+      return;
+    }
+    session.autoTimer = setTimeout(tick, 250);
+    updateUpNext();
+  };
+  session.autoTimer = setTimeout(tick, 250);
+}
+function stopAutoplay(session) {
+  if (session.autoTimer) clearTimeout(session.autoTimer);
+  session.autoTimer = null; session.autoLeft = null;
 }
 
 async function playNextEpisode() {
@@ -3994,6 +4029,8 @@ for (const event of ['timeupdate', 'ended', 'seeking', 'seeked', 'durationchange
 if (hasRemotePlayback) for (const event of ['connect', 'disconnect']) video.remote.addEventListener(event, updateUpNext);
 
 video.addEventListener('timeupdate', () => saveProgress());
+// Someone is still there: the countdown may chain another AUTOPLAY_CHAIN episodes.
+for (const event of ['keydown', 'pointerdown']) document.addEventListener(event, () => { autoChain = 0; }, true);
 video.addEventListener('pause', () => saveProgress(true));
 video.addEventListener('error', () => {
   if (!current?.sourceUrl || video.currentSrc !== current.sourceUrl) return;

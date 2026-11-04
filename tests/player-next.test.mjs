@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
-import { nextLibraryEpisode, isNextEpisodeTime, nextEpisodePromptAt } from '../public/player-next.js';
+import { nextLibraryEpisode, isNextEpisodeTime, nextEpisodePromptAt, AUTOPLAY_SECONDS, AUTOPLAY_CHAIN } from '../public/player-next.js';
 
 const episode = (id, number, extra = {}) => ({ id, show: 'tv-123', title: 'Example Show', season: 1, episode: number, file: `${id}.mp4`, ...extra });
 const playing = { ...episode('one', 1), kind: 'lib', key: 'one' };
@@ -38,18 +38,15 @@ test('specials, malformed numbers and unready files are excluded, and duplicates
   }
 });
 
-test('Up Next uses closing-credit chapters first, otherwise a conservative runtime-based estimate', () => {
+test('Up Next starts exactly at the credits, and without a known credits start only at the real end', () => {
   assert.equal(nextEpisodePromptAt(2100, 1900), 1900);
-  assert.equal(nextEpisodePromptAt(2100, null), 2047.5);
-  assert.equal(nextEpisodePromptAt(1200, null), 1170);
-  assert.equal(nextEpisodePromptAt(3600, null), 3525);
-  assert.equal(nextEpisodePromptAt(200, null), null);
+  for (const duration of [2100, 1200, 3600, 200]) assert.equal(nextEpisodePromptAt(duration, null), null, 'no guessed end window');
   assert.equal(nextEpisodePromptAt(NaN, null), null);
-  assert.equal(nextEpisodePromptAt(1000, 100), 970, 'early chapter markers are not closing credits');
-  assert.equal(isNextEpisodeTime({ time: 1899, duration: 2100, creditsAt: 1900 }), false);
+  assert.equal(nextEpisodePromptAt(1000, 100), null, 'early chapter markers are not closing credits');
+  assert.equal(nextEpisodePromptAt(1000, 1000), null);
+  assert.equal(isNextEpisodeTime({ time: 1899.9, duration: 2100, creditsAt: 1900 }), false);
   assert.equal(isNextEpisodeTime({ time: 1900, duration: 2100, creditsAt: 1900 }), true);
-  assert.equal(isNextEpisodeTime({ time: 2047, duration: 2100, creditsAt: null }), false);
-  assert.equal(isNextEpisodeTime({ time: 2048, duration: 2100, creditsAt: null }), true);
+  assert.equal(isNextEpisodeTime({ time: 2099.9, duration: 2100, creditsAt: null }), false);
   assert.equal(isNextEpisodeTime({ time: 180, duration: 200, creditsAt: null }), false);
   assert.equal(isNextEpisodeTime({ ended: true, time: 200, duration: 200, creditsAt: null }), true);
 });
@@ -68,13 +65,14 @@ class Element {
   focus() {}
 }
 const deferred = () => { let resolve, reject; const promise = new Promise((r, j) => { resolve = r; reject = j; }); return { promise, resolve, reject }; };
-function playbackHarness({ prepare, autoplayRejected = false } = {}) {
+function playbackHarness({ prepare, autoplayRejected = false, clock = null } = {}) {
   const nodes = new Map();
   const $ = (key) => { if (!nodes.has(key)) nodes.set(key, new Element()); return nodes.get(key); };
   const logs = [];
   const video = new Element();
-  const context = vm.createContext({ $, video, URL, AbortController, setTimeout, clearTimeout, location: { href: 'https://example.test/' },
-    nextLibraryEpisode, isNextEpisodeTime, invalidateLibraryProgress() {}, state: { library: [episode('one', 1), episode('two', 2, { still: 'https://image.test/two.jpg' })], libraryShows: [{ id: 'tv-123', backdrop: 'https://image.test/show.jpg' }], progress: {}, view: 'library' },
+  const context = vm.createContext({ $, video, URL, AbortController, setTimeout: clock?.setTimeout || setTimeout, clearTimeout: clock?.clearTimeout || clearTimeout,
+    Date: clock?.Date || Date, location: { href: 'https://example.test/' },
+    nextLibraryEpisode, isNextEpisodeTime, AUTOPLAY_SECONDS, AUTOPLAY_CHAIN, invalidateLibraryProgress() {}, state: { library: [episode('one', 1), episode('two', 2, { still: 'https://image.test/two.jpg' })], libraryShows: [{ id: 'tv-123', backdrop: 'https://image.test/show.jpg' }], progress: {}, view: 'library' },
     current: { ...playing, ready: true, sourceUrl: 'https://example.test/one.mp4', abort: new AbortController(), creditsAt: 800, upNextDismissed: false },
     party: null, nativeSubs: false, onTvVersion: false, seeking: null, hasRemotePlayback: false,
     playerEl: $('#player'), ccBtn: $('#cc-btn'), audioBtn: $('#sync-btn'), helpEl: $('#help'), osdEl: $('#osd'),
@@ -158,16 +156,79 @@ test('Keep watching cancels a pending transition and stays dismissed at the actu
   assert.equal(h.context.current.upNextError, '');
 });
 
-test('Next uses the end-window fallback without chapters and is suppressed in incompatible playback modes', () => {
-  const h = playbackHarness(); h.context.current.creditsAt = null; h.video.currentTime = 960;
-  h.run('updateUpNext()'); assert.equal(h.$('#up-next').hidden, true);
-  h.video.currentTime = 971;
-  h.run('updateUpNext()'); assert.equal(h.$('#up-next').hidden, false);
+test('Next waits for the real end without a credits start and is suppressed in incompatible playback modes', () => {
+  const h = playbackHarness(); h.context.current.creditsAt = null;
+  for (const time of [960, 971, 999.9]) { h.video.currentTime = time; h.run('updateUpNext()'); assert.equal(h.$('#up-next').hidden, true, `hidden at ${time}`); }
   h.video.ended = true; h.run('updateUpNext()'); assert.equal(h.$('#up-next').hidden, false);
   for (const [key, value] of [['party', {}], ['nativeSubs', true], ['seeking', 900]]) {
     h.context[key] = value; h.run('updateUpNext()'); assert.equal(h.$('#up-next').hidden, true); h.context[key] = key === 'nativeSubs' ? false : null;
   }
   h.run('updateUpNext()'); assert.equal(h.$('#up-next').hidden, false);
+  h.run('stopAutoplay(current)');
+});
+
+function fakeClock() {
+  let now = 1e6, id = 0; const timers = new Map();
+  return {
+    Date: { now: () => now },
+    setTimeout: (fn, ms) => { timers.set(++id, { fn, at: now + ms }); return id; },
+    clearTimeout: (t) => timers.delete(t),
+    pending: () => timers.size,
+    advance(ms) {
+      const end = now + ms;
+      for (;;) {
+        const [t, next] = [...timers].sort((x, y) => x[1].at - y[1].at)[0] || [];
+        if (!next || next.at > end) break;
+        timers.delete(t); now = next.at; next.fn();
+      }
+      now = end;
+    },
+  };
+}
+
+test('the countdown starts with the credits, pauses with the video and plays the next episode', async () => {
+  const clock = fakeClock(); const h = playbackHarness({ clock });
+  h.video.currentTime = 799.9; h.run('updateUpNext()');
+  assert.equal(h.$('#up-next').hidden, true);
+  assert.equal(clock.pending(), 0, 'no countdown before the credits');
+  h.video.currentTime = 800; h.run('updateUpNext()');
+  assert.equal(h.$('#up-next').hidden, false);
+  assert.equal(h.$('#up-next-play').textContent, `Next episode in ${AUTOPLAY_SECONDS}`);
+  assert.match(h.$('#up-next-status').textContent, /Plays in 10 seconds/);
+  clock.advance(4000);
+  assert.equal(h.$('#up-next-play').textContent, `Next episode in ${AUTOPLAY_SECONDS - 4}`);
+  h.video.paused = true; clock.advance(30000);
+  assert.equal(h.context.current.id, 'one', 'a pause during the credits pauses the countdown');
+  h.video.paused = false; clock.advance(5900);
+  assert.equal(h.context.current.id, 'one');
+  clock.advance(200);
+  await new Promise((r) => setImmediate(r));
+  assert.equal(h.context.current.id, 'two');
+  assert.ok(h.logs.some((entry) => entry.play === 'two'));
+});
+
+test('Keep watching and seeking back cancel the countdown; it restarts in full at the credits', () => {
+  const clock = fakeClock(); const h = playbackHarness({ clock });
+  h.video.currentTime = 850; h.run('updateUpNext()');
+  clock.advance(6000);
+  h.video.currentTime = 700; h.run('updateUpNext()');
+  assert.equal(h.$('#up-next').hidden, true); assert.equal(clock.pending(), 0);
+  clock.advance(20000); assert.equal(h.context.current.id, 'one');
+  h.video.currentTime = 801; h.run('updateUpNext()');
+  assert.equal(h.$('#up-next-play').textContent, `Next episode in ${AUTOPLAY_SECONDS}`);
+  h.$('#up-next-dismiss').click();
+  assert.equal(clock.pending(), 0);
+  h.video.ended = true; h.run('updateUpNext()'); clock.advance(60000);
+  assert.equal(h.context.current.id, 'one'); assert.equal(h.$('#up-next').hidden, true);
+});
+
+test('after a few unattended episodes the card waits for a person', () => {
+  const clock = fakeClock(); const h = playbackHarness({ clock });
+  h.run(`autoChain = ${AUTOPLAY_CHAIN}`);
+  h.video.currentTime = 850; h.run('updateUpNext()');
+  assert.equal(h.$('#up-next').hidden, false);
+  assert.equal(h.$('#up-next-play').textContent, 'Next episode');
+  assert.equal(clock.pending(), 0);
 });
 
 test('closed-session credits, links and metadata cannot revive playback or seek the next file', async () => {
