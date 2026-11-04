@@ -39,6 +39,15 @@ export function initHouse({ dataDir, mediaDir, clipsDir, qbitCheck }) {
 
 export const houseConfigured = () => Boolean(TOKEN);
 
+// "magi" for a request from the desktop: the address its last report or boot poll came from.
+export function hostForIp(ip) {
+  ip = clean(ip);
+  if (!ip) return null;
+  if (ip === '127.0.0.1' || ip === '::1') return 'this server';
+  const all = [...Object.values(machines), ...Object.values(power)].sort((a, b) => b.at - a.at);
+  return all.find((m) => m.ip === ip)?.host || null;
+}
+
 // ---------- who may report ----------
 const clean = (ip) => String(ip || '').replace(/^::ffff:/i, '').replace(/%.*$/, '').trim();
 function privateIp(ip) {

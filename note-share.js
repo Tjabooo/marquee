@@ -7,6 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import { trackChild } from './load.js';
 import { page, baseUrl, esc } from './clips.js';
 
 const FFMPEG = process.env.FFMPEG || 'ffmpeg';
@@ -38,6 +39,7 @@ function run(cmd, args) {
   return new Promise((resolve, reject) => {
     let child;
     try { child = spawn(cmd, args, { windowsHide: true }); } catch (e) { return reject(e); }
+    trackChild(child, cmd, args, 'note-share');
     let out = '', err = '';
     child.stdout.on('data', (d) => { out += d; });
     child.stderr.on('data', (d) => { err = (err + d).slice(-2000); });

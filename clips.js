@@ -10,6 +10,7 @@
 // so sharing makes a full-resolution, near-lossless H.264 copy with the tracks mixed into one.
 // Unsharing kills the link and deletes that copy.
 import fs from 'node:fs';
+import { trackChild } from './load.js';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
@@ -109,6 +110,7 @@ function run(cmd, args) {
   return new Promise((resolve, reject) => {
     let child;
     try { child = spawn(cmd, args, { windowsHide: true }); } catch (e) { return reject(e); }
+    trackChild(child, cmd, args, 'clips');
     let out = '';
     let err = '';
     child.stdout.on('data', (d) => { out += d; });

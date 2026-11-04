@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
+import { trackChild } from './load.js';
 
 const FFMPEG = process.env.FFMPEG || 'ffmpeg';
 const FFPROBE = process.env.FFPROBE || 'ffprobe';
@@ -356,6 +357,7 @@ function run(cmd, args, { onStdout, priorityLow = false } = {}) {
     let child;
     try { child = spawn(cmd, args, { windowsHide: true }); } catch (e) { return reject(e); }
     children.add(child);
+    trackChild(child, cmd, args, 'convert');
     child.on('close', () => children.delete(child));
     if (priorityLow) {
       try { os.setPriority(child.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch { /* not allowed */ }

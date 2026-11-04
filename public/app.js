@@ -4451,7 +4451,185 @@ function activityDevice(entry) {
 // ---------- house (server owner only) ----------
 // The home server's own health plus the machines that report in (laptop, desktop): house.js.
 async function loadHouse() {
-  try { state.house = await api('/api/house'); state.houseError = null; } catch (err) { state.houseError = err.message; }
+  const [r, l] = await Promise.allSettled([api('/api/house'), api(`/api/house/load?hours=${state.houseHours || 1}`)]);
+  if (r.status === 'fulfilled') { state.house = r.value; state.houseError = null; } else state.houseError = r.reason.message;
+  state.houseLoad = l.status === 'fulfilled' ? l.value : null;
+}
+
+// ---------- house → sharing: what streams and encodes cost the server (load.js) ----------
+const mbps = (bytesPerSec) => (bytesPerSec * 8) / 1e6;
+function fmtMbit(bytesPerSec, unit = true) {
+  const v = mbps(bytesPerSec || 0);
+  const t = v >= 1000 ? `${(v / 1000).toFixed(1)} G` : v >= 10 ? `${Math.round(v)}` : v >= 0.05 ? v.toFixed(1) : '0';
+  return unit ? `${t}${t.endsWith('G') ? 'bit/s' : ' Mbit/s'}` : t;
+}
+const fmtFor = (ms) => {
+  const s = Math.max(0, Math.round(ms / 1000));
+  if (s < 60) return `${s} s`;
+  if (s < 3600) return `${Math.floor(s / 60)} min`;
+  return `${Math.floor(s / 3600)} h ${Math.floor((s % 3600) / 60)} min`;
+};
+// A meter row: name · bar · reading. `parts` are [value, class] segments of `max`.
+function loadRow(name, parts, max, reading, title) {
+  const total = parts.reduce((a, [v]) => a + (v || 0), 0);
+  const full = max && total / max >= 0.85;
+  return h('div', { class: 'house-disk load-row', title },
+    h('span', { class: 'house-disk-name' }, name),
+    h('span', { class: `meter${full ? ' is-full' : ''}`, role: 'img', 'aria-label': `${name}: ${reading}` },
+      parts.map(([v, cls]) => h('i', { class: cls || null, style: `width:${max ? Math.min(100, (100 * (v || 0)) / max) : 0}%` }))),
+    h('span', { class: 'house-disk-free' }, reading));
+}
+const WHERE = { internet: 'internet', lan: 'home network', tv: 'TV' };
+
+// A small history chart (one series), with a readout that follows the pointer.
+function loadChart(title, points, { value, peak, max, fmt, empty }) {
+  const W = 300, H = 64;
+  const head = h('div', { class: 'load-chart-head' }, h('span', {}, title), h('span', { class: 'load-chart-read' }));
+  const read = head.lastChild;
+  const wrap = h('div', { class: 'load-chart' }, head);
+  if (points.length < 2) { wrap.append(h('p', { class: 'muted load-chart-empty' }, empty)); return wrap; }
+  const top = Math.max(max ?? 0, ...points.map((p) => peak(p) ?? value(p) ?? 0)) || 1;
+  const x = (i) => (i / (points.length - 1)) * W;
+  const y = (v) => H - 2 - ((v || 0) / top) * (H - 6);
+  const line = points.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(value(p)).toFixed(1)}`).join('');
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('preserveAspectRatio', 'none');
+  svg.setAttribute('class', 'load-spark');
+  svg.setAttribute('role', 'img');
+  svg.setAttribute('aria-label', `${title}: latest ${fmt(value(points[points.length - 1]))}, highest ${fmt(top)}`);
+  svg.innerHTML = `<path class="load-area" d="${line}L${W},${H}L0,${H}Z"/><path class="load-line" d="${line}"/>`
+    + `<line class="load-cursor" x1="0" x2="0" y1="0" y2="${H}" visibility="hidden"/>`;
+  const cursor = svg.lastChild;
+  const stamp = (p) => `${clock(p.t)} · ${fmt(value(p))}${peak(p) != null && peak(p) > (value(p) || 0) ? ` (peak ${fmt(peak(p))})` : ''}`;
+  const latest = () => { read.textContent = `now ${fmt(value(points[points.length - 1]))} · top ${fmt(top)}`; cursor.setAttribute('visibility', 'hidden'); };
+  const show = (ev) => {
+    const r = svg.getBoundingClientRect();
+    const i = Math.max(0, Math.min(points.length - 1, Math.round(((ev.clientX - r.left) / r.width) * (points.length - 1))));
+    cursor.setAttribute('x1', x(i)); cursor.setAttribute('x2', x(i)); cursor.setAttribute('visibility', 'visible');
+    read.textContent = stamp(points[i]);
+  };
+  svg.addEventListener('pointermove', show);
+  svg.addEventListener('pointerdown', show);
+  svg.addEventListener('pointerleave', latest);
+  latest();
+  wrap.append(svg, h('div', { class: 'load-chart-axis muted' },
+    h('span', {}, clock(points[0].t)), h('span', {}, clock(points[points.length - 1].t))));
+  return wrap;
+}
+
+function sharingSection(L) {
+  const out = [h('div', { class: 'load-head' }, h('h3', { class: 'activity-head' }, 'Sharing'),
+    segmented([[1, 'Last hour'], [24, 'Last day']], state.houseHours || 1, async (hours) => {
+      state.houseHours = hours; await loadHouse(); if (state.view === 'house') renderHouse();
+    }, 'History'))];
+  if (!L) { out.push(h('p', { class: 'muted' }, 'Couldn’t read the server’s load.')); return out; }
+  const lim = L.limits || {};
+
+  const rows = [];
+  const inet = L.internet || {};
+  const upNow = (inet.streams || 0) + (inet.torrents || 0);
+  const upMax = lim.uploadMbps ? (lim.uploadMbps * 1e6) / 8 : null;
+  rows.push(loadRow('Internet upload', [[inet.streams, null], [inet.torrents, 'is-alt']], upMax,
+    `${fmtMbit(upNow, false)}${upMax ? ` of ${lim.uploadMbps}` : ''} Mbit/s`,
+    'Marquee streams going out through Cloudflare, plus qBittorrent seeding. Set UPLOAD_MBPS in .env to the connection’s upload speed.'));
+  rows.push(h('div', { class: 'load-legend muted' },
+    h('span', {}, h('i', { class: 'load-key' }), `streams ${fmtMbit(inet.streams)}`),
+    inet.torrents != null && h('span', {}, h('i', { class: 'load-key is-alt' }), `torrents ${fmtMbit(inet.torrents)}${inet.torrentLimit ? ` (capped at ${fmtMbit(inet.torrentLimit)})` : ''}`),
+    h('span', {}, `home network ${fmtMbit(L.lan?.streams)}`)));
+  if (L.net) {
+    const link = lim.linkMbps ? (lim.linkMbps * 1e6) / 8 : null;
+    rows.push(loadRow('Network card', [[L.net.up, null]], link,
+      `↑ ${fmtMbit(L.net.up, false)} · ↓ ${fmtMbit(L.net.down, false)}${link ? ` of ${Math.round(lim.linkMbps)}` : ''} Mbit/s`,
+      'Everything the server sends and receives, from every program.'));
+  }
+  if (L.cpu != null) rows.push(loadRow('CPU', [[L.cpu, null]], 100, `${L.cpu} %${L.marqueeCpu != null ? ` · Marquee ${L.marqueeCpu} %` : ''}`));
+  const g = L.gpu;
+  if (g) {
+    rows.push(loadRow('GPU encoder', [[g.enc, null]], 100,
+      `${g.enc ?? 0} % · ${g.sessions ?? 0} of ${lim.nvencSessions} encodes${g.temp != null ? ` · ${g.temp} °C` : ''}`,
+      `${g.name}: NVENC is the hardware encoder conversions use. GPU ${g.busy ?? 0} % busy, decoder ${g.dec ?? 0} %.`));
+  }
+  for (const d of (L.disks || []).filter((x) => x.label).sort((a, b) => (a.label === 'Media' ? -1 : b.label === 'Media' ? 1 : 0))) {
+    rows.push(loadRow(`${d.label} drive ${d.drive}:`, [[d.busy, null]], 100, `${d.busy} % busy · reads ${fmtBytes(d.read)}/s`,
+      `Writes ${fmtBytes(d.write)}/s. A drive near 100 % busy makes streams from it stutter.`));
+  }
+  if (!L.sampled) rows.push(h('p', { class: 'muted load-note' }, 'Machine readings are starting (or only work on the Windows server); streams and jobs are still counted.'));
+
+  const hist = L.history || [];
+  const span = (state.houseHours || 1) === 24 ? 'last day' : 'last hour';
+  out.push(h('div', { class: 'house-card' },
+    (L.warnings || []).length > 0 && h('ul', { class: 'load-warnings' }, L.warnings.map((w) => h('li', {}, w))),
+    rows,
+    h('div', { class: 'load-charts' },
+      loadChart('Internet upload', hist, {
+        value: (p) => (p.inet || 0) + (p.tor || 0), peak: (p) => (p.inetMax != null ? p.inetMax + (p.tor || 0) : null),
+        fmt: (v) => fmtMbit(v), empty: `History builds up a minute at a time (${span}).`,
+      }),
+      loadChart('CPU', hist, { value: (p) => p.cpu, peak: (p) => p.cpuMax, max: 100, fmt: (v) => `${Math.round(v || 0)} %`, empty: `History builds up a minute at a time (${span}).` }))));
+
+  const streams = L.streams || [];
+  out.push(h('div', { class: 'house-card' },
+    h('div', { class: 'house-card-head' }, h('span', { class: 'row-title' }, streams.length ? `Streaming now · ${streams.length}` : 'Streaming now'),
+      h('span', { class: 'muted house-seen' }, `checked ${clock(L.at)}`)),
+    !streams.length ? h('p', { class: 'muted' }, 'Nothing is being watched.')
+      : h('ul', { class: 'load-list' }, streams.map((s) => {
+        const slow = s.needs && !s.waiting && s.avg < s.needs * 0.9 && Date.now() - s.since > 60000;
+        return h('li', {},
+          h('span', { class: `activity-dot${slow ? ' is-bad' : ' is-on'}`, 'aria-hidden': 'true' }),
+          h('div', { class: 'load-item' },
+            h('span', { class: 'row-title' }, s.label),
+            h('span', { class: 'row-meta' },
+              h('span', {}, [s.who, s.device].filter(Boolean).join(' · ')),
+              h('span', {}, s.where === 'internet' && s.fromHome ? 'internet (from home, via Cloudflare)' : WHERE[s.where] || s.where),
+              h('span', {}, s.waiting ? 'buffered ahead' : `${fmtMbit(s.rate)} now`),
+              h('span', {}, `avg ${fmtMbit(s.avg)}`),
+              s.needs && h('span', { class: slow ? 'load-bad' : null }, `file needs ${fmtMbit(s.needs)}`),
+              h('span', {}, `${fmtBytes(s.sent)} sent · ${fmtFor(Date.now() - s.since)}`))));
+      }))));
+
+  const jobs = L.jobs || [];
+  out.push(h('div', { class: 'house-card' },
+    h('div', { class: 'house-card-head' }, h('span', { class: 'row-title' }, jobs.length ? `Encoding now · ${jobs.length}` : 'Encoding now')),
+    !jobs.length ? h('p', { class: 'muted' }, 'No clip copies, conversions or previews are being made.')
+      : h('ul', { class: 'load-list' }, jobs.map((j) => h('li', {},
+        h('span', { class: 'activity-dot is-on', 'aria-hidden': 'true' }),
+        h('div', { class: 'load-item' },
+          h('span', { class: 'row-title' }, `${j.kind} · ${j.label}`),
+          h('span', { class: 'row-meta' },
+            j.encoder && h('span', {}, j.encoder),
+            h('span', {}, j.cpu != null ? `CPU ${j.cpu} %` : 'CPU …'),
+            j.mem && h('span', {}, `RAM ${fmtBytes(j.mem)}`),
+            j.percent != null && h('span', {}, `${j.percent} %${j.speed ? ` · ${j.speed}` : ''}`),
+            h('span', {}, `running ${fmtFor(Date.now() - j.since)}`))))))));
+
+  const top = L.top || [];
+  if (top.length) {
+    out.push(h('div', { class: 'house-card' },
+      h('div', { class: 'house-card-head' }, h('span', { class: 'row-title' }, 'Busiest programs')),
+      h('ul', { class: 'load-top' }, top.map((p) => h('li', {},
+        h('span', { class: 'house-svc-name' }, p.name), h('span', { class: 'muted' }, `${p.cpu} % CPU${p.mem ? ` · ${fmtBytes(p.mem)}` : ''}${p.job ? ' · Marquee job' : ''}`))))));
+  }
+
+  const recent = L.recent || [];
+  if (recent.length) {
+    out.push(h('details', { class: 'house-card load-recent', open: state.houseRecentOpen || null, ontoggle: (e) => { state.houseRecentOpen = e.currentTarget.open; } },
+      h('summary', { class: 'row-title' }, `Recently finished · ${recent.length}`),
+      h('ul', { class: 'load-list' }, recent.map((r) => h('li', {},
+        h('span', { class: `activity-dot${r.type === 'job' && r.ok === false ? ' is-bad' : ''}`, 'aria-hidden': 'true' }),
+        h('div', { class: 'load-item' },
+          h('span', { class: 'row-title' }, r.type === 'job' ? `${r.kind} · ${r.label}` : r.label),
+          h('span', { class: 'row-meta' },
+            h('span', {}, `${clock(r.start)}–${clock(r.end)} (${fmtFor(r.end - r.start)})`),
+            r.type === 'stream' && h('span', {}, `${r.who} · ${WHERE[r.where] || r.where}`),
+            r.type === 'stream' && h('span', {}, `avg ${fmtMbit(r.avg)} · peak ${fmtMbit(r.peak)}${r.needs ? ` · needs ${fmtMbit(r.needs)}` : ''}`),
+            r.type === 'stream' && h('span', {}, `${fmtBytes(r.sent)} sent`),
+            r.type === 'job' && r.encoder && h('span', {}, r.encoder),
+            r.type === 'job' && r.cpu != null && h('span', {}, `CPU avg ${r.cpu} %${r.peak ? `, peak ${r.peak} %` : ''}`),
+            r.type === 'job' && r.ok === false && h('span', { class: 'load-bad' }, 'failed'))))))));
+  }
+  return out;
 }
 
 function meter(used, size) {
@@ -4499,6 +4677,8 @@ function renderHouse() {
         h('span', { class: `activity-dot${x.ok ? ' is-on' : ' is-bad'}`, 'aria-hidden': 'true' }),
         h('span', { class: 'house-svc-name' }, x.name), h('span', { class: 'muted' }, x.detail))))));
   }
+
+  if (!q || norm('sharing streams streaming encoding upload cpu gpu').includes(q)) out.push(...sharingSection(state.houseLoad));
 
   const powered = (r.power || []).filter((pw) => !q || norm(`power ${pw.host} ${pw.entries.map((e) => e.label).join(' ')}`).includes(q));
   if (powered.length) {

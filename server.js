@@ -15,6 +15,7 @@ import * as subtitles from './subtitles.js';
 import * as subsync from './subsync.js';
 import * as activity from './activity.js';
 import * as house from './house.js';
+import * as load from './load.js';
 import * as clips from './clips.js';
 import * as invites from './invites.js';
 import * as shows from './shows.js';
@@ -87,6 +88,18 @@ house.initHouse({
   mediaDir: MEDIA_DIR,
   clipsDir: process.env.CLIPS_DIR ? path.resolve(process.env.CLIPS_DIR) : null,
   qbitCheck: QBIT_URL ? async () => (await qbitRequest('/api/v2/app/version')).ok : null,
+});
+load.initLoad({
+  dataDir: ROOT,
+  mediaDir: MEDIA_DIR,
+  clipsDir: process.env.CLIPS_DIR,
+  ipName: house.hostForIp,
+  conversionStatus: () => converter.converterStatus().current,
+  torrentsUp: QBIT_URL ? async () => {
+    const r = await qbitRequest('/api/v2/transfer/info');
+    const t = await r.json();
+    return { up: t.up_info_speed || 0, down: t.dl_info_speed || 0, upLimit: t.up_rate_limit || null };
+  } : null,
 });
 shows.initShows({ dataDir: ROOT });
 clips.initClips({ dataDir: ROOT, getEncoder: () => converter.converterStatus().encoder });
@@ -1060,7 +1073,33 @@ const infoFor = (file) => {
 };
 
 // ---------- streaming (HTTP range requests) ----------
-async function sendVideo(req, res, file, { captionUrl, headers = {} } = {}) {
+// What House → Sharing calls a stream: "House S02 E06", "Clip · dust2 ace".
+const CLIPS_ROOT = process.env.CLIPS_DIR ? path.resolve(process.env.CLIPS_DIR) : null;
+function streamLabel(file) {
+  if (CLIPS_ROOT && file.startsWith(CLIPS_ROOT + path.sep)) return `Clip · ${path.basename(file).replace(/\.[a-z0-9]{2,4}$/i, '')}`;
+  const info = parseFile(file);
+  const ep = info.season != null ? ` S${String(info.season).padStart(2, '0')} E${String(info.episode).padStart(2, '0')}` : '';
+  return `${info.title}${info.year && !ep ? ` (${info.year})` : ''}${ep}`;
+}
+// The TV a cast is being served to, from the cast session that holds this file's link.
+function tvFor(req) {
+  const m = /^\/(?:api\/stream|play)\/(lib|dl)\/([A-Za-z0-9_-]+)(?:\/([\w-]+))?/.exec(req.url || '');
+  if (!m || /[?&]browser\b/.test(req.url) || (req.url.startsWith('/play/') && m[3] !== 'tv')) return null;
+  const s = cast.listSessions().find((x) => x.media?.ref?.kind === m[1] && x.media?.ref?.id === m[2]);
+  const ip = String(req.socket.remoteAddress || '').replace(/^::ffff:/i, '');
+  return s?.deviceName || house.hostForIp(ip) || `TV at ${ip}`;
+}
+function trackStream(req, file, size, label) {
+  const email = String(req.headers['cf-access-authenticated-user-email'] || '').trim().toLowerCase();
+  return load.trackStream(req, {
+    file, size, label: label || streamLabel(file),
+    who: email ? accounts.displayNameFor(email) : null,
+    tv: req.headers['cf-ray'] ? null : tvFor(req),
+    fromHome: req.headers['cf-ray'] ? isHomeRequest(req) : null,
+  });
+}
+
+async function sendVideo(req, res, file, { captionUrl, headers = {}, label = null } = {}) {
   let stat;
   try { stat = await fs.promises.stat(file); } catch { throw new HttpError(404, 'That file is no longer on the server.'); }
   const size = stat.size;
@@ -1099,7 +1138,10 @@ async function sendVideo(req, res, file, { captionUrl, headers = {} } = {}) {
 
   res.writeHead(status, { ...base, 'Content-Length': end - start + 1 });
   if (req.method === 'HEAD') return res.end();
-  pipeline(fs.createReadStream(file, { start, end }), res, () => {}); // aborted by seeks; safe to ignore
+  const meter = trackStream(req, file, size, label);
+  const read = fs.createReadStream(file, { start, end });
+  read.on('data', (chunk) => meter.add(chunk.length));
+  pipeline(read, res, () => meter.done()); // aborted by seeks; safe to ignore
 }
 
 // ---------- casting ----------
@@ -1205,6 +1247,11 @@ async function handleApi(req, res, url) {
     if (!house.agentAllowed(req) && !activity.isAdmin(req)) throw new HttpError(403, 'Not allowed.');
     return sendJson(res, 200, await house.houseSummary());
   }
+  // What sharing costs the server right now (load.js): House → Sharing, Archfleet, the machines' panels.
+  if (p === '/api/house/load') {
+    if (!house.agentAllowed(req) && !activity.isAdmin(req)) throw new HttpError(403, 'Not allowed.');
+    return sendJson(res, 200, load.loadReport({ hours: url.searchParams.get('hours') === '24' ? 24 : 1 }));
+  }
   // `marquee-house boot` (root, on a dual-boot machine): reports its boot menu + network card and
   // gets back whether to restart, and into what (house.js, "power").
   if (p === '/api/house/boot' && req.method === 'POST') {
@@ -1213,6 +1260,10 @@ async function handleApi(req, res, url) {
   }
 
   activity.seen(req);
+  { // video requests often come without the Access email: remember who this visitor's address is
+    const email = String(req.headers['cf-access-authenticated-user-email'] || '').trim().toLowerCase();
+    if (email && req.headers['cf-connecting-ip']) load.noteVisitor(req.headers['cf-connecting-ip'], accounts.displayNameFor(email));
+  }
   const user = accounts.userFor(req);
 
   // Watch-room links still require the normal Cloudflare sign-in. A room grants access to this
@@ -1307,7 +1358,7 @@ async function handleApi(req, res, url) {
       const type = url.searchParams.get('view') === '1' && mediaType(file.full,file.mime);
       return sendVideo(req,res,file.full,{headers:{ 'Content-Type':type || 'application/octet-stream',
         'Content-Disposition': `${type ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(file.name)}`,
-        'X-Content-Type-Options':'nosniff', 'Cache-Control':'no-store' }});
+        'X-Content-Type-Options':'nosniff', 'Cache-Control':'no-store' }, label: `Note · ${file.name}`});
     }
     if (p === '/api/admin/notes') {
       if (req.method === 'GET') {

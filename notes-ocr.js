@@ -3,6 +3,7 @@
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { trackChild } from './load.js';
 
 const SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'notes-ocr.ps1');
 const BATCH = 20, RETRY = 10 * 60000, MAX_TEXT = 20000;
@@ -12,6 +13,7 @@ export function windowsOcr(files) {
   return new Promise((resolve, reject) => {
     const exe = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
     const child = spawn(exe, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', SCRIPT], { windowsHide: true });
+    trackChild(child, exe, [`${files.length} image${files.length === 1 ? '' : 's'}`], 'ocr');
     let out = '', err = '';
     const timer = setTimeout(() => child.kill(), 60000 + files.length * 30000);
     child.stdout.setEncoding('utf8').on('data', (c) => { out += c; });
