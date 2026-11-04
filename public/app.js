@@ -1019,6 +1019,10 @@ function renderShow() {
   const open = single ? seasons[0] : seasons.find(se => se.number === showView.season);
   const pick = n => { showView.season = n; renderShow(); $('#sheet').scrollTo({ top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); };
   const pendingFor = n => entry.transfers.filter(d => d.season === n || (d.episodes || []).some(ep => ep.season === n));
+  // One click (plus a confirmation) for a whole season or the whole show.
+  const seasonFiles = open ? files.filter(f => f.season === open.number) : [];
+  const deleteShow = files.length > 0 && h('button', { type: 'button', class: 'chip delete-many', onclick: e => openDeleteMany({ files, what: 'show', label: show.title, onDone: closeTopOverlay }, e.currentTarget) }, icon('trash'), 'Delete show');
+  const deleteSeason = !single && seasonFiles.length > 0 && h('button', { type: 'button', class: 'chip delete-many', onclick: e => openDeleteMany({ files: seasonFiles, what: 'season', label: `${show.title} · ${open.name}`, onDone: () => { showView.season = null; renderShow(); } }, e.currentTarget) }, icon('trash'), 'Delete season');
   let content;
   if (!open) content = [h('h3', {}, 'Seasons'), h('ul', { class: 'grid season-grid' }, seasons.map(se => {
     const ready = episodeCount(files.filter(f => f.season === se.number)), transfers = pendingFor(se.number).filter(d => !d.done);
@@ -1044,10 +1048,6 @@ function renderShow() {
   }
   // The same Download panel as in Discover, opened on the season you're looking at.
   const tv = canGet() && show.tmdbId ? showDownload({ id: show.tmdbId, title: show.title, type: 'tv' }, { season: open?.number ?? null }) : null;
-  // One click (plus a confirmation) for a whole season or the whole show.
-  const seasonFiles = open ? files.filter(f => f.season === open.number) : [];
-  const deleteShow = files.length > 0 && h('button', { type: 'button', class: 'chip delete-many', onclick: e => openDeleteMany({ files, what: 'show', label: show.title, onDone: closeTopOverlay }, e.currentTarget) }, icon('trash'), 'Delete show');
-  const deleteSeason = !single && seasonFiles.length > 0 && h('button', { type: 'button', class: 'chip delete-many', onclick: e => openDeleteMany({ files: seasonFiles, what: 'season', label: `${show.title} · ${open.name}`, onDone: () => { showView.season = null; renderShow(); } }, e.currentTarget) }, icon('trash'), 'Delete season');
   $('#sheet-body').replaceChildren(h('div', { class: `sheet-hero${show.backdrop ? '' : ' no-image'}`, style: show.backdrop ? `background-image:url("${show.backdrop}")` : null }),
     h('div', { class: 'sheet-content' }, h('h2', { id: 'sheet-title' }, show.title), h('ul', { class: 'facts' }, [show.year, 'Series', libraryAvailability(entry)].filter(Boolean).map(text => h('li', {}, text))),
       h('div', { class: 'title-actions' }, (tv || deleteShow) && h('div', { class: 'action-row' }, tv?.toggle, deleteShow), tv?.panel, transferPanel(entry)),
