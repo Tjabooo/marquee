@@ -125,7 +125,7 @@ All settings live in `.env`. Changes take effect after a restart.
 | `CF_API_TOKEN` | | Cloudflare API token for invites, permission *Account · Zero Trust → Edit*. |
 | `CF_ACCOUNT_ID` / `CF_ACCESS_LIST_ID` | | The Cloudflare account and the email list your Marquee policy allows. |
 | `INVITE_DAYS` | `7` | How long an unused invite link works. |
-| `UPLOAD_MBPS` | | The internet connection's upload speed in Mbit/s (run a speed test on the server). House → Sharing shows streams plus qBittorrent seeding against it and warns when it's nearly full. |
+| `UPLOAD_MBPS` | | The internet connection's upload speed in Mbit/s. Measure it on the server with several connections at once: a single upload rarely fills a fast line. House → Sharing shows streams plus qBittorrent seeding against it and warns when it's nearly full. |
 | `NVENC_SESSION_LIMIT` | `8` | Hardware encodes the GPU runs at once (GeForce cards: 8 on current drivers). |
 | `LOAD_SAMPLER` | | `off` stops House → Sharing reading Windows performance counters and `nvidia-smi` every 5 s. |
 | `WOL_BROADCAST` | | Extra addresses for Wake-on-LAN packets, comma-separated. Only needed if waking doesn't work: the server already sends to its own network's broadcast address and `255.255.255.255`. |

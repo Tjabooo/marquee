@@ -28,14 +28,20 @@ const THREADS = Math.max(1, os.cpus().length);
 // ---------- rates ----------
 // Bytes per second over the last RATE_WINDOW whole seconds (the current second is still filling).
 export class Rate {
-  constructor() { this.sec = 0; this.buckets = new Float64Array(RATE_WINDOW + 1); this.total = 0; }
+  constructor() { this.sec = 0; this.buckets = new Float64Array(RATE_WINDOW + 1); this.total = 0; this.active = 0; }
   roll(now) {
     const s = Math.floor(now / 1000);
     if (s - this.sec > RATE_WINDOW) this.buckets.fill(0);
     else for (let t = this.sec + 1; t <= s; t++) this.buckets[t % this.buckets.length] = 0;
     if (s > this.sec) this.sec = s;
   }
-  add(n, now = Date.now()) { this.roll(now); this.buckets[this.sec % this.buckets.length] += n; this.total += n; }
+  add(n, now = Date.now()) {
+    this.roll(now);
+    const i = this.sec % this.buckets.length;
+    if (!this.buckets[i]) this.active++; // seconds in which anything was sent
+    this.buckets[i] += n;
+    this.total += n;
+  }
   perSec(now = Date.now()) {
     this.roll(now);
     let sum = 0;
@@ -62,6 +68,8 @@ let sys = null;                  // latest machine sample: { at, cpu, net, disks
 let gpu = null;                  // latest nvidia-smi reading
 let torrents = null;             // latest qBittorrent reading
 let torrentAsking = false;
+const SUSTAINED_TICKS = 6;      // 30 s: a buffering burst is not a full line
+const upRecent = [];             // internet upload (streams + torrents) at each tick
 let marqueeCpu = { at: Date.now(), usage: process.cpuUsage(), pct: null };
 let fallbackCpu = null;
 const prevProcs = new Map();     // pid -> { cpu seconds, at }
@@ -160,9 +168,17 @@ function bitrateOf(f, size) {
   return bitrates.get(f);
 }
 
+// How fast a stream arrives while it's being sent. Players fetch in bursts as fast as the line allows,
+// then pause once they've buffered ahead, so this is the line's speed for that viewer; pauses and
+// buffering don't lower it. Below what the file needs (with a little margin) = that viewer will buffer.
+const ACTIVE_ENOUGH = 20; // seconds of sending before judging
+const sendingSpeed = (s) => (s.rate.active ? s.rate.total / s.rate.active : 0);
+const isBehind = (s) => Boolean(s.needs) && s.rate.active >= ACTIVE_ENOUGH && sendingSpeed(s) < s.needs * 1.1;
+
 function streamView(s, now) {
   const secs = Math.max(10, (now - s.started) / 1000); // the opening burst would make a short average meaningless
   return {
+    speed: Math.round(sendingSpeed(s)), behind: isBehind(s),
     who: s.who, device: s.device, where: s.where, fromHome: s.fromHome, label: s.label,
     since: s.started, rate: Math.round(s.rate.perSec(now)), avg: Math.round(s.rate.total / secs),
     needs: s.needs == null ? null : Math.round(s.needs), sent: s.rate.total,
@@ -375,6 +391,8 @@ function tick() {
 
   const g = gpu && now - gpu.at < 3 * TICK_MS ? gpu : null;
   const mediaDisk = watched.length && fresh ? fresh.disks[watched[0].drive] : null;
+  upRecent.push(out.internet.perSec(now) + (tor?.up || 0));
+  if (upRecent.length > SUSTAINED_TICKS) upRecent.shift();
   const sample = {
     cpu, inet: out.internet.perSec(now), lan: out.lan.perSec(now), tor: tor?.up ?? null,
     nic: fresh?.net.up ?? null, gpu: g?.busy ?? null, enc: g?.enc ?? null, disk: mediaDisk?.busy ?? null,
@@ -448,9 +466,12 @@ export function loadReport({ hours = 1 } = {}) {
     .map((p) => ({ name: p.pid === process.pid ? 'Marquee' : p.name, pid: p.pid, cpu: p.cpu, mem: p.mem, job: jobPids.has(p.pid) }));
 
   const warnings = [];
-  const upNow = internet.streams + (internet.torrents || 0);
-  if (UPLOAD_MBPS && mbit(upNow) > 0.85 * UPLOAD_MBPS) {
-    warnings.push(`Internet upload is nearly full (${Math.round(mbit(upNow))} of ${UPLOAD_MBPS} Mbit/s): people watching away from home may buffer.`);
+  const upHeld = upRecent.length >= SUSTAINED_TICKS ? Math.min(...upRecent) : 0;
+  if (UPLOAD_MBPS && mbit(upHeld) > 0.85 * UPLOAD_MBPS) {
+    warnings.push(`Internet upload has been nearly full for 30 s (over ${Math.round(mbit(upHeld))} of ${UPLOAD_MBPS} Mbit/s): people watching away from home may buffer.`);
+  }
+  for (const s of live.filter((x) => x.behind)) {
+    warnings.push(`${s.label} (${s.who}) isn’t getting enough: it arrives at ${Math.round(mbit(s.speed))} Mbit/s but the file needs ${Math.round(mbit(s.needs))}, so it will buffer.`);
   }
   if (tor && UPLOAD_MBPS && mbit(tor.up) > 0.5 * UPLOAD_MBPS && live.some((s) => s.where === 'internet')) {
     warnings.push(`qBittorrent is using ${Math.round(mbit(tor.up))} Mbit/s of upload while someone streams over the internet.`);
@@ -478,7 +499,8 @@ export function loadReport({ hours = 1 } = {}) {
 }
 
 // For tests.
-export function _reset() { visitors.clear(); streams.clear(); jobs.clear(); recent = []; history = []; minute = null; sys = null; gpu = null; torrents = null; out.internet = new Rate(); out.lan = new Rate(); }
+export function _reset() { upRecent.length = 0; visitors.clear(); streams.clear(); jobs.clear(); recent = []; history = []; minute = null; sys = null; gpu = null; torrents = null; out.internet = new Rate(); out.lan = new Rate(); }
 export const _tick = () => tick();
 export const _flush = () => flushMinute();
 export const _setSample = (s) => { sys = s; };
+export const _setNeeds = (bytesPerSec) => { for (const s of streams.values()) s.needs = bytesPerSec; };

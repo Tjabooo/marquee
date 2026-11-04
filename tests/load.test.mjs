@@ -100,11 +100,28 @@ test('a video request without a login is named after the person last signed in f
   assert.deepEqual(load.loadReport().streams.map((s) => s.who).sort(), ['Anna', 'Someone (not signed in)']);
 });
 
-test('a nearly full upload is called out', () => {
+test('a full upload is only called out once it lasts, not for one buffering burst', () => {
   load._reset();
   const s = load.trackStream(req({ 'cf-ray': 'x', 'cf-connecting-ip': '81.2.3.4' }, '127.0.0.1'), { file: 'x.mkv', size: 1, who: 'Anna' });
   for (let i = 10; i >= 1; i--) later(-i * 1000, () => s.add(12e6)); // 96 Mbit/s for ten seconds
+  load._tick();
+  assert.doesNotMatch(load.loadReport().warnings.join('\n'), /upload/, 'one reading is a burst');
+  for (let i = 0; i < 5; i++) load._tick();
   const r = load.loadReport();
   assert.equal(r.limits.uploadMbps, 100);
-  assert.match(r.warnings.join('\n'), /upload is nearly full/);
+  assert.match(r.warnings.join('\n'), /upload has been nearly full for 30 s/);
+});
+
+test('a viewer is behind when the stream arrives slower than the file needs, not when it pauses', () => {
+  load._reset();
+  const s = load.trackStream(req({ 'cf-ray': 'x', 'cf-connecting-ip': '81.2.3.4' }, '127.0.0.1'), { file: 'x.mkv', size: 1, who: 'Anna', label: 'Dune' });
+  for (let i = 40; i >= 1; i--) later(-i * 1000, () => s.add(1e6)); // 8 Mbit/s whenever it sends
+  load._setNeeds(2e6); // the file needs 16 Mbit/s
+  let view = load.loadReport();
+  assert.equal(view.streams[0].speed, 1e6);
+  assert.equal(view.streams[0].behind, true);
+  assert.match(view.warnings.join('\n'), /Dune \(Anna\) isn’t getting enough: it arrives at 8 Mbit\/s but the file needs 16/);
+  load._setNeeds(0.5e6); // a 4 Mbit/s file plays fine from the same line, pauses or not
+  view = load.loadReport();
+  assert.equal(view.streams[0].behind, false);
 });

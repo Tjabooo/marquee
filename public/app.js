@@ -4575,7 +4575,7 @@ function sharingSection(L) {
       h('span', { class: 'muted house-seen' }, `checked ${clock(L.at)}`)),
     !streams.length ? h('p', { class: 'muted' }, 'Nothing is being watched.')
       : h('ul', { class: 'load-list' }, streams.map((s) => {
-        const slow = s.needs && !s.waiting && s.avg < s.needs * 0.9 && Date.now() - s.since > 60000;
+        const slow = s.behind;
         return h('li', {},
           h('span', { class: `activity-dot${slow ? ' is-bad' : ' is-on'}`, 'aria-hidden': 'true' }),
           h('div', { class: 'load-item' },
@@ -4584,6 +4584,7 @@ function sharingSection(L) {
               h('span', {}, [s.who, s.device].filter(Boolean).join(' · ')),
               h('span', {}, s.where === 'internet' && s.fromHome ? 'internet (from home, via Cloudflare)' : WHERE[s.where] || s.where),
               h('span', {}, s.waiting ? 'buffered ahead' : `${fmtMbit(s.rate)} now`),
+              s.speed > 0 && h('span', { title: 'How fast it arrives while being sent: the line’s speed for this viewer' }, `arrives at ${fmtMbit(s.speed)}`),
               h('span', {}, `avg ${fmtMbit(s.avg)}`),
               s.needs && h('span', { class: slow ? 'load-bad' : null }, `file needs ${fmtMbit(s.needs)}`),
               h('span', {}, `${fmtBytes(s.sent)} sent · ${fmtFor(Date.now() - s.since)}`))));
