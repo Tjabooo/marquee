@@ -563,7 +563,9 @@ main {
 .subs-top { top: 5%; transform: translateY(var(--drop)); }
 /* Upright phone: dialogue in the empty space under the picture, where it never covers anything */
 .player-subs.subs-below .subs-bottom { top: 100%; bottom: auto; margin-top: 0.6em; transform: none; }
-.sub-cue { max-width: 100%; white-space: pre-line; text-wrap: balance; }
+/* Full width, not shrink-to-fit: Firefox sizes a shrink-to-fit cue without the padding each wrapped
+   line gets, so a line that should just fit drops its last word. */
+.sub-cue { width: 100%; white-space: pre-line; text-wrap: pretty; }
 .sub-cue > span {
   padding: 0.04em 0.35em;
   font-family: var(--body); font-weight: 600; color: #fff;
