@@ -4001,7 +4001,7 @@ window.addEventListener('pageshow', (event) => {
 // ---------- search box + tabs ----------
 const input = $('#q');
 const PLACEHOLDERS = { discover: 'Search films and shows', library: 'Filter your library', downloads: 'Filter downloads', activity: 'Filter by person or title', house: 'Filter machines', clips: 'Filter by game or name', settings: 'Search films and shows', notes: 'Search notes by keyword' };
-const notesView = createNotesView({ h, icon, api, jsonPost, toast, query: () => state.query,
+const notesView = createNotesView({ h, icon, api, jsonPost, toast, copyText, query: () => state.query,
   clearQuery: () => { input.value = state.query = ''; $('#q-clear').hidden = true; } });
 
 function renderView() {
@@ -4955,5 +4955,11 @@ $('#find-torrents').addEventListener('click', (e) => openTorrents({ query: state
   if (start && start !== 'discover') { state.view = null; await setView(start); } else renderDiscover();
   const watchToken = new URL(location.href).searchParams.get('watch');
   if (watchToken) await offerWatchRoom(watchToken);
+  // A shared note link (/c/n/<token>) lands here as ?note=<id>.
+  const noteId = new URL(location.href).searchParams.get('note');
+  if (noteId) {
+    const url = new URL(location.href); url.searchParams.delete('note'); history.replaceState(null, '', url.pathname + url.search + url.hash);
+    if (state.status.admin && /^\d+$/.test(noteId)) { await setView('notes'); await notesView.focus(Number(noteId)); }
+  }
   schedulePoll();
 })();

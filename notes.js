@@ -1,6 +1,7 @@
 // Shared admin-only notes. Stored in the normal Marquee SQLite database and its backups.
 import path from 'node:path';
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import { createRequire } from 'node:module';
 import { importTimestamp } from './public/notes-import.js';
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite');
@@ -58,6 +59,9 @@ export class NotesStore {
     try {
       if (!columns('note_files').includes('text')) this.db.exec('ALTER TABLE note_files ADD COLUMN text TEXT');
       if (!columns('notes').includes('keywords')) this.db.exec("ALTER TABLE notes ADD COLUMN keywords TEXT NOT NULL DEFAULT ''");
+      // A shared note has a random link token (/c/n/<token>); NULL means it isn't shared.
+      if (!columns('notes').includes('share_token')) this.db.exec('ALTER TABLE notes ADD COLUMN share_token TEXT');
+      this.db.exec('CREATE UNIQUE INDEX IF NOT EXISTS notes_share ON notes(share_token) WHERE share_token IS NOT NULL');
       const fts = columns('notes_fts'), rebuild = fts.length > 0 && !fts.includes('keywords');
       if (rebuild) this.db.exec('DROP TRIGGER IF EXISTS notes_ai; DROP TRIGGER IF EXISTS notes_ad; DROP TRIGGER IF EXISTS notes_au; DROP TABLE notes_fts;');
       this.db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(body, keywords, content='notes', content_rowid='id', tokenize='unicode61 remove_diacritics 2');
@@ -113,7 +117,26 @@ export class NotesStore {
     return { id: row.id, text: row.body, attachments, author: row.author,
       createdAt: row.created_at, updatedAt: row.updated_at, version: row.version, pinned: Boolean(row.pinned),
       reminderAt: row.reminder_at, doneAt: row.done_at, deletedAt: row.deleted_at,
-      sourceId: row.source_id, sourceChannel: row.source_channel, originalEditedAt: row.original_edited_at };
+      sourceId: row.source_id, sourceChannel: row.source_channel, originalEditedAt: row.original_edited_at,
+      shareToken: row.share_token || null };
+  }
+  // Share links don't count as edits: the version stays, so an open editor elsewhere can still save.
+  share(id) {
+    const note = this.get(id);
+    if (note.deletedAt) fail(409, 'Restore this note before sharing it.');
+    if (note.shareToken) return note;
+    this.db.prepare('UPDATE notes SET share_token=? WHERE id=? AND share_token IS NULL').run(crypto.randomBytes(12).toString('base64url'), note.id);
+    return this.get(id);
+  }
+  unshare(id) {
+    const note = this.get(id);
+    this.db.prepare('UPDATE notes SET share_token=NULL WHERE id=?').run(note.id);
+    return this.get(id);
+  }
+  // The note behind a public link. Trashed notes stop being reachable.
+  shared(token) {
+    if (!/^[A-Za-z0-9_-]{16}$/.test(token || '')) return null;
+    return this.public(this.db.prepare('SELECT * FROM notes WHERE share_token=? AND deleted_at IS NULL').get(token));
   }
   get(id) {
     if (!Number.isSafeInteger(Number(id)) || Number(id) < 1) fail(404, 'Note not found.');

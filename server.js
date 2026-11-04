@@ -28,6 +28,7 @@ import * as accounts from './accounts.js';
 import { NotesStore } from './notes.js';
 import { NotesUploads, mediaType } from './notes-media.js';
 import { NotesOcr } from './notes-ocr.js';
+import * as noteShare from './note-share.js';
 import { WatchRooms } from './watch.js';
 import { handleWatchPage } from './watch-page.js';
 import { creditsFor } from './credits.js';
@@ -1316,6 +1317,10 @@ async function handleApi(req, res, url) {
       activity.record(req, 'notes-import', `imported ${result.added} notes`);
       return sendJson(res, 200, result);
     }
+    if ((m = p.match(/^\/api\/admin\/notes\/(\d+)\/(share|unshare)$/)) && req.method === 'POST') {
+      const note = m[2] === 'share' ? notes.share(m[1]) : notes.unshare(m[1]);
+      return sendJson(res, 200, { note: noteFor(note), url: note.shareToken ? `${clips.baseUrl(req)}/c/n/${note.shareToken}` : null });
+    }
     if ((m = p.match(/^\/api\/admin\/notes\/(\d+)(?:\/(trash|restore))?$/))) {
       if (req.method === 'GET' && !m[2]) return sendJson(res, 200, { note: noteFor(notes.get(m[1])) });
       if (req.method === 'POST') return sendJson(res, 200, { note: noteFor(notes.update(m[1], await readJson(req), m[2] || 'edit')) });
@@ -1927,16 +1932,17 @@ const server = http.createServer(async (req, res) => {
         || /^\/api\/house\/(report|boot|power)$/.test(url.pathname) || /^\/api\/clips\/[\w-]+\/(share|unshare|delete|trim|rename)$/.test(url.pathname)
         || /^\/api\/access\/(invite|remove|rename|invite\/\w+\/revoke)$/.test(url.pathname) || /^\/c\/i\/[\w-]+\/?$/.test(url.pathname)
         || /^\/api\/(me|me\/progress|library\/add|library\/extend|library\/identify|admin\/settings|admin\/users\/\d+)$/.test(url.pathname)
-        || /^\/api\/admin\/notes(?:\/import|\/\d+(?:\/(?:trash|restore))?)?$/.test(url.pathname)
+        || /^\/api\/admin\/notes(?:\/import|\/\d+(?:\/(?:trash|restore|share|unshare))?)?$/.test(url.pathname)
         || /^\/api\/admin\/notes\/uploads(?:\/[a-f0-9]{32}(?:\/(?:finish|cancel))?)?$/.test(url.pathname)
         || /^\/api\/watch(?:\/[A-Za-z0-9_-]{24}\/(join|heartbeat|control|leave))?$/.test(url.pathname)));
     if (!allowed) throw new HttpError(405, 'Method not allowed.');
     if (url.pathname.startsWith('/api/')) await handleApi(req, res, url);
     else if (url.pathname.startsWith('/play/')) await handlePlay(req, res, url);
-    // Public: shared clips and the Marquee invite card (bypassed in Cloudflare Access; see README)
+    // Public: shared clips, shared note previews and the Marquee invite card (bypassed in Cloudflare Access; see README)
     else if (url.pathname === '/c' || url.pathname.startsWith('/c/')) {
       if (!handleWatchPage(req, res, url, { rooms: watchRooms, artwork: watchArtwork })
-        && !(await invites.handlePublic(req, res, url)) && !(await clips.handlePublic(req, res, url, { sendVideo }))) throw new HttpError(404, 'Not found.');
+        && !(await invites.handlePublic(req, res, url))
+        && !(await noteShare.handlePublic(req, res, url, { notes, nameFor: (email) => accounts.displayNameFor(email) })) && !(await clips.handlePublic(req, res, url, { sendVideo }))) throw new HttpError(404, 'Not found.');
     }
     else await serveStatic(res, url.pathname);
   } catch (err) {

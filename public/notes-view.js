@@ -1,9 +1,9 @@
 import { parseDiscordExport } from './notes-import.js';
 
-export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQuery }) {
-  const state = { items: [], filter: 'all', total: 0, due: 0, cursor: null, loaded: false, loading: false, draft: '', reminder: '', files: [], sending: false, follow: true, edit: null, request: 0 };
+export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQuery, copyText }) {
+  const state = { anchor: null, focus: null, items: [], filter: 'all', total: 0, due: 0, cursor: null, loaded: false, loading: false, draft: '', reminder: '', files: [], sending: false, follow: true, edit: null, request: 0 };
   let shell, history, list, summary, composer, draft, reminder, send, older, error, importing, fileInput, mediaInput, uploads, filterSelect, viewKey, fit;
-  let reminderToggle, reminderChip, reminderText, reminderRemove, reminderClear, attach;
+  let reminderToggle, reminderChip, reminderText, reminderRemove, reminderClear, attach, latest;
   const date = (ms) => new Date(ms).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
   const localInput = (ms) => {
     if (!ms) return '';
@@ -22,12 +22,24 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
       await load();
     } catch (e) { showError(e.message); }
   }
+  // Share links: Discord shows a preview card; opening the link still needs a Marquee sign-in.
+  async function shareNote(note, stop = false) {
+    showError('');
+    try {
+      const r = await api(`/api/admin/notes/${note.id}/${stop ? 'unshare' : 'share'}`, jsonPost({}));
+      Object.assign(note, r.note);
+      if (stop) toast('Link removed');
+      else toast(await copyText(r.url) ? 'Link copied · Discord shows a preview' : r.url);
+      render();
+    } catch (e) { showError(e.message); }
+  }
   function card(note) {
     const editing = state.edit === note.id;
     const row = h('article', { class: `note-message${note.doneAt ? ' is-done' : ''}`, 'data-note-id': note.id },
       h('header', { class: 'note-meta' }, h('strong', {}, note.authorName || 'Admin'),
         h('time', { datetime: new Date(note.createdAt).toISOString(), title: new Date(note.createdAt).toISOString() }, date(note.createdAt)),
         note.pinned && h('span', { class: 'note-tag' }, 'Pinned'),
+        note.shareToken && !note.deletedAt && h('span', { class: 'note-tag is-shared', title: 'Anyone with the link sees a preview; opening it needs Marquee access' }, 'Shared'),
         !note.sourceId && note.version > 1 && h('span', { title: date(note.updatedAt) }, 'edited'),
         note.sourceId && h('span', { class: 'note-tag', title: `Original Discord message ${note.sourceId}` }, 'Discord')));
     if (editing) {
@@ -54,6 +66,8 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
       : [button('Edit', () => { state.edit = note.id; render(); shell.querySelector('.note-edit')?.focus(); }),
         button(note.pinned ? 'Unpin' : 'Pin', () => mutate(note, { pinned: !note.pinned })),
         note.reminderAt && button(note.doneAt ? 'Mark not done' : 'Mark done', () => mutate(note, { done: !note.doneAt })),
+        button(note.shareToken ? 'Copy link' : 'Share', () => shareNote(note)),
+        note.shareToken && button('Stop sharing', () => shareNote(note, true)),
         button('Move to trash', () => mutate(note, {}, 'trash'))];
     row.append(h('div', { class: 'note-actions' }, actions));
     return row;
@@ -136,12 +150,13 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
     summary = h('span', { class: 'note-summary', 'aria-live': 'polite' });
     filterSelect = h('select', { class: 'note-filter', 'aria-label': 'Notes filter' },
       [['all', 'All notes'], ['pinned', 'Pinned'], ['due', 'Due'], ['trash', 'Trash']].map(([key,label]) => h('option', { value:key }, label)));
-    filterSelect.addEventListener('change', () => { state.filter = filterSelect.value; state.edit = null; load(); });
+    filterSelect.addEventListener('change', () => { state.filter = filterSelect.value; state.edit = null; state.anchor = null; load(); });
     const menu = h('details', { class: 'note-menu' });
     menu.append(h('summary', { 'aria-label': 'Notes menu', title: 'Notes menu' }, '⋯'),
       h('div', { class: 'note-menu-panel' },
         button('Refresh', () => { menu.open = false; if (state.edit) { showError('Finish editing before refreshing.'); return; } load(); }),
         button('Import Discord', () => { menu.open = false; fileInput.click(); })));
+    latest = button('Show latest notes', () => { state.anchor = state.focus = null; load(); }, { class: 'retry note-latest', hidden: true });
     older = button('Load older messages', async () => { older.disabled = true; await load(true); older.disabled = false; }, { class: 'retry', hidden: true });
     list = h('div', { class: 'notes-messages', role: 'list', 'aria-label': 'Shared notes' });
     draft = h('textarea', { class: 'note-draft', placeholder: 'Write a note…', 'aria-label': 'New note', maxlength: 30000, rows: 1 }); draft.value = state.draft;
@@ -187,7 +202,7 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
       state.sending = true; closeReminder(); updateComposer(); showError('');
       try {
         await api('/api/admin/notes', jsonPost({ text:draft.value, attachments:state.files.map((f) => f.attachment), reminderAt:reminder.value ? new Date(reminder.value).getTime() : null }));
-        draft.value = state.draft = ''; draft.style.height = ''; reminder.value = state.reminder = ''; state.files = []; state.filter = 'all';
+        draft.value = state.draft = ''; draft.style.height = ''; reminder.value = state.reminder = ''; state.files = []; state.filter = 'all'; state.anchor = state.focus = null;
         updateComposer();
         clearQuery(); await load(); history.scrollTop = history.scrollHeight;
       } catch (err) { showError(err.message); }
@@ -196,7 +211,7 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
     fileInput = h('input', { type: 'file', accept: '.json,.csv,application/json,text/csv', hidden: true, 'aria-label': 'Discord message export' });
     fileInput.addEventListener('change', () => prepareImport(fileInput.files?.[0]));
     importing = h('div', { class: 'note-import', hidden: true });
-    history = h('div', { class: 'notes-history', tabindex: 0, 'aria-label': 'Message history' }, older, list);
+    history = h('div', { class: 'notes-history', tabindex: 0, 'aria-label': 'Message history' }, older, list, latest);
     history.addEventListener('scroll', () => { state.follow = history.scrollHeight - history.scrollTop - history.clientHeight < 48; });
     shell = h('div', { class: 'notes-app' },
       h('div', { class: 'notes-toolbar' }, filterSelect, summary, menu), error, fileInput, importing, history, composer);
@@ -250,6 +265,7 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
     const request = ++state.request; state.loading = true; if (!appendOlder) state.edit = null;
     const params = new URLSearchParams({ q: query(), filter: state.filter });
     if (appendOlder && state.cursor) params.set('before', state.cursor);
+    else if (state.anchor && !query()) params.set('before', state.anchor);
     try {
       const result = await api(`/api/admin/notes?${params}`);
       if (request !== state.request) return;
@@ -262,13 +278,29 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
       else if (key !== viewKey) history.scrollTop = state.filter === 'all' && !query() ? history.scrollHeight : 0;
       else history.scrollTop = wasAtEnd ? history.scrollHeight : previousTop;
       viewKey = key;
+      if (state.focus && !appendOlder) {
+        const el = list.querySelector(`[data-note-id="${state.focus}"]`);
+        if (el) { el.scrollIntoView({ block: 'center' }); el.classList.add('is-focused'); setTimeout(() => el.classList.remove('is-focused'), 2600); }
+        state.focus = null;
+      }
     } }
+  }
+  // Opens one note in place (from a shared link): the list ends at that note, older ones above it.
+  async function focus(id) {
+    setup(); if (!shell) return;
+    try {
+      const { note } = await api(`/api/admin/notes/${id}`);
+      clearQuery(); state.edit = null;
+      state.filter = note.deletedAt ? 'trash' : 'all';
+      state.anchor = `${note.createdAt}:${note.id + 1}`; state.focus = note.id;
+      await load();
+    } catch (e) { showError(e.message); }
   }
   function render() {
     setup(); if (!shell) return;
     summary.textContent = `${state.total.toLocaleString()} ${query() ? 'matching ' : ''}notes${state.due ? ` · ${state.due} due` : ''}`;
     filterSelect.value = state.filter;
-    older.hidden = !state.cursor; composer.hidden = state.filter === 'trash';
+    older.hidden = !state.cursor; latest.hidden = !state.anchor || !!query(); composer.hidden = state.filter === 'trash';
     if (!state.loaded) { list.replaceChildren(h('p', { class: 'muted' }, 'Loading notes…')); return; }
     if (!state.items.length) { list.replaceChildren(h('p', { class: 'notes-empty' }, query() ? 'No notes match those keywords.' : state.filter === 'trash' ? 'Trash is empty.' : state.filter === 'due' ? 'No reminders are due.' : state.filter === 'pinned' ? 'No pinned notes yet.' : 'Send yourself the first note below.')); return; }
     const out = []; let day = '';
@@ -280,8 +312,8 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
     const scroll = history.scrollTop; list.replaceChildren(...out); history.scrollTop = scroll;
   }
   async function poll() {
-    if (state.edit || state.draft || state.files.length || state.sending || state.loading || state.items.length > 100 || query() || document.getSelection()?.toString()) return;
+    if (state.anchor || state.edit || state.draft || state.files.length || state.sending || state.loading || state.items.length > 100 || query() || document.getSelection()?.toString()) return;
     const scroll = window.scrollY; await load(); window.scrollTo(0, scroll);
   }
-  return { load, render, poll };
+  return { load, render, poll, focus };
 }
