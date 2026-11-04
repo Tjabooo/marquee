@@ -23,10 +23,10 @@ Marquee is a single Node.js process with no dependencies, served as a mobile-fir
 - **Audio languages**: the speaker button beside Subtitles lists a video’s available audio languages, with Stereo/5.1 labels when the same language has multiple renditions. Pick a track without losing your position. Playback continues while a browser-safe rendition is prepared; the checked row changes when the new audio is playable. Selecting the active row cancels preparation. The control is hidden for single-track videos, Watch Together and casting.
 - **Browser audio fix**: Chrome and Firefox can't decode Dolby (AC3/E-AC3) or DTS. Marquee adds a stereo AAC track so these files play with sound, while TVs still receive the original surround audio.
 - **House** (owner only): the server's disks, qBittorrent, FlareSolverr and AdGuard Home at a glance, plus the Linux machines at home (disk space, failed services, updates, battery, Secure Boot, backups), with anything that needs a look listed at the top. **Power** turns a dual-boot PC on (Wake-on-LAN) into the system you pick, or restarts it into another one.
-- **Clips** (owner only): game clips synced from a PC, grouped by game. **Share** gives a clip a public link that embeds and plays in Discord; sharing makes a Discord-friendly H.264 copy (all audio tracks mixed into one) and unsharing kills the link. **Delete** (two taps) removes a clip: it waits 30 days in a hidden `.deleted` folder before it's gone for good. **Trim** cuts a clip without re-encoding (ffmpeg stream copy: identical quality, every audio track kept, no GPU needed); the start snaps to the nearest keyframe before the chosen point, which the trimmer shows, and the result goes to `Trimmed Clips/<Game>/`.
-- **Notes** (admins only): a shared message-style inbox for information and reminders. Enter sends a note (Shift+Enter adds a line); search finds keywords across the entire history. Edit messages, pin important ones, add reminder dates, mark them done, or move notes to recoverable Trash. Dates stay unchanged when editing. Conflicting edits are rejected instead of overwriting someone else's changes. Notes refresh while idle and are hidden from ordinary members, including direct API and attachment access.
+- **Clips** (owner only): game clips synced from a PC, grouped by game. **Share** gives a clip a public link that embeds and plays in Discord; sharing makes a Discord-friendly H.264 copy (all audio tracks mixed into one) and unsharing kills the link. **Delete** (two taps) removes a clip: it waits 30 days in a hidden `.deleted` folder before it's gone for good. Clicking a clip plays it in the same player as films and shows (without subtitles, audio choices, casting or Watch Together). **Edit** trims a clip or cuts parts out of it without re-encoding (ffmpeg stream copy: identical quality, every audio track kept, no GPU needed): split at the playhead, remove or restore parts, trim the start or end, undo. The kept parts are joined into one file in `Trimmed Clips/<Game>/`. Each kept part starts on the keyframe at or before its chosen start; the editor shows that lead-in and flags a cut that's too short to clear the next keyframe.
+- **Notes** (admins only): a shared message-style inbox for information and reminders. Enter sends a note (Shift+Enter adds a line); search finds keywords across the entire history. Edit messages, pin important ones, add reminder dates, mark them done, or move notes to recoverable Trash. Dates stay unchanged when editing. Conflicting edits are rejected instead of overwriting someone else's changes. Notes refresh while idle and are hidden from ordinary members, including direct API and attachment access. **Share** copies a `/c/n/<token>` link: Discord shows the note's text and first image as a preview, but anyone who clicks it is sent to the note inside Marquee, behind the usual sign-in. **Stop sharing** or moving the note to Trash makes the link stop working.
 - **Invites** (owner only): make a one-time link, send it, and the person enters their email and is added to the Cloudflare email list your Access policy allows, so they can sign in from then on (Google, a one-time email code, whatever you've enabled). Who has access is listed in the Activity tab, with a Remove button.
-- **Discord embeds**: shared clips show up as playable videos, and `/c/` is an invite card for Marquee itself.
+- **Discord embeds**: shared clips show up as playable videos, shared notes as previews, and `/c/` is an invite card for Marquee itself.
 - **Library management**: delete films, single episodes or whole torrents. Files are removed through qBittorrent, together with any copies and subtitles Marquee created.
 
 ## Requirements
@@ -311,7 +311,7 @@ stay unchanged. Include `.marquee-clip-titles.json` in server backups.
 2. Application domain: your Marquee hostname, path `c`.
 3. Policy: action **Bypass**, include **Everyone**. Access applies the most specific path, so the rest of Marquee stays behind your login.
 
-Invite links (`/c/i/<token>`) are covered by the same rule. Only shared clips, open invites and the invite card are reachable there. Links are 96-bit random tokens, unknown or unshared tokens get a 404, and unsharing deletes the shared copy. `https://<your-host>/c/` on its own is an invite card for Marquee: paste that in Discord to get an embed of the site itself, and anyone who clicks it is sent on to the normal (protected) app.
+Invite links (`/c/i/<token>`) are covered by the same rule. Shared note links (`/c/n/<token>`) are covered too: link-preview bots such as Discordbot get the note's preview (and its first image at `/c/n/<token>/image`); everyone else is redirected to `/?note=<id>` in the protected app. Only shared clips, shared note previews, open invites and the invite card are reachable there. Links are 96-bit random tokens, unknown or unshared tokens get a 404, and unsharing deletes the shared copy. `https://<your-host>/c/` on its own is an invite card for Marquee: paste that in Discord to get an embed of the site itself, and anyone who clicks it is sent on to the normal (protected) app.
 
 ### Invites (Zero Trust email list)
 
@@ -559,13 +559,15 @@ The web client uses a JSON API that can also be scripted. `<kind>` is `lib` for 
 | `POST` | `/api/clips/<id>/rename` | Set a display name (`{ title, previousTitle? }`); keeps files and share links unchanged (`ADMIN_EMAILS` only) |
 | `GET` | `/api/clips/<id>/thumb.jpg`, `/api/clips/<id>/video` | Thumbnail and video (`ADMIN_EMAILS` only) |
 | `POST` | `/api/clips/<id>/share`, `/api/clips/<id>/unshare` | Create or remove a public link (`ADMIN_EMAILS` only) |
-| `GET` | `/api/clips/<id>/keyframes` | Duration and keyframe times, for the trimmer (`ADMIN_EMAILS` only) |
-| `POST` | `/api/clips/<id>/trim` | Lossless trim (`{ start, end, deleteOriginal? }`) into `Trimmed Clips/<Game>/` (`ADMIN_EMAILS` only) |
+| `GET` | `/api/clips/<id>/keyframes` | Duration and keyframe times, for the editor (`ADMIN_EMAILS` only) |
+| `POST` | `/api/clips/<id>/trim` | Lossless edit (`{ segments: [{ start, end }, …], deleteOriginal? }`, or a single `start`/`end`) into `Trimmed Clips/<Game>/` (`ADMIN_EMAILS` only) |
+| `POST` | `/api/admin/notes/<id>/share`, `/api/admin/notes/<id>/unshare` | Make or remove a note's preview link; returns `{ note, url }` (`ADMIN_EMAILS` only) |
 | `POST` | `/api/clips/<id>/delete` | Delete a clip: link and copies removed, file moved to `CLIPS_DIR/.deleted/` for 30 days (`ADMIN_EMAILS` only) |
 | `GET` | `/api/access` | Who can sign in + invite links (`ADMIN_EMAILS` only) |
 | `POST` | `/api/access/invite`, `/api/access/invite/<id>/revoke`, `/api/access/remove` | Make or cancel an invite, remove someone's access (`ADMIN_EMAILS` only) |
 | `GET`, `POST` | `/c/i/<token>` | Public: the invite page and its email form |
 | `GET` | `/c/`, `/c/<token>`, `/c/<token>/video.mp4`, `/c/<token>/thumb.jpg` | Public: invite card and shared clips, with OpenGraph tags for Discord |
+| `GET` | `/c/n/<token>`, `/c/n/<token>/image` | Public: a shared note's preview for link-preview bots; people are redirected to `/?note=<id>` |
 
 ## Security
 
@@ -573,7 +575,7 @@ Marquee has no user accounts or authentication. Anyone who can reach the server 
 
 Keep `.env` private: it contains your API keys and passwords, and it is excluded by `.gitignore`.
 
-`/c/` is public by design (see *Clips and Discord share links*): it serves only clips you shared, open invite links and the invite card, nothing else. An invite link lets whoever has it add one email to your access list, once; send it privately. House reports and boot checks need `HOUSE_TOKEN` and are refused when they arrive through Cloudflare. A boot check only ever restarts into an entry from the PC's own GRUB menu.
+`/c/` is public by design (see *Clips and Discord share links*): it serves only clips you shared, previews of notes you shared (people who click those are sent to the protected app), open invite links and the invite card, nothing else. An invite link lets whoever has it add one email to your access list, once; send it privately. House reports and boot checks need `HOUSE_TOKEN` and are refused when they arrive through Cloudflare. A boot check only ever restarts into an entry from the PC's own GRUB menu.
 
 ## Troubleshooting
 
