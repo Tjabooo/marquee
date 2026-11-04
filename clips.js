@@ -152,42 +152,59 @@ export async function thumbnail(id) {
 // i5-14600KF, so a 90 s clip's copy needs ~6 minutes; the upload (~350 Mbit/s) streams it easily.
 const SHARE_X264 = ['-c:v', 'libx264', '-preset', 'slow', '-crf', '10', '-pix_fmt', 'yuv420p', '-profile:v', 'high'];
 const sharePath = (id) => path.join(cacheDir, 'share', `${id}.mp4`);
+// Discord doesn't embed external videos that big (a 70 s 1440p copy at CRF 10 is ~700 MB), so the
+// embed gets its own copy: at most 1080p and about EMBED_BYTES. It's made first, so the link is
+// ready in about a minute; the near-lossless copy follows and is what the clip's page plays.
+const EMBED_BYTES = 90e6;
+const embedPath = (id) => path.join(cacheDir, 'share', `${id}.embed.mp4`);
+function embedX264(duration) {
+  const kbps = Math.round(Math.min(20000, Math.max(3000, (EMBED_BYTES * 8 / Math.max(duration || 60, 1)) / 1000 - 320)));
+  return ['-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-maxrate', `${kbps}k`, '-bufsize', `${kbps * 2}k`, '-pix_fmt', 'yuv420p', '-profile:v', 'high'];
+}
+async function encodeShare(src, dest, { v, audio, duration }, { embed }) {
+  const tmp = `${dest}.marquee-tmp.mp4`;
+  const args = ['-hide_banner', '-nostdin', '-y', '-i', src, '-map', '0:v:0'];
+  // the one track that's already the mix: copy it when it's stereo-or-less AAC, else re-encode
+  const mix = audio.length >= 4 || audio.length === 1 ? audio[0] : null;
+  if (mix) args.push('-map', '0:a:0');
+  else if (audio.length > 1) {
+    args.push('-filter_complex', `${audio.map((_, i) => `[0:a:${i}]`).join('')}amix=inputs=${audio.length}:duration=longest:normalize=0,alimiter=limit=0.95[a]`, '-map', '[a]');
+  }
+  // 4:2:0 needs even sizes; the embed copy is also scaled down to fit 1920×1080
+  if (embed && ((v.width || 0) > 1920 || (v.height || 0) > 1080)) args.push('-vf', 'scale=w=1920:h=1080:force_original_aspect_ratio=decrease:force_divisible_by=2');
+  else if ((v.width || 0) % 2 || (v.height || 0) % 2) args.push('-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2');
+  const tail = embed ? embedX264(duration) : [...SHARE_X264];
+  if (mix && mix.codec_name === 'aac' && (Number(mix.channels) || 2) <= 2) tail.push('-c:a', 'copy');
+  else if (audio.length) tail.push('-c:a', 'aac', '-b:a', '320k', '-ac', '2');
+  tail.push('-movflags', '+faststart', tmp);
+  try {
+    await run(FFMPEG, [...args, ...tail]);
+    await fs.promises.rename(tmp, dest);
+  } finally {
+    await fs.promises.rm(tmp, { force: true });
+  }
+}
 function makeShareCopy(c) {
   if (jobs.has(c.id)) return jobs.get(c.id);
   failed.delete(c.id);
   const job = (async () => {
     const src = fullPath(c.rel);
-    const { v, audio } = await probe(src);
-    if (!v) throw new Error('No video in this clip.');
-    const tmp = `${sharePath(c.id)}.marquee-tmp.mp4`;
-    const args = ['-hide_banner', '-nostdin', '-y', '-i', src, '-map', '0:v:0'];
-    // the one track that's already the mix: copy it when it's stereo-or-less AAC, else re-encode
-    const mix = audio.length >= 4 || audio.length === 1 ? audio[0] : null;
-    if (mix) args.push('-map', '0:a:0');
-    else if (audio.length > 1) {
-      args.push('-filter_complex', `${audio.map((_, i) => `[0:a:${i}]`).join('')}amix=inputs=${audio.length}:duration=longest:normalize=0,alimiter=limit=0.95[a]`, '-map', '[a]');
-    }
-    if ((v.width || 0) % 2 || (v.height || 0) % 2) args.push('-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2'); // 4:2:0 needs even sizes
-    const tail = [...SHARE_X264];
-    if (mix && mix.codec_name === 'aac' && (Number(mix.channels) || 2) <= 2) tail.push('-c:a', 'copy');
-    else if (audio.length) tail.push('-c:a', 'aac', '-b:a', '320k', '-ac', '2');
-    tail.push('-movflags', '+faststart', tmp);
-    try {
-      await run(FFMPEG, [...args, ...tail]);
-      await fs.promises.rename(tmp, sharePath(c.id));
-    } finally {
-      await fs.promises.rm(tmp, { force: true });
-    }
+    const info = await probe(src);
+    if (!info.v) throw new Error('No video in this clip.');
+    if (!fs.existsSync(embedPath(c.id))) await encodeShare(src, embedPath(c.id), info, { embed: true });
+    if (!fs.existsSync(sharePath(c.id))) await encodeShare(src, sharePath(c.id), info, { embed: false });
   })().catch((e) => { failed.set(c.id, e.message); throw e; }).finally(() => jobs.delete(c.id));
   job.catch(() => {}); // failures are reported through clip state
   jobs.set(c.id, job);
   return job;
 }
 
+// Ready once Discord's copy exists. Shares from before the embed copy existed get one made here.
 function shareState(c) {
   const token = tokenFor(c.rel);
   if (!token) return null;
-  const ready = fs.existsSync(sharePath(c.id));
+  const ready = fs.existsSync(embedPath(c.id));
+  if ((!ready || !fs.existsSync(sharePath(c.id))) && !jobs.has(c.id) && !failed.has(c.id)) makeShareCopy(c);
   return { token, ready, working: jobs.has(c.id), error: failed.get(c.id) || null };
 }
 
@@ -222,7 +239,7 @@ export async function share(id) {
     shares[token] = { rel: c.rel, at: Date.now() };
     saveShares();
   }
-  if (!fs.existsSync(sharePath(c.id))) makeShareCopy(c);
+  failed.delete(c.id); // Share again = try again
   return { token, title: c.title, ...shareState(c) };
 }
 
@@ -231,6 +248,7 @@ export async function unshare(id) {
   for (const t of Object.keys(shares)) if (shares[t].rel === c.rel) delete shares[t];
   saveShares();
   await fs.promises.rm(sharePath(c.id), { force: true });
+  await fs.promises.rm(embedPath(c.id), { force: true });
   return { ok: true, title: c.title };
 }
 
@@ -427,7 +445,7 @@ export async function handlePublic(req, res, url, { sendVideo }) {
     try { return send(200, 'image/png', await fs.promises.readFile(file)); } catch { return send(404, 'text/plain', 'Not found.'); }
   }
 
-  const m = p.match(/^\/c\/([A-Za-z0-9_-]{16})(?:\/(video\.mp4|thumb\.jpg))?\/?$/);
+  const m = p.match(/^\/c\/([A-Za-z0-9_-]{16})(?:\/(video\.mp4|embed\.mp4|thumb\.jpg))?\/?$/);
   if (!m) return false;
   const clip = sharedClip(m[1]);
   if (!clip) return send(404, 'text/html; charset=utf-8', page({ title: 'Clip not found', desc: 'This link doesn’t work any more.', url: '', body: '<h1>This clip isn’t shared any more</h1><p>Ask whoever sent it for a new link.</p>' }), { 'Cache-Control': 'no-store' });
@@ -435,29 +453,30 @@ export async function handlePublic(req, res, url, { sendVideo }) {
   if (m[2] === 'thumb.jpg') {
     try { return send(200, 'image/jpeg', await fs.promises.readFile(await thumbnail(clip.id))); } catch { return send(404, 'text/plain', 'Not found.'); }
   }
-  const copy = sharePath(clip.id);
-  const ready = fs.existsSync(copy);
-  if (m[2] === 'video.mp4') {
+  const embed = embedPath(clip.id);
+  const ready = fs.existsSync(embed);
+  // the page plays the near-lossless copy once it's there; Discord always gets the embed copy
+  const best = fs.existsSync(sharePath(clip.id)) ? sharePath(clip.id) : embed;
+  if (m[2]) {
     if (!ready) return send(503, 'text/plain', 'Still being prepared.', { 'Retry-After': '30', 'Cache-Control': 'no-store' });
-    await sendVideo(req, res, copy);
+    await sendVideo(req, res, m[2] === 'embed.mp4' ? embed : best);
     return true;
   }
+  if (!jobs.has(clip.id) && (!ready || best === embed)) makeShareCopy({ id: clip.id, rel: clip.rel }); // e.g. a copy was deleted from the cache
 
   const base = baseUrl(req);
   const link = `${base}/c/${clip.token}`;
   let video = null;
   if (ready) {
     let w = 1920, h = 1080;
-    try { const { v } = await probe(copy); w = v.width || w; h = v.height || h; } catch { /* defaults */ }
-    video = { url: `${link}/video.mp4`, width: w, height: h };
-  } else if (!jobs.has(clip.id)) {
-    makeShareCopy({ id: clip.id, rel: clip.rel }); // e.g. the copy was deleted from the cache
+    try { const { v } = await probe(embed); w = v.width || w; h = v.height || h; } catch { /* defaults */ }
+    video = { url: `${link}/embed.mp4`, width: w, height: h };
   }
   const desc = `${clip.game} · clip from the home server`;
   return send(200, 'text/html; charset=utf-8', page({
     title: clip.title, desc, url: link, image: `${link}/thumb.jpg`, video,
     body: `<h1>${esc(clip.title)}</h1><p>${esc(clip.game)}</p>${ready
-      ? `<video src="${esc(video.url)}" poster="${esc(`${link}/thumb.jpg`)}" controls playsinline preload="metadata"></video>`
+      ? `<video src="${esc(`${link}/video.mp4`)}" poster="${esc(`${link}/thumb.jpg`)}" controls playsinline preload="metadata"></video>`
       : '<div class="wait"><p>This clip is still being prepared. Reload in a minute.</p></div><script>setTimeout(()=>location.reload(),15000)</script>'}
       <p class="foot">Shared from <a class="brand" href="/c/">Marquee</a></p>`,
   }), ready ? {} : { 'Cache-Control': 'no-store' });
