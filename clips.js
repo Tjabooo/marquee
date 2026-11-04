@@ -26,12 +26,11 @@ let sharesFile = null;
 let shares = {};          // token -> { rel, at }
 let titlesFile = null;
 let titles = {};          // stable clip id -> display name; files and public links stay put
-let encoder = () => null; // 'nvenc' | 'x264' | null, from the converter
 let scanned = { at: 0, list: [] };
 const jobs = new Map();   // clip id -> Promise (share copy being made)
 const failed = new Map(); // clip id -> error message
 
-export function initClips({ dataDir, getEncoder }) {
+export function initClips({ dataDir }) {
   cacheDir = path.join(dataDir, 'cache', 'clips');
   sharesFile = path.join(dataDir, '.marquee-shares.json');
   try { shares = JSON.parse(fs.readFileSync(sharesFile, 'utf8')); } catch { shares = {}; }
@@ -39,7 +38,6 @@ export function initClips({ dataDir, getEncoder }) {
   try { titles = JSON.parse(fs.readFileSync(titlesFile, 'utf8')); } catch { titles = {}; }
   if (!titles || typeof titles !== 'object' || Array.isArray(titles)) titles = {};
   scanned = { at: 0, list: [] };
-  encoder = getEncoder;
   for (const d of ['thumbs', 'share']) fs.mkdirSync(path.join(cacheDir, d), { recursive: true });
 }
 
@@ -143,9 +141,16 @@ export async function thumbnail(id) {
   return out;
 }
 
-// A copy Discord (and every browser) plays: H.264 8-bit, at most 1080p, one stereo AAC track
-// that mixes every audio track of the original. Clips with 4+ tracks (clip-replay and Clipper since
-// 2026-11-02) already start with that mix (ALL, then game / friends / mic), so it's used as is.
+// A copy Discord (and every browser) plays: H.264 8-bit at the clip's own resolution and frame
+// rate, one stereo AAC track that mixes every audio track of the original. Clips with 4+ tracks
+// (clip-replay and Clipper since 2026-11-02) already start with that mix (ALL, then game / friends /
+// mic), so that AAC track is copied untouched.
+// Video is visually lossless on purpose: x264 preset slow, CRF 10, no bitrate cap, always on the
+// CPU (the GTX 1650's NVENC is a lot worse per bit). Measured 2026-11-04 on a CS2 clip against the
+// AV1 original, VMAF mean / worst 5 % of frames: CRF 10 99.5 / 97.0 at ~82 Mbps (CRF 6: 99.6 / 97.2
+// at 130 Mbps; the old 1080p veryfast CRF 22 12M copy: 85.4 / 79.8). That takes ~15 fps on the
+// i5-14600KF, so a 90 s clip's copy needs ~6 minutes; the upload (~350 Mbit/s) streams it easily.
+const SHARE_X264 = ['-c:v', 'libx264', '-preset', 'slow', '-crf', '10', '-pix_fmt', 'yuv420p', '-profile:v', 'high'];
 const sharePath = (id) => path.join(cacheDir, 'share', `${id}.mp4`);
 function makeShareCopy(c) {
   if (jobs.has(c.id)) return jobs.get(c.id);
@@ -156,21 +161,19 @@ function makeShareCopy(c) {
     if (!v) throw new Error('No video in this clip.');
     const tmp = `${sharePath(c.id)}.marquee-tmp.mp4`;
     const args = ['-hide_banner', '-nostdin', '-y', '-i', src, '-map', '0:v:0'];
-    if (audio.length >= 4) args.push('-map', '0:a:0');
+    // the one track that's already the mix: copy it when it's stereo-or-less AAC, else re-encode
+    const mix = audio.length >= 4 || audio.length === 1 ? audio[0] : null;
+    if (mix) args.push('-map', '0:a:0');
     else if (audio.length > 1) {
       args.push('-filter_complex', `${audio.map((_, i) => `[0:a:${i}]`).join('')}amix=inputs=${audio.length}:duration=longest:normalize=0,alimiter=limit=0.95[a]`, '-map', '[a]');
-    } else if (audio.length === 1) args.push('-map', '0:a:0');
-    if ((v.height || 0) > 1080) args.push('-vf', 'scale=-2:1080');
-    const tail = ['-pix_fmt', 'yuv420p', '-profile:v', 'high'];
-    if (audio.length) tail.push('-c:a', 'aac', '-b:a', '160k', '-ac', '2');
+    }
+    if ((v.width || 0) % 2 || (v.height || 0) % 2) args.push('-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2'); // 4:2:0 needs even sizes
+    const tail = [...SHARE_X264];
+    if (mix && mix.codec_name === 'aac' && (Number(mix.channels) || 2) <= 2) tail.push('-c:a', 'copy');
+    else if (audio.length) tail.push('-c:a', 'aac', '-b:a', '320k', '-ac', '2');
     tail.push('-movflags', '+faststart', tmp);
-    const NVENC = ['-c:v', 'h264_nvenc', '-preset', 'p5', '-rc', 'vbr', '-cq', '23', '-b:v', '0', '-maxrate', '12M', '-bufsize', '24M'];
-    const X264 = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '22', '-maxrate', '12M', '-bufsize', '24M'];
     try {
-      // NVENC on the server's GPU when the converter found it; the CPU when that isn't there or fails
-      if (encoder() === 'nvenc') {
-        try { await run(FFMPEG, [...args, ...NVENC, ...tail]); } catch { await run(FFMPEG, [...args, ...X264, ...tail]); }
-      } else await run(FFMPEG, [...args, ...X264, ...tail]);
+      await run(FFMPEG, [...args, ...tail]);
       await fs.promises.rename(tmp, sharePath(c.id));
     } finally {
       await fs.promises.rm(tmp, { force: true });
