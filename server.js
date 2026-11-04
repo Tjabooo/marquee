@@ -1371,6 +1371,17 @@ async function handleApi(req, res, url) {
       const names = Object.fromEntries((members || []).map((email) => [email, accounts.displayNameFor(email)]));
       return sendJson(res, 200, { configured: true, members, names, error, owners: activity.adminEmails(), invites: invites.listInvites() });
     }
+    if (p === '/api/access/rename' && req.method === 'POST') {
+      const body = await readJson(req);
+      if (!body || typeof body !== 'object' || Array.isArray(body)) throw new HttpError(400, 'Enter a person and a name.');
+      const { email, name, previousName } = body;
+      const identity = typeof email === 'string' ? email.trim().toLowerCase() : '';
+      if (!invites.invitesConfigured()) throw new HttpError(503, 'Access management is not configured.');
+      if (!(await invites.members()).includes(identity)) throw new HttpError(404, 'That person is no longer in the access list.');
+      const renamed = accounts.renameUser(identity, name, previousName);
+      watchRooms.renameUser(renamed);
+      return sendJson(res, 200, { user: accounts.publicUser(renamed) });
+    }
     if (p === '/api/access/invite' && req.method === 'POST') {
       const { note } = await readJson(req);
       const inv = invites.createInvite(req, note);
@@ -1914,7 +1925,7 @@ const server = http.createServer(async (req, res) => {
     const allowed = req.method === 'GET' || req.method === 'HEAD'
       || (req.method === 'POST' && (url.pathname.startsWith('/api/cast/') || url.pathname === '/api/downloads/add' || url.pathname === '/api/downloads/smart' || url.pathname === '/api/subs/fetch' || url.pathname === '/api/subs/sync' || url.pathname === '/api/library/delete' || /^\/api\/downloads\/\w+\/(pause|resume|retry|delete)$/.test(url.pathname) || /^\/api\/media\/\w+\/[\w-]+\/sync$/.test(url.pathname)
         || /^\/api\/house\/(report|boot|power)$/.test(url.pathname) || /^\/api\/clips\/[\w-]+\/(share|unshare|delete|trim|rename)$/.test(url.pathname)
-        || /^\/api\/access\/(invite|remove|invite\/\w+\/revoke)$/.test(url.pathname) || /^\/c\/i\/[\w-]+\/?$/.test(url.pathname)
+        || /^\/api\/access\/(invite|remove|rename|invite\/\w+\/revoke)$/.test(url.pathname) || /^\/c\/i\/[\w-]+\/?$/.test(url.pathname)
         || /^\/api\/(me|me\/progress|library\/add|library\/extend|library\/identify|admin\/settings|admin\/users\/\d+)$/.test(url.pathname)
         || /^\/api\/admin\/notes(?:\/import|\/\d+(?:\/(?:trash|restore))?)?$/.test(url.pathname)
         || /^\/api\/admin\/notes\/uploads(?:\/[a-f0-9]{32}(?:\/(?:finish|cancel))?)?$/.test(url.pathname)

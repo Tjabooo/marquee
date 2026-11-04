@@ -188,12 +188,12 @@ function rowToUser(r) {
   };
 }
 
-function ensureUser(email) {
+function ensureUser(email, lastSeen = Date.now()) {
   let row = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
   if (!row) {
     const canDownload = admins.includes(email) || serverSettings().membersCanDownload;
     db.prepare('INSERT OR IGNORE INTO users (email, can_download, created_at, last_seen) VALUES (?, ?, ?, ?)')
-      .run(email, canDownload ? 1 : 0, Date.now(), Date.now());
+      .run(email, canDownload ? 1 : 0, Date.now(), lastSeen);
     row = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
   }
   return rowToUser(row);
@@ -215,6 +215,21 @@ export const ownerUser = () => (admins[0] ? ensureUser(admins[0]) : null);
 export function userById(id) {
   const r = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
   return r ? rowToUser(r) : null;
+}
+
+// The access list may include people who have not visited yet. Reserve their account without
+// marking a visit; their email, permissions and settings remain the account identity.
+export function renameUser(email, name, previousName) {
+  if (typeof email !== 'string' || !email.includes('@')) throw httpError(400, 'Choose a person from the access list.');
+  email = email.trim().toLowerCase();
+  if (typeof name !== 'string' || /[\u0000-\u001f\u007f]/.test(name)) throw httpError(400, 'Enter a name on one line.');
+  name = name.trim().replace(/\s+/g, ' ');
+  if (!name || name.length > 40) throw httpError(400, 'Enter a name between 1 and 40 characters.');
+  if (typeof previousName !== 'string') throw httpError(400, 'The previous name is required.');
+  if (displayNameFor(email) !== previousName) throw httpError(409, 'This name changed elsewhere. Reload the page before renaming it.');
+  const user = ensureUser(email, null);
+  db.prepare('UPDATE users SET name = ? WHERE id = ?').run(name, user.id);
+  return userById(user.id);
 }
 
 export function updateMe(user, patch) {

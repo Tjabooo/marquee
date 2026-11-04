@@ -1312,7 +1312,7 @@ function schedulePoll() {
     try {
       if (!document.hidden) {
         await Promise.all([refreshMediaLibrary(), loadSessions(), state.view === 'library' ? loadConvert() : null]);
-        if (state.view === 'activity') { await loadActivity(); if (state.view === 'activity') renderActivity(); }
+        if (state.view === 'activity' && !$('#activity-body .person-name .clip-rename-form')) { await loadActivity(); if (state.view === 'activity') renderActivity(); }
         if (state.view === 'house') { await loadHouse(); if (state.view === 'house') renderHouse(); }
         if (state.view === 'notes') await notesView.poll();
         if (state.view === 'clips' && clipsBusy && !$('#clips-body .clip-rename-form')) { await loadClips(); if (state.view === 'clips') renderClips(); }
@@ -4323,6 +4323,25 @@ async function accessAction(path, body, msg) {
   renderActivity();
 }
 
+function accessName(email, name) {
+  return inlineName({
+    getName: () => name, label: 'Person', maxLength: 40,
+    errorId: `person-rename-error-${encodeURIComponent(email)}`, className: 'person-name',
+    successMessage: 'Name saved',
+    save: async (next, previousName) => {
+      const { user } = await api('/api/access/rename', jsonPost({ email, name: next, previousName }));
+      name = user.name;
+      if (state.access) { state.access.names ||= {}; state.access.names[email] = name; }
+      if (state.me?.id === user.id) state.me = user;
+      const person = state.people?.find((u) => u.id === user.id); if (person) person.name = name;
+      for (const entry of [...(state.activity?.people || []), ...(state.activity?.events || [])]) {
+        if (entry.user === email) entry.name = name;
+        if (entry.detail === email && entry.subjectName) entry.subjectName = name;
+      }
+    },
+  });
+}
+
 function accessSection() {
   const a = state.access;
   if (!a) return [];
@@ -4357,7 +4376,7 @@ function accessSection() {
       const owner = (a.owners || []).includes(email);
       const name = a.names?.[email] || personName(email);
       return h('li', { class: 'row' },
-        h('span', { class: 'row-text' }, h('span', { class: 'row-title' }, name),
+        h('div', { class: 'row-text' }, accessName(email, name),
           h('span', { class: 'row-meta' }, h('span', {}, email), owner && h('span', {}, 'owner'))),
         !owner && h('span', { class: 'row-actions' }, h('button', {
           class: 'retry',
@@ -4375,6 +4394,7 @@ function accessSection() {
 }
 
 function renderActivity() {
+  if ($('#activity-body .person-name .clip-rename-form')) return;
   const body = $('#activity-body');
   if (state.activityError) { body.replaceChildren(notice('Couldn’t get activity', state.activityError)); return; }
   if (!state.activity) return;
@@ -4650,17 +4670,17 @@ async function unshareClip(c) {
 }
 
 const UNLINK_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 14.5 7.8 16.2a3 3 0 0 1-4.2-4.2l2.6-2.6a3 3 0 0 1 4.2 0M14.5 9.5l1.7-1.7a3 3 0 0 1 4.2 4.2l-2.6 2.6a3 3 0 0 1-4.2 0M4 4l16 16"/></svg>';
-function clipTitle(c) {
-  const wrap = h('div', { class: 'clip-title-wrap' });
+function inlineName({ getName, save, label, maxLength, errorId, className = '', successMessage }) {
+  const wrap = h('div', { class: `clip-title-wrap ${className}` });
   function display(focus = false) {
-    const button = h('button', { type: 'button', class: 'clip-title row-title', 'aria-label': `Rename clip: ${c.title}`, title: 'Rename clip' },
-      h('span', {}, c.title));
+    const button = h('button', { type: 'button', class: 'clip-title row-title', 'aria-label': `Rename ${label.toLowerCase()}: ${getName()}`, title: `Rename ${label.toLowerCase()}` },
+      h('span', {}, getName()));
     button.insertAdjacentHTML('beforeend', '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 4 4M4 20l4-1 12-12a2.8 2.8 0 0 0-4-4L4 15z"/></svg>');
     button.addEventListener('click', edit);
     wrap.replaceChildren(button); if (focus) button.focus({ preventScroll: true });
   }
   function edit() {
-    const previousTitle = c.title;
+    const previousTitle = getName();
     const height = wrap.getBoundingClientRect().height;
     wrap.style.minHeight = `${height}px`;
     let committing = false, settled = false, outsidePointer = false, afterPointer = null;
@@ -4686,8 +4706,8 @@ function clipTitle(c) {
       if (outsidePointer) afterPointer = complete;
       else complete();
     };
-    const input = h('input', { type: 'text', maxlength: 120, value: c.title, 'aria-label': 'Clip name', autocomplete: 'off' });
-    const error = h('p', { id: `clip-rename-error-${c.id}`, class: 'clip-rename-error', role: 'alert', hidden: true });
+    const input = h('input', { type: 'text', maxlength: maxLength, value: getName(), 'aria-label': `${label} name`, autocomplete: 'off' });
+    const error = h('p', { id: errorId, class: 'clip-rename-error', role: 'alert', hidden: true });
     const fail = (message) => {
       error.textContent = message; error.hidden = false;
       input.setAttribute('aria-invalid', 'true'); input.setAttribute('aria-describedby', error.id);
@@ -4696,18 +4716,12 @@ function clipTitle(c) {
       if (committing || settled) return;
       const title = input.value.trim();
       if (title === previousTitle) { finish(fromEnter && document.activeElement === input); return; }
-      if (!title) { fail('Enter a clip name.'); return; }
+      if (!title) { fail(`Enter a ${label.toLowerCase()} name.`); return; }
       committing = true; input.readOnly = true; form.setAttribute('aria-busy', 'true'); error.hidden = true;
       input.removeAttribute('aria-invalid'); input.removeAttribute('aria-describedby');
       try {
-        const renamed = await api(`/api/clips/${c.id}/rename`, jsonPost({ title, previousTitle }));
-        c.title = renamed.title;
-        const current = state.clips?.clips.find((item) => item.id === c.id); if (current) current.title = renamed.title;
-        const card = wrap.closest('.clip');
-        card?.querySelector('.clip-thumb')?.setAttribute('aria-label', `Play ${c.title}`);
-        card?.querySelector('.clip-delete')?.setAttribute('aria-label', `Delete ${c.title}`);
-        card?.querySelector('.clip-trim')?.setAttribute('aria-label', `Trim ${c.title}`);
-        finish(fromEnter && document.activeElement === input); toast('Clip renamed');
+        await save(title, previousTitle, wrap);
+        finish(fromEnter && document.activeElement === input); toast(successMessage);
       } catch (err) {
         fail(err.message);
         committing = false; input.readOnly = false; form.removeAttribute('aria-busy');
@@ -4724,6 +4738,21 @@ function clipTitle(c) {
     wrap.replaceChildren(form); input.focus(); input.select();
   }
   display(); return wrap;
+}
+function clipTitle(c) {
+  return inlineName({
+    getName: () => c.title, label: 'Clip', maxLength: 120,
+    errorId: `clip-rename-error-${c.id}`, successMessage: 'Clip renamed',
+    save: async (next, previousTitle, wrap) => {
+      const renamed = await api(`/api/clips/${c.id}/rename`, jsonPost({ title: next, previousTitle }));
+      c.title = renamed.title;
+      const current = state.clips?.clips.find((item) => item.id === c.id); if (current) current.title = renamed.title;
+      const card = wrap.closest('.clip');
+      card?.querySelector('.clip-thumb')?.setAttribute('aria-label', `Play ${c.title}`);
+      card?.querySelector('.clip-delete')?.setAttribute('aria-label', `Delete ${c.title}`);
+      card?.querySelector('.clip-trim')?.setAttribute('aria-label', `Trim ${c.title}`);
+    },
+  });
 }
 function clipCard(c) {
   const when = new Date(c.mtime).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });

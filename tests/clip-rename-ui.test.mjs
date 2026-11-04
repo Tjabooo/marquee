@@ -5,10 +5,10 @@ import vm from 'node:vm';
 
 const source = await fs.readFile(new URL('../public/app.js', import.meta.url), 'utf8');
 const builder = source.slice(source.indexOf('function h('), source.indexOf('const ICONS ='));
-const titleEditor = source.slice(source.indexOf('function clipTitle('), source.indexOf('function clipCard('));
+const titleEditor = source.slice(source.indexOf('function inlineName('), source.indexOf('function clipCard('));
 
 // A small event-capable DOM: removing a focused input fires blur just as a real browser does.
-function fixture(respond = async (body) => ({ title: body.title })) {
+function fixture(respond = async (body) => ({ title: body.title }), person = false) {
   let document;
   class Element {
     constructor(tag) {
@@ -47,13 +47,13 @@ function fixture(respond = async (body) => ({ title: body.title })) {
   document = new Element('document'); document.activeElement = null; document.createElement = (tag) => new Element(tag);
   const clip = { id: 'testclip12345678', title: 'An original two-line title' }, calls = [], messages = [];
   const context = vm.createContext({ document, Node: Element, setTimeout,
-    state: { clips: { clips: [clip] } }, jsonPost: (body) => body, toast: (message) => messages.push(message),
+    state: { clips: { clips: [clip] }, access: { names: {} }, me: { id: 3, name: 'Original' }, people: [{ id: 3, name: 'Original' }], activity: { people: [{ user: 'viewer@example.test', name: 'Original' }], events: [] } }, jsonPost: (body) => body, toast: (message) => messages.push(message),
     api: async (url, body) => { calls.push({ url, body }); return respond(body); },
   });
-  vm.runInContext(builder + titleEditor, context);
-  const wrap = context.clipTitle(clip);
+  vm.runInContext(builder + titleEditor + source.slice(source.indexOf('function accessName('), source.indexOf('function accessSection(')), context);
+  const wrap = person ? context.accessName('viewer@example.test', 'Original') : context.clipTitle(clip);
   const edit = async () => { await wrap.children[0].fire('click'); return { form: wrap.children[0], input: wrap.children[0].children[0] }; };
-  return { wrap, edit, clip, calls, messages, document, Element };
+  return { wrap, edit, clip, calls, messages, document, Element, state: context.state };
 }
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 
@@ -118,4 +118,33 @@ test('fast blur saves preserve the title geometry until the outside pointer clic
   await f.document.fire('pointerup', { target: outside });
   await new Promise((resolve) => setTimeout(resolve, 5)); assert.equal(f.wrap.style.minHeight, '');
   assert.equal(f.wrap.children[0].tag, 'button');
+});
+
+
+test('access names use the clip editor, save the account name and synchronize local person labels', async () => {
+  const f = fixture(async (body) => ({ user: { id: 3, name: body.name } }), true);
+  assert.equal(f.wrap.children[0].attrs['aria-label'], 'Rename person: Original');
+  const { input, form } = await f.edit();
+  assert.equal(input.attrs.maxlength, '40');
+  assert.deepEqual(form.children.map((child) => child.tag), ['input', 'p']);
+  input.value = '  A new name  ';
+  await input.fire('keydown', { key: 'Enter' }); await settle();
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.calls[0].url, '/api/access/rename');
+  assert.deepEqual(JSON.parse(JSON.stringify(f.calls[0].body)), { email: 'viewer@example.test', name: 'A new name', previousName: 'Original' });
+  assert.equal(f.state.access.names['viewer@example.test'], 'A new name');
+  assert.equal(f.state.me.name, 'A new name');
+  assert.equal(f.state.people[0].name, 'A new name');
+  assert.equal(f.state.activity.people[0].name, 'A new name');
+  assert.equal(f.wrap.children[0].textContent, 'A new name');
+});
+
+test('access name failures keep the draft, and Escape cancels without saving', async () => {
+  const f = fixture(async () => { throw Error('Could not save'); }, true);
+  const { input, form } = await f.edit();
+  input.value = 'Draft'; await input.fire('blur'); await settle();
+  assert.equal(f.wrap.children[0], form); assert.equal(input.value, 'Draft');
+  assert.equal(form.children[1].textContent, 'Could not save');
+  await input.fire('keydown', { key: 'Escape' }); await settle();
+  assert.equal(f.calls.length, 1); assert.equal(f.wrap.children[0].textContent, 'Original');
 });
