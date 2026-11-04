@@ -4876,6 +4876,11 @@ function renderHouse() {
         h('span', { class: 'house-svc-name' }, x.name), h('span', { class: 'muted' }, x.detail))))));
   }
 
+  if (!q || norm(`vpn mullvad tunnel torrent ${r.machines.map((m) => m.host).join(' ')}`).includes(q)) {
+    const card = vpnCard(r);
+    if (card) out.push(h('h3', { class: 'activity-head' }, 'VPN'), card);
+  }
+
   if (!q || norm('sharing streams streaming encoding upload cpu gpu').includes(q)) out.push(...sharingSection(state.houseLoad));
 
   const powered = (r.power || []).filter((pw) => !q || norm(`power ${pw.host} ${pw.entries.map((e) => e.label).join(' ')}`).includes(q));
@@ -4904,6 +4909,51 @@ function renderHouse() {
       m.failed.length > 0 && h('p', { class: 'house-failed' }, `Failed: ${m.failed.join(', ')}`)));
   }
   body.replaceChildren(...out);
+}
+
+// VPN: the server's torrent tunnel (only qBittorrent uses it) and the Mullvad app on each machine.
+// One row each: up/down dot, where it exits, then leaks, drops and watchdog problems underneath.
+function vpnCard(r) {
+  const when = (ms) => (Date.now() - ms < 86400000 ? clock(ms) : new Date(ms).toLocaleDateString([], { day: 'numeric', month: 'short' }));
+  const where = (v) => [v.city, v.relay, v.exitIp].filter(Boolean).join(' · ');
+  const rows = [];
+  const sv = r.server.vpn;
+  if (sv) {
+    rows.push({
+      name: `${r.server.name} · torrents`, ok: sv.ok, on: sv.tunnel === 'up',
+      text: sv.tunnel === 'up' ? `Tunnel up · ${where(sv) || 'checking exit'}` : 'Tunnel DOWN · torrents fenced in by the kill switch',
+      notes: [
+        sv.torrentIp && `qBittorrent public address ${sv.torrentIp}`,
+        sv.mullvadExit === false && 'exit isn’t a Mullvad address',
+        sv.lastDropAt && `last drop ${when(sv.lastDropAt)}`,
+        sv.lastLeakAt && `last leak alarm ${when(sv.lastLeakAt)}`,
+      ].filter(Boolean),
+      problems: sv.problems,
+    });
+  }
+  for (const m of r.machines) {
+    const v = m.vpn;
+    if (!v) continue;
+    const on = v.state === 'connected';
+    rows.push({
+      name: m.host, ok: v.state !== 'error' && v.mullvadExit !== false, on: on && !m.away, away: m.away,
+      text: on ? `Connected · ${where(v)}` : v.state === 'error' ? 'Blocked (error state)' : v.state === 'connecting' ? 'Connecting…' : 'Disconnected',
+      notes: [
+        v.lockdown != null && `lockdown ${v.lockdown ? 'on' : 'off'}`,
+        v.lastDrop && `last drop ${when(v.lastDrop * 1000)}`,
+        m.away && `away · last seen ${ago(m.at)}`,
+      ].filter(Boolean),
+      problems: [v.error, v.mullvadExit === false && on && 'exit isn’t a Mullvad address'].filter(Boolean),
+    });
+  }
+  if (!rows.length) return null;
+  return h('div', { class: 'house-card vpn-card' },
+    h('ul', { class: 'house-services' }, rows.map((x) => h('li', { class: 'vpn-row' },
+      h('span', { class: `activity-dot${x.away ? '' : !x.ok ? ' is-bad' : x.on ? ' is-on' : ''}`, 'aria-hidden': 'true' }),
+      h('div', { class: 'vpn-main' },
+        h('div', {}, h('span', { class: 'house-svc-name' }, x.name), ' ', h('span', { class: 'muted' }, x.text)),
+        x.notes.length > 0 && h('div', { class: 'row-meta' }, x.notes.map((t) => h('span', {}, t))),
+        x.problems.map((p) => h('p', { class: 'house-failed' }, p)))))));
 }
 
 // Wake a dual-boot machine into the system you pick, or restart it into another one (house.js,

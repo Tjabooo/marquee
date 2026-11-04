@@ -38,6 +38,17 @@ function Save-TvJson($Object, [string]$Path) {
   Move-Item -Force $tmp $Path
 }
 
+# The status (no secrets: tunnel/exit addresses, problems) in a folder every local user may read,
+# because the data folder is SYSTEM + Administrators only and Marquee runs unelevated.
+$Script:PublicDir = Join-Path $env:ProgramData 'TorrentVpn-Status'
+function Publish-TvStatus($Status) {
+  if (-not (Test-Path $Script:PublicDir)) {
+    New-Item -ItemType Directory -Force $Script:PublicDir | Out-Null
+    & icacls $Script:PublicDir /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-11:(OI)(CI)RX' | Out-Null
+  }
+  Save-TvJson $Status (Join-Path $Script:PublicDir 'status.json')
+}
+
 function Read-TvState {
   if (Test-Path $Script:StateFile) { try { return Get-Content -Raw $Script:StateFile | ConvertFrom-Json } catch { } }
   [pscustomobject]@{}

@@ -13,7 +13,7 @@
 #                                   asked (grub-reboot). Turns Wake-on-LAN on for the wired card.
 #
 # Reports only go out on the home network: the router's MAC must match the one saved by setup,
-# so the token is never sent to some other network's 192.168.x.y. Away from home the status
+# so the token is never sent to some other network's 192.168.x.y (the VPN's LAN sharing must be on). Away from home the status
 # module hides itself. Needs: bash, curl, jq, iproute2 (+ ethtool and grub for `boot`).
 # Only `boot` needs root; it reads MARQUEE_HOUSE_CONF (/etc/marquee-house.env in its unit).
 set -u
@@ -42,8 +42,23 @@ failed_units() {
     systemctl --user --failed --plain --no-legend 2>/dev/null | awk '{print "user:"$1}'; } | jq -Rsc 'split("\n")|map(select(length>0))'
 }
 
+# Mullvad VPN client state (null without one). The relay/exit come from the daemon's own location check.
+# last_drop: unix time of the last unplanned drop, if something watching the VPN writes it to $STATE/vpn-last-drop.
+vpn_state() {
+  command -v mullvad >/dev/null || { echo null; return; }
+  local st lock drop=null
+  st=$(timeout 3 mullvad status --json 2>/dev/null) || { echo null; return; }
+  lock=false; timeout 3 mullvad lockdown-mode get 2>/dev/null | grep -qi ': *on' && lock=true
+  [[ -r $STATE/vpn-last-drop ]] && drop=$(<"$STATE/vpn-last-drop")
+  [[ $drop =~ ^[0-9]+$ ]] || drop=null
+  jq -c --argjson lock "$lock" --argjson drop "$drop" '(.details.location // {}) as $l |
+    {state, relay:$l.hostname, city:$l.city, country:$l.country, exit_ip:$l.ipv4, mullvad_exit:$l.mullvad_exit_ip,
+     lockdown:$lock, last_drop:$drop,
+     error:(if .state == "error" then (.details.cause | if type == "string" then . else tojson end) else null end)}' <<<"$st" 2>/dev/null || echo null
+}
+
 collect() {
-  local host kind os kernel up load cpus mt ma upd bkp bat sb failed disks
+  local host kind os kernel up load cpus mt ma upd bkp bat sb failed disks vpn
   host=$(</proc/sys/kernel/hostname)
   kind=desktop; [[ -d /sys/class/power_supply/BAT0 || -d /sys/class/power_supply/BAT1 ]] && kind=laptop
   os=$(. /etc/os-release 2>/dev/null; echo "${NAME:-Linux}")
@@ -69,14 +84,15 @@ collect() {
   sb=null
   if command -v mokutil >/dev/null; then mokutil --sb-state 2>/dev/null | grep -qi 'enabled' && sb=true || sb=false; fi
   failed=$(failed_units)
+  vpn=$(vpn_state)
   disks=$(df -B1 --output=target,size,used -t ext4 -t btrfs -t xfs -t f2fs -t vfat -t zfs 2>/dev/null | tail -n +2 |
           jq -Rsc 'split("\n")|map(select(length>0)|split(" ")|map(select(length>0))|{mount:.[0],size:(.[1]|tonumber),used:(.[2]|tonumber)})')
   jq -nc --arg host "$host" --arg kind "$kind" --arg os "$os" --arg kernel "$kernel" \
     --argjson uptime "${up%.*}" --argjson load "$load" --argjson cpus "$cpus" \
     --argjson mt "$mt" --argjson ma "$ma" --argjson updates "$upd" --argjson last_backup "$bkp" \
-    --argjson battery "$bat" --argjson secure_boot "$sb" --argjson failed "$failed" --argjson disks "$disks" \
+    --argjson battery "$bat" --argjson secure_boot "$sb" --argjson failed "$failed" --argjson disks "$disks" --argjson vpn "$vpn" \
     '{host:$host,kind:$kind,os:$os,kernel:$kernel,uptime:$uptime,load:$load,cpus:$cpus,mem:{total:$mt,avail:$ma},
-      updates:$updates,last_backup:$last_backup,battery:$battery,secure_boot:$secure_boot,failed:$failed,disks:$disks}'
+      updates:$updates,last_backup:$last_backup,battery:$battery,secure_boot:$secure_boot,failed:$failed,disks:$disks,vpn:$vpn}'
 }
 
 # ---------- boot: wake into / restart into another system (see house.js, "power") ----------
@@ -199,7 +215,8 @@ case ${1:-report} in
     at_home || exit 0
     # only send when the failed services changed since the last accepted report (so a fixed one clears
     # from the House tab within 30 s) or that report is ~5 min old
-    failed=$(failed_units) sent=$STATE/last-report
+    # (a VPN state/relay change counts as a change too, so the House VPN card follows within 30 s)
+    failed="$(failed_units) $(vpn_state | jq -c '{state,relay}' 2>/dev/null)" sent=$STATE/last-report
     [[ -r $sent && $(<"$sent") == "$failed" ]] && (( $(date +%s) - $(stat -c %Y "$sent") < 290 )) && exit 0
     # a server that's down or doesn't know the token yet is logged, not a failed unit (which the next
     # report would then flag as an issue about itself)

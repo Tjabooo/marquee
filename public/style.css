@@ -983,6 +983,9 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .house-svc-name { font-weight: 600; }
 .house-services .muted { font-size: 13px; }
 .house-failed { margin: 0; font-size: 13px; color: var(--alert); }
+.vpn-row { align-items: flex-start !important; }
+.vpn-row .activity-dot { margin-top: 6px; flex: none; }
+.vpn-main { display: grid; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
 /* House → Sharing (load.js) */
 .load-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin: 18px 0 10px; }
 .load-head .activity-head { margin: 0; }

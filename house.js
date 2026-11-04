@@ -22,6 +22,10 @@ const DISK_WARN = 0.9;                       // a disk this full is an issue
 const QUIET_MS = 20 * 60 * 1000;             // a machine that hasn't reported for this long is "away"
 const FORGET_MS = 30 * 24 * 3600 * 1000;     // and after this long it's dropped from the list
 const BACKUP_WARN_MS = 7 * 24 * 3600 * 1000;
+// The torrent VPN's watchdog status (tools/torrent-vpn; the copy any local user can read). Windows only by default.
+const TORRENT_VPN_STATUS = process.env.TORRENT_VPN_STATUS
+  || (process.platform === 'win32' ? path.join(process.env.ProgramData || 'C:\\ProgramData', 'TorrentVpn-Status', 'status.json') : '');
+const VPN_STALE_MS = 5 * 60 * 1000;          // the watchdog runs every minute: older than this = it stopped
 
 let file = null;
 let machines = {};
@@ -92,11 +96,29 @@ export function acceptReport(req, body) {
     battery: body.battery && num(body.battery.pct, 100) !== null
       ? { pct: num(body.battery.pct, 100), status: str(body.battery.status, 20) } : null,
     secureBoot: typeof body.secure_boot === 'boolean' ? body.secure_boot : null,
+    vpn: vpnReport(body.vpn),
     ip: clean(req.socket.remoteAddress),
     at: Date.now(),
   };
   for (const [h, m] of Object.entries(machines)) if (Date.now() - m.at > FORGET_MS) delete machines[h];
   try { fs.writeFileSync(file, JSON.stringify(machines)); } catch { /* kept in memory */ }
+}
+
+// What a machine's VPN client says (agents/marquee-house reads `mullvad status --json`). null = no VPN client.
+const VPN_STATES = ['connected', 'connecting', 'disconnected', 'disconnecting', 'error'];
+function vpnReport(v) {
+  if (!v || typeof v !== 'object' || !VPN_STATES.includes(v.state)) return null;
+  return {
+    state: v.state,
+    relay: str(v.relay, 60),
+    city: str(v.city, 60),
+    country: str(v.country, 60),
+    exitIp: net.isIP(String(v.exit_ip || '')) ? String(v.exit_ip) : null,
+    mullvadExit: typeof v.mullvad_exit === 'boolean' ? v.mullvad_exit : null,
+    lockdown: typeof v.lockdown === 'boolean' ? v.lockdown : null,
+    error: str(v.error, 160),
+    lastDrop: num(v.last_drop),   // unix seconds of the last drop the machine noticed
+  };
 }
 
 // ---------- power: wake a machine and choose what it boots ----------
@@ -325,6 +347,33 @@ async function adguard() {
   }
 }
 
+// The server's torrent tunnel: only qBittorrent uses it (split tunnel + kill switches, tools/torrent-vpn).
+async function torrentVpn() {
+  if (!TORRENT_VPN_STATUS) return null;
+  let st;
+  try { st = JSON.parse((await fs.promises.readFile(TORRENT_VPN_STATUS, 'utf8')).replace(/^\uFEFF/, '')); } catch (e) {
+    return e.code === 'ENOENT' ? null : { ok: false, tunnel: 'unknown', problems: [`can’t read the watchdog status (${e.code || e.message})`] };
+  }
+  const at = Date.parse(st.at) || 0;
+  const problems = (Array.isArray(st.problems) ? st.problems : []).map((p) => String(p).slice(0, 200));
+  if (Date.now() - at > VPN_STALE_MS) problems.unshift(`the watchdog hasn’t run since ${new Date(at).toLocaleString('sv-SE')}`);
+  const exit = st.exit || {};
+  return {
+    ok: Boolean(st.ok) && !problems.length,
+    tunnel: st.tunnel === 'up' ? 'up' : 'down',
+    relay: str(st.server, 60),
+    exitIp: exit.ok ? str(exit.ip, 45) : null,
+    city: exit.ok ? str(exit.city, 60) : null,
+    country: exit.ok ? str(exit.country, 60) : null,
+    mullvadExit: typeof exit.provider === 'boolean' ? exit.provider : null,
+    torrentIp: str(st.qbit?.externalV4, 45),
+    lastLeakAt: Date.parse(st.lastLeakAt) || null,
+    lastDropAt: Date.parse(st.lastDropAt) || null,
+    problems,
+    at,
+  };
+}
+
 async function services() {
   const out = [];
   if (qbitAlive) {
@@ -352,11 +401,13 @@ function machineIssues(m) {
   if (m.lastBackup && Date.now() - m.lastBackup * 1000 > BACKUP_WARN_MS) issues.push(`${m.host}: last backup ${Math.round((Date.now() - m.lastBackup * 1000) / 86400000)} days ago`);
   if (m.battery && m.battery.pct <= 10 && m.battery.status !== 'Charging') issues.push(`${m.host}: battery at ${m.battery.pct} %`);
   if (m.secureBoot === false) issues.push(`${m.host}: Secure Boot is off`);
+  if (m.vpn?.state === 'error') issues.push(`${m.host}: VPN is blocking traffic${m.vpn.error ? ` (${m.vpn.error})` : ''}`);
+  if (m.vpn?.state === 'connected' && m.vpn.mullvadExit === false) issues.push(`${m.host}: VPN says connected but the exit ${m.vpn.exitIp || ''} isn’t Mullvad’s`);
   return issues;
 }
 
 export async function houseReport() {
-  const [cpu, svc, disks] = await Promise.all([cpuBusy(), services(), Promise.all(dirs.map(async (d) => ({ label: d.label, dir: d.dir, ...(await disk(d.dir)) })))]);
+  const [cpu, svc, disks, vpn] = await Promise.all([cpuBusy(), services(), Promise.all(dirs.map(async (d) => ({ label: d.label, dir: d.dir, ...(await disk(d.dir)) }))), torrentVpn()]);
   const server = {
     name: os.hostname(),
     os: `${os.type()} ${os.release()}`,
@@ -365,10 +416,12 @@ export async function houseReport() {
     mem: { total: os.totalmem(), avail: os.freemem() },
     disks: disks.filter((d) => d.size),
     services: svc,
+    vpn,
   };
   const issues = [];
   for (const d of server.disks) if (pct(d) >= DISK_WARN) issues.push(`Server: ${d.label} drive is ${Math.round(pct(d) * 100)} % full (${gb(d.size - d.used)} free)`);
   for (const s of svc) if (!s.ok) issues.push(`Server: ${s.name}: ${s.detail}`);
+  if (vpn && !vpn.ok) issues.push(`Server: torrent VPN ${vpn.tunnel}${vpn.problems.length ? `: ${vpn.problems[0]}` : ''}`);
   const list = Object.values(machines).sort((a, b) => a.host.localeCompare(b.host)).map((m) => ({
     ...m, away: Date.now() - m.at > QUIET_MS, issues: machineIssues(m),
   }));
@@ -390,6 +443,7 @@ export async function houseSummary() {
       uptime: r.server.uptime,
       disks: r.server.disks.map((d) => ({ label: d.label, free: d.size - d.used, size: d.size })),
       services: r.server.services.map((x) => ({ name: x.name, ok: x.ok })),
+      vpn: r.server.vpn && { ok: r.server.vpn.ok, tunnel: r.server.vpn.tunnel, relay: r.server.vpn.relay, exitIp: r.server.vpn.exitIp },
     },
   };
 }

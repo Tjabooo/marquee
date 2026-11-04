@@ -49,7 +49,8 @@ by SYSTEM and Administrators.
 .\Test-TorrentVpn.ps1 -Drill   # also stops the tunnel for 20 s and proves nothing moves
 ```
 
-- Live state: `C:\ProgramData\TorrentVpn\status.json`
+- Live state: `C:\ProgramData\TorrentVpn\status.json` (copy readable by any local user, for Marquee's House tab:
+  `C:\ProgramData\TorrentVpn-Status\status.json`; `lastDropAt` = when the tunnel last lost its handshake)
 - Log: `C:\ProgramData\TorrentVpn\watchdog.log`
 
 ## Remove

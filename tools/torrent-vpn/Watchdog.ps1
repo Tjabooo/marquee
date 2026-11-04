@@ -1,7 +1,8 @@
 # Runs every minute as SYSTEM (scheduled task "TorrentVpn Watchdog"). Keeps the torrent tunnel,
 # its route, the firewall kill switch and qBittorrent's binding in place, rotates to the next
 # server when the current one stops answering, and stops every torrent if a leak is ever seen.
-# Writes C:\ProgramData\TorrentVpn\status.json for anything that wants to show the state.
+# Writes C:\ProgramData\TorrentVpn\status.json, plus a copy any local user can read in
+# C:\ProgramData\TorrentVpn-Status\status.json (Marquee's House tab runs unelevated).
 param([switch]$Quiet)
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'TorrentVpn.psm1') -Force
@@ -39,6 +40,7 @@ $status.server = $peer.name
 if ($healthy) {
   Set-StateValue 'downSince' $null; Set-StateValue 'restarts' 0
 } elseif ($svc) {
+  if ($null -eq (Get-StateValue 'downSince' $null)) { Set-StateValue 'dropAt' (Get-Date).ToString('o'); Write-TvLog 'tunnel dropped (no recent handshake)' }
   $downSince = Get-StateValue 'downSince' $now
   Set-StateValue 'downSince' $downSince
   $restarts = [int](Get-StateValue 'restarts' 0)
@@ -102,6 +104,7 @@ try {
 }
 $status.leaks = $leaks
 $status.lastLeakAt = Get-StateValue 'leakAt' $null
+$status.lastDropAt = Get-StateValue 'dropAt' $null
 
 # 6. Exit check through the tunnel: every 10 minutes, and right after the tunnel comes back.
 $lastExit = Get-StateValue 'exit' $null
@@ -122,6 +125,7 @@ $status.problems = @($problems)
 $status.ok = $healthy -and $routeOk -and -not $leaks.Count -and -not $problems.Count
 Save-TvJson $state (Join-Path (Get-TvDataDir) 'state.json')
 Save-TvJson ([pscustomobject]$status) (Join-Path (Get-TvDataDir) 'status.json')
+Publish-TvStatus ([pscustomobject]$status)
 $previousOk = Get-StateValue 'ok' $null
 if ($previousOk -ne $status.ok) {
   Write-TvLog ("status " + $(if ($status.ok) { 'OK' } else { 'NOT OK: ' + ($problems -join '; ') }))

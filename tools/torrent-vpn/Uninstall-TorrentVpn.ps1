@@ -20,6 +20,7 @@ if ($AllowDirect) {
     Invoke-TvQbit $q '/api/v2/app/setPreferences' @{ json = '{"current_network_interface":"","current_interface_address":""}' } | Out-Null
   }
   Remove-Item -Recurse -Force (Get-TvDataDir) -ErrorAction SilentlyContinue
+  Remove-Item -Recurse -Force (Join-Path $env:ProgramData 'TorrentVpn-Status') -ErrorAction SilentlyContinue
   Write-Host 'Removed. qBittorrent uses the normal connection again (home IP visible to peers).'
 } else {
   Write-Host 'Tunnel and watchdog removed. qBittorrent is still fenced in: no torrent traffic until you reinstall, or run with -AllowDirect.'
