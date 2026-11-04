@@ -27,6 +27,7 @@ import { PROFILES } from './recommend.js';
 import * as accounts from './accounts.js';
 import { NotesStore } from './notes.js';
 import { NotesUploads, mediaType } from './notes-media.js';
+import { NotesOcr } from './notes-ocr.js';
 import { WatchRooms } from './watch.js';
 import { handleWatchPage } from './watch-page.js';
 import { creditsFor } from './credits.js';
@@ -72,7 +73,10 @@ setInterval(() => watchRooms.cleanup(), 3000).unref();
 activity.initActivity({ dataDir: ROOT, nameForUser: accounts.displayNameFor });
 accounts.initAccounts({ dataDir: ROOT, adminEmails: activity.adminEmails(), mediaDir: MEDIA_DIR });
 const notes = new NotesStore(ROOT, { fileDir:process.env.NOTES_FILES_DIR });
-const notesUploads = new NotesUploads(notes);
+// Text in Notes images becomes search keywords. Uploads are read right away; older images catch up after startup.
+const notesOcr = new NotesOcr(notes);
+const notesUploads = new NotesUploads(notes, { onFile: () => notesOcr.kick() });
+setTimeout(() => notesOcr.kick(), 30000).unref();
 setInterval(() => { try { notesUploads.prune(); } catch { /* retried on the next upload */ } }, 3600000).unref();
 house.initHouse({
   dataDir: ROOT,

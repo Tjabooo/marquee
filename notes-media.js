@@ -29,7 +29,7 @@ export function mediaType(file, hint = '') {
 }
 
 export class NotesUploads {
-  constructor(store) { this.store = store; this.dir = path.join(store.fileDir, '.uploads'); this.sessions = new Map(); }
+  constructor(store, { onFile } = {}) { this.store = store; this.onFile = onFile; this.dir = path.join(store.fileDir, '.uploads'); this.sessions = new Map(); }
   prune() {
     const cutoff = Date.now() - DAY;
     for (const [id, s] of this.sessions) if (!s.busy && s.updated < cutoff) { fs.rmSync(s.temp, { force:true }); this.sessions.delete(id); }
@@ -91,6 +91,7 @@ export class NotesUploads {
     try { this.store.registerFile(fileId,{name:s.name,mime,size:s.size}); }
     catch (e) { fs.renameSync(target,s.temp); throw e; }
     s.attachment = {fileId,name:s.name,mime,size:s.size}; s.updated = Date.now();
+    try { this.onFile?.(s.attachment); } catch { /* background work must never fail an upload */ }
     return {attachment:s.attachment};
   }
   cancel(id, actor) {

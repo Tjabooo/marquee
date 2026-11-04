@@ -6,6 +6,8 @@ import { importTimestamp } from './public/notes-import.js';
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite');
 const fail = (status, message) => { throw Object.assign(new Error(message), { status }); };
 const MAX_TEXT = 30000;
+// Image types Windows' OCR can read (see notes-ocr.js).
+const OCR_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/heic', 'image/avif'];
 const bool = (v) => v ? 1 : 0;
 function objectBody(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) fail(400, 'Send a note object.');
@@ -40,23 +42,34 @@ export class NotesStore {
     this.fileDir = fileDir ? path.resolve(fileDir) : path.join(dataDir, '.marquee-notes-files');
     this.db = new DatabaseSync(path.join(dataDir, '.marquee.db'));
     this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;
-      CREATE TABLE IF NOT EXISTS note_files(id TEXT PRIMARY KEY, name TEXT NOT NULL, mime TEXT NOT NULL, size INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS note_files(id TEXT PRIMARY KEY, name TEXT NOT NULL, mime TEXT NOT NULL, size INTEGER NOT NULL, text TEXT);
       CREATE TABLE IF NOT EXISTS notes (
         id INTEGER PRIMARY KEY, body TEXT NOT NULL, attachments TEXT NOT NULL DEFAULT '[]',
         author TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
         version INTEGER NOT NULL DEFAULT 1, pinned INTEGER NOT NULL DEFAULT 0,
         reminder_at INTEGER, done_at INTEGER, deleted_at INTEGER,
-        source_id TEXT UNIQUE, source_channel TEXT, original_edited_at INTEGER
+        source_id TEXT UNIQUE, source_channel TEXT, original_edited_at INTEGER, keywords TEXT NOT NULL DEFAULT ''
       );
       CREATE INDEX IF NOT EXISTS notes_timeline ON notes(deleted_at, created_at DESC, id DESC);
-      CREATE INDEX IF NOT EXISTS notes_reminders ON notes(reminder_at) WHERE deleted_at IS NULL AND done_at IS NULL;
-      CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(body, content='notes', content_rowid='id', tokenize='unicode61 remove_diacritics 2');
-      CREATE TRIGGER IF NOT EXISTS notes_ai AFTER INSERT ON notes BEGIN INSERT INTO notes_fts(rowid, body) VALUES(new.id, new.body); END;
-      CREATE TRIGGER IF NOT EXISTS notes_ad AFTER DELETE ON notes BEGIN INSERT INTO notes_fts(notes_fts, rowid, body) VALUES('delete', old.id, old.body); END;
-      CREATE TRIGGER IF NOT EXISTS notes_au AFTER UPDATE OF body ON notes BEGIN
-        INSERT INTO notes_fts(notes_fts, rowid, body) VALUES('delete', old.id, old.body);
-        INSERT INTO notes_fts(rowid, body) VALUES(new.id, new.body);
-      END;`);
+      CREATE INDEX IF NOT EXISTS notes_reminders ON notes(reminder_at) WHERE deleted_at IS NULL AND done_at IS NULL;`);
+    // Search covers the note text plus keywords: text read out of its images. Older databases indexed text only.
+    const columns = (table) => this.db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      if (!columns('note_files').includes('text')) this.db.exec('ALTER TABLE note_files ADD COLUMN text TEXT');
+      if (!columns('notes').includes('keywords')) this.db.exec("ALTER TABLE notes ADD COLUMN keywords TEXT NOT NULL DEFAULT ''");
+      const fts = columns('notes_fts'), rebuild = fts.length > 0 && !fts.includes('keywords');
+      if (rebuild) this.db.exec('DROP TRIGGER IF EXISTS notes_ai; DROP TRIGGER IF EXISTS notes_ad; DROP TRIGGER IF EXISTS notes_au; DROP TABLE notes_fts;');
+      this.db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(body, keywords, content='notes', content_rowid='id', tokenize='unicode61 remove_diacritics 2');
+        CREATE TRIGGER IF NOT EXISTS notes_ai AFTER INSERT ON notes BEGIN INSERT INTO notes_fts(rowid, body, keywords) VALUES(new.id, new.body, new.keywords); END;
+        CREATE TRIGGER IF NOT EXISTS notes_ad AFTER DELETE ON notes BEGIN INSERT INTO notes_fts(notes_fts, rowid, body, keywords) VALUES('delete', old.id, old.body, old.keywords); END;
+        CREATE TRIGGER IF NOT EXISTS notes_au AFTER UPDATE OF body, keywords ON notes BEGIN
+          INSERT INTO notes_fts(notes_fts, rowid, body, keywords) VALUES('delete', old.id, old.body, old.keywords);
+          INSERT INTO notes_fts(rowid, body, keywords) VALUES(new.id, new.body, new.keywords);
+        END;`);
+      if (rebuild) this.db.exec("INSERT INTO notes_fts(notes_fts) VALUES('rebuild')");
+      this.db.exec('COMMIT');
+    } catch (e) { this.db.exec('ROLLBACK'); throw e; }
   }
   close() { this.db.close(); }
   file(id) {
@@ -69,6 +82,27 @@ export class NotesStore {
     if (!/^[a-f0-9]{64}$/.test(id)) fail(400, 'Invalid attachment ID.');
     this.db.prepare('INSERT INTO note_files(id,name,mime,size) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,mime=excluded.mime,size=excluded.size')
       .run(id, name, mime || 'application/octet-stream', size);
+  }
+  // Images whose text hasn't been read yet, newest first so a just-posted image beats the backlog.
+  pendingOcr(limit = 20) {
+    const rows = this.db.prepare(`SELECT id FROM note_files WHERE text IS NULL AND mime IN (${OCR_TYPES.map(() => '?').join(',')}) ORDER BY rowid DESC`).all(...OCR_TYPES);
+    // A missing file (media drive offline) stays pending instead of being marked as having no text.
+    return rows.map((r) => this.file(r.id)).filter(Boolean).slice(0, limit).map((f) => ({ id: f.id, full: f.full }));
+  }
+  keywordsFor(attachments) {
+    const text = this.db.prepare('SELECT text FROM note_files WHERE id=?');
+    return [...new Set(attachments.map((a) => a.fileId).filter(Boolean))].map((id) => text.get(id)?.text).filter(Boolean).join('\n');
+  }
+  // Saves an image's text and refreshes the keywords of every note that shows it. Doesn't count as an edit.
+  setFileText(id, value) {
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      this.db.prepare('UPDATE note_files SET text=? WHERE id=?').run(String(value), id);
+      const rows = this.db.prepare("SELECT DISTINCT notes.id, notes.attachments FROM notes, json_each(notes.attachments) AS a WHERE json_extract(a.value, '$.fileId')=?").all(id);
+      const save = this.db.prepare('UPDATE notes SET keywords=? WHERE id=?');
+      for (const row of rows) save.run(this.keywordsFor(JSON.parse(row.attachments)), row.id);
+      this.db.exec('COMMIT');
+    } catch (e) { this.db.exec('ROLLBACK'); throw e; }
   }
   public(row) {
     if (!row) return null;
@@ -99,7 +133,7 @@ export class NotesStore {
       if (words.length) {
         clauses.push('id IN (SELECT rowid FROM notes_fts WHERE notes_fts MATCH ?)');
         params.push(words.map((w) => `"${w}"*`).join(' AND '));
-      } else { clauses.push('instr(body, ?) > 0'); params.push(q); }
+      } else { clauses.push('(instr(body, ?) > 0 OR instr(keywords, ?) > 0)'); params.push(q, q); }
     }
     const total = this.db.prepare(`SELECT count(*) AS n FROM notes WHERE ${clauses.join(' AND ')}`).get(...params).n;
     if (before) {
@@ -119,8 +153,8 @@ export class NotesStore {
     objectBody(body);
     const attachments = attachmentsOf(body.attachments, (id) => this.file(id));
     const text = textOf(body.text ?? '', attachments), now = Date.now();
-    const r = this.db.prepare('INSERT INTO notes(body,attachments,author,created_at,updated_at,reminder_at) VALUES(?,?,?,?,?,?)')
-      .run(text, JSON.stringify(attachments), actor, now, now, body.reminderAt == null ? null : reminderOf(body.reminderAt));
+    const r = this.db.prepare('INSERT INTO notes(body,attachments,author,created_at,updated_at,reminder_at,keywords) VALUES(?,?,?,?,?,?,?)')
+      .run(text, JSON.stringify(attachments), actor, now, now, body.reminderAt == null ? null : reminderOf(body.reminderAt), this.keywordsFor(attachments));
     return this.get(Number(r.lastInsertRowid));
   }
   update(id, body, action = 'edit') {
@@ -153,11 +187,11 @@ export class NotesStore {
       catch (e) { fail(400, e.message); }
       return { id: String(r.id), text: textOf(r.text, attachments), attachments, at, edited };
     });
-    const insert = this.db.prepare('INSERT INTO notes(body,attachments,author,created_at,updated_at,source_id,source_channel,original_edited_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(source_id) DO NOTHING');
+    const insert = this.db.prepare('INSERT INTO notes(body,attachments,author,created_at,updated_at,source_id,source_channel,original_edited_at,keywords) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(source_id) DO NOTHING');
     let added = 0;
     this.db.exec('BEGIN IMMEDIATE');
     try {
-      for (const m of messages) added += Number(insert.run(m.text, JSON.stringify(m.attachments), actor, m.at, m.edited || m.at, m.id, channel || null, m.edited).changes);
+      for (const m of messages) added += Number(insert.run(m.text, JSON.stringify(m.attachments), actor, m.at, m.edited || m.at, m.id, channel || null, m.edited, this.keywordsFor(m.attachments)).changes);
       this.db.exec('COMMIT');
     } catch (e) { this.db.exec('ROLLBACK'); throw e; }
     const first = messages.reduce((n, m) => Math.min(n, m.at), Infinity);

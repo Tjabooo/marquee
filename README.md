@@ -196,6 +196,11 @@ live in `NOTES_FILES_DIR` (default `.marquee-notes-files/`). Include both in pri
 Neither the note text nor imported message contents go into the Activity log.
 
 Use the search field for words or word prefixes; several words must all match.
+Text inside attached images (screenshots, receipts, photos of signs) is searchable too:
+Marquee reads it with Windows' built-in OCR right after an upload and stores it as hidden keywords
+on the note. Nothing to install; images posted before this existed are read in the background
+after startup. Add more OCR languages in Windows Settings › Time & language › Language.
+Set `NOTES_OCR=off` in `.env` to turn it off.
 **Pinned**, **Due**, and **Trash** narrow the view. Reminder dates are shown in
 local time, with due reminders highlighted when Notes is open; these are not
 background push notifications. Deleted notes can be restored from Trash.
