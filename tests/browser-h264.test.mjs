@@ -1,0 +1,41 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import { promisify } from 'node:util';
+import { execFile } from 'node:child_process';
+
+// A new HEVC download gets its H.264 browser copy in the background, without anyone pressing Play,
+// so a browser without HEVC (Firefox) can start it right away.
+test('a freshly downloaded HEVC file gets an H.264 browser copy before anyone plays it', { timeout: 90000 }, async (t) => {
+  const run = promisify(execFile);
+  const ffmpeg = process.env.FFMPEG || 'ffmpeg';
+  try { await run(ffmpeg, ['-version']); await run(process.env.FFPROBE || 'ffprobe', ['-version']); }
+  catch { t.skip('FFmpeg unavailable'); return; }
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-h264-'));
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  const file = path.join(dir, 'Film.2026.2160p.WEB-DL.mp4');
+  try {
+    await run(ffmpeg, ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=blue:s=128x128:r=4:d=3',
+      '-f', 'lavfi', '-i', 'sine=frequency=440:duration=3', '-c:v', 'libx265', '-x265-params', 'log-level=error',
+      '-tag:v', 'hvc1', '-c:a', 'aac', '-y', file]);
+  } catch { t.skip('FFmpeg without libx265'); return; }
+
+  const convert = await import('../convert.js?browser-h264-test');
+  await convert.startConverter({ dataDir: dir, listCandidates: async () => [{ file, deleteOriginal: false }] });
+  // hvc1 HEVC counts as playable for Safari/Chrome, so the old audio/video check never made a copy.
+  assert.equal(convert.videoBrowserSafe(await convert.probeVideo(file)), true);
+
+  const fixed = convert.fixPath(file);
+  const deadline = Date.now() + 60000;
+  while (!existsSync(fixed) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 200));
+  assert.ok(existsSync(fixed), 'the browser copy was made by the background scan');
+  const v = await convert.probeVideo(fixed);
+  assert.equal(v.codec, 'h264');
+  assert.equal(v.tenBit, false);
+  assert.equal(convert.preferConverted(file, { browser: true }), fixed);
+  assert.equal(convert.preferConverted(file), file, 'TVs keep the original');
+  assert.equal((await fs.stat(file)).size > 0, true);
+});

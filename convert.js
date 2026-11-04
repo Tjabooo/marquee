@@ -20,6 +20,9 @@ const TMP_TAG = '.marquee-tmp';
 // a fixed copy is written to the cache directory and served to browsers only.
 const FIX_EXT = new Set(['.mp4', '.m4v', '.mov']);
 const INTERVAL_MS = 2 * 60 * 1000;
+// HEVC files added within this many days get their H.264 browser copy in the background, right after
+// they download, instead of when someone presses Play in a browser without HEVC. 0 turns it off.
+const BROWSER_H264_DAYS = Number(process.env.BROWSER_H264_DAYS ?? 14);
 
 const status = {
   enabled: false,
@@ -685,6 +688,27 @@ async function audioNeedsFix(file) {
   return true;
 }
 
+// The H.264 browser-copy job for a streamed MP4 (a converted copy or a downloaded MP4) if it's HEVC,
+// was added recently (`added` is the library file the user downloaded) and has no H.264 copy yet.
+// Firefox can't play HEVC, so without this its first Play starts a long re-encode.
+async function browserH264Job(target, added) {
+  if (!(BROWSER_H264_DAYS > 0) || !canFix(target)) return null;
+  if (target === currentFile || queue.some((q) => q.file === target) || failures[failureKey(target)]) return null;
+  const fixed = fixPath(target);
+  if (!fixed) return null;
+  try {
+    const st = fs.statSync(added);
+    if (Date.now() - Math.max(st.birthtimeMs || 0, st.mtimeMs) > BROWSER_H264_DAYS * 864e5) return null;
+  } catch { return null; }
+  const v = await probeVideo(target).catch(() => null);
+  if (v?.codec !== 'hevc') return null;
+  const exists = fs.existsSync(fixed);
+  if (exists && (await probeVideo(fixed).catch(() => null))?.codec !== 'hevc') return null; // already H.264
+  // An existing copy that is still HEVC (an audio fix or hev1 relabel) is replaced by the H.264 one,
+  // which plays in every browser.
+  return { file: target, fix: true, h264: true, force: exists };
+}
+
 async function drain(onConverted) {
   if (running) return;
   running = true;
@@ -698,6 +722,7 @@ async function drain(onConverted) {
       status.done += 1;
       console.log(`[convert] done: ${path.basename(job.file)}`);
       onConverted?.();
+      if (!job.fix) convertSoon(); // a new MP4 copy may still need its H.264 browser copy (browserH264Job)
     } catch (e) {
       if (e.retryLater) { console.warn(`[convert] ${path.basename(job.file)}: ${e.message?.includes('earlier') ? e.message : 'copy is in use'}, will retry.`); continue; }
       const msg = e.message || String(e);
@@ -781,13 +806,19 @@ export async function startConverter({ dataDir, listCandidates, onConverted, onS
       for (const c of candidates) { // H.264 browser copies of MP4 copies
         const twin = needsConversion(c.file) && twinPath(c.file);
         const fixed = twin && fixPath(twin);
-        if (fixed) keep.add(path.basename(fixed));
+        if (!fixed) continue;
+        keep.add(path.basename(fixed));
+        if (!fs.existsSync(twin)) continue;
+        const job = await browserH264Job(twin, c.file);
+        if (job) queue.push(job);
       }
       for (const c of candidates) {
         if (!canFix(c.file) || originalFor(c.file)) continue;
         const fixed = fixPath(c.file);
         if (!fixed) continue;
         keep.add(path.basename(fixed));
+        const h264 = await browserH264Job(c.file, c.file); // also covers its audio fix
+        if (h264) { queue.push(h264); continue; }
         if (fs.existsSync(fixed) || failures[failureKey(c.file)]) continue;
         if (c.file === currentFile || queue.some((q) => q.file === c.file)) continue;
         if (await audioNeedsFix(c.file)) queue.push({ file: c.file, fix: true });
@@ -800,5 +831,5 @@ export async function startConverter({ dataDir, listCandidates, onConverted, onS
   };
   scanNow = tick;
   setTimeout(tick, 5000);
-  setInterval(tick, INTERVAL_MS);
+  setInterval(tick, INTERVAL_MS).unref(); // the HTTP server keeps the process alive, not this
 }
