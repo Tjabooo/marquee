@@ -34,6 +34,7 @@ import * as noteShare from './note-share.js';
 import { WatchRooms } from './watch.js';
 import { handleWatchPage } from './watch-page.js';
 import { creditsFor, initCredits } from './credits.js';
+import { Previews } from './previews.js';
 import { isHomeRequest, describeRequest } from './network.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -81,6 +82,8 @@ const notesOcr = new NotesOcr(notes);
 // Previews of shared notes: video/image copies Discord can show. Shared notes get theirs at startup too.
 const sharedMedia = new noteShare.SharedMedia(notes, { cacheDir: path.join(ROOT, 'cache', 'notes-share') });
 setTimeout(() => { for (const note of notes.sharedNotes()) sharedMedia.prepare(note); }, 5000).unref();
+// Timeline previews: keyframe storyboards the player shows while you hover the seek bar.
+const previews = new Previews(path.join(ROOT, 'cache', 'previews'));
 const notesUploads = new NotesUploads(notes, { onFile: () => notesOcr.kick() });
 setTimeout(() => notesOcr.kick(), 30000).unref();
 setInterval(() => { try { notesUploads.prune(); } catch { /* retried on the next upload */ } }, 3600000).unref();
@@ -1518,6 +1521,7 @@ async function handleApi(req, res, url) {
       return res.end(data);
     }
     if ((m = p.match(/^\/api\/clips\/([\w-]{16})\/video$/))) return sendVideo(req, res, await clips.clipFile(m[1]));
+    if ((m = p.match(/^\/api\/clips\/([\w-]{16})\/preview(?:\/(\d{1,4})\.jpg)?$/))) return sendPreview(res, await clips.clipFile(m[1]), m[2]);
     if ((m = p.match(/^\/api\/clips\/([\w-]{16})\/keyframes$/))) return sendJson(res, 200, await clips.trimInfo(m[1]));
     if ((m = p.match(/^\/api\/clips\/([\w-]{16})\/rename$/)) && req.method === 'POST') {
       const body = await readJson(req);
@@ -1927,6 +1931,11 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, { creditsAt });
   }
 
+  // Timeline previews of the copy the browser plays (its timeline is the one the seek bar shows).
+  if ((m = p.match(/^\/api\/media\/(lib|dl)\/([A-Za-z0-9_-]+)\/preview(?:\/(\d{1,4})\.jpg)?$/))) {
+    return sendPreview(res, await streamFile(m[1], m[2], 'browser'), m[3]);
+  }
+
   // ---- browser audio compatibility ----
   if ((m = p.match(/^\/api\/media\/(lib|dl)\/([A-Za-z0-9_-]+)\/audio$/))) {
     const source = await sourceFile(m[1], m[2]);
@@ -2032,6 +2041,16 @@ async function serveStatic(res, pathname) {
   res.end(data);
 }
 
+// Index (no sheet): frame times and sheet layout, made in the background on first ask (previews.js).
+// Sheet URLs carry the storyboard key, so a sheet can be cached for good.
+async function sendPreview(res, file, sheet) {
+  if (sheet == null) return sendJson(res, 200, await previews.index(file));
+  const jpg = await previews.sheet(file, Number(sheet));
+  if (!jpg) throw new HttpError(404, 'That preview isn’t ready yet.');
+  res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, max-age=604800' });
+  res.end(await fs.promises.readFile(jpg));
+}
+
 function sendJson(res, status, body) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
   res.end(JSON.stringify(body));
@@ -2055,7 +2074,7 @@ const server = http.createServer(async (req, res) => {
     else if (url.pathname === '/c' || url.pathname.startsWith('/c/')) {
       if (!handleWatchPage(req, res, url, { rooms: watchRooms, artwork: watchArtwork })
         && !(await invites.handlePublic(req, res, url))
-        && !(await noteShare.handlePublic(req, res, url, { notes, media: sharedMedia, sendVideo, nameFor: (email) => accounts.displayNameFor(email) })) && !(await clips.handlePublic(req, res, url, { sendVideo }))) throw new HttpError(404, 'Not found.');
+        && !(await noteShare.handlePublic(req, res, url, { notes, media: sharedMedia, sendVideo, nameFor: (email) => accounts.displayNameFor(email) })) && !(await clips.handlePublic(req, res, url, { sendVideo, previews }))) throw new HttpError(404, 'Not found.');
     }
     else await serveStatic(res, url.pathname);
   } catch (err) {

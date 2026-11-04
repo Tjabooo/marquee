@@ -86,7 +86,7 @@ function playbackHarness({ prepare, autoplayRejected = false, clock = null } = {
     api: async (path, options) => { logs.push({ path, options, id: context.current?.id }); if (path.includes('/play-link')) return prepare ? prepare(options) : { url: 'https://example.test/two.mp4', name: 'two.mp4' }; if (path.endsWith('/credits')) return { creditsAt: null }; return {}; },
     fetch: async () => ({ ok: true, body: { cancel: () => Promise.resolve() } }),
     leaveWatchRoom: () => { context.party = null; }, resetCasting() {}, clearSubTracks() {}, closeCcMenu() {}, closeAudioMenu() {}, resetAudioSelection() {},
-    endSeek: () => { context.seeking = null; }, setSpinner() {}, updatePlayState() {}, updateTime() {}, showPlayerUi() {}, renderParty() {},
+    endSeek: () => { context.seeking = null; }, setSpinner() {}, updatePlayState() {}, updateTime() {}, showPlayerUi() {}, renderParty() {}, seekPreview: { load() {}, show() {} },
     setupPlayerSubs() {}, watchAudio() {}, watchCastTargets() {}, canCastFromBrowser: false,
     fsElement: () => false, setTheme() {}, pageThemeColor: '#000', renderLibrary() {},
     pushOverlay: () => logs.push({ overlay: 'push' }), swapTopOverlay: () => logs.push({ overlay: 'swap' }),

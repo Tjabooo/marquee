@@ -469,7 +469,7 @@ export function page({ title, desc, url, image, images = [], video, body }) {
 }
 
 // Returns true when it handled the request.
-export async function handlePublic(req, res, url, { sendVideo }) {
+export async function handlePublic(req, res, url, { sendVideo, previews }) {
   const p = url.pathname;
   const send = (status, type, data, extra = {}) => {
     res.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'public, max-age=300', 'X-Robots-Tag': 'noindex', ...extra });
@@ -489,8 +489,8 @@ export async function handlePublic(req, res, url, { sendVideo }) {
     }));
   }
   // The shared clip player: Marquee's own stylesheet and a player script for one clip.
-  if (p === '/c/style.css' || p === '/c/player.js') {
-    const file = new URL(p === '/c/style.css' ? './public/style.css' : './public/clip-share.js', import.meta.url);
+  if (p === '/c/style.css' || p === '/c/player.js' || p === '/c/seek-preview.js') {
+    const file = new URL({ '/c/style.css': './public/style.css', '/c/player.js': './public/clip-share.js', '/c/seek-preview.js': './public/seek-preview.js' }[p], import.meta.url);
     try { return send(200, p.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/javascript; charset=utf-8', await fs.promises.readFile(file), { 'Cache-Control': 'no-cache' }); }
     catch { return send(404, 'text/plain', 'Not found.'); }
   }
@@ -499,7 +499,7 @@ export async function handlePublic(req, res, url, { sendVideo }) {
     try { return send(200, 'image/png', await fs.promises.readFile(file)); } catch { return send(404, 'text/plain', 'Not found.'); }
   }
 
-  const m = p.match(/^\/c\/([A-Za-z0-9_-]{16})(?:\/(video\.mp4|thumb\.jpg))?\/?$/);
+  const m = p.match(/^\/c\/([A-Za-z0-9_-]{16})(?:\/(video\.mp4|thumb\.jpg|preview\.json|preview\/(\d{1,4})\.jpg))?\/?$/);
   if (!m) return false;
   const clip = sharedClip(m[1]);
   if (!clip) return send(404, 'text/html; charset=utf-8', page({ title: 'Clip not found', desc: 'This link doesn’t work any more.', url: '', body: '<h1>This clip isn’t shared any more</h1><p>Ask whoever sent it for a new link.</p>' }), { 'Cache-Control': 'no-store' });
@@ -509,6 +509,14 @@ export async function handlePublic(req, res, url, { sendVideo }) {
   }
   const copy = sharePath(clip.id);
   const ready = fs.existsSync(copy);
+  // Timeline previews of the share copy, for the seek bar (previews.js).
+  if (previews && (m[2] === 'preview.json' || m[3] != null)) {
+    if (!ready) return send(404, 'text/plain', 'Not found.', { 'Cache-Control': 'no-store' });
+    if (m[3] == null) return send(200, 'application/json; charset=utf-8', JSON.stringify(await previews.index(copy)), { 'Cache-Control': 'no-store' });
+    const jpg = await previews.sheet(copy, Number(m[3]));
+    if (!jpg) return send(404, 'text/plain', 'Not ready yet.', { 'Cache-Control': 'no-store' });
+    return send(200, 'image/jpeg', await fs.promises.readFile(jpg), { 'Cache-Control': 'public, max-age=604800' });
+  }
   if (m[2] === 'video.mp4') {
     if (!ready) return send(503, 'text/plain', 'Still being prepared.', { 'Retry-After': '30', 'Cache-Control': 'no-store' });
     await sendVideo(req, res, copy);
@@ -590,7 +598,7 @@ function playerPage({ title, game, link }) {
     </div>
     <p class="player-error" id="player-error" role="alert" hidden></p>
   </div>
-  <script src="/c/player.js" defer></script>
+  <script type="module" src="/c/player.js"></script>
 </body>
 </html>`;
 

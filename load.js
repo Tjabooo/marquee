@@ -205,6 +205,7 @@ export function describeJob(cmd, args, area) {
     'note-share': thumb ? 'Note preview image' : 'Note preview video',
     subsync: exe === 'ffmpeg' ? 'Subtitle sync (audio)' : 'Subtitle sync',
     ocr: 'Image text (OCR)',
+    previews: 'Timeline previews',
   };
   return {
     kind: kinds[area] || (exe === 'ffmpeg' ? 'ffmpeg' : exe),

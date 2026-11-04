@@ -1,6 +1,8 @@
 // The player on a shared clip's public page (/c/<token>): Marquee's player, for one clip only.
 // Same markup and styles as the app's player (style.css), with only what watching a clip needs:
 // play, skip, seek, volume, fullscreen and picture in picture, plus the same keyboard shortcuts.
+import { createSeekPreview } from '/c/seek-preview.js';
+
 const ICONS = {
   play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l13-7.5z"/></svg>',
   pause: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 4.5h4v15h-4zM13.5 4.5h4v15h-4z"/></svg>',
@@ -31,6 +33,13 @@ const video = $('#video');
 const controls = $('#player-controls');
 const seekEl = $('#seek');
 const seekTip = $('#seek-tip');
+// The frame at the hovered time (seek-preview.js), from this page's own storyboard.
+let seekTipX = null;
+const seekPreview = createSeekPreview(seekTip, () => { if (!seekTip.hidden && seekTipX != null) showSeekTip(seekTipX); });
+{
+  const here = location.pathname.replace(/\/+$/, '');
+  seekPreview.load({ indexUrl: `${here}/preview.json`, sheetUrl: (n, key) => `${here}/preview/${n}.jpg?k=${key}` });
+}
 const timeEl = $('#pc-time');
 const durEl = $('#pc-duration');
 const muteBtn = $('#pc-mute');
@@ -158,8 +167,10 @@ const seekTimeAt = (x) => {
   return Math.min(Math.max((x - r.left) / r.width, 0), 1) * (video.duration || 0);
 };
 function showSeekTip(x) {
+  seekTipX = x;
   const r = seekEl.getBoundingClientRect();
-  seekTip.textContent = fmtTime(seekTimeAt(x));
+  const t = seekTimeAt(x);
+  seekPreview.show(t, fmtTime(t));
   seekTip.hidden = false;
   const half = seekTip.offsetWidth / 2;
   seekTip.style.left = `${Math.min(Math.max(x - r.left, half), r.width - half)}px`;

@@ -3,6 +3,7 @@ import { WatchSession, offsetCues } from './watch-sync.js';
 import { createNotesView } from './notes-view.js';
 import { nextLibraryEpisode, isNextEpisodeTime, AUTOPLAY_SECONDS, AUTOPLAY_CHAIN } from './player-next.js';
 import { audioChoices, nativeAudioMapping } from './player-audio.js';
+import { createSeekPreview } from './seek-preview.js';
 import { libraryUnion, libraryAvailability, filterLibrary, transferState, transferAttention, transferPaused } from './library-downloads.js';
 
 const $ = (sel, el = document) => el.querySelector(sel);
@@ -3377,6 +3378,9 @@ const controlsEl = $('#player-controls');
 const seekRow = $('.seek-row');
 const seekEl = $('#seek');
 const seekTip = $('#seek-tip');
+// The frame at the hovered time sits in the tip (seek-preview.js); a sheet arriving late re-places it.
+let seekTipX = null;
+const seekPreview = createSeekPreview(seekTip, () => { if (!seekTip.hidden && seekTipX != null) showSeekTip(seekTipX); });
 const playBtns = [$('#pc-play'), $('.pc-big-play')];
 const muteBtn = $('#pc-mute');
 const volInput = $('#pc-vol');
@@ -3519,8 +3523,10 @@ const seekTimeAt = (x) => {
   return Math.min(Math.max((x - r.left) / r.width, 0), 1) * (video.duration || 0);
 };
 function showSeekTip(x) {
+  seekTipX = x;
   const r = seekEl.getBoundingClientRect();
-  seekTip.textContent = fmtTime(seekTimeAt(x));
+  const t = seekTimeAt(x);
+  seekPreview.show(t, fmtTime(t));
   seekTip.hidden = false;
   const half = seekTip.offsetWidth / 2;
   seekTip.style.left = `${Math.min(Math.max(x - r.left, half), r.width - half)}px`;
@@ -3776,6 +3782,7 @@ document.addEventListener('keyup', (e) => { if (e.key === ' ' && playerKeyTarget
 // closes and Next episode, which keeps the same overlay, fullscreen element and history entry.
 function resetPlayerMedia() {
   saveProgress(true);
+  seekPreview.load(null);
   const old = current;
   resetAudioSelection(old);
   current = null;
@@ -3836,6 +3843,8 @@ async function loadPlayerMedia(f, opts = {}) {
   // casting, Watch Together, Up next and resume points. They play straight from the clips folder.
   if (f.kind === 'clip') {
     renderParty();
+    const clipBase = `/api/clips/${encodeURIComponent(f.id)}/preview`;
+    seekPreview.load({ indexUrl: clipBase, sheetUrl: (n, key) => `${clipBase}/${n}.jpg?k=${key}` });
     setPlayerSource(`/api/clips/${encodeURIComponent(f.id)}/video`, session);
     video.play().catch(() => { /* autoplay blocked: the controls are there */ });
     return;
@@ -3844,6 +3853,9 @@ async function loadPlayerMedia(f, opts = {}) {
   renderParty();
   // Chapter lookup is optional and never delays playback.
   loadPlayerCredits(session);
+  // Asking for the timeline previews early lets the server make them while the video plays.
+  const previewBase = `/api/media/${session.kind}/${encodeURIComponent(mediaId(session))}/preview`;
+  seekPreview.load({ indexUrl: previewBase, sheetUrl: (n, key) => `${previewBase}/${n}.jpg?k=${key}` });
   let link;
   try { link = opts.prepared || await preparePlayerSource(f, watchSession, session.abort.signal); }
   catch (error) {
