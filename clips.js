@@ -163,7 +163,7 @@ function makeShareCopy(c) {
     const tmp = `${sharePath(c.id)}.marquee-tmp.mp4`;
     const args = ['-hide_banner', '-nostdin', '-y', '-i', src, '-map', '0:v:0'];
     // the one track that's already the mix: copy it when it's stereo-or-less AAC, else re-encode
-    const mix = audio.length >= 4 || audio.length === 1 ? audio[0] : null;
+    const mix = mixTrack(audio);
     if (mix) args.push('-map', '0:a:0');
     else if (audio.length > 1) {
       args.push('-filter_complex', `${audio.map((_, i) => `[0:a:${i}]`).join('')}amix=inputs=${audio.length}:duration=longest:normalize=0,alimiter=limit=0.95[a]`, '-map', '[a]');
@@ -249,12 +249,37 @@ async function keyframeTimes(file) {
   }
   return keys.sort((a, b) => a - b);
 }
+// ---------- audio tracks ----------
+// clip-replay (magi) records four tracks: 1 everything mixed (what browsers, Discord and phones
+// play), 2 game, 3 friends (Discord), 4 you (mic). Older clips have three tracks and no mix.
+// Copies Marquee makes name their tracks, so the mix is still found when there are fewer than four.
+const RECORDER_TRACKS = ['Mix', 'Game', 'Friends', 'You'];
+// MP4 keeps a track's name as its handler name; ffmpeg's default ones ("SoundHandler") aren't names.
+const titleOfTrack = (a) => {
+  const t = String(a?.tags?.title || a?.tags?.TITLE || a?.tags?.handler_name || '').trim();
+  return /^(sound|audio|video)\s*handler$|^$/i.test(t) || /^core media/i.test(t) ? '' : t;
+};
+export function trackLayout(audio) {
+  const titled = audio.some((a) => titleOfTrack(a));
+  return audio.map((a, i) => {
+    const title = titled ? titleOfTrack(a) : audio.length === 4 ? RECORDER_TRACKS[i] : '';
+    const mix = titled ? /^(mix|all)$/i.test(title) : audio.length === 4 && i === 0;
+    return { index: i, mix, label: title || `Track ${i + 1}`, mic: /^(you|mic)/i.test(title) };
+  });
+}
+// The track that already has everything in it, or null when the tracks still need mixing.
+export function mixTrack(audio) {
+  const layout = trackLayout(audio);
+  if (layout[0]?.mix || audio.length === 1) return audio[0];
+  return null;
+}
+
 export async function trimInfo(id) {
   const c = await byId(id);
   const file = fullPath(c.rel);
-  const [{ duration }, keys] = await Promise.all([probe(file), keyframeTimes(file)]);
+  const [{ duration, audio }, keys] = await Promise.all([probe(file), keyframeTimes(file)]);
   const first = keys[0] || 0; // container start offset: everything below is relative to it
-  return { duration, keyframes: keys.map((k) => Math.round((k - first) * 1000) / 1000) };
+  return { duration, keyframes: keys.map((k) => Math.round((k - first) * 1000) / 1000), tracks: trackLayout(audio) };
 }
 // Lossless editing: one or more parts of the clip are kept, in order, and joined into a new file.
 // Each part is cut with a stream copy (so it starts on the keyframe at or before its chosen start)
@@ -280,31 +305,68 @@ export function planSegments(segments, { duration, keyframes }) {
   if (total < 1) throw bad('The edited clip has to be at least 1 second long.');
   return parts;
 }
-export async function trim(id, segments, { deleteOriginal = false } = {}) {
+// Which audio tracks the copy keeps. `remove` lists separate tracks (never the mix: that's rebuilt
+// from the tracks that stay). Returns null when nothing changes, so the copy stays a plain copy.
+export function planTracks(layout, remove = []) {
+  if (!Array.isArray(remove) || !remove.length) return null;
+  const drop = new Set(remove.map(Number));
+  for (const i of drop) {
+    const t = layout[i];
+    if (!t) throw bad('That audio track isn’t in this clip.');
+    if (t.mix) throw bad('The mix can’t be removed on its own: remove the tracks you don’t want in it.');
+  }
+  const keep = layout.filter((t) => !t.mix && !drop.has(t.index));
+  const hasMix = layout.some((t) => t.mix);
+  // A rebuilt mix comes first (players only play track 1). One track left is its own mix.
+  return { keep, mix: hasMix && keep.length > 1, removed: layout.filter((t) => drop.has(t.index)) };
+}
+export async function trim(id, segments, { deleteOriginal = false, removeTracks = [] } = {}) {
   const c = await byId(id);
   const src = fullPath(c.rel);
-  const parts = planSegments(segments, await trimInfo(id));
+  const info = await trimInfo(id);
+  const parts = planSegments(segments, info);
+  const tracks = planTracks(info.tracks, removeTracks);
   const dir = path.join(CLIPS_DIR, 'Trimmed Clips', c.game === 'Trimmed' ? '' : c.game);
   await fs.promises.mkdir(dir, { recursive: true });
   const stem = c.title.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '-').replace(/[ .]+$/, '').slice(0, 100) || 'Clip';
-  const base = `${stem} (${parts.length > 1 ? 'edit' : 'trim'})`;
+  const base = `${stem} (${parts.length > 1 || tracks ? 'edit' : 'trim'})`;
   let name = `${base}.mp4`;
   for (let i = 2; fs.existsSync(path.join(dir, name)); i++) name = `${base} ${i}.mp4`;
   const dest = path.join(dir, name);
   const tmp = `${dest}.marquee-tmp.mp4`;
   // a dot-folder next to the result: same drive, and the clip scan skips it
   const work = path.join(dir, `.marquee-edit-${crypto.randomBytes(6).toString('hex')}`);
+  const cutTmp = tracks ? path.join(work, 'cut.mp4') : tmp;
   const cut = (p, out, extra = []) => run(FFMPEG, ['-hide_banner', '-nostdin', '-y', '-ss', String(p.from), '-i', src, '-t', String(p.end - p.from),
     '-map', '0', '-c', 'copy', '-avoid_negative_ts', 'make_zero', ...extra, out]);
   try {
-    if (parts.length === 1) await cut(parts[0], tmp, ['-movflags', '+faststart']);
+    await fs.promises.mkdir(work, { recursive: true });
+    if (parts.length === 1) await cut(parts[0], cutTmp, ['-movflags', '+faststart']);
     else {
-      await fs.promises.mkdir(work, { recursive: true });
       const names = parts.map((_, i) => `part${i}.mp4`);
       for (let i = 0; i < parts.length; i++) await cut(parts[i], path.join(work, names[i]));
       await fs.promises.writeFile(path.join(work, 'parts.txt'), names.map((n) => `file '${n}'`).join('\n') + '\n');
       await run(FFMPEG, ['-hide_banner', '-nostdin', '-y', '-f', 'concat', '-safe', '0', '-i', path.join(work, 'parts.txt'),
-        '-map', '0', '-c', 'copy', '-movflags', '+faststart', tmp]);
+        '-map', '0', '-c', 'copy', '-movflags', '+faststart', cutTmp]);
+    }
+    if (tracks) {
+      // Video and the kept tracks are copied; only a rebuilt mix is encoded (AAC 320k, like share copies).
+      const args = ['-hide_banner', '-nostdin', '-y', '-i', cutTmp];
+      const out = []; // [map, title, encode?]
+      if (tracks.mix) {
+        args.push('-filter_complex', `${tracks.keep.map((t) => `[0:a:${t.index}]`).join('')}amix=inputs=${tracks.keep.length}:duration=longest:normalize=0,alimiter=limit=0.95[mix]`);
+        out.push(['[mix]', 'Mix', true]);
+      }
+      for (const t of tracks.keep) out.push([`0:a:${t.index}`, t.label, false]);
+      args.push('-map', '0:v:0');
+      for (const [map] of out) args.push('-map', map);
+      args.push('-c:v', 'copy', '-map_metadata', '0');
+      out.forEach(([, title, encode], i) => {
+        args.push(`-c:a:${i}`, encode ? 'aac' : 'copy', `-metadata:s:a:${i}`, `title=${title}`, `-metadata:s:a:${i}`, `handler_name=${title}`, `-disposition:a:${i}`, i ? '0' : 'default');
+        if (encode) args.push(`-b:a:${i}`, '320k');
+      });
+      args.push('-movflags', '+faststart', tmp);
+      await run(FFMPEG, args);
     }
     await fs.promises.rename(tmp, dest);
   } finally {
@@ -314,6 +376,7 @@ export async function trim(id, segments, { deleteOriginal = false } = {}) {
   scanned.at = 0;
   if (deleteOriginal) await deleteClip(id);
   return { ok: true, title: path.basename(name, '.mp4'), parts: parts.map((p) => ({ start: p.from, end: p.end })),
+    removedTracks: tracks ? tracks.removed.map((t) => t.label) : [],
     start: parts[0].from, end: parts.at(-1).end, original: c.title };
 }
 

@@ -4620,6 +4620,8 @@ async function openTrim(c, opener) {
   let duration = 0;
   let keys = [0];
   let pieces = [];        // [{ start, end, keep }] covering the whole clip, in order
+  let tracks = [];        // the clip's audio tracks (from the server); the mix isn't offered
+  const removed = new Set();
   const undo = [];
   let busy = false;
   const MIN_PIECE = 0.2;  // seconds; no slivers from double-clicking Split
@@ -4709,6 +4711,20 @@ async function openTrim(c, opener) {
   const undoBtn = h('button', { type: 'button', class: 'edit-tool edit-undo', title: 'Undo (Ctrl+Z)', 'aria-label': 'Undo', onclick: undoLast });
   undoBtn.innerHTML = EDIT_ICONS.undo;
   const info = h('p', { class: 'edit-info', role: 'status' }, 'Loading the clip…');
+  // Audio: keep or leave out each separate track. Track 1 (the mix every player plays) is rebuilt.
+  const trackRow = h('div', { class: 'edit-tracks', hidden: true });
+  function renderTracks() {
+    const own = tracks.filter((t) => !t.mix);
+    trackRow.hidden = own.length < 2 && !tracks.some((t) => t.mix);
+    if (trackRow.hidden) return;
+    trackRow.replaceChildren(h('span', { class: 'edit-tracks-label' }, 'Audio'), ...own.map((t) => {
+      const kept = !removed.has(t.index);
+      const label = t.mic ? `${t.label} (mic)` : t.label;
+      return h('button', { type: 'button', class: `edit-chip${kept ? '' : ' is-off'}`, 'aria-pressed': String(kept),
+        title: kept ? `Leave ${label} out of the copy` : `Keep ${label}`,
+        onclick: () => { if (busy) return; if (kept) removed.add(t.index); else removed.delete(t.index); renderTracks(); render(); } }, label);
+    }));
+  }
   const delOrig = h('input', { type: 'checkbox', id: 'trim-del' });
   const previewBtn = h('button', { type: 'button', class: 'retry', onclick: () => { const r = runs(); if (!r.length) return; video.currentTime = r[0].from; video.play().catch(() => {}); } }, 'Preview');
   const save = h('button', { type: 'button', class: 'play-btn edit-save', disabled: true }, 'Save edited copy');
@@ -4747,9 +4763,11 @@ async function openTrim(c, opener) {
     const early = list.some((r) => r.from < r.start - 0.05);
     total.textContent = `of ${fmtT(duration)}`;
     info.classList.toggle('is-error', Boolean(issue));
-    info.textContent = issue || `${list.length === 1 ? 'Keeping 1 part' : `Keeping ${list.length} parts`} · ${fmtT(length)} long${early ? ' · striped bits are kept so each part starts on a keyframe' : ''} · no re-encoding, same quality`;
+    const gone = tracks.filter((t) => removed.has(t.index)).map((t) => t.mic ? `${t.label} (mic)` : t.label);
+    const remix = gone.length && tracks.some((t) => t.mix) && tracks.filter((t) => !t.mix && !removed.has(t.index)).length > 1;
+    info.textContent = issue || `${list.length === 1 ? 'Keeping 1 part' : `Keeping ${list.length} parts`} · ${fmtT(length)} long${early ? ' · striped bits are kept so each part starts on a keyframe' : ''}${gone.length ? ` · without ${gone.join(' and ')}` : ''} · ${remix ? 'video untouched, only the mix is re-encoded' : 'no re-encoding, same quality'}`;
     save.disabled = busy || Boolean(issue);
-    save.textContent = busy ? 'Saving…' : list.length > 1 ? 'Save edited copy' : 'Save trimmed copy';
+    save.textContent = busy ? 'Saving…' : list.length > 1 || gone.length ? 'Save edited copy' : 'Save trimmed copy';
     previewBtn.disabled = !list.length;
     undoBtn.disabled = !undo.length || busy;
     updateHead();
@@ -4795,7 +4813,7 @@ async function openTrim(c, opener) {
     if (problem(list)) return;
     busy = true; render();
     try {
-      const r = await api(`/api/clips/${c.id}/trim`, jsonPost({ segments: list.map(({ start, end }) => ({ start, end })), deleteOriginal: delOrig.checked }));
+      const r = await api(`/api/clips/${c.id}/trim`, jsonPost({ segments: list.map(({ start, end }) => ({ start, end })), removeTracks: [...removed], deleteOriginal: delOrig.checked }));
       toast(`Saved “${r.title}” in Trimmed Clips`);
       closeTopOverlay();
       await loadClips();
@@ -4812,6 +4830,7 @@ async function openTrim(c, opener) {
     h('div', { class: 'edit-transport' }, playBtn, h('span', { class: 'edit-clock' }, now, ' ', total)),
     timeline,
     h('div', { class: 'edit-tools' }, startBtn, splitBtn, endBtn, toggleBtn, undoBtn),
+    trackRow,
     info,
     h('div', { class: 'edit-actions' }, previewBtn, save),
     h('label', { class: 'trim-del', for: 'trim-del' }, delOrig, ' Move the original to Deleted afterwards (kept 30 days)'),
@@ -4849,6 +4868,8 @@ async function openTrim(c, opener) {
   try {
     const k = await api(`/api/clips/${c.id}/keyframes`);
     keys = k.keyframes.length ? k.keyframes : [0];
+    tracks = k.tracks || [];
+    renderTracks();
     ready(k.duration);
     render();
   } catch (err) { info.textContent = `Couldn’t read the clip: ${err.message}`; info.classList.add('is-error'); }

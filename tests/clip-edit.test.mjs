@@ -52,3 +52,46 @@ test('several kept parts are joined losslessly with every track', { skip: !hasFf
     await fs.rm(clipsDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 });
+
+test('recorder tracks are recognised, with or without names', () => {
+  const untitled = clips.trackLayout([{}, {}, {}, {}]);
+  assert.deepEqual(untitled.map((t) => [t.label, t.mix, t.mic]), [['Mix', true, false], ['Game', false, false], ['Friends', false, false], ['You', false, true]]);
+  assert.deepEqual(clips.trackLayout([{}, {}, {}]).map((t) => t.mix), [false, false, false], 'old 3-track clips have no mix');
+  const titled = [{ tags: { title: 'Mix' } }, { tags: { title: 'Game' } }, { tags: { title: 'Friends' } }];
+  assert.equal(clips.mixTrack(titled), titled[0]);
+  assert.equal(clips.mixTrack([{}, {}, {}]), null);
+  assert.throws(() => clips.planTracks(untitled, [0]), /mix can’t be removed/);
+  assert.equal(clips.planTracks(untitled, []), null);
+  const noMic = clips.planTracks(untitled, [3]);
+  assert.equal(noMic.mix, true); assert.deepEqual(noMic.keep.map((t) => t.label), ['Game', 'Friends']);
+  assert.equal(clips.planTracks(untitled, [2, 3]).mix, false, 'one track left is its own mix');
+});
+
+test('removing the mic track rebuilds the mix and copies the rest', { skip: !hasFfmpeg && 'ffmpeg not installed', timeout: 60000 }, async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-clip-tracks-'));
+  const data = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-clip-data-'));
+  process.env.CLIPS_DIR = dir;
+  const fresh = await import(`../clips.js?tracks=${Date.now()}`);
+  try {
+    fresh.initClips({ dataDir: data });
+    await fs.mkdir(path.join(dir, 'Game'), { recursive: true });
+    const src = path.join(dir, 'Game', 'round.mp4');
+    const tone = (f) => ['-f', 'lavfi', '-i', `sine=frequency=${f}:duration=4`];
+    const made = spawnSync(ffmpeg, ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=size=320x180:rate=30:duration=4', ...tone(300), ...tone(400), ...tone(500), ...tone(600),
+      '-map', '0', '-map', '1', '-map', '2', '-map', '3', '-map', '4', '-c:v', 'libx264', '-g', '30', '-pix_fmt', 'yuv420p', '-c:a', 'aac', src]);
+    assert.equal(made.status, 0, String(made.stderr));
+    const [clip] = (await fresh.listClips()).clips;
+    const r = await fresh.trim(clip.id, [{ start: 0, end: 4 }], { removeTracks: [3] });
+    assert.match(r.title, /\(edit\)$/); assert.deepEqual(r.removedTracks, ['You']);
+    const out = path.join(dir, 'Trimmed Clips', 'Game', `${r.title}.mp4`);
+    const probe = JSON.parse(spawnSync(ffprobe, ['-v', 'error', '-print_format', 'json', '-show_streams', out]).stdout);
+    assert.deepEqual(probe.streams.slice(1).map((s) => s.tags?.handler_name), ['Mix', 'Game', 'Friends']);
+    assert.equal(fresh.mixTrack(probe.streams.slice(1)), probe.streams[1], 'Marquee finds the rebuilt mix by name');
+    assert.equal(probe.streams[1].disposition.default, 1);
+    const srcProbe = JSON.parse(spawnSync(ffprobe, ['-v', 'error', '-print_format', 'json', '-show_streams', src]).stdout);
+    assert.equal(probe.streams[0].nb_frames, srcProbe.streams[0].nb_frames, 'video is copied, frame for frame');
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    await fs.rm(data, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+});

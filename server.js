@@ -1431,9 +1431,10 @@ async function handleApi(req, res, url) {
       return sendJson(res, 200, await clips.renameClip(m[1], body.title, body.previousTitle));
     }
     if ((m = p.match(/^\/api\/clips\/([\w-]{16})\/trim$/)) && req.method === 'POST') {
-      const { start, end, segments, deleteOriginal } = await readJson(req);
+      const { start, end, segments, deleteOriginal, removeTracks } = await readJson(req);
       // segments: the parts to keep, in order. A single start/end is one part (older pages).
-      const r = await clips.trim(m[1], segments ?? [{ start, end }], { deleteOriginal: Boolean(deleteOriginal) });
+      // removeTracks: audio tracks to leave out (the mix is rebuilt from the rest).
+      const r = await clips.trim(m[1], segments ?? [{ start, end }], { deleteOriginal: Boolean(deleteOriginal), removeTracks: removeTracks ?? [] });
       activity.record(req, 'trim', r.original);
       return sendJson(res, 200, r);
     }

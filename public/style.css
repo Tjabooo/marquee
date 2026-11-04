@@ -1079,6 +1079,14 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .edit-tool:disabled { opacity: 0.45; }
 .edit-tool.is-restore { color: var(--bulb); border-color: color-mix(in srgb, var(--bulb) 50%, var(--line)); }
 .edit-undo { width: 40px; padding: 0; justify-content: center; margin-left: auto; }
+.edit-tracks { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.edit-tracks-label { margin-right: 4px; font-size: 13px; font-weight: 600; color: var(--dust); }
+.edit-chip {
+  height: 34px; padding: 0 14px; font-weight: 600; font-size: 14px;
+  color: var(--paper); background: var(--bulb-dim);
+  border: 1px solid color-mix(in srgb, var(--bulb) 60%, var(--line)); border-radius: 999px;
+}
+.edit-chip.is-off { color: var(--dust); background: none; border-color: var(--line); text-decoration: line-through; text-decoration-thickness: 1.5px; }
 .edit-info { margin: 12px 0; font-size: 14px; color: var(--dust); }
 .edit-info.is-error { color: var(--alert); }
 .edit-actions { display: flex; align-items: center; gap: 10px; }
