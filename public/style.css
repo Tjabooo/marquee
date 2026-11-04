@@ -1035,15 +1035,63 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .clip-delete.is-sure { width: auto; padding: 0 14px; white-space: nowrap; border-radius: 999px; font-weight: 700; color: var(--velvet); background: var(--alert); }
 
 /* clip trimmer (in the bottom sheet) */
-.trim-video { display: block; width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: 12px; margin: 4px 0 12px; }
-.trim-marks, .trim-actions { display: flex; align-items: center; gap: 10px; }
-.trim-marks .retry, .trim-actions .retry { margin: 0; flex: none; }
-.trim-range { flex: 1; text-align: center; font-variant-numeric: tabular-nums; }
-.trim-info { margin: 10px 0 12px; font-size: 14px; }
-.trim-actions .trim-save { flex: 1; }
-.trim-save:disabled { opacity: 0.5; }
+/* Clip editor: a timeline of kept (gold) and removed (hatched) parts under the video */
+.edit h2 { padding-right: 52px; overflow-wrap: anywhere; }
+.edit-stage { margin: 4px 0 10px; border-radius: 12px; overflow: hidden; background: #000; }
+.edit-video { display: block; width: 100%; aspect-ratio: 16 / 9; max-height: 42dvh; object-fit: contain; background: #000; cursor: pointer; }
+.edit-transport { display: flex; align-items: center; gap: 12px; }
+.edit-play {
+  flex: none; width: 40px; height: 40px; display: grid; place-items: center; padding: 0;
+  color: var(--on-bulb); background: var(--bulb); border: 0; border-radius: 50%;
+}
+.edit-play svg { width: 18px; height: 18px; fill: currentColor; stroke: none; }
+.edit-clock { font-variant-numeric: tabular-nums; font-size: 14px; }
+.edit-now { font-weight: 700; }
+.edit-total { color: var(--dust); }
+.edit-timeline { position: relative; height: 52px; margin: 6px 0 12px; cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none; }
+.edit-timeline:focus-visible { outline: 2px solid var(--bulb); outline-offset: 4px; border-radius: 10px; }
+.edit-track { position: absolute; inset: 8px 0; overflow: hidden; border-radius: 8px; background: var(--seat); }
+.edit-piece, .edit-lead { position: absolute; top: 0; bottom: 0; }
+.edit-piece.is-kept { background: var(--bulb-dim); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--bulb) 75%, transparent); border-radius: 8px; }
+.edit-piece.is-cut {
+  background: repeating-linear-gradient(135deg, transparent 0 5px, color-mix(in srgb, var(--dust) 22%, transparent) 5px 7px);
+  opacity: 0.8;
+}
+.edit-lead { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--bulb) 55%, transparent) 0 3px, transparent 3px 7px); }
+.edit-lead.is-clash { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--alert) 75%, transparent) 0 3px, transparent 3px 7px); }
+.edit-split { position: absolute; top: 0; bottom: 0; width: 3px; margin-left: -1.5px; background: var(--curtain); }
+.edit-head { position: absolute; top: 2px; bottom: 2px; width: 2px; margin-left: -1px; background: var(--paper); border-radius: 1px; pointer-events: none; box-shadow: 0 0 0 1px color-mix(in srgb, var(--velvet) 60%, transparent); }
+.edit-head::before { content: ""; position: absolute; top: -2px; left: 50%; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--paper); }
+.edit-hover {
+  position: absolute; bottom: calc(100% + 2px); transform: translateX(-50%); padding: 2px 7px;
+  font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; pointer-events: none;
+  color: var(--paper); background: var(--velvet); border: 1px solid var(--line); border-radius: 6px;
+}
+.edit-tools { display: flex; flex-wrap: wrap; gap: 8px; }
+.edit-tool {
+  display: inline-flex; align-items: center; gap: 7px; height: 40px; padding: 0 14px;
+  font-weight: 600; font-size: 14px; color: var(--paper);
+  background: var(--seat); border: 1px solid var(--line); border-radius: 999px;
+}
+.edit-tool svg { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.edit-tool:hover:not(:disabled) { border-color: color-mix(in srgb, var(--dust) 60%, var(--line)); }
+.edit-tool:disabled { opacity: 0.45; }
+.edit-tool.is-restore { color: var(--bulb); border-color: color-mix(in srgb, var(--bulb) 50%, var(--line)); }
+.edit-undo { width: 40px; padding: 0; justify-content: center; margin-left: auto; }
+.edit-info { margin: 12px 0; font-size: 14px; color: var(--dust); }
+.edit-info.is-error { color: var(--alert); }
+.edit-actions { display: flex; align-items: center; gap: 10px; }
+.edit-actions .retry { margin: 0; flex: none; }
+.edit-save { flex: 1; }
+.edit-save:disabled { opacity: 0.5; }
+.edit-keys { margin: 10px 0 0; font-size: 12px; }
+@media (pointer: coarse) { .edit-keys { display: none; } }
+@media (max-width: 480px) {
+  .edit-tool { padding: 0 11px; gap: 5px; font-size: 13px; }
+  .edit-tools { gap: 6px; }
+}
+@media (min-width: 720px) { .sheet.is-editor { width: min(960px, 94vw); } }
 .trim-del { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 14px; color: var(--dust); }
-.trim h2 { padding-right: 52px; overflow-wrap: anywhere; }
 
 /* Library: seasons and episodes in the show sheet */
 .season-grid { grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); margin-bottom: 8px; }

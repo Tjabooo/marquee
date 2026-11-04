@@ -255,33 +255,65 @@ export async function trimInfo(id) {
   const first = keys[0] || 0; // container start offset: everything below is relative to it
   return { duration, keyframes: keys.map((k) => Math.round((k - first) * 1000) / 1000) };
 }
-export async function trim(id, start, end, { deleteOriginal = false } = {}) {
+// Lossless editing: one or more parts of the clip are kept, in order, and joined into a new file.
+// Each part is cut with a stream copy (so it starts on the keyframe at or before its chosen start)
+// and the parts are joined with ffmpeg's concat demuxer, also a copy. A gap between two kept parts
+// must reach past the next part's keyframe, or the "removed" bit would be in the copy anyway.
+const bad = (message) => Object.assign(new Error(message), { status: 400 });
+export function planSegments(segments, { duration, keyframes }) {
+  if (!Array.isArray(segments) || !segments.length || segments.length > 50) throw bad('Keep between 1 and 50 parts of the clip.');
+  const snap = (t) => keyframes.filter((k) => k <= t + 0.001).pop() ?? 0;
+  const parts = segments.map((seg) => {
+    const start = Number(seg?.start), end = Number(seg?.end);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end > duration + 0.05 || end - start < 0.3) {
+      throw bad('Each kept part needs a start and an end inside the clip, at least 0.3 s apart.');
+    }
+    return { start, end: Math.min(end, duration), from: snap(start) };
+  }).sort((a, b) => a.start - b.start);
+  for (let i = 1; i < parts.length; i++) {
+    if (parts[i].from < parts[i - 1].end - 0.001) {
+      throw bad(`The cut before ${parts[i].start.toFixed(1)} s is too short to remove without re-encoding: the next part has to start on the keyframe at ${parts[i].from.toFixed(1)} s. Make the cut longer or keep it.`);
+    }
+  }
+  const total = parts.reduce((n, p) => n + p.end - p.from, 0);
+  if (total < 1) throw bad('The edited clip has to be at least 1 second long.');
+  return parts;
+}
+export async function trim(id, segments, { deleteOriginal = false } = {}) {
   const c = await byId(id);
   const src = fullPath(c.rel);
-  const { duration, keyframes } = await trimInfo(id);
-  start = Number(start); end = Number(end);
-  if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end > duration + 0.05 || end - start < 1) {
-    throw Object.assign(new Error('Pick a start and an end at least 1 second apart.'), { status: 400 });
-  }
-  const from = keyframes.filter((k) => k <= start + 0.001).pop() ?? 0;
+  const parts = planSegments(segments, await trimInfo(id));
   const dir = path.join(CLIPS_DIR, 'Trimmed Clips', c.game === 'Trimmed' ? '' : c.game);
   await fs.promises.mkdir(dir, { recursive: true });
   const stem = c.title.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '-').replace(/[ .]+$/, '').slice(0, 100) || 'Clip';
-  const base = `${stem} (trim)`;
+  const base = `${stem} (${parts.length > 1 ? 'edit' : 'trim'})`;
   let name = `${base}.mp4`;
   for (let i = 2; fs.existsSync(path.join(dir, name)); i++) name = `${base} ${i}.mp4`;
   const dest = path.join(dir, name);
   const tmp = `${dest}.marquee-tmp.mp4`;
+  // a dot-folder next to the result: same drive, and the clip scan skips it
+  const work = path.join(dir, `.marquee-edit-${crypto.randomBytes(6).toString('hex')}`);
+  const cut = (p, out, extra = []) => run(FFMPEG, ['-hide_banner', '-nostdin', '-y', '-ss', String(p.from), '-i', src, '-t', String(p.end - p.from),
+    '-map', '0', '-c', 'copy', '-avoid_negative_ts', 'make_zero', ...extra, out]);
   try {
-    await run(FFMPEG, ['-hide_banner', '-nostdin', '-y', '-ss', String(from), '-i', src, '-t', String(end - from),
-      '-map', '0', '-c', 'copy', '-avoid_negative_ts', 'make_zero', '-movflags', '+faststart', tmp]);
+    if (parts.length === 1) await cut(parts[0], tmp, ['-movflags', '+faststart']);
+    else {
+      await fs.promises.mkdir(work, { recursive: true });
+      const names = parts.map((_, i) => `part${i}.mp4`);
+      for (let i = 0; i < parts.length; i++) await cut(parts[i], path.join(work, names[i]));
+      await fs.promises.writeFile(path.join(work, 'parts.txt'), names.map((n) => `file '${n}'`).join('\n') + '\n');
+      await run(FFMPEG, ['-hide_banner', '-nostdin', '-y', '-f', 'concat', '-safe', '0', '-i', path.join(work, 'parts.txt'),
+        '-map', '0', '-c', 'copy', '-movflags', '+faststart', tmp]);
+    }
     await fs.promises.rename(tmp, dest);
   } finally {
     await fs.promises.rm(tmp, { force: true });
+    await fs.promises.rm(work, { recursive: true, force: true });
   }
   scanned.at = 0;
   if (deleteOriginal) await deleteClip(id);
-  return { ok: true, title: path.basename(name, '.mp4'), start: from, end, original: c.title };
+  return { ok: true, title: path.basename(name, '.mp4'), parts: parts.map((p) => ({ start: p.from, end: p.end })),
+    start: parts[0].from, end: parts.at(-1).end, original: c.title };
 }
 
 // Delete: the share link and its copy go, the thumbnail goes, and the clip itself moves to

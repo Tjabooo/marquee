@@ -4600,71 +4600,258 @@ async function shareClip(c, btn) {
   renderClips();
 }
 const copyLink = (url) => copyWithToast(url, 'Link copied: paste it in Discord');
-// ---------- clip trimmer (lossless: the server copies, never re-encodes) ----------
-const fmtT = (t) => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, '0')}`;
+// ---------- clip editor (lossless: the server copies, never re-encodes) ----------
+// The clip is a row of parts on a timeline. Split at the playhead, then remove the parts you don't
+// want; trimming the start or end is the same thing at the edges. What's kept is joined into a new
+// file. Each kept stretch has to start on a keyframe, so it may begin a little early: the timeline
+// shows that lead-in, and a cut too short to clear the next keyframe is flagged before saving.
+const fmtT = (t) => { const d = Math.round(t * 10); return `${Math.floor(d / 600)}:${((d % 600) / 10).toFixed(1).padStart(4, '0')}`; };
+const EDIT_ICONS = {
+  split: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M8.6 7.5 20 18M8.6 16.5 20 6"/></svg>',
+  start: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4v16M19 12H9M13 8l-4 4 4 4"/></svg>',
+  end: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 4v16M5 12h10M11 8l4 4-4 4"/></svg>',
+  remove: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>',
+  restore: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.6M4 4v5h5"/></svg>',
+  undo: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg>',
+};
 async function openTrim(c, opener) {
-  const video = h('video', { class: 'trim-video', src: `/api/clips/${c.id}/video`, controls: true, playsinline: true, preload: 'auto' });
-  const info = h('p', { class: 'muted trim-info' }, 'Loading keyframes…');
-  const startOut = h('strong', {}, '0:00.0');
-  const endOut = h('strong', {}, '…');
-  const delOrig = h('input', { type: 'checkbox', id: 'trim-del' });
-  const save = h('button', { class: 'play-btn trim-save', disabled: true }, 'Save trimmed copy');
+  const video = h('video', { class: 'edit-video', src: `/api/clips/${c.id}/video`, playsinline: true, preload: 'auto' });
+  try { video.volume = Math.min(1, Math.max(0, Number(localStorage.getItem('player:volume') ?? 1))); video.muted = localStorage.getItem('player:muted') === '1'; } catch { /* blocked */ }
+  let duration = 0;
   let keys = [0];
-  let start = 0;
-  let end = null;
-  // what the server will actually do: start at the keyframe at or before the chosen point
+  let pieces = [];        // [{ start, end, keep }] covering the whole clip, in order
+  const undo = [];
+  let busy = false;
+  const MIN_PIECE = 0.2;  // seconds; no slivers from double-clicking Split
   const snap = (t) => keys.filter((k) => k <= t + 0.001).pop() ?? 0;
-  const show = () => {
-    const from = snap(start);
-    startOut.textContent = fmtT(from);
-    endOut.textContent = end == null ? '…' : fmtT(end);
-    const ok = end != null && end - from >= 1;
-    save.disabled = !ok;
-    info.textContent = !ok ? 'Scrub the video, then set the start and the end (at least 1 s apart).'
-      : `${fmtT(end - from)} long${from < start - 0.05 ? ` · starts ${(start - from).toFixed(1)} s early, on the nearest keyframe` : ''} · no re-encoding, same quality`;
+  // Kept stretches: neighbouring kept parts merge; `from` is where the copy really starts.
+  const runs = () => {
+    const out = [];
+    for (const p of pieces) {
+      if (!p.keep) continue;
+      const last = out.at(-1);
+      if (last && Math.abs(last.end - p.start) < 0.001) last.end = p.end;
+      else out.push({ start: p.start, end: p.end });
+    }
+    for (const r of out) r.from = snap(r.start);
+    return out;
   };
-  const preview = async () => {
-    const from = snap(start);
-    video.currentTime = from;
-    await video.play().catch(() => {});
-    const stop = () => { if (end != null && video.currentTime >= end) { video.pause(); video.removeEventListener('timeupdate', stop); } };
-    video.addEventListener('timeupdate', stop);
+  const problem = (list) => {
+    if (!list.length) return 'Everything is removed. Restore a part to keep it.';
+    for (let i = 1; i < list.length; i++) {
+      if (list[i].from < list[i - 1].end - 0.001) return `The cut at ${fmtT(list[i - 1].end)} is too short to remove without re-encoding: the next part has to start on the keyframe at ${fmtT(list[i].from)}. Make the cut longer, or restore it.`;
+    }
+    if (list.some((r) => r.end - r.start < 0.3)) return 'A kept part is shorter than 0.3 s. Remove it or make it longer.';
+    if (list.reduce((n, r) => n + r.end - r.from, 0) < 1) return 'The edit has to be at least 1 second long.';
+    return '';
   };
+  const pieceAt = (t) => pieces.find((p) => t >= p.start && t < p.end) || pieces.at(-1);
+  const remember = () => { undo.push(pieces.map((p) => ({ ...p }))); if (undo.length > 100) undo.shift(); };
+  const split = (t) => {
+    const p = pieceAt(t);
+    if (!p || t - p.start < MIN_PIECE || p.end - t < MIN_PIECE) return false;
+    pieces.splice(pieces.indexOf(p), 1, { start: p.start, end: t, keep: p.keep }, { start: t, end: p.end, keep: p.keep });
+    return true;
+  };
+  const act = (what) => {
+    if (!duration || busy) return;
+    const t = video.currentTime;
+    remember();
+    const before = JSON.stringify(pieces);
+    if (what === 'split' && !split(t)) toast('Too close to a split already');
+    if (what === 'toggle') { const p = pieceAt(t); p.keep = !p.keep; }
+    if (what === 'start') { split(t); for (const p of pieces) if (p.end <= t + 0.001) p.keep = false; }
+    if (what === 'end') { split(t); for (const p of pieces) if (p.start >= t - 0.001) p.keep = false; }
+    if (JSON.stringify(pieces) === before) undo.pop();
+    render();
+  };
+  const undoLast = () => { if (undo.length && !busy) { pieces = undo.pop(); render(); } };
+
+  // ---- timeline ----
+  const track = h('div', { class: 'edit-track' });
+  const head = h('div', { class: 'edit-head' });
+  const hover = h('div', { class: 'edit-hover', hidden: true });
+  const timeline = h('div', { class: 'edit-timeline', role: 'slider', tabindex: 0, 'aria-label': 'Position in the clip', 'aria-valuemin': 0 }, track, head, hover);
+  const pos = (t) => `${duration ? (t / duration) * 100 : 0}%`;
+  const timeAt = (x) => { const r = timeline.getBoundingClientRect(); return Math.min(Math.max((x - r.left) / r.width, 0), 1) * duration; };
+  let scrubbing = false;
+  timeline.addEventListener('pointerdown', (e) => {
+    if (!duration) return;
+    timeline.setPointerCapture(e.pointerId); scrubbing = true;
+    video.currentTime = timeAt(e.clientX); updateHead();
+  });
+  timeline.addEventListener('pointermove', (e) => {
+    if (!duration) return;
+    if (scrubbing) { video.currentTime = timeAt(e.clientX); updateHead(); }
+    if (e.pointerType === 'mouse' || scrubbing) {
+      const t = timeAt(e.clientX);
+      hover.hidden = false; hover.textContent = fmtT(t); hover.style.left = pos(t);
+    }
+  });
+  const stopScrub = () => { scrubbing = false; };
+  timeline.addEventListener('pointerup', stopScrub);
+  timeline.addEventListener('pointercancel', stopScrub);
+  timeline.addEventListener('pointerleave', () => { if (!scrubbing) hover.hidden = true; });
+
+  // ---- controls ----
+  const playBtn = h('button', { type: 'button', class: 'edit-play', 'aria-label': 'Play (Space)' });
+  const now = h('span', { class: 'edit-now' }, '0:00.0');
+  const total = h('span', { class: 'edit-total' }, '');
+  const tool = (key, label, what, hint) => {
+    const b = h('button', { type: 'button', class: 'edit-tool', title: hint, onclick: () => act(what) }, h('span', { class: 'edit-tool-label' }, label));
+    b.insertAdjacentHTML('afterbegin', EDIT_ICONS[key]);
+    return b;
+  };
+  const startBtn = tool('start', 'Start here', 'start', 'Remove everything before the playhead ([)');
+  const splitBtn = tool('split', 'Split', 'split', 'Split the clip at the playhead (S)');
+  const endBtn = tool('end', 'End here', 'end', 'Remove everything after the playhead (])');
+  const toggleBtn = tool('remove', 'Remove part', 'toggle', 'Remove or restore the part under the playhead (X)');
+  const undoBtn = h('button', { type: 'button', class: 'edit-tool edit-undo', title: 'Undo (Ctrl+Z)', 'aria-label': 'Undo', onclick: undoLast });
+  undoBtn.innerHTML = EDIT_ICONS.undo;
+  const info = h('p', { class: 'edit-info', role: 'status' }, 'Loading the clip…');
+  const delOrig = h('input', { type: 'checkbox', id: 'trim-del' });
+  const previewBtn = h('button', { type: 'button', class: 'retry', onclick: () => { const r = runs(); if (!r.length) return; video.currentTime = r[0].from; video.play().catch(() => {}); } }, 'Preview');
+  const save = h('button', { type: 'button', class: 'play-btn edit-save', disabled: true }, 'Save edited copy');
+
+  function updateHead() {
+    const t = video.currentTime;
+    head.style.left = pos(t);
+    now.textContent = fmtT(t);
+    timeline.setAttribute('aria-valuemax', String(Math.round(duration * 10) / 10));
+    timeline.setAttribute('aria-valuenow', String(Math.round(t * 10) / 10));
+    timeline.setAttribute('aria-valuetext', `${fmtT(t)} of ${fmtT(duration)}`);
+    const p = duration && pieceAt(t);
+    const removing = !p || p.keep;
+    toggleBtn.querySelector('svg')?.remove();
+    toggleBtn.insertAdjacentHTML('afterbegin', EDIT_ICONS[removing ? 'remove' : 'restore']);
+    toggleBtn.querySelector('.edit-tool-label').textContent = removing ? 'Remove part' : 'Restore part';
+    toggleBtn.classList.toggle('is-restore', !removing);
+  }
+  function render() {
+    if (!duration) return;
+    const list = runs();
+    const issue = problem(list);
+    const out = [];
+    for (const p of pieces) {
+      out.push(h('div', { class: `edit-piece ${p.keep ? 'is-kept' : 'is-cut'}`, style: `left:${pos(p.start)};width:${pos(p.end - p.start)}` }));
+    }
+    list.forEach((r, i) => {
+      if (r.from < r.start - 0.01) {
+        const clash = i > 0 && r.from < list[i - 1].end - 0.001;
+        out.push(h('div', { class: `edit-lead${clash ? ' is-clash' : ''}`, title: `Starts on the keyframe at ${fmtT(r.from)}`, style: `left:${pos(r.from)};width:${pos(r.start - r.from)}` }));
+      }
+    });
+    for (const p of pieces.slice(1)) out.push(h('div', { class: 'edit-split', style: `left:${pos(p.start)}` }));
+    track.replaceChildren(...out);
+    const length = list.reduce((n, r) => n + r.end - r.from, 0);
+    const early = list.some((r) => r.from < r.start - 0.05);
+    total.textContent = `of ${fmtT(duration)}`;
+    info.classList.toggle('is-error', Boolean(issue));
+    info.textContent = issue || `${list.length === 1 ? 'Keeping 1 part' : `Keeping ${list.length} parts`} · ${fmtT(length)} long${early ? ' · striped bits are kept so each part starts on a keyframe' : ''} · no re-encoding, same quality`;
+    save.disabled = busy || Boolean(issue);
+    save.textContent = busy ? 'Saving…' : list.length > 1 ? 'Save edited copy' : 'Save trimmed copy';
+    previewBtn.disabled = !list.length;
+    undoBtn.disabled = !undo.length || busy;
+    updateHead();
+  }
+
+  // ---- playback: removed parts are skipped when playing runs into them ----
+  let lastKept = true;
+  const keptAt = (t, list) => list.some((r) => t >= r.from - 0.001 && t < r.end);
+  function watchFrame() {
+    if (!duration) return;
+    const list = runs();
+    const t = video.currentTime;
+    const inKept = keptAt(t, list);
+    if (!video.paused && lastKept && !inKept && !video.seeking) {
+      const next = list.find((r) => r.from >= t - 0.05);
+      if (next) video.currentTime = next.from;
+      else { video.pause(); video.currentTime = list.at(-1)?.end ?? t; }
+      lastKept = true;
+    } else lastKept = inKept;
+    updateHead();
+  }
+  const loop = () => {
+    if (!video.isConnected || video.paused) return;
+    watchFrame();
+    if (video.requestVideoFrameCallback) video.requestVideoFrameCallback(loop); else requestAnimationFrame(loop);
+  };
+  video.addEventListener('play', () => { lastKept = keptAt(video.currentTime, runs()); loop(); });
+  video.addEventListener('seeked', () => { lastKept = keptAt(video.currentTime, runs()); updateHead(); });
+  video.addEventListener('timeupdate', updateHead);
+  const syncPlay = () => {
+    const playing = !video.paused && !video.ended;
+    playBtn.replaceChildren(icon(playing ? 'pause' : 'play'));
+    playBtn.setAttribute('aria-label', playing ? 'Pause (Space)' : 'Play (Space)');
+  };
+  for (const ev of ['play', 'pause', 'ended', 'emptied']) video.addEventListener(ev, syncPlay);
+  syncPlay();
+  const togglePlayback = () => { if (video.paused || video.ended) video.play().catch(() => {}); else video.pause(); };
+  playBtn.addEventListener('click', togglePlayback);
+  video.addEventListener('click', togglePlayback);
+
   save.addEventListener('click', async () => {
-    save.disabled = true;
-    save.textContent = 'Saving…';
+    const list = runs();
+    if (problem(list)) return;
+    busy = true; render();
     try {
-      const r = await api(`/api/clips/${c.id}/trim`, jsonPost({ start, end, deleteOriginal: delOrig.checked }));
-      toast(`Saved “${r.title}”`);
+      const r = await api(`/api/clips/${c.id}/trim`, jsonPost({ segments: list.map(({ start, end }) => ({ start, end })), deleteOriginal: delOrig.checked }));
+      toast(`Saved “${r.title}” in Trimmed Clips`);
       closeTopOverlay();
       await loadClips();
       renderClips();
     } catch (err) {
       toast(err.message);
-      save.textContent = 'Save trimmed copy';
-      show();
+      busy = false; render();
     }
   });
-  $('#sheet-body').replaceChildren(h('div', { class: 'sheet-content trim' },
-    h('h2', { id: 'sheet-title' }, `Trim · ${c.title}`),
-    video,
-    h('div', { class: 'trim-marks' },
-      h('button', { class: 'retry', onclick: () => { start = video.currentTime; if (end != null && end <= start) end = null; show(); } }, 'Start here'),
-      h('span', { class: 'trim-range' }, startOut, ' → ', endOut),
-      h('button', { class: 'retry', onclick: () => { end = video.currentTime; show(); } }, 'End here')),
+
+  const content = h('div', { class: 'sheet-content edit' },
+    h('h2', { id: 'sheet-title' }, `Edit · ${c.title}`),
+    h('div', { class: 'edit-stage' }, video),
+    h('div', { class: 'edit-transport' }, playBtn, h('span', { class: 'edit-clock' }, now, ' ', total)),
+    timeline,
+    h('div', { class: 'edit-tools' }, startBtn, splitBtn, endBtn, toggleBtn, undoBtn),
     info,
-    h('div', { class: 'trim-actions' },
-      h('button', { class: 'retry', onclick: preview }, 'Preview'),
-      save),
-    h('label', { class: 'trim-del', for: 'trim-del' }, delOrig, ' Move the original to Deleted afterwards (kept 30 days)')));
-  pushOverlay(showSheet($('#sheet'), $('#sheet-backdrop'), () => { video.pause(); video.removeAttribute('src'); video.load(); opener?.focus({ preventScroll: true }); }));
-  video.addEventListener('loadedmetadata', () => { if (end == null) { end = video.duration; show(); } }, { once: true });
+    h('div', { class: 'edit-actions' }, previewBtn, save),
+    h('label', { class: 'trim-del', for: 'trim-del' }, delOrig, ' Move the original to Deleted afterwards (kept 30 days)'),
+    h('p', { class: 'edit-keys muted' }, 'Space play · S split · X remove or restore · [ ] start or end here · ← → 1 s · , . one frame · Ctrl+Z undo'));
+  // Keys while the editor is open. Text fields and the checkbox keep their own keys.
+  const onKey = (e) => {
+    if (!content.isConnected || !sheet.classList.contains('open') || e.target.matches?.('input:not([type="checkbox"]), textarea, select')) return;
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undoLast(); return; }
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const step = (d) => { video.pause(); video.currentTime = Math.min(Math.max(video.currentTime + d, 0), duration); updateHead(); };
+    const run = { ' ': togglePlayback, k: togglePlayback, s: () => act('split'), x: () => act('toggle'), Delete: () => act('toggle'), Backspace: () => act('toggle'),
+      '[': () => act('start'), ']': () => act('end'), ArrowLeft: () => step(-1), ArrowRight: () => step(1), ',': () => step(-1 / 30), '.': () => step(1 / 30) }[e.key.length === 1 ? e.key.toLowerCase() : e.key];
+    if (!run || (e.key === ' ' && e.target.matches?.('button:not(.edit-play)'))) return;
+    e.preventDefault();
+    run();
+  };
+  const sheet = $('#sheet');
+  document.addEventListener('keydown', onKey);
+  sheet.classList.add('is-editor');
+  $('#sheet-body').replaceChildren(content);
+  pushOverlay(showSheet(sheet, $('#sheet-backdrop'), () => {
+    sheet.classList.remove('is-editor');
+    document.removeEventListener('keydown', onKey);
+    video.pause(); video.removeAttribute('src'); video.load();
+    opener?.focus({ preventScroll: true });
+  }));
+  const ready = (d) => {
+    if (duration || !(d > 0)) return;
+    duration = d;
+    pieces = [{ start: 0, end: d, keep: true }];
+    render();
+  };
+  video.addEventListener('loadedmetadata', () => ready(video.duration), { once: true });
+  playBtn.focus({ preventScroll: true });
   try {
     const k = await api(`/api/clips/${c.id}/keyframes`);
     keys = k.keyframes.length ? k.keyframes : [0];
-    if (end == null && k.duration) end = k.duration;
-    show();
-  } catch (err) { info.textContent = `Couldn’t read the clip: ${err.message}`; }
+    ready(k.duration);
+    render();
+  } catch (err) { info.textContent = `Couldn’t read the clip: ${err.message}`; info.classList.add('is-error'); }
 }
 
 async function deleteClip(c) {
@@ -4762,7 +4949,7 @@ function clipTitle(c) {
       const card = wrap.closest('.clip');
       card?.querySelector('.clip-thumb')?.setAttribute('aria-label', `Play ${c.title}`);
       card?.querySelector('.clip-delete')?.setAttribute('aria-label', `Delete ${c.title}`);
-      card?.querySelector('.clip-trim')?.setAttribute('aria-label', `Trim ${c.title}`);
+      card?.querySelector('.clip-trim')?.setAttribute('aria-label', `Edit ${c.title}`);
     },
   });
 }
@@ -4793,7 +4980,7 @@ function clipCard(c) {
       setTimeout(() => { if (b.isConnected && !b.disabled) { delete b.dataset.sure; b.classList.remove('is-sure'); b.innerHTML = ICONS.trash; } }, 4000);
     },
   });
-  actions.push(h('button', { class: 'icon-btn clip-trim', 'aria-label': `Trim ${c.title}`, title: 'Trim (no quality loss)', onclick: (e) => openTrim(c, e.currentTarget) }));
+  actions.push(h('button', { class: 'icon-btn clip-trim', 'aria-label': `Edit ${c.title}`, title: 'Edit: trim or cut out parts (no quality loss)', onclick: (e) => openTrim(c, e.currentTarget) }));
   actions.push(del);
   const card = h('li', { class: 'clip' }, thumb,
     h('div', { class: 'clip-text' },
