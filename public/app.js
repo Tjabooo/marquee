@@ -1038,15 +1038,19 @@ function renderShow() {
     for (const {d,ep} of byEpisode.values()) rows.push({ number: ep.episode, node: h('li', { class: 'row episode-row pending-episode', 'data-transfer-hash': d.hash, 'data-episode-number': ep.episode, 'data-episode-season': ep.season }, thumb(ep.episode), h('div', { class: 'row-text' }, h('div', { class: 'row-title' }, epTitle(ep.episode)), h('div', { class: 'row-meta episode-transfer-state' }, ep.available ? 'Ready in download details' : `${transferState(d)}${Number.isFinite(ep.progress) ? ` · ${Math.floor(ep.progress*100)}%` : ''}`)), h('button', { class: 'chip', onclick: e => openTransferDetails({ ...entry, transfers: [d] }, e.currentTarget) }, 'Details')) });
     if (Number.isInteger(open.total) && open.total > 0 && open.total <= 1000) for (let number = 1; number <= open.total; number++) if (!rows.some(row => row.number === number)) rows.push({ number, node: h('li', { class: 'row episode-row missing-episode' }, thumb(number), h('div', { class: 'row-text' }, h('div', { class: 'row-title' }, epTitle(number)), h('div', { class: 'row-meta' }, 'Not in library')), tvId && episodeDownload(tvId, open.number, number)) });
     content = [!single && h('button', { class: 'chip season-back', onclick: () => pick(null) }, icon('back'), 'All seasons'), h('h3', {}, open.name),
-      h('p', { class: 'muted' }, `${open.total ? `${episodeCount(ready)} of ${open.total}` : episodeCount(ready)} episodes ready`),
+      h('div', { class: 'season-summary' }, h('p', { class: 'muted' }, `${open.total ? `${episodeCount(ready)} of ${open.total}` : episodeCount(ready)} episodes ready`), deleteSeason),
       ...pendingFor(open.number).filter(d => !(d.episodes || []).some(ep => ep.season === open.number)).map(d => h('div', { class: 'pack-transfer' }, h('strong', {}, `${open.name} pack`), h('p', {}, 'Episode availability is shown when individual files are verified.'), h('button', { class: 'chip', onclick: e => openTransferDetails({ ...entry, transfers: [d] }, e.currentTarget) }, 'Season pack details'))),
       h('ul', { class: 'rows' }, rows.sort((a,b) => a.number-b.number).map(r => r.node))];
   }
   // The same Download panel as in Discover, opened on the season you're looking at.
   const tv = canGet() && show.tmdbId ? showDownload({ id: show.tmdbId, title: show.title, type: 'tv' }, { season: open?.number ?? null }) : null;
+  // One click (plus a confirmation) for a whole season or the whole show.
+  const seasonFiles = open ? files.filter(f => f.season === open.number) : [];
+  const deleteShow = files.length > 0 && h('button', { type: 'button', class: 'chip delete-many', onclick: e => openDeleteMany({ files, what: 'show', label: show.title, onDone: closeTopOverlay }, e.currentTarget) }, icon('trash'), 'Delete show');
+  const deleteSeason = !single && seasonFiles.length > 0 && h('button', { type: 'button', class: 'chip delete-many', onclick: e => openDeleteMany({ files: seasonFiles, what: 'season', label: `${show.title} · ${open.name}`, onDone: () => { showView.season = null; renderShow(); } }, e.currentTarget) }, icon('trash'), 'Delete season');
   $('#sheet-body').replaceChildren(h('div', { class: `sheet-hero${show.backdrop ? '' : ' no-image'}`, style: show.backdrop ? `background-image:url("${show.backdrop}")` : null }),
     h('div', { class: 'sheet-content' }, h('h2', { id: 'sheet-title' }, show.title), h('ul', { class: 'facts' }, [show.year, 'Series', libraryAvailability(entry)].filter(Boolean).map(text => h('li', {}, text))),
-      h('div', { class: 'title-actions' }, tv && h('div', { class: 'action-row' }, tv.toggle), tv?.panel, transferPanel(entry)),
+      h('div', { class: 'title-actions' }, (tv || deleteShow) && h('div', { class: 'action-row' }, tv?.toggle, deleteShow), tv?.panel, transferPanel(entry)),
       files.length > 0 && keepBar(files, renderShow), show.overview && h('p', { class: 'overview' }, show.overview), ...content));
   showStructure = JSON.stringify([showView.id, showView.season, entry.files, entry.transfers.map(d => [d.hash, d.season, (d.episodes || []).map(ep => [ep.season, ep.episode, ep.available, ep.libraryId])])]);
 }
@@ -2010,6 +2014,70 @@ async function openDelete(f, opener) {
     ? [button('Delete this video only', 'del-confirm', 'file'), button(`Delete all ${t.videos} videos (${fmtBytes(t.size)})`, 'del-confirm del-secondary', 'torrent')]
     : [button('Delete', 'del-confirm', t ? 'torrent' : 'file')];
   body.replaceChildren(h('h2', { id: 'picker-title' }, 'Delete this?'), ...lines, h('div', { class: 'del-actions' }, ...actions, cancel), status);
+  cancel.focus();
+}
+
+// A whole season or show: every version of every episode in it, in one go (see deleteMany on the server).
+async function openDeleteMany({ files, what, label, onDone }, opener) {
+  const ids = [...new Set(files.map((f) => f.id).filter(Boolean))];
+  const body = $('#picker-body');
+  body.replaceChildren(h('h2', { id: 'picker-title' }, `Delete ${what}`), h('p', { class: 'muted' }, 'Checking…'));
+  pushOverlay(showSheet($('#picker'), $('#picker-backdrop'), () => opener?.focus({ preventScroll: true })));
+
+  let info;
+  try {
+    info = await api('/api/library/delete-many-info', jsonPost({ ids }));
+  } catch (err) {
+    body.replaceChildren(h('h2', { id: 'picker-title' }, `Can’t delete this ${what}`), h('p', { class: 'muted' }, err.message));
+    return;
+  }
+  const episodes = plural(episodeCount(files), 'episode');
+  const status = h('p', { class: 'device-status', role: 'status' });
+  const allShared = info.shared === info.videos;
+
+  const run = async (btn, everyone = false) => {
+    body.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+    btn.textContent = !everyone && allShared ? 'Removing…' : 'Deleting…';
+    status.className = 'device-status';
+    status.textContent = '';
+    try {
+      const r = await api('/api/library/delete-many', jsonPost({ ids, everyone }));
+      const gone = new Set(ids);
+      state.library = state.library.filter((x) => !gone.has(x.id));
+      await dismissTopOverlay().catch(() => {});
+      toast(r.failed ? `${r.deleted + r.removed} deleted, ${r.failed} kept: ${r.error}`
+        : r.deleted ? `Deleted ${label}` : `Removed ${label} from your library`);
+      onDone?.();
+      // Refresh after the server finishes cleaning up.
+      setTimeout(async () => { await Promise.all([loadLibrary(), loadDownloads()]); if (state.view === 'library') renderLibrary(); if (state.view === 'downloads') renderDownloads(); }, 5000);
+      if (state.view === 'library') renderLibrary();
+    } catch (err) {
+      body.querySelectorAll('button').forEach((b) => { b.disabled = false; b.textContent = b.dataset.label; });
+      status.className = 'device-status is-error';
+      status.textContent = err.message;
+    }
+  };
+  const button = (text, cls, everyone) => {
+    const b = h('button', { class: cls, 'data-label': text }, text);
+    b.addEventListener('click', () => run(b, everyone));
+    return b;
+  };
+  const cancel = h('button', { class: 'del-cancel', 'data-label': 'Keep it', onclick: () => closeTopOverlay() }, 'Keep it');
+  const forEveryone = info.canDeleteForEveryone && button(`Delete the files for everyone (${fmtBytes(info.sizeForEveryone)})`, 'del-confirm del-secondary', true);
+
+  if (allShared) {
+    body.replaceChildren(h('h2', { id: 'picker-title' }, `Remove this ${what} from your library?`),
+      h('p', { class: 'del-name' }, label), h('p', { class: 'muted' }, `${episodes}. Other people have ${info.videos === 1 ? 'it' : 'these'} in their library too, so the files stay on the server. You can add them back from Discover.`),
+      h('div', { class: 'del-actions' }, button(`Remove ${what} from my library`, 'del-confirm'), forEveryone, cancel), status);
+  } else {
+    const lines = [`${episodes} · ${fmtBytes(info.size)} will be freed.`,
+      info.downloads && `This also removes ${info.downloads === 1 ? 'its download' : `${info.downloads} downloads`} from qBittorrent, so ${info.downloads === 1 ? 'it stops' : 'they stop'} seeding.`,
+      info.shared && `${plural(info.shared, 'video')} that other people also have only ${info.shared === 1 ? 'leaves' : 'leave'} your library.`,
+      'This can’t be undone.'].filter(Boolean);
+    body.replaceChildren(h('h2', { id: 'picker-title' }, `Delete this ${what}?`),
+      h('p', { class: 'del-name' }, label), h('p', { class: 'muted' }, lines.join(' ')),
+      h('div', { class: 'del-actions' }, button(`Delete ${what}`, 'del-confirm'), forEveryone, cancel), status);
+  }
   cancel.focus();
 }
 

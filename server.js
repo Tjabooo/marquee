@@ -2012,6 +2012,20 @@ async function handleApi(req, res, url) {
     activity.record(req, 'delete', `${what}${scope === 'torrent' ? ' (whole download)' : ''}${everyone ? ' for everyone' : ''}`);
     return sendJson(res, 200, { ok: true });
   }
+  // A whole season or show in one go (see deleteMany).
+  if (p === '/api/library/delete-many-info' && req.method === 'POST') {
+    return sendJson(res, 200, await deleteManyInfo(deleteIds(await readJson(req)), user));
+  }
+  if (p === '/api/library/delete-many' && req.method === 'POST') {
+    const body = await readJson(req);
+    const everyone = Boolean(body.everyone) && user.isOwner;
+    const result = await deleteMany(deleteIds(body), user, everyone);
+    if (result.deleted || result.removed) {
+      activity.record(req, result.deleted ? 'delete' : 'remove', `${result.what} (${result.deleted + result.removed} videos)${everyone ? ' for everyone' : ''}`);
+    }
+    if (!result.deleted && !result.removed && result.failed) throw new HttpError(409, result.error);
+    return sendJson(res, 200, { ok: true, deleted: result.deleted, removed: result.removed, failed: result.failed, error: result.error });
+  }
 
   // A /sub-<lang>/ segment means the TV was sent subtitles; advertise them via CaptionInfo.sec.
   const caption = (kind, id, lang) => (lang ? { captionUrl: `http://${LAN_IP}:${PORT}/api/subs/file/${kind}/${id}/${lang}.srt` } : {});
@@ -2060,7 +2074,7 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://localhost');
     const allowed = req.method === 'GET' || req.method === 'HEAD'
-      || (req.method === 'POST' && (url.pathname.startsWith('/api/cast/') || url.pathname === '/api/downloads/add' || url.pathname === '/api/downloads/smart' || url.pathname === '/api/subs/fetch' || url.pathname === '/api/subs/sync' || url.pathname === '/api/library/delete' || /^\/api\/downloads\/\w+\/(pause|resume|retry|delete)$/.test(url.pathname) || /^\/api\/media\/\w+\/[\w-]+\/sync$/.test(url.pathname)
+      || (req.method === 'POST' && (url.pathname.startsWith('/api/cast/') || url.pathname === '/api/downloads/add' || url.pathname === '/api/downloads/smart' || url.pathname === '/api/subs/fetch' || url.pathname === '/api/subs/sync' || url.pathname === '/api/library/delete' || url.pathname === '/api/library/delete-many' || url.pathname === '/api/library/delete-many-info' || /^\/api\/downloads\/\w+\/(pause|resume|retry|delete)$/.test(url.pathname) || /^\/api\/media\/\w+\/[\w-]+\/sync$/.test(url.pathname)
         || /^\/api\/(house\/(report|boot|power)|screentime)$/.test(url.pathname) || /^\/api\/clips\/[\w-]+\/(share|unshare|delete|trim|rename)$/.test(url.pathname)
         || /^\/api\/access\/(invite|remove|rename|invite\/\w+\/revoke)$/.test(url.pathname) || /^\/c\/i\/[\w-]+\/?$/.test(url.pathname)
         || /^\/api\/(me|me\/progress|library\/add|library\/extend|library\/identify|admin\/settings|admin\/users\/\d+)$/.test(url.pathname)
@@ -2280,6 +2294,94 @@ async function deleteMediaPlan({ original, torrent }, scope, { user = null, ever
   setTimeout(() => { removeEmptyFolders(path.dirname(original)); invalidateLibrary(); }, 4000);
   console.log(`[library] deleted ${wholeTorrent ? `torrent "${torrent.name}"` : path.basename(original)}`);
   return videos;
+}
+
+// ---- deleting a season or a show at once ----
+// Each video follows the single-delete rules: one that someone else also has only leaves your library
+// (unless the owner deletes for everyone). A download whose videos are all on the list goes as a whole,
+// so qBittorrent stops seeding it; from any other download, single files are deselected and deleted.
+function deleteIds(body) {
+  const ids = [...new Set((Array.isArray(body?.ids) ? body.ids : []).map(String).filter(Boolean))];
+  if (!ids.length) throw new HttpError(400, 'Nothing to delete.');
+  if (ids.length > 2000) throw new HttpError(400, 'Too many videos at once.');
+  return ids;
+}
+
+async function deleteManyItems(ids, user) {
+  const mine = accounts.libraryOf(user.id);
+  const items = [];
+  for (const id of ids) {
+    const key = accounts.mediaKey(librarySource(id));
+    if (!mine.has(key) && !user.isOwner) continue; // not yours to delete
+    items.push({ id, key, plan: await deletePlan(id), shared: accounts.holders(key).some((u) => u !== user.id) });
+  }
+  return items;
+}
+
+// Hashes of the downloads that go as a whole.
+function wholeDownloads(items, user, everyone) {
+  const whole = new Set();
+  for (const { plan: { torrent: t } } of items) {
+    if (!t || whole.has(t.hash)) continue;
+    const listed = items.filter((i) => i.plan.torrent?.hash === t.hash && (everyone || !i.shared));
+    if (!t.videos.every((v) => listed.some((i) => samePath(i.plan.original, v.full)))) continue;
+    if (!everyone && t.videos.some((v) => accounts.holders(accounts.mediaKey(v.full)).some((u) => u !== user.id))) continue;
+    whole.add(t.hash);
+  }
+  return whole;
+}
+
+function freedBytes(items, whole, everyone) {
+  const sizeOf = (f) => { try { return fs.statSync(f).size; } catch { return 0; } };
+  const downloads = new Map();
+  let size = 0;
+  for (const { plan, shared } of items) {
+    if (shared && !everyone) continue;
+    const t = plan.torrent;
+    if (t && whole.has(t.hash)) downloads.set(t.hash, t.videos.reduce((n, v) => n + sizeOf(v.full) + extrasFor(v.full).reduce((m, f) => m + sizeOf(f), 0), 0));
+    else size += sizeOf(plan.original) + extrasFor(plan.original).reduce((n, f) => n + sizeOf(f), 0);
+  }
+  return size + [...downloads.values()].reduce((n, s) => n + s, 0);
+}
+
+async function deleteManyInfo(ids, user) {
+  const items = await deleteManyItems(ids, user);
+  if (!items.length) throw new HttpError(403, 'None of these are in your library.');
+  const shared = items.filter((i) => i.shared).length;
+  const whole = wholeDownloads(items, user, false);
+  const info = { videos: items.length, shared, size: freedBytes(items, whole, false), downloads: whole.size, canDeleteForEveryone: user.isOwner && shared > 0 };
+  if (info.canDeleteForEveryone) info.sizeForEveryone = freedBytes(items, wholeDownloads(items, user, true), true);
+  return info;
+}
+
+async function deleteMany(ids, user, everyone) {
+  const items = await deleteManyItems(ids, user);
+  if (!items.length) throw new HttpError(403, 'None of these are in your library.');
+  const names = items.map((i) => parseName(path.basename(i.plan.original)));
+  const seasons = new Set(names.map((n) => n.season));
+  const what = `${names[0].title}${seasons.size === 1 && names[0].season != null ? ` Season ${names[0].season}` : ''}`;
+  const whole = wholeDownloads(items, user, everyone);
+  const gone = new Set();
+  const out = { what, deleted: 0, removed: 0, failed: 0, error: null };
+  for (const i of items) {
+    if (i.shared && !everyone) { accounts.removeEntry(user.id, i.key); out.removed++; continue; }
+    const hash = i.plan.torrent?.hash;
+    if (hash && gone.has(hash)) { out.deleted++; continue; }
+    try {
+      const scope = hash && whole.has(hash) ? 'torrent' : 'file';
+      for (const file of await deleteMedia(i.id, scope, { user, everyone })) {
+        const k = accounts.mediaKey(file);
+        if (k) { accounts.removeAll(k); accounts.markGone(k); }
+      }
+      if (scope === 'torrent') gone.add(hash);
+      out.deleted++;
+    } catch (e) {
+      out.failed++;
+      out.error ||= e.message;
+    }
+  }
+  console.log(`[library] bulk delete "${what}": ${out.deleted} deleted, ${out.removed} removed, ${out.failed} failed`);
+  return out;
 }
 
 // Pause or resume a download. qBittorrent 5 calls these stop/start; older versions pause/resume.
