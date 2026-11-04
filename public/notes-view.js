@@ -1,6 +1,6 @@
 import { parseDiscordExport } from './notes-import.js';
 
-export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQuery, copyText }) {
+export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQuery, copyText, playVideo }) {
   const state = { anchor: null, focus: null, items: [], filter: 'all', total: 0, due: 0, cursor: null, loaded: false, loading: false, draft: '', reminder: '', files: [], sending: false, follow: true, edit: null, request: 0 };
   let shell, history, list, summary, composer, draft, reminder, send, older, error, importing, fileInput, mediaInput, uploads, filterSelect, viewKey, fit;
   let reminderToggle, reminderChip, reminderText, reminderRemove, reminderClear, attach, latest;
@@ -103,9 +103,14 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
       const img = h('img', { src: `${href}?view=1`, loading: 'lazy', alt: a.name });
       img.addEventListener('error', () => { img.hidden = true; });
       preview = h('a', { href: `${href}?view=1`, target: '_blank', rel: 'noopener' }, img);
-    } else if (a.fileId && a.mime?.startsWith('video/')) preview = h('video', { src: `${href}?view=1`, controls: true, playsinline: true, preload: 'metadata' });
+    } else if (a.fileId && a.mime?.startsWith('video/')) {
+      // A still of the first frame; playing opens Marquee's own player.
+      const still = h('video', { src: `${href}?view=1#t=0.1`, muted: true, playsinline: true, preload: 'metadata', tabindex: -1, 'aria-hidden': 'true' });
+      preview = h('button', { type: 'button', class: 'note-video', 'aria-label': `Play ${a.name}`, onclick: () => playVideo(a) }, still,
+        h('span', { class: 'note-video-play' }, icon('play')));
+    }
     else if (a.fileId && a.mime?.startsWith('audio/')) preview = h('audio', { src: `${href}?view=1`, controls: true, preload: 'metadata' });
-    const media = preview?.querySelector('img') || (preview?.tagName === 'VIDEO' ? preview : null);
+    const media = preview?.querySelector('img, video');
     if (media) media.addEventListener(media.tagName === 'IMG' ? 'load' : 'loadedmetadata', () => { if (state.follow) history.scrollTop = history.scrollHeight; });
     return h('div', { class: 'note-attachment' }, preview,
       h('a', { href, target: '_blank', rel: 'noopener noreferrer', class: 'note-file-link' }, a.name));
@@ -338,6 +343,8 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
   }
   async function poll() {
     if (state.anchor || state.edit || state.draft || state.files.length || state.sending || state.loading || state.items.length > 100 || query() || document.getSelection()?.toString()) return;
+    // A refresh rebuilds every card, which would restart audio someone is listening to.
+    if ([...list.querySelectorAll('audio')].some((m) => !m.paused || (m.currentTime > 0 && !m.ended))) return;
     const scroll = window.scrollY; await load(); window.scrollTo(0, scroll);
   }
   return { load, render, poll, focus };

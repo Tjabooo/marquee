@@ -2598,7 +2598,7 @@ $('#watch-leave').addEventListener('click', () => { leaveWatchRoom(); video.paus
 document.addEventListener('visibilitychange', () => { if (!document.hidden && party) { party.clock().then(() => party?.pulse()).catch(() => {}); } });
 
 function saveProgress(force = false) {
-  if (current?.kind === 'clip') return; // clips have no resume point
+  if (plainMedia(current)) return; // clips and note videos have no resume point
   if (!current?.ready || video.currentSrc !== current.sourceUrl || !video.duration || !isFinite(video.duration)) return;
   const now = Date.now();
   if (!force && now - lastSave < 5000) return;
@@ -2620,6 +2620,9 @@ function saveProgress(force = false) {
 let lastPush = 0;
 
 const mediaId = (f) => (f.kind === 'lib' ? f.id || f.key : f.hash || f.key);
+// Clips and note videos play in the player's plain mode: no subtitles, audio choices, casting,
+// Watch Together, Up next or resume points.
+function plainMedia(f) { return f?.kind === 'clip' || f?.kind === 'note'; }
 
 // ---- subtitles ----
 // ---------- AirPlay / Chromecast from the browser ----------
@@ -3740,7 +3743,7 @@ function toggleHelp() {
   if (helpEl.hidden) {
     helpEl.replaceChildren(
       h('p', { class: 'help-title' }, 'Keyboard shortcuts'),
-      h('dl', {}, SHORTCUTS.filter(([keys]) => keys !== 'C' || current?.kind !== 'clip').map(([keys, what]) => h('div', {}, h('dt', {}, keys), h('dd', {}, what)))));
+      h('dl', {}, SHORTCUTS.filter(([keys]) => keys !== 'C' || !plainMedia(current)).map(([keys, what]) => h('div', {}, h('dt', {}, keys), h('dd', {}, what)))));
   }
   helpEl.hidden = !helpEl.hidden;
 }
@@ -3834,7 +3837,7 @@ async function loadPlayerMedia(f, opts = {}) {
     upNextDismissed: false, upNextBusy: false, upNextError: '', upNextAnnounced: null, autoLeft: null, autoTimer: null };
   const err = $('#player-error');
   $('#player-title').textContent = [f.title, episodeLabel(f)].filter(Boolean).join(' ');
-  playerEl.classList.toggle('is-clip', f.kind === 'clip');
+  playerEl.classList.toggle('is-clip', plainMedia(f));
   updatePlayState();
   updateTime();
   showPlayerUi();
@@ -3846,6 +3849,14 @@ async function loadPlayerMedia(f, opts = {}) {
     const clipBase = `/api/clips/${encodeURIComponent(f.id)}/preview`;
     seekPreview.load({ indexUrl: clipBase, sheetUrl: (n, key) => `${clipBase}/${n}.jpg?k=${key}` });
     setPlayerSource(`/api/clips/${encodeURIComponent(f.id)}/video`, session);
+    video.play().catch(() => { /* autoplay blocked: the controls are there */ });
+    return;
+  }
+  // A video attached to a note: streamed from the notes store (byte ranges), no timeline previews.
+  if (f.kind === 'note') {
+    renderParty();
+    seekPreview.load(null);
+    setPlayerSource(`/api/admin/notes/files/${encodeURIComponent(f.id)}?view=1`, session);
     video.play().catch(() => { /* autoplay blocked: the controls are there */ });
     return;
   }
@@ -4047,7 +4058,9 @@ video.addEventListener('pause', () => saveProgress(true));
 video.addEventListener('error', () => {
   if (!current?.sourceUrl || video.currentSrc !== current.sourceUrl) return;
   const err = $('#player-error');
-  err.textContent = current.kind === 'clip'
+  err.textContent = current.kind === 'note'
+    ? 'This video can’t play in this browser. Its format isn’t supported here; open the file link under the video to download it, or try another browser.'
+    : current.kind === 'clip'
     ? 'This clip can’t play in this browser. Its video format (often AV1) isn’t supported here; try another browser, or share it to get a copy that plays everywhere.'
     : 'This video can’t play in this browser yet. Marquee makes a version that plays here automatically; you can follow its progress in the Library tab.';
   // When the note below the video says a version is being made, that note is the explanation.
@@ -4063,6 +4076,7 @@ window.addEventListener('pageshow', (event) => {
 const input = $('#q');
 const PLACEHOLDERS = { discover: 'Search films and shows', library: 'Filter your library', downloads: 'Filter downloads', activity: 'Filter by person or title', house: 'Filter machines', clips: 'Filter by game or name', settings: 'Search films and shows', notes: 'Search notes by keyword' };
 const notesView = createNotesView({ h, icon, api, jsonPost, toast, copyText, query: () => state.query,
+  playVideo: (a) => openPlayer({ kind: 'note', id: a.fileId, key: `note:${a.fileId}`, title: a.name }),
   clearQuery: () => { input.value = state.query = ''; $('#q-clear').hidden = true; } });
 
 function renderView() {
