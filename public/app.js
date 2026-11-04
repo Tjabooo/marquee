@@ -1034,7 +1034,7 @@ function renderShow() {
     const epTitle = (n, name) => `${n}. ${name || tmdbEp(n).name || `Episode ${n}`}`;
     const thumb = (n, still) => episodeArt(still || tmdbEp(n).still, show, 'episode-thumb');
     const rows = ready.map(f => ({ number: f.episode, node: (() => { const row = fileRow(libraryFile(f)); row.classList.add('episode-row'); row.prepend(thumb(f.episode, f.still)); $('.row-title', row).textContent = epTitle(f.episode, f.episodeName); $('.row-title', row).title = f.file; return row; })() }));
-    const tvId = show.tmdbId && canGet() ? { id: show.tmdbId, title: show.title, type: 'tv' } : null;
+    const tvId = { id: show.tmdbId ?? null, title: show.title, type: 'tv' }; // episodeDownload decides Add / Download / nothing
     for (const {d,ep} of byEpisode.values()) rows.push({ number: ep.episode, node: h('li', { class: 'row episode-row pending-episode', 'data-transfer-hash': d.hash, 'data-episode-number': ep.episode, 'data-episode-season': ep.season }, thumb(ep.episode), h('div', { class: 'row-text' }, h('div', { class: 'row-title' }, epTitle(ep.episode)), h('div', { class: 'row-meta episode-transfer-state' }, ep.available ? 'Ready in download details' : `${transferState(d)}${Number.isFinite(ep.progress) ? ` · ${Math.floor(ep.progress*100)}%` : ''}`)), h('button', { class: 'chip', onclick: e => openTransferDetails({ ...entry, transfers: [d] }, e.currentTarget) }, 'Details')) });
     if (Number.isInteger(open.total) && open.total > 0 && open.total <= 1000) for (let number = 1; number <= open.total; number++) if (!rows.some(row => row.number === number)) rows.push({ number, node: h('li', { class: 'row episode-row missing-episode' }, thumb(number), h('div', { class: 'row-text' }, h('div', { class: 'row-title' }, epTitle(number)), h('div', { class: 'row-meta' }, 'Not in library')), tvId && episodeDownload(tvId, open.number, number)) });
     content = [!single && h('button', { class: 'chip season-back', onclick: () => pick(null) }, icon('back'), 'All seasons'), h('h3', {}, open.name),
@@ -1591,6 +1591,27 @@ function commandResult(cmd) {
   return null;
 }
 
+// Adds videos someone else already has here to your library (no copy is made) and refreshes the views.
+async function addFromServer(files) {
+  await api('/api/library/add', jsonPost({ ids: files.map((f) => f.id) }));
+  await loadLibrary();
+  const eps = episodeCount(files.filter((f) => f.episode != null));
+  toast(eps > 1 ? `Added ${plural(eps, 'episode')} to your library` : 'Added to your library');
+  patchUnifiedLibrary();
+  refreshCommandViews();
+}
+// Someone else's copies of episodes you don't have yet (one per episode).
+function serverOnlyEpisodes(s, season = null) {
+  const mine = new Set(s.ready.map((f) => `${f.season}:${f.episode}`));
+  const out = new Map();
+  for (const f of s.onServer) {
+    const k = `${f.season}:${f.episode}`;
+    if (f.episode == null || (season != null && f.season !== season) || mine.has(k) || out.has(k)) continue;
+    out.set(k, f);
+  }
+  return [...out.values()];
+}
+
 // A title's files and transfers, from the same state the Library uses.
 function titleState(t) {
   const match = sameTitle(t);
@@ -1698,8 +1719,16 @@ function filmActions(t) {
       patchUnifiedLibrary();
     } catch (err) { status.textContent = err.message; } finally { playing = false; root._update(); }
   });
+  let adding = false;
   const start = () => { if (get.getAttribute('aria-disabled') !== 'true') runDownloadCommand(body()); };
-  get.addEventListener('click', start);
+  get.addEventListener('click', async () => {
+    if (get.getAttribute('aria-disabled') === 'true') return;
+    const s = titleState(t);
+    if (s.ready.length || !s.onServer.length) return start();
+    // Someone else already has it here: add their copy instead of downloading another.
+    adding = true; status.textContent = ''; root._update();
+    try { await addFromServer([s.onServer[0]]); } catch (err) { status.textContent = err.message; } finally { adding = false; root._update(); }
+  });
   retry.addEventListener('click', start);
   root._update = () => {
     const s = titleState(t), cmd = downloadCommands.get(commandKey(body()));
@@ -1712,13 +1741,16 @@ function filmActions(t) {
       play.replaceChildren(icon('play'), h('span', {}, converting ? 'Preparing playback…' : partlyWatched(saved) ? `Resume at ${fmtTime(saved.time)}` : 'Play'));
       play.setAttribute('aria-disabled', String(Boolean(converting || playing)));
     }
-    // Download only when there's nothing to play and nothing downloading; while it runs it says what it's doing.
-    get.hidden = playable || !canGet() || !t.id || (s.active.length > 0 && !cmd?.busy);
-    get.lastChild.textContent = cmd?.busy ? commandStep(cmd) : 'Download';
-    get.setAttribute('aria-disabled', String(Boolean(cmd?.busy)));
+    // On the server under someone else: "Add to library" (no copy). Otherwise Download only when there's
+    // nothing to play and nothing downloading; while it runs it says what it's doing.
+    const addable = !file && s.onServer.length > 0;
+    get.hidden = addable ? false : playable || !canGet() || !t.id || (s.active.length > 0 && !cmd?.busy);
+    if (get._mode !== (addable ? 'add' : 'get')) { get._mode = addable ? 'add' : 'get'; get.firstChild.replaceWith(icon(addable ? 'plus' : 'download')); }
+    get.lastChild.textContent = addable ? (adding ? 'Adding…' : 'Add to library') : cmd?.busy ? commandStep(cmd) : 'Download';
+    get.setAttribute('aria-disabled', String(Boolean(cmd?.busy || adding)));
     root.setAttribute('aria-busy', String(Boolean(cmd?.busy)));
     const result = !playable && commandResult(cmd);
-    if (status.textContent !== (result?.text || '')) status.textContent = result?.text || '';
+    if (!addable && status.textContent !== (result?.text || '')) status.textContent = result?.text || '';
     status.classList.toggle('is-error', Boolean(result?.retry));
     retry.hidden = !result?.retry || s.active.length > 0;
     row.hidden = play.hidden && get.hidden;
@@ -1741,6 +1773,7 @@ function showDownload(t, { season = null } = {}) {
   const profileSel = h('select', { class: 'sub-select', id: `${panelId}-quality` }, PROFILE_OPTIONS.map(([v, text]) => h('option', { value: v }, text)));
   profileSel.value = ps.profile;
   const avail = h('p', { class: 'dl-avail' });
+  const note = h('p', { class: 'dl-note' });
   const submit = h('button', { type: 'button', class: 'play-btn dl-submit' }, h('span', {}, 'Download Season'));
   const quiet = h('p', { class: 'dl-quiet' });
   const status = h('p', { class: 'dl-status', role: 'status' });
@@ -1749,8 +1782,7 @@ function showDownload(t, { season = null } = {}) {
     h('div', { class: 'dl-fields' },
       h('div', { class: 'dl-field' }, h('label', { for: seasonSel.id }, 'Season'), seasonSel),
       h('div', { class: 'dl-field' }, h('label', { for: profileSel.id }, 'Quality'), profileSel)),
-    h('p', { class: 'dl-note' }, 'Smart selection chooses a suitable season download and skips episodes you already have.'),
-    avail, submit, quiet, h('div', { class: 'dl-result' }, status, retry),
+    note, avail, submit, quiet, h('div', { class: 'dl-result' }, status, retry),
     advancedOptions(`tv-${t.id}`, {
       exact: ps.exact, onExact: (v) => { ps.exact = v; },
       browse: () => ({ query: `${t.title} S${pad2(ps.season || 1)}`, type: 'tv', tvId: t.id, canonicalTitle: t.title, strict: true }),
@@ -1764,7 +1796,8 @@ function showDownload(t, { season = null } = {}) {
       const s = titleState(t), have = (n) => episodeCount([...s.ready, ...s.onServer].filter((f) => f.season === n && f.episode != null));
       seasonSel.replaceChildren(...list.map((se) => h('option', { value: String(se.number), disabled: se.upcoming && !have(se.number) ? true : null },
         `${se.name}${se.upcoming && !have(se.number) ? ' · Not released' : ''}`)));
-      const pick = list.find((se) => se.number === ps.season)
+      const extra = new Set(serverOnlyEpisodes(s).map((f) => f.season)); // seasons someone else has here
+      const pick = list.find((se) => se.number === ps.season) || list.find((se) => extra.has(se.number))
         || list.find((se) => !se.upcoming && !(se.episodes && have(se.number) >= se.episodes)) || list.find((se) => !se.upcoming) || list[0];
       if (pick) { ps.season = pick.number; seasonSel.value = String(pick.number); }
       seasonSel.disabled = false;
@@ -1777,7 +1810,7 @@ function showDownload(t, { season = null } = {}) {
     panel.hidden = !ps.open;
     if (ps.open) { load(); if (e.detail === 0) seasonSel.focus(); } // keyboard: straight to Season
   });
-  seasonSel.addEventListener('change', () => { ps.season = Number(seasonSel.value); ps.touched = true; panel._update(); });
+  seasonSel.addEventListener('change', () => { ps.season = Number(seasonSel.value); ps.touched = true; addError = ''; panel._update(); });
   profileSel.addEventListener('change', () => { ps.profile = profileSel.value; });
   const body = (episodes = null) => ({ type: 'tv', tmdbId: t.id, season: ps.season, profile: ps.profile,
     ...(ps.exact ? { quality: ps.exact } : {}), ...(episodes?.length ? { episodes } : {}) });
@@ -1787,7 +1820,14 @@ function showDownload(t, { season = null } = {}) {
     ps.last[ps.season] = commandKey(b);
     runDownloadCommand(b);
   };
-  submit.addEventListener('click', () => run(null));
+  let adding = false, addError = '';
+  submit.addEventListener('click', async () => {
+    addError = '';
+    if (!submit._add) return run(null);
+    if (submit.getAttribute('aria-disabled') === 'true') return;
+    adding = true; panel._update();
+    try { await addFromServer(submit._add); } catch (err) { addError = err.message; } finally { adding = false; panel._update(); }
+  });
   retry.addEventListener('click', () => run(retry._episodes));
   panel._update = () => {
     const n = ps.season, se = seasons?.find((x) => x.number === n);
@@ -1804,19 +1844,30 @@ function showDownload(t, { season = null } = {}) {
     avail.textContent = parts.join(' · ');
     avail.hidden = !parts.length;
     const complete = total && ready.size >= total;
-    const covered = total && ready.size + server.size + downloading.size >= total && !complete && downloading.size > 0;
+    // Everything still missing is on the server under someone else (or already downloading): just add it.
+    const addOnly = !complete && server.size > 0 && (total ? ready.size + server.size + downloading.size >= total : !canGet());
+    const covered = total && ready.size + server.size + downloading.size >= total && !complete && downloading.size > 0 && !addOnly;
     const locked = Boolean(cmd?.busy);
+    submit._add = addOnly && !locked ? serverOnlyEpisodes(s, n).filter((f) => server.has(f.episode)) : null;
     submit.hidden = Boolean(complete || covered) && !locked;
     quiet.textContent = complete ? 'This season is ready to watch' : covered ? 'Remaining episodes are downloading' : '';
     quiet.hidden = !submit.hidden;
-    submit.firstChild.textContent = locked ? commandStep(cmd, true) : `Download Season ${n ?? ''}`.trim();
-    submit.setAttribute('aria-disabled', String(locked || !n));
+    submit.firstChild.textContent = locked ? commandStep(cmd, true) : submit._add ? (adding ? 'Adding…' : `Add Season ${n} to library`) : `Download Season ${n ?? ''}`.trim();
+    submit.setAttribute('aria-disabled', String(locked || adding || !n));
+    note.textContent = submit._add ? 'Someone already has this season here. Adding it makes no copy, so it’s ready to watch right away.'
+      : 'Smart selection chooses a suitable season download and skips episodes you already have.';
+    const addMode = serverOnlyEpisodes(s).length > 0; // the show's button: add what's here before downloading more
+    if (toggle._mode !== addMode) {
+      toggle._mode = addMode;
+      toggle.replaceChildren(icon(addMode ? 'plus' : 'download'), h('span', {}, addMode ? 'Add to library' : 'Download'));
+    }
     seasonSel.disabled = locked || !seasons?.length;
     profileSel.disabled = locked;
     panel.setAttribute('aria-busy', String(locked));
     const result = commandResult(cmd);
-    if (status.textContent !== (result?.text || '')) status.textContent = result?.text || '';
-    status.classList.toggle('is-error', Boolean(result?.retry && !result.partial));
+    const text = addError || result?.text || '';
+    if (status.textContent !== text) status.textContent = text;
+    status.classList.toggle('is-error', Boolean(addError || (result?.retry && !result.partial)));
     retry._episodes = result?.episodes?.length ? result.episodes : null;
     retry.hidden = !result?.retry;
     retry.textContent = retry._episodes ? 'Retry unavailable' : 'Try again';
@@ -1830,13 +1881,25 @@ function showDownload(t, { season = null } = {}) {
 // One missing episode in the show sheet: a quiet Download that runs the same command for it alone.
 function episodeDownload(t, seasonNo, episode) {
   const b = { type: 'tv', tmdbId: t.id, season: seasonNo, episodes: [episode], profile: savedProfile() };
-  const btn = h('button', { type: 'button', class: 'chip episode-get stroke-icon', 'aria-label': `Download episode ${episode}` }, icon('download'), h('span', {}, 'Download'));
-  btn.addEventListener('click', () => { if (btn.getAttribute('aria-disabled') !== 'true') runDownloadCommand(b); });
+  const onServer = () => serverMatchesFor(t).find((f) => f.season === seasonNo && f.episode === episode);
+  if (!onServer() && !(canGet() && t.id)) return null;
+  const btn = h('button', { type: 'button', class: 'chip episode-get stroke-icon' }, icon('download'), h('span', {}, 'Download'));
+  let adding = false, error = '';
+  btn.addEventListener('click', async () => {
+    if (btn.getAttribute('aria-disabled') === 'true') return;
+    const f = onServer();
+    if (!f) return runDownloadCommand(b);
+    adding = true; error = ''; btn._update();
+    try { await addFromServer([f]); } catch (err) { error = err.message; } finally { adding = false; btn._update(); }
+  });
   btn._update = () => {
-    const cmd = downloadCommands.get(commandKey(b)), result = commandResult(cmd);
-    btn.setAttribute('aria-disabled', String(Boolean(cmd?.busy)));
-    btn.lastChild.textContent = cmd?.busy ? 'Finding…' : result?.retry ? 'Try again' : 'Download';
-    btn.title = result?.text || '';
+    const cmd = downloadCommands.get(commandKey(b)), result = commandResult(cmd), add = Boolean(onServer());
+    if (btn._mode !== add) { btn._mode = add; btn.firstChild.replaceWith(icon(add ? 'plus' : 'download')); }
+    btn.setAttribute('aria-label', `${add ? 'Add' : 'Download'} episode ${episode}${add ? ' to your library' : ''}`);
+    btn.setAttribute('aria-disabled', String(Boolean(cmd?.busy || adding)));
+    btn.lastChild.textContent = add ? (adding ? 'Adding…' : error ? 'Try again' : 'Add to library')
+      : cmd?.busy ? 'Finding…' : result?.retry ? 'Try again' : 'Download';
+    btn.title = add ? error : result?.text || '';
   };
   commandViews.add(btn);
   btn._update();
