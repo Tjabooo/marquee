@@ -2777,6 +2777,22 @@ function applySubModes() {
 // Cues placed at the top of the picture ({\an8} in the SRT, `line:0` in the VTT) stay at the top.
 const cueAtTop = (c) => typeof c.line === 'number' && (c.snapToLines ? c.line >= 0 : c.line < 50);
 
+// A cue broken into three or more short lines stacks up tall and narrow. Its line breaks become
+// spaces (a dialogue line starting with "-" keeps its own line) and the text wraps across the width.
+function widenCue(node) {
+  const texts = [];
+  const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+  while (walker.nextNode()) texts.push(walker.currentNode);
+  const all = texts.map((t) => t.data).join('');
+  if (all.trim().split('\n').length < 3) return;
+  let at = 0;
+  for (const t of texts) {
+    const start = at;
+    at += t.data.length;
+    t.data = t.data.replace(/\n/g, (m, i) => (/^\s*[-\u2010-\u2014]/.test(all.slice(start + i + 1)) ? m : ' '));
+  }
+}
+
 function renderCues() {
   const [top, bottom] = subsEl.children;
   const cues = subTrack?.activeCues ? [...subTrack.activeCues] : [];
@@ -2784,6 +2800,7 @@ function renderCues() {
     const text = h('span');
     if (typeof c.getCueAsHTML === 'function') text.append(c.getCueAsHTML()); // <i>, <b> and friends; never parsed as page HTML
     else text.textContent = c.text;
+    widenCue(text);
     return h('div', { class: 'sub-cue' }, text);
   });
   top.replaceChildren(...draw(cues.filter(cueAtTop)));
@@ -3648,7 +3665,7 @@ function layoutSubs() {
   const below = subtitleBottom - (top + height);
   const sizeOver = Math.min(Math.max(height * 0.05, 15), 52) * subSize; // ~1/20 of the picture's height
   const sizeUnder = Math.min(Math.max(width * 0.045, 15), 26) * subSize;
-  const outside = below >= sizeUnder * 1.25 * 3 + sizeUnder; // three lines and a gap
+  const outside = below >= sizeUnder * 1.45 * 3 + sizeUnder; // three lines and a gap
   subsEl.classList.toggle('subs-below', outside);
   Object.assign(subsEl.style, {
     left: `${left - box.left}px`, top: `${top - box.top}px`, width: `${width}px`, height: `${height}px`,
