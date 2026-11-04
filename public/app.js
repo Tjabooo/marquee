@@ -2597,6 +2597,7 @@ $('#watch-leave').addEventListener('click', () => { leaveWatchRoom(); video.paus
 document.addEventListener('visibilitychange', () => { if (!document.hidden && party) { party.clock().then(() => party?.pulse()).catch(() => {}); } });
 
 function saveProgress(force = false) {
+  if (current?.kind === 'clip') return; // clips have no resume point
   if (!current?.ready || video.currentSrc !== current.sourceUrl || !video.duration || !isFinite(video.duration)) return;
   const now = Date.now();
   if (!force && now - lastSave < 5000) return;
@@ -3733,7 +3734,7 @@ function toggleHelp() {
   if (helpEl.hidden) {
     helpEl.replaceChildren(
       h('p', { class: 'help-title' }, 'Keyboard shortcuts'),
-      h('dl', {}, SHORTCUTS.map(([keys, what]) => h('div', {}, h('dt', {}, keys), h('dd', {}, what)))));
+      h('dl', {}, SHORTCUTS.filter(([keys]) => keys !== 'C' || current?.kind !== 'clip').map(([keys, what]) => h('div', {}, h('dt', {}, keys), h('dd', {}, what)))));
   }
   helpEl.hidden = !helpEl.hidden;
 }
@@ -3826,10 +3827,19 @@ async function loadPlayerMedia(f, opts = {}) {
     upNextDismissed: false, upNextBusy: false, upNextError: '', upNextAnnounced: null };
   const err = $('#player-error');
   $('#player-title').textContent = [f.title, episodeLabel(f)].filter(Boolean).join(' ');
+  playerEl.classList.toggle('is-clip', f.kind === 'clip');
   updatePlayState();
   updateTime();
   showPlayerUi();
   setSpinner(true);
+  // Clips use the same player without what only library media has: subtitles, audio choices,
+  // casting, Watch Together, Up next and resume points. They play straight from the clips folder.
+  if (f.kind === 'clip') {
+    renderParty();
+    setPlayerSource(`/api/clips/${encodeURIComponent(f.id)}/video`, session);
+    video.play().catch(() => { /* autoplay blocked: the controls are there */ });
+    return;
+  }
   const watchSession = opts.watchRoom ? attachWatchRoom(opts.watchRoom) : null;
   renderParty();
   // Chapter lookup is optional and never delays playback.
@@ -3988,7 +3998,9 @@ video.addEventListener('pause', () => saveProgress(true));
 video.addEventListener('error', () => {
   if (!current?.sourceUrl || video.currentSrc !== current.sourceUrl) return;
   const err = $('#player-error');
-  err.textContent = 'This video can’t play in this browser yet. Marquee makes a version that plays here automatically; you can follow its progress in the Library tab.';
+  err.textContent = current.kind === 'clip'
+    ? 'This clip can’t play in this browser. Its video format (often AV1) isn’t supported here; try another browser, or share it to get a copy that plays everywhere.'
+    : 'This video can’t play in this browser yet. Marquee makes a version that plays here automatically; you can follow its progress in the Library tab.';
   // When the note below the video says a version is being made, that note is the explanation.
   err.hidden = !$('#player-note').hidden;
 });
@@ -4759,9 +4771,7 @@ function clipCard(c) {
   const thumb = h('button', { class: 'clip-thumb', 'aria-label': `Play ${c.title}` },
     h('img', { src: `/api/clips/${c.id}/thumb.jpg`, alt: '', loading: 'lazy' }));
   thumb.insertAdjacentHTML('beforeend', `<span class="clip-play">${ICONS.play}</span>`);
-  thumb.addEventListener('click', () => {
-    thumb.replaceWith(h('video', { class: 'clip-video', src: `/api/clips/${c.id}/video`, controls: true, autoplay: true, playsinline: true }));
-  });
+  thumb.addEventListener('click', () => openPlayer({ kind: 'clip', id: c.id, key: c.id, title: c.title }));
   const s = c.share;
   const link = s && `${location.origin}/c/${s.token}`;
   let actions;
