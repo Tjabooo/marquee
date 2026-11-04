@@ -335,15 +335,50 @@ export async function control(deviceId, action, value) {
   return { ok: true };
 }
 
+// A cast that ended on the TV itself (film over, stopped with the TV remote, TV switched off) would
+// otherwise stay "playing" forever, keeping the now-playing bar up on the phone that started it.
+const START_GRACE_MS = 30_000;          // TVs report stopped/idle while they load
+const UNREACHABLE_MS = 10 * 60_000;     // TV off for this long = the cast is over
+const PRUNE_EVERY_MS = 15_000;
+function endSession(deviceId) {
+  sessions.get(deviceId)?.proc?.kill();
+  sessions.delete(deviceId);
+}
+
 const statusCache = new Map(); // deviceId -> { at, promise }
 export async function status(deviceId) {
   const dev = getDevice(deviceId);
   const cached = statusCache.get(deviceId);
   if (cached && Date.now() - cached.at < 1200) return cached.promise;
-  const promise = drivers[dev.kind].status(dev).then((s) => ({ ...s, session: publicSession(sessions.get(deviceId)) }));
+  const promise = drivers[dev.kind].status(dev).then((s) => {
+    const session = sessions.get(deviceId);
+    if (session) {
+      session.failingSince = null;
+      // A running AirPlay helper (play_url) is the session itself: it ends when that exits, never on a status reading.
+      const helperRunning = session.proc && session.proc.exitCode === null && session.proc.signalCode === null;
+      if (s.state === 'stopped' && !helperRunning && Date.now() - session.startedAt > START_GRACE_MS) endSession(deviceId);
+    }
+    return { ...s, session: publicSession(sessions.get(deviceId)) };
+  }, (e) => {
+    const session = sessions.get(deviceId);
+    if (session) {
+      session.failingSince ??= Date.now();
+      if (Date.now() - session.failingSince > UNREACHABLE_MS) endSession(deviceId);
+    }
+    throw e;
+  });
   statusCache.set(deviceId, { at: Date.now(), promise });
   promise.catch(() => statusCache.delete(deviceId));
   return promise;
+}
+
+// Checks each session's TV now and then (throttled: Apple TV status starts a Python process).
+export async function pruneSessions() {
+  await Promise.all([...sessions.values()].map(async (s) => {
+    if (Date.now() - (s.checkedAt || s.startedAt) < PRUNE_EVERY_MS) return;
+    s.checkedAt = Date.now();
+    try { await status(s.deviceId); } catch { /* unreachable: handled in status() */ }
+  }));
 }
 
 const publicSession = (s) => (s ? {

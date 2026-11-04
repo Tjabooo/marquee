@@ -1157,10 +1157,18 @@ function clientOf(req) {
   return `anon:${who}|${where}`;
 }
 const isMine = (req, deviceId) => castOwners.get(deviceId) === clientOf(req);
+// The exact file each cast started with. An MP4 or audio-fixed copy can finish mid-playback, and
+// switching files under a TV's range requests (different size and layout) breaks playback.
+const castFiles = new Map(); // "kind:id" -> file
+const castFile = (kind, id) => {
+  const file = castFiles.get(`${kind}:${id}`);
+  return file && fs.existsSync(file) ? file : null;
+};
 async function resolveMedia(kind, id, subLang = null) {
   const file = converter.preferConverted(await sourceFile(kind, id));
   let stat;
   try { stat = await fs.promises.stat(file); } catch { throw new HttpError(404, 'That file is no longer on the server.'); }
+  castFiles.set(`${kind}:${id}`, file);
   const name = path.basename(file);
   const ext = path.extname(name).slice(1).toLowerCase();
   const info = parseName(name);
@@ -1776,6 +1784,7 @@ async function handleApi(req, res, url) {
   }
   if (p === '/api/cast/sessions') {
     // Only this device's own casts, so even a page that doesn't filter (an older cached copy) shows nothing else.
+    cast.pruneSessions().catch(() => {}); // not awaited: a switched-off TV takes seconds to time out; the next poll sees it
     return sendJson(res, 200, { sessions: cast.listSessions().filter((s) => isMine(req, s.deviceId)).map((s) => ({ ...s, mine: true })) });
   }
   if (p === '/api/cast/play' && req.method === 'POST') {
@@ -1957,11 +1966,11 @@ async function handleApi(req, res, url) {
   // A /sub-<lang>/ segment means the TV was sent subtitles; advertise them via CaptionInfo.sec.
   const caption = (kind, id, lang) => (lang ? { captionUrl: `http://${LAN_IP}:${PORT}/api/subs/file/${kind}/${id}/${lang}.srt` } : {});
   if ((m = p.match(/^\/api\/stream\/lib\/([A-Za-z0-9_-]+)(?:\/sub-([a-z-]+))?(?:\/[^/]*)?$/))) {
-    const file = url.searchParams.has('browser') ? converter.preferConverted(librarySource(m[1]), { browser: true }) : libraryPath(m[1]);
+    const file = url.searchParams.has('browser') ? converter.preferConverted(librarySource(m[1]), { browser: true }) : castFile('lib', m[1]) || libraryPath(m[1]);
     return sendVideo(req, res, file, caption('lib', m[1], m[2]));
   }
   if ((m = p.match(/^\/api\/stream\/dl\/([A-Fa-f0-9]+)(?:\/sub-([a-z-]+))?(?:\/[^/]*)?$/))) {
-    const file = url.searchParams.has('browser') ? converter.preferConverted(await downloadSource(m[1]), { browser: true }) : await downloadPath(m[1]);
+    const file = url.searchParams.has('browser') ? converter.preferConverted(await downloadSource(m[1]), { browser: true }) : castFile('dl', m[1]) || await downloadPath(m[1]);
     return sendVideo(req, res, file, caption('dl', m[1], m[2]));
   }
   throw new HttpError(404, 'Unknown API route.');
