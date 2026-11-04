@@ -23,6 +23,7 @@ import * as shows from './shows.js';
 import * as season from './season.js';
 import { matchesRelease } from './release-match.js';
 import { downloadDestination, downloadFilePath } from './download-paths.js';
+import { fetchTorrentFile, TorrentFetchError } from './torrent-fetch.js';
 import * as smart from './smart-download.js';
 import { planEpisodeOrder } from './episode-order.js';
 import { PROFILES } from './recommend.js';
@@ -57,6 +58,8 @@ function lanAddress() {
     if (/vEthernet|VirtualBox|VMware|WSL|Hyper-V|Tailscale|ZeroTier|Loopback/i.test(name)) continue;
     for (const a of addrs || []) {
       if (a.family !== 'IPv4' || a.internal) continue;
+      // VPN tunnels (WireGuard, TUN adapters) have no hardware address and a /32: TVs can't reach those.
+      if (a.mac === '00:00:00:00:00:00' || a.netmask === '255.255.255.255') continue;
       if (/^169\.254\./.test(a.address) || /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(a.address)) continue;
       return a.address;
     }
@@ -604,6 +607,16 @@ async function addDownload(opts) {
   return done;
 }
 async function addDownloadNow({ link, file, user = null, name = '', film = null, show = null, mediaType = null }) {
+  // .torrent links are downloaded here and handed to qBittorrent as a file: its own web requests
+  // may be fenced off by the torrent VPN kill switch.
+  if (!file && /^https?:\/\//i.test(String(link || '').trim())) {
+    let got;
+    try { got = await fetchTorrentFile(String(link).trim()); } catch (e) {
+      throw new HttpError(400, e instanceof TorrentFetchError ? e.message : 'Couldn’t download the .torrent file.');
+    }
+    if (got.magnet) return addDownload({ link: got.magnet, user, name, film, show, mediaType });
+    file = got.file;
+  }
   const hash = accounts.magnetHash(link);
   assertDownloadNotDeleting(hash);
   if (hash && user) {

@@ -159,6 +159,10 @@ All settings live in `.env`. Changes take effect after a restart.
 
 If Marquee signs in but is still refused, enable **Bypass authentication for clients on localhost** in the Web UI settings.
 
+### Torrents through a VPN (Windows)
+
+To keep your own IP out of torrent swarms, `tools/torrent-vpn` puts qBittorrent alone behind a WireGuard VPN (Mullvad, or any provider that gives out WireGuard configs). The rest of the server keeps its normal connection. It fails closed: qBittorrent is bound to the tunnel and fenced in by firewall rules, and a watchdog keeps it that way. See [tools/torrent-vpn/README.md](tools/torrent-vpn/README.md).
+
 ### OpenSubtitles
 
 1. Create a free account at [opensubtitles.com](https://www.opensubtitles.com).

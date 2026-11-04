@@ -176,6 +176,7 @@ function wakeTargets(ip) {
   for (const addrs of Object.values(os.networkInterfaces())) {
     for (const a of addrs || []) {
       if (a.family !== 'IPv4' || a.internal || !privateIp(a.address)) continue;
+      if (a.mac === '00:00:00:00:00:00' || a.netmask === '255.255.255.255') continue; // VPN tunnel, not a LAN
       const addr = toInt(a.address);
       const mask = toInt(a.netmask);
       if (net.isIPv4(ip) && ((toInt(ip) & mask) >>> 0) !== ((addr & mask) >>> 0)) continue;
