@@ -8,7 +8,7 @@ body:has(#view-notes:not([hidden])) main { padding-bottom: 0; }
 .note-filter { min-width: 0; max-width: 150px; padding: 6px 24px 6px 9px; color: var(--paper); background: var(--curtain); border: 1px solid var(--line); border-radius: 8px; font-size: 13px; }
 .note-summary { flex: 1; color: var(--dust); font-size: 11px; text-align: right; }
 .note-action { padding: 5px 9px; border: 1px solid var(--line); border-radius: 7px; background: var(--curtain); font-size: 12px; }
-.note-action:hover { border-color: var(--bulb); }
+@media (hover: hover) { .note-action:hover { border-color: var(--bulb); } }
 .note-actions { display: flex; flex-wrap: wrap; gap: 4px; }
 .note-menu { position: relative; flex: none; }
 .note-menu summary { list-style: none; display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid transparent; border-radius: 8px; font-size: 24px; line-height: 1; cursor: pointer; }
@@ -26,7 +26,8 @@ body:has(#view-notes:not([hidden])) main { padding-bottom: 0; }
 .note-text a, .note-file-link { color: var(--bulb); text-underline-offset: 3px; }
 .note-message > .note-actions { margin-top: 8px; }
 .note-message > .note-actions .note-action { min-height: 32px; padding: 4px 7px; color: var(--dust); background: none; border-color: transparent; }
-.note-message > .note-actions .note-action:hover { color: var(--paper); border-color: var(--line); }
+@media (hover: hover) { .note-message > .note-actions .note-action:hover { color: var(--paper); border-color: var(--line); } }
+.note-message > .note-actions .note-action.is-danger { color: var(--alert); }
 .note-tag { background: var(--seat); padding: 1px 5px; border-radius: 4px; font-size: 10px; }
 .note-attachments { display: grid; gap: 10px; margin-top: 8px; }
 .note-attachment { min-width: 0; display: grid; gap: 4px; }
@@ -92,4 +93,40 @@ body:has(#view-notes:not([hidden])) main { padding-bottom: 0; }
 .tabs:has(.tab:nth-child(8)) { overflow-x: auto; scrollbar-width: none; }
 .tabs:has(.tab:nth-child(8)) .tab { flex: 1 0 56px; }
 @media (max-width: 600px) { #view-notes > .view-heading { display: none; } .notes-app { height: calc(100dvh - 204px); } .note-message { padding: 10px 12px; } .note-compose-options { position: static; } .note-reminder-panel { right: 0; } }
-@media (max-width: 359px) { .note-reminder-label { display: none; } .note-reminder-toggle { width: 40px; padding: 0; } }
+@media (max-width: 479px) { .note-reminder-label { display: none; } .note-reminder-toggle { width: 40px; padding: 0; } }
+
+/* Per-note actions: always shown with a mouse; on touch screens they open from ⋯ or a tap on the note. */
+.note-more { display: none; }
+@media (hover: none) and (pointer: coarse) {
+  .note-more { display: grid; place-items: center; margin: -6px -6px -6px auto; width: 40px; height: 32px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--dust); font-size: 20px; line-height: 1; }
+  .note-message.is-open .note-more { color: var(--paper); background: var(--seat); }
+  .note-message > .note-actions { display: none; }
+  .note-message.is-open > .note-actions { display: flex; gap: 6px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
+  .note-message > .note-actions .note-action { min-height: 40px; padding: 6px 12px; border-color: var(--line); color: var(--paper); font-size: 13px; }
+  .note-message > .note-actions .note-action.is-danger { color: var(--alert); }
+  .note-message { -webkit-tap-highlight-color: transparent; }
+  .note-message.is-open { border-color: color-mix(in srgb, var(--bulb) 45%, var(--line)); }
+  .note-file-link { display: inline-block; padding: 4px 0; }
+  .notes-history { scrollbar-gutter: auto; }
+}
+
+/* Undo after moving a note to trash. */
+.note-undo { display: flex; align-items: center; gap: 10px; margin: 6px 0 0; padding: 6px 6px 6px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--seat); font-size: 13px; }
+.note-undo[hidden] { display: none; }
+.note-undo span { flex: 1; }
+.note-undo .note-action { min-height: 36px; padding: 4px 14px; color: var(--bulb); border-color: var(--bulb); background: transparent; font-weight: 600; }
+.note-older { display: block; margin: 8px auto; }
+
+/* With the on-screen keyboard open (phones), the header and tab bar step aside for the notes. */
+body.notes-keyboard .top, body.notes-keyboard .tabs { display: none; }
+body.notes-keyboard main { padding-top: calc(var(--safe-top) + 6px); }
+
+/* Image viewer. */
+.note-image { display: block; width: fit-content; max-width: 100%; }
+.note-viewer { position: fixed; inset: 0; z-index: 90; display: grid; grid-template-rows: 1fr auto; background: #000; padding: var(--safe-top) 0 var(--safe-bottom); }
+.note-viewer[hidden] { display: none; }
+.note-viewer img { width: 100%; height: 100%; min-height: 0; object-fit: contain; }
+.note-viewer-bar { display: flex; align-items: center; gap: 14px; padding: 10px 16px; color: var(--dust); font-size: 13px; }
+.note-viewer-bar span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.note-viewer-bar a { color: var(--bulb); padding: 8px 0; }
+.note-viewer-close { width: 44px; height: 44px; border: 1px solid var(--line); border-radius: 50%; background: var(--curtain); color: var(--paper); font-size: 24px; line-height: 1; }

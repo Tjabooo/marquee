@@ -4077,6 +4077,7 @@ const input = $('#q');
 const PLACEHOLDERS = { discover: 'Search films and shows', library: 'Filter your library', downloads: 'Filter downloads', activity: 'Filter by person or title', house: 'Filter machines', clips: 'Filter by game or name', settings: 'Search films and shows', notes: 'Search notes by keyword' };
 const notesView = createNotesView({ h, icon, api, jsonPost, toast, copyText, query: () => state.query,
   playVideo: (a) => openPlayer({ kind: 'note', id: a.fileId, key: `note:${a.fileId}`, title: a.name }),
+  overlay: { push: pushOverlay, close: closeTopOverlay },
   clearQuery: () => { input.value = state.query = ''; $('#q-clear').hidden = true; } });
 
 function renderView() {

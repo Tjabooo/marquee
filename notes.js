@@ -61,6 +61,9 @@ export class NotesStore {
       if (!columns('notes').includes('keywords')) this.db.exec("ALTER TABLE notes ADD COLUMN keywords TEXT NOT NULL DEFAULT ''");
       // A shared note has a random link token (/c/n/<token>); NULL means it isn't shared.
       if (!columns('notes').includes('share_token')) this.db.exec('ALTER TABLE notes ADD COLUMN share_token TEXT');
+      // When the text itself last changed ("edited"); pinning, reminders and trash don't count.
+      // Older databases only had the version, so notes changed in any way keep showing "edited".
+      if (!columns('notes').includes('edited_at')) this.db.exec('ALTER TABLE notes ADD COLUMN edited_at INTEGER; UPDATE notes SET edited_at = updated_at WHERE version > 1 AND source_id IS NULL;');
       this.db.exec('CREATE UNIQUE INDEX IF NOT EXISTS notes_share ON notes(share_token) WHERE share_token IS NOT NULL');
       const fts = columns('notes_fts'), rebuild = fts.length > 0 && !fts.includes('keywords');
       if (rebuild) this.db.exec('DROP TRIGGER IF EXISTS notes_ai; DROP TRIGGER IF EXISTS notes_ad; DROP TRIGGER IF EXISTS notes_au; DROP TABLE notes_fts;');
@@ -118,7 +121,7 @@ export class NotesStore {
       createdAt: row.created_at, updatedAt: row.updated_at, version: row.version, pinned: Boolean(row.pinned),
       reminderAt: row.reminder_at, doneAt: row.done_at, deletedAt: row.deleted_at,
       sourceId: row.source_id, sourceChannel: row.source_channel, originalEditedAt: row.original_edited_at,
-      shareToken: row.share_token || null };
+      editedAt: row.edited_at ?? null, shareToken: row.share_token || null };
   }
   // Share links don't count as edits: the version stays, so an open editor elsewhere can still save.
   share(id) {
@@ -193,8 +196,8 @@ export class NotesStore {
     const text = Object.hasOwn(body, 'text') ? textOf(body.text, note.attachments) : note.text;
     const reminder = Object.hasOwn(body, 'reminderAt') ? reminderOf(body.reminderAt) : note.reminderAt;
     const now = Date.now();
-    const result = this.db.prepare(`UPDATE notes SET body=?, updated_at=?, version=version+1, pinned=?, reminder_at=?, done_at=?, deleted_at=? WHERE id=? AND version=?`)
-      .run(text, now, Object.hasOwn(body, 'pinned') ? bool(body.pinned) : bool(note.pinned), reminder,
+    const result = this.db.prepare(`UPDATE notes SET body=?, updated_at=?, edited_at=?, version=version+1, pinned=?, reminder_at=?, done_at=?, deleted_at=? WHERE id=? AND version=?`)
+      .run(text, now, text !== note.text ? now : note.editedAt ?? null, Object.hasOwn(body, 'pinned') ? bool(body.pinned) : bool(note.pinned), reminder,
         Object.hasOwn(body, 'done') ? (body.done ? now : null) : note.doneAt,
         action === 'trash' ? now : action === 'restore' ? null : note.deletedAt, Number(id), body.version);
     if (!result.changes) fail(409, 'This note changed on another device. Refresh and try again.');

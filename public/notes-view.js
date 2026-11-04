@@ -1,9 +1,13 @@
 import { parseDiscordExport } from './notes-import.js';
 
-export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQuery, copyText, playVideo }) {
-  const state = { anchor: null, focus: null, items: [], filter: 'all', total: 0, due: 0, cursor: null, loaded: false, loading: false, draft: '', reminder: '', files: [], sending: false, follow: true, edit: null, request: 0 };
+export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQuery, copyText, playVideo, overlay }) {
+  const state = { anchor: null, focus: null, items: [], filter: 'all', total: 0, due: 0, cursor: null, loaded: false, loading: false, draft: '', reminder: '', files: [], sending: false, follow: true, edit: null, open: null, request: 0, seen: '' };
   let shell, history, list, summary, composer, draft, reminder, send, older, error, importing, fileInput, mediaInput, uploads, filterSelect, viewKey, fit;
-  let reminderToggle, reminderChip, reminderText, reminderRemove, reminderClear, attach, latest;
+  let reminderToggle, reminderChip, reminderText, reminderRemove, reminderClear, attach, latest, undo, undoTimer, viewer;
+  // Built cards are kept and reused while their note is unchanged, so a refresh never rebuilds
+  // images, videos or audio (which made the list jump and restarted playback).
+  const cards = new Map(), days = new Map();
+  const touch = () => matchMedia('(hover: none) and (pointer: coarse)').matches;
   const date = (ms) => new Date(ms).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
   const localInput = (ms) => {
     if (!ms) return '';
@@ -19,8 +23,35 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
   async function mutate(note, patch, action = '') {
     try {
       await api(`/api/admin/notes/${note.id}${action ? `/${action}` : ''}`, jsonPost({ version: note.version, ...patch }));
+      if (state.open === note.id) state.open = null;
       await load();
+      if (action === 'trash') offerUndo(note.id);
     } catch (e) { showError(e.message); }
+  }
+  // Trash is one tap away on a phone, so it can be taken back for a few seconds.
+  function offerUndo(id) {
+    clearTimeout(undoTimer);
+    undo.replaceChildren(h('span', {}, 'Moved to trash'), button('Undo', async () => {
+      undo.hidden = true;
+      try {
+        const { note } = await api(`/api/admin/notes/${id}`);
+        await api(`/api/admin/notes/${id}/restore`, jsonPost({ version: note.version }));
+        await load(); toast('Note restored');
+      } catch (e) { showError(e.message); }
+    }));
+    undo.hidden = false;
+    undoTimer = setTimeout(() => { undo.hidden = true; }, 7000);
+  }
+  // On touch screens a note's actions open from its ⋯ button (or a tap on the note).
+  function toggleOpen(id, el) {
+    const open = state.open === id ? null : id;
+    state.open = open;
+    for (const other of list.querySelectorAll('.note-message.is-open')) {
+      other.classList.remove('is-open'); other.querySelector('.note-more')?.setAttribute('aria-expanded', 'false');
+    }
+    if (!open) return;
+    el.classList.add('is-open'); el.querySelector('.note-more')?.setAttribute('aria-expanded', 'true');
+    requestAnimationFrame(() => el.querySelector(':scope > .note-actions')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
   }
   // Share links: Discord shows a preview card; opening the link still needs a Marquee sign-in.
   // Videos (and images Discord can't show) get a copy made first; the link is copied once it's ready.
@@ -56,13 +87,19 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
   }
   function card(note) {
     const editing = state.edit === note.id;
-    const row = h('article', { class: `note-message${note.doneAt ? ' is-done' : ''}`, 'data-note-id': note.id },
+    const row = h('article', { class: `note-message${note.doneAt ? ' is-done' : ''}${state.open === note.id && !editing ? ' is-open' : ''}`, 'data-note-id': note.id },
       h('header', { class: 'note-meta' }, h('strong', {}, note.authorName || 'Admin'),
         h('time', { datetime: new Date(note.createdAt).toISOString(), title: new Date(note.createdAt).toISOString() }, date(note.createdAt)),
         note.pinned && h('span', { class: 'note-tag' }, 'Pinned'),
         note.shareToken && !note.deletedAt && h('span', { class: 'note-tag is-shared', title: 'Anyone with the link sees a preview; opening it needs Marquee access' }, 'Shared'),
-        !note.sourceId && note.version > 1 && h('span', { title: date(note.updatedAt) }, 'edited'),
-        note.sourceId && h('span', { class: 'note-tag', title: `Original Discord message ${note.sourceId}` }, 'Discord')));
+        !note.sourceId && note.editedAt && h('span', { title: date(note.editedAt) }, 'edited'),
+        note.sourceId && h('span', { class: 'note-tag', title: `Original Discord message ${note.sourceId}` }, 'Discord'),
+        !editing && h('button', { type: 'button', class: 'note-more', 'aria-label': 'Note actions', 'aria-expanded': String(state.open === note.id),
+          onclick: () => toggleOpen(note.id, row) }, '⋯')));
+    if (!editing) row.addEventListener('click', (e) => {
+      if (!touch() || e.target.closest('a, button, video, audio, input, textarea, select, label') || document.getSelection()?.toString()) return;
+      toggleOpen(note.id, row);
+    });
     if (editing) {
       const text = h('textarea', { class: 'note-edit', 'aria-label': 'Edit note', maxlength: 30000 }); text.value = note.text;
       const at = h('input', { type: 'datetime-local', 'aria-label': 'Edit reminder date' }); at.value = localInput(note.reminderAt);
@@ -76,6 +113,8 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
       } }, text, h('label', { class: 'note-reminder' }, 'Remind me', at), h('div', { class: 'note-actions' }, save,
         button('Cancel', () => { state.edit = null; render(); })));
       text.addEventListener('keydown', (e) => { if (e.key === 'Escape') { state.edit = null; render(); } });
+      const grow = () => { text.style.height = 'auto'; text.style.height = `${Math.min(text.scrollHeight + 2, Math.round((window.visualViewport?.height || innerHeight) * 0.45))}px`; };
+      text.addEventListener('input', grow); requestAnimationFrame(grow);
       row.append(form); return row;
     }
     row.append(h('div', { class: 'note-text' }, bodyText(note.text)));
@@ -84,7 +123,12 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
       note.doneAt ? 'Done · ' : note.reminderAt <= Date.now() ? 'Due · ' : 'Reminder · ', date(note.reminderAt)));
     const actions = note.deletedAt
       ? [button('Restore', () => mutate(note, {}, 'restore'))]
-      : [button('Edit', () => { state.edit = note.id; render(); shell.querySelector('.note-edit')?.focus(); }),
+      : [button('Edit', () => {
+          state.edit = note.id; state.open = null; render();
+          const box = shell.querySelector('.note-edit');
+          box?.focus({ preventScroll: true }); box?.setSelectionRange(box.value.length, box.value.length);
+          setTimeout(() => box?.closest('.note-message')?.scrollIntoView({ block: 'nearest' }), 350);
+        }),
         button(note.pinned ? 'Unpin' : 'Pin', () => mutate(note, { pinned: !note.pinned })),
         note.reminderAt && button(note.doneAt ? 'Mark not done' : 'Mark done', () => mutate(note, { done: !note.doneAt })),
         note.shareToken && note.shareMedia?.error ? h('span', { class: 'note-share-state is-error' }, `Couldn’t prepare the media: ${note.shareMedia.error}`) : null,
@@ -92,7 +136,7 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
           : preparing(note) ? h('span', { class: 'note-share-state', role: 'status' }, 'Preparing for Discord…')
           : button(note.shareToken ? 'Copy link' : 'Share', () => shareNote(note)),
         note.shareToken && button('Stop sharing', () => shareNote(note, true)),
-        button('Move to trash', () => mutate(note, {}, 'trash'))];
+        button('Move to trash', () => mutate(note, {}, 'trash'), { class: 'note-action is-danger' })];
     row.append(h('div', { class: 'note-actions' }, actions));
     return row;
   }
@@ -102,7 +146,8 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
     if (a.fileId && a.mime?.startsWith('image/')) {
       const img = h('img', { src: `${href}?view=1`, loading: 'lazy', alt: a.name });
       img.addEventListener('error', () => { img.hidden = true; });
-      preview = h('a', { href: `${href}?view=1`, target: '_blank', rel: 'noopener' }, img);
+      preview = h('a', { href: `${href}?view=1`, target: '_blank', rel: 'noopener', class: 'note-image',
+        onclick: (e) => { if (!overlay || e.ctrlKey || e.metaKey || e.shiftKey) return; e.preventDefault(); showImage(`${href}?view=1`, a.name); } }, img);
     } else if (a.fileId && a.mime?.startsWith('video/')) {
       // A still of the first frame; playing opens Marquee's own player.
       const still = h('video', { src: `${href}?view=1#t=0.1`, muted: true, playsinline: true, preload: 'metadata', tabindex: -1, 'aria-hidden': 'true' });
@@ -114,6 +159,22 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
     if (media) media.addEventListener(media.tagName === 'IMG' ? 'load' : 'loadedmetadata', () => { if (state.follow) history.scrollTop = history.scrollHeight; });
     return h('div', { class: 'note-attachment' }, preview,
       h('a', { href, target: '_blank', rel: 'noopener noreferrer', class: 'note-file-link' }, a.name));
+  }
+  // Full-screen image viewer (Back / Escape / a tap closes it), instead of leaving the app for a new tab.
+  function showImage(src, name) {
+    if (!viewer) {
+      viewer = h('div', { class: 'note-viewer', role: 'dialog', 'aria-modal': 'true', hidden: true });
+      viewer.addEventListener('click', (e) => { if (!e.target.closest('a')) overlay.close(); });
+      document.body.append(viewer);
+    }
+    const opener = document.activeElement;
+    const close = h('button', { type: 'button', class: 'note-viewer-close', 'aria-label': 'Close' }, '×');
+    viewer.replaceChildren(h('img', { src, alt: name }),
+      h('div', { class: 'note-viewer-bar' }, h('span', {}, name), h('a', { href: src, target: '_blank', rel: 'noopener' }, 'Open original'), close));
+    viewer.setAttribute('aria-label', name);
+    viewer.hidden = false;
+    close.focus({ preventScroll: true });
+    overlay.push(() => { viewer.hidden = true; viewer.replaceChildren(); opener?.focus?.({ preventScroll: true }); });
   }
   function updateComposer() {
     if (!send) return;
@@ -186,12 +247,18 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
         button('Refresh', () => { menu.open = false; if (state.edit) { showError('Finish editing before refreshing.'); return; } load(); }),
         button('Import Discord', () => { menu.open = false; fileInput.click(); })));
     latest = button('Show latest notes', () => { state.anchor = state.focus = null; load(); }, { class: 'retry note-latest', hidden: true });
-    older = button('Load older messages', async () => { older.disabled = true; await load(true); older.disabled = false; }, { class: 'retry', hidden: true });
+    const loadOlder = async () => { if (older.disabled || older.hidden) return; older.disabled = true; try { await load(true); } finally { older.disabled = false; } };
+    older = button('Load older messages', loadOlder, { class: 'retry note-older', hidden: true });
+    undo = h('div', { class: 'note-undo', role: 'status', hidden: true });
     list = h('div', { class: 'notes-messages', role: 'list', 'aria-label': 'Shared notes' });
     draft = h('textarea', { class: 'note-draft', placeholder: 'Write a note…', 'aria-label': 'New note', maxlength: 30000, rows: 1 }); draft.value = state.draft;
     draft.addEventListener('input', () => {
-      state.draft = draft.value; draft.style.height = 'auto'; draft.style.height = `${Math.min(160,draft.scrollHeight)}px`; updateComposer();
+      state.draft = draft.value; draft.style.height = 'auto';
+      draft.style.height = `${Math.min(160, Math.round((window.visualViewport?.height || innerHeight) * 0.3), draft.scrollHeight)}px`; updateComposer();
     });
+    // The keyboard opening shrinks the screen in steps (and late on iOS): keep the layout fitted.
+    draft.addEventListener('focus', () => { setTimeout(fit, 120); setTimeout(fit, 450); });
+    draft.addEventListener('blur', () => setTimeout(fit, 120));
     draft.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && !matchMedia('(pointer: coarse)').matches) { e.preventDefault(); if (!send.disabled) composer.requestSubmit(); }
     });
@@ -242,18 +309,31 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
     importing = h('div', { class: 'note-import', hidden: true });
     history = h('div', { class: 'notes-history', tabindex: 0, 'aria-label': 'Message history' }, older, list, latest);
     history.addEventListener('scroll', () => { state.follow = history.scrollHeight - history.scrollTop - history.clientHeight < 48; });
+    // Scrolling up near the oldest loaded note loads the next page by itself.
+    if ('IntersectionObserver' in window) new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting) && !state.loading && state.items.length) loadOlder();
+    }, { root: history, rootMargin: '400px 0px 0px 0px' }).observe(older);
     shell = h('div', { class: 'notes-app' },
-      h('div', { class: 'notes-toolbar' }, filterSelect, summary, menu), error, fileInput, importing, history, composer);
+      h('div', { class: 'notes-toolbar' }, filterSelect, summary, menu), error, fileInput, importing, history, undo, composer);
     target.append(shell); updateComposer();
+    // Sizes the notes to the part of the screen that's visible. With the on-screen keyboard open the
+    // visible part is the visual viewport (which iOS also pans), and the header and tab bar step
+    // aside so the composer sits right above the keyboard with the latest notes in view.
     fit = () => {
-      if (!shell.offsetParent) return;
-      const height = window.visualViewport?.height || window.innerHeight;
-      const keyboard = height < window.innerHeight - 100;
-      const tabs = document.querySelector('.tabs')?.getBoundingClientRect();
-      const bottom = keyboard ? 0 : tabs ? Math.max(0,window.innerHeight - tabs.top) : 76;
-      shell.style.height = `${Math.max(180,height - Math.max(0,shell.getBoundingClientRect().top) - bottom - 12)}px`;
+      if (!shell.offsetParent) { document.body.classList.remove('notes-keyboard'); return; }
+      const vv = window.visualViewport;
+      const typing = shell.contains(document.activeElement) && /^(TEXTAREA|INPUT)$/.test(document.activeElement.tagName);
+      const keyboard = !!vv && typing && vv.height < window.innerHeight - 120;
+      const end = history.scrollHeight - history.scrollTop - history.clientHeight < 48;
+      document.body.classList.toggle('notes-keyboard', keyboard);
+      const visibleBottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
+      const tabs = !keyboard && document.querySelector('.tabs')?.getBoundingClientRect();
+      const bottom = keyboard || !tabs ? visibleBottom : Math.min(visibleBottom, tabs.top);
+      shell.style.height = `${Math.max(180, Math.round(bottom - shell.getBoundingClientRect().top - (keyboard ? 6 : 12)))}px`;
+      if (end || state.follow) history.scrollTop = history.scrollHeight;
     };
-    window.addEventListener('resize',fit); window.visualViewport?.addEventListener('resize',fit);
+    window.addEventListener('resize', fit);
+    window.visualViewport?.addEventListener('resize', fit); window.visualViewport?.addEventListener('scroll', fit);
     requestAnimationFrame(fit);
   }
   async function prepareImport(file) {
@@ -285,7 +365,7 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
       importing.hidden = false;
     } catch (e) { showError(e.message); }
   }
-  async function load(appendOlder = false) {
+  async function load(appendOlder = false, quiet = false) {
     setup(); if (!shell) return;
     fit?.();
     const previousHeight = history.scrollHeight, previousTop = history.scrollTop;
@@ -298,10 +378,13 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
     try {
       const result = await api(`/api/admin/notes?${params}`);
       if (request !== state.request) return;
+      const seen = JSON.stringify([state.filter, query(), result]);
+      if (quiet && seen === state.seen) { state.loading = false; return; }
+      if (!appendOlder) state.seen = seen;
       state.items = appendOlder ? [...result.notes, ...state.items] : result.notes;
       state.total = result.total; state.due = result.due; state.cursor = result.nextBefore; state.loaded = true; showError('');
     } catch (e) { if (request === state.request) showError(e.message); }
-    finally { if (request === state.request) {
+    finally { if (request === state.request && state.loading) {
       state.loading = false; render();
       if (appendOlder) history.scrollTop = previousTop + history.scrollHeight - previousHeight;
       else if (key !== viewKey) history.scrollTop = state.filter === 'all' && !query() ? history.scrollHeight : 0;
@@ -332,20 +415,29 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
     older.hidden = !state.cursor; latest.hidden = !state.anchor || !!query(); composer.hidden = state.filter === 'trash';
     if (!state.loaded) { list.replaceChildren(h('p', { class: 'muted' }, 'Loading notes…')); return; }
     if (!state.items.length) { list.replaceChildren(h('p', { class: 'notes-empty' }, query() ? 'No notes match those keywords.' : state.filter === 'trash' ? 'Trash is empty.' : state.filter === 'due' ? 'No reminders are due.' : state.filter === 'pinned' ? 'No pinned notes yet.' : 'Send yourself the first note below.')); return; }
-    const out = []; let day = '';
+    const out = []; let day = ''; const ids = new Set();
     for (const note of state.items) {
       if (preparing(note) && !note.shareMedia.error) watchMedia(note.id);
       const label = new Date(note.createdAt).toLocaleDateString([], { year: 'numeric', month: 'long', day: 'numeric' });
-      if (label !== day) { out.push(h('h3', { class: 'note-day' }, label)); day = label; }
-      out.push(card(note));
+      if (label !== day) {
+        if (!days.has(label)) days.set(label, h('h3', { class: 'note-day' }, label));
+        out.push(days.get(label)); day = label;
+      }
+      const sig = JSON.stringify([note, state.edit === note.id]);
+      let built = cards.get(note.id);
+      if (built?.sig !== sig) { built = { sig, el: card(note) }; cards.set(note.id, built); }
+      out.push(built.el); ids.add(note.id);
     }
-    const scroll = history.scrollTop; list.replaceChildren(...out); history.scrollTop = scroll;
+    for (const id of cards.keys()) if (!ids.has(id)) cards.delete(id);
+    const scroll = history.scrollTop;
+    // Move only what changed: nodes that stay keep their loaded images and playing media.
+    out.forEach((node, i) => { if (list.childNodes[i] !== node) list.insertBefore(node, list.childNodes[i] || null); });
+    while (list.childNodes.length > out.length) list.lastChild.remove();
+    history.scrollTop = scroll;
   }
   async function poll() {
     if (state.anchor || state.edit || state.draft || state.files.length || state.sending || state.loading || state.items.length > 100 || query() || document.getSelection()?.toString()) return;
-    // A refresh rebuilds every card, which would restart audio someone is listening to.
-    if ([...list.querySelectorAll('audio')].some((m) => !m.paused || (m.currentTime > 0 && !m.ended))) return;
-    const scroll = window.scrollY; await load(); window.scrollTo(0, scroll);
+    await load(false, true);
   }
   return { load, render, poll, focus };
 }
