@@ -76,6 +76,9 @@ accounts.initAccounts({ dataDir: ROOT, adminEmails: activity.adminEmails(), medi
 const notes = new NotesStore(ROOT, { fileDir:process.env.NOTES_FILES_DIR });
 // Text in Notes images becomes search keywords. Uploads are read right away; older images catch up after startup.
 const notesOcr = new NotesOcr(notes);
+// Previews of shared notes: video/image copies Discord can show. Shared notes get theirs at startup too.
+const sharedMedia = new noteShare.SharedMedia(notes, { cacheDir: path.join(ROOT, 'cache', 'notes-share') });
+setTimeout(() => { for (const note of notes.sharedNotes()) sharedMedia.prepare(note); }, 5000).unref();
 const notesUploads = new NotesUploads(notes, { onFile: () => notesOcr.kick() });
 setTimeout(() => notesOcr.kick(), 30000).unref();
 setInterval(() => { try { notesUploads.prune(); } catch { /* retried on the next upload */ } }, 3600000).unref();
@@ -1286,7 +1289,8 @@ async function handleApi(req, res, url) {
   if (p.startsWith('/api/admin/')) {
     if (!user.isOwner) throw new HttpError(403, 'Only the server’s owner can change this.');
     // All configured admins share this inbox. No note content is put in Activity logs.
-    const noteFor = (note) => ({ ...note, authorName: accounts.displayNameFor(note.author) });
+    const noteFor = (note) => ({ ...note, authorName: accounts.displayNameFor(note.author),
+      shareMedia: note.shareToken && !note.deletedAt ? sharedMedia.state(note) : null });
     if (p === '/api/admin/notes/uploads' && req.method === 'POST') return sendJson(res,201,notesUploads.start(await readJson(req),user.email));
     if ((m = p.match(/^\/api\/admin\/notes\/uploads\/([a-f0-9]{32})(?:\/(finish|cancel))?$/))) {
       if (req.method === 'GET' && !m[2]) return sendJson(res,200,notesUploads.status(m[1],user.email));
@@ -1319,11 +1323,17 @@ async function handleApi(req, res, url) {
     }
     if ((m = p.match(/^\/api\/admin\/notes\/(\d+)\/(share|unshare)$/)) && req.method === 'POST') {
       const note = m[2] === 'share' ? notes.share(m[1]) : notes.unshare(m[1]);
+      if (note.shareToken) sharedMedia.prepare(note); else sharedMedia.cleanup();
       return sendJson(res, 200, { note: noteFor(note), url: note.shareToken ? `${clips.baseUrl(req)}/c/n/${note.shareToken}` : null });
     }
     if ((m = p.match(/^\/api\/admin\/notes\/(\d+)(?:\/(trash|restore))?$/))) {
       if (req.method === 'GET' && !m[2]) return sendJson(res, 200, { note: noteFor(notes.get(m[1])) });
-      if (req.method === 'POST') return sendJson(res, 200, { note: noteFor(notes.update(m[1], await readJson(req), m[2] || 'edit')) });
+      if (req.method === 'POST') {
+        const note = notes.update(m[1], await readJson(req), m[2] || 'edit');
+        if (m[2] === 'trash' && note.shareToken) sharedMedia.cleanup();
+        if (m[2] === 'restore' && note.shareToken) sharedMedia.prepare(note);
+        return sendJson(res, 200, { note: noteFor(note) });
+      }
     }
     if (p === '/api/admin/settings') {
       if (req.method === 'POST') {
@@ -1943,7 +1953,7 @@ const server = http.createServer(async (req, res) => {
     else if (url.pathname === '/c' || url.pathname.startsWith('/c/')) {
       if (!handleWatchPage(req, res, url, { rooms: watchRooms, artwork: watchArtwork })
         && !(await invites.handlePublic(req, res, url))
-        && !(await noteShare.handlePublic(req, res, url, { notes, nameFor: (email) => accounts.displayNameFor(email) })) && !(await clips.handlePublic(req, res, url, { sendVideo }))) throw new HttpError(404, 'Not found.');
+        && !(await noteShare.handlePublic(req, res, url, { notes, media: sharedMedia, sendVideo, nameFor: (email) => accounts.displayNameFor(email) })) && !(await clips.handlePublic(req, res, url, { sendVideo }))) throw new HttpError(404, 'Not found.');
     }
     else await serveStatic(res, url.pathname);
   } catch (err) {

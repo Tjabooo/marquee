@@ -133,6 +133,9 @@ export class NotesStore {
     this.db.prepare('UPDATE notes SET share_token=NULL WHERE id=?').run(note.id);
     return this.get(id);
   }
+  sharedNotes() {
+    return this.db.prepare('SELECT * FROM notes WHERE share_token IS NOT NULL AND deleted_at IS NULL').all().map((r) => this.public(r));
+  }
   // The note behind a public link. Trashed notes stop being reachable.
   shared(token) {
     if (!/^[A-Za-z0-9_-]{16}$/.test(token || '')) return null;

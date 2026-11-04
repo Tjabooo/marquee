@@ -373,10 +373,10 @@ input[type=email]:focus{outline:2px solid #F4C152;border-color:transparent}
 button{font:700 16px/1 system-ui,sans-serif;color:#1F1019;background:#F4C152;border:0;border-radius:999px;padding:14px 18px;cursor:pointer}
 .err{color:#FF9B85}.ok{color:#F4C152;font-weight:700}`;
 
-export function page({ title, desc, url, image, video, body }) {
+export function page({ title, desc, url, image, images = [], video, body }) {
   const og = [
     ['og:site_name', 'Marquee'], ['og:title', title], ['og:description', desc], ['og:url', url],
-    ['og:type', video ? 'video.other' : 'website'], image && ['og:image', image],
+    ['og:type', video ? 'video.other' : 'website'], image && ['og:image', image], ...images.map((i) => ['og:image', i]),
     ...(video ? [['og:video', video.url], ['og:video:secure_url', video.url], ['og:video:type', 'video/mp4'],
       ['og:video:width', video.width], ['og:video:height', video.height]] : []),
   ].filter(Boolean).map(([k, v]) => `<meta property="${k}" content="${esc(v)}">`).join('\n  ');

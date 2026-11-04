@@ -23,15 +23,36 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
     } catch (e) { showError(e.message); }
   }
   // Share links: Discord shows a preview card; opening the link still needs a Marquee sign-in.
+  // Videos (and images Discord can't show) get a copy made first; the link is copied once it's ready.
+  const preparing = (note) => note.shareToken && note.shareMedia && !note.shareMedia.ready;
   async function shareNote(note, stop = false) {
     showError('');
     try {
       const r = await api(`/api/admin/notes/${note.id}/${stop ? 'unshare' : 'share'}`, jsonPost({}));
       Object.assign(note, r.note);
       if (stop) toast('Link removed');
+      else if (preparing(note)) { toast('Preparing the media for Discord… Copy link appears when it’s ready.'); watchMedia(note.id); }
       else toast(await copyText(r.url) ? 'Link copied · Discord shows a preview' : r.url);
       render();
     } catch (e) { showError(e.message); }
+  }
+  const watching = new Set();
+  async function watchMedia(id) {
+    if (watching.has(id)) return;
+    watching.add(id);
+    try {
+      for (let i = 0; i < 400; i++) {
+        await new Promise((r) => setTimeout(r, 3000));
+        const { note } = await api(`/api/admin/notes/${id}`);
+        const shown = state.items.find((n) => n.id === id);
+        if (shown) Object.assign(shown, note);
+        if (!preparing(note) || note.shareMedia?.error) {
+          if (!state.edit) render();
+          if (note.shareToken && !note.shareMedia?.error) toast('Ready for Discord: Copy link to share it');
+          return;
+        }
+      }
+    } catch { /* the card shows the state on the next refresh */ } finally { watching.delete(id); }
   }
   function card(note) {
     const editing = state.edit === note.id;
@@ -66,7 +87,10 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
       : [button('Edit', () => { state.edit = note.id; render(); shell.querySelector('.note-edit')?.focus(); }),
         button(note.pinned ? 'Unpin' : 'Pin', () => mutate(note, { pinned: !note.pinned })),
         note.reminderAt && button(note.doneAt ? 'Mark not done' : 'Mark done', () => mutate(note, { done: !note.doneAt })),
-        button(note.shareToken ? 'Copy link' : 'Share', () => shareNote(note)),
+        note.shareToken && note.shareMedia?.error ? h('span', { class: 'note-share-state is-error' }, `Couldn’t prepare the media: ${note.shareMedia.error}`) : null,
+        note.shareToken && note.shareMedia?.error ? button('Try again', () => shareNote(note))
+          : preparing(note) ? h('span', { class: 'note-share-state', role: 'status' }, 'Preparing for Discord…')
+          : button(note.shareToken ? 'Copy link' : 'Share', () => shareNote(note)),
         note.shareToken && button('Stop sharing', () => shareNote(note, true)),
         button('Move to trash', () => mutate(note, {}, 'trash'))];
     row.append(h('div', { class: 'note-actions' }, actions));
@@ -305,6 +329,7 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
     if (!state.items.length) { list.replaceChildren(h('p', { class: 'notes-empty' }, query() ? 'No notes match those keywords.' : state.filter === 'trash' ? 'Trash is empty.' : state.filter === 'due' ? 'No reminders are due.' : state.filter === 'pinned' ? 'No pinned notes yet.' : 'Send yourself the first note below.')); return; }
     const out = []; let day = '';
     for (const note of state.items) {
+      if (preparing(note) && !note.shareMedia.error) watchMedia(note.id);
       const label = new Date(note.createdAt).toLocaleDateString([], { year: 'numeric', month: 'long', day: 'numeric' });
       if (label !== day) { out.push(h('h3', { class: 'note-day' }, label)); day = label; }
       out.push(card(note));
