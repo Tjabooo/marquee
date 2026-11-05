@@ -1,5 +1,17 @@
 [
   {
+    "id": "2026-11-05-invite-fix",
+    "date": "2026-11-05",
+    "title": "Invite links work again",
+    "items": [
+      {
+        "title": "Invite links work again",
+        "text": "Since the sign-in update, opening an invite link and pressing Get access showed “This request came from another website”. That's fixed: invites you already sent work as they are.",
+        "audience": "owner"
+      }
+    ]
+  },
+  {
     "id": "2026-11-05-setup-wizard",
     "date": "2026-11-05",
     "title": "Setup in a window",

@@ -73,6 +73,8 @@ test('guard refuses foreign hosts and cross-site writes, and sets security heade
   const post = (headers) => auth.guard(fakeReq({ method: 'POST', headers }), fakeRes());
   assert.throws(() => post({ origin: 'https://evil.example.net' }), { status: 403 });
   assert.throws(() => post({ origin: 'null' }), { status: 403 });
+  assert.throws(() => post({ origin: 'null', 'sec-fetch-site': 'cross-site' }), { status: 403 }, 'sandboxed frames elsewhere stay refused');
+  assert.doesNotThrow(() => post({ origin: 'null', 'sec-fetch-site': 'same-origin' }), 'own no-referrer page (invite form)');
   assert.throws(() => post({ 'sec-fetch-site': 'cross-site' }), { status: 403 });
   post({ origin: 'http://192.168.1.5:8080' });
   post({ origin: 'https://media.example.com' });

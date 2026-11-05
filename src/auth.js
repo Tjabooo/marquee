@@ -244,13 +244,17 @@ export function createAuth({
     }
     if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return;
     const origin = req.headers.origin;
+    const fetchSite = req.headers['sec-fetch-site'];
+    // Pages with Referrer-Policy: no-referrer make browsers send `Origin: null` even for their own forms;
+    // Sec-Fetch-Site still tells the truth there (and pages can't set it).
+    if (origin === 'null' && fetchSite === 'same-origin') return;
     if (origin !== undefined) {
       let host = '';
       try { host = origin === 'null' ? '' : new URL(origin).host.toLowerCase(); } catch { /* refused below */ }
       const own = [req.headers.host, req.headers['x-forwarded-host']].filter(Boolean).map((s) => String(s).split(',')[0].trim().toLowerCase());
       const ok = host && (own.includes(host) || (publicHost && hostOnly(host) === publicHost) || hosts.includes(hostOnly(host)));
       if (!ok) throw httpError(403, 'This request came from another website, so Marquee refused it.');
-    } else if (req.headers['sec-fetch-site'] === 'cross-site') {
+    } else if (fetchSite === 'cross-site') {
       throw httpError(403, 'This request came from another website, so Marquee refused it.');
     }
   }

@@ -105,7 +105,7 @@ export async function handlePublic(req, res, url) {
   const m = url.pathname.match(/^\/c\/i\/([A-Za-z0-9_-]{16})\/?$/);
   if (!m) return false;
   const send = (status, body, extra = {}) => {
-    res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex', 'Referrer-Policy': 'no-referrer', ...extra });
+    res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex', 'Referrer-Policy': 'same-origin', ...extra }); // same-origin, not no-referrer: no-referrer turns the form's Origin into `null`
     res.end(req.method === 'HEAD' ? undefined : body);
     return true;
   };
