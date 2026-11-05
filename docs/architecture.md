@@ -158,7 +158,8 @@ src/
   setup/             wizard, detection, integrations, services, packages, backups
 public/              the web app (plain JavaScript and CSS, no build step)
 agents/              marquee-house reporter for Linux machines (bash + systemd units)
-scripts/windows/     Task Scheduler service and restart scripts
+scripts/windows/     Task Scheduler service and restart scripts; setup-wizard.ps1 (WPF setup wizard,
+                     drives setup.js through `setup.js wizard` JSON) and MarqueeSetup.cs (its .exe launcher)
 start-marquee.cmd    Windows launcher the scheduled task runs
 tools/               optional extras: torrent-vpn (Windows), Discord notes import
 docker/, Dockerfile, docker-compose.yml

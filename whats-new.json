@@ -1,5 +1,22 @@
 [
   {
+    "id": "2026-11-05-setup-wizard",
+    "date": "2026-11-05",
+    "title": "Setup in a window",
+    "items": [
+      {
+        "title": "Marquee Setup for Windows",
+        "text": "Setting Marquee up on Windows no longer needs a terminal. Marquee Setup (in the Start menu, or MarqueeSetup.exe from the release page) walks you through your library, network, sign-in, services and start at boot, and checks your keys and ports as you go.",
+        "audience": "owner"
+      },
+      {
+        "title": "Game clips as an add-on",
+        "text": "Turn on Clipper on the Game clips page: Setup installs it on this PC, or gives you one command to paste on your gaming PC and shares the clips folder for you.",
+        "audience": "owner"
+      }
+    ]
+  },
+  {
     "id": "2026-11-05-app-icon",
     "date": "2026-11-05",
     "title": "A new home-screen icon",

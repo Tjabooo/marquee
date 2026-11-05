@@ -28,6 +28,15 @@ All notable changes to Marquee. Versions follow [Semantic Versioning](https://se
 
 ### Added
 
+- **Windows setup wizard.** `MarqueeSetup.exe` (a release asset) is a normal Windows window that
+  installs Node.js and Marquee, then walks through library, network, sign-in, services, game clips
+  and start at boot, with folder pickers, a live port check and connection tests. The **Clipper
+  add-on** page installs the pinned Clipper on this PC, or gives the command for another PC and can
+  share the clips folder. It runs the same commands as the terminal setup (nothing of its own writes
+  `.env`), adds **Marquee Setup** to the Start menu for later changes, and `node setup.js gui` opens
+  it. New `node setup.js wizard info|check|clipper` print JSON for graphical front ends (read-only,
+  secrets reported only as set or not); `install-service.ps1 -CredentialFile` takes the Windows
+  password from the wizard (DPAPI-encrypted for your account, deleted once read).
 - **Download to phone.** **To phone** on a film, a phone button on each episode and **Season to
   phone** make small offline copies: Small (480p) or Standard (720p) H.264/AAC MP4s with the saved
   subtitles as tracks and HDR tone-mapped to SDR, made one at a time (NVENC or x264), listed under

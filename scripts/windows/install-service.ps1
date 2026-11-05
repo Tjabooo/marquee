@@ -18,7 +18,8 @@ param(
   [switch]$Uninstall,
   [switch]$NoWatchdog,      # no 2-minute restart trigger, only the boot trigger
   [switch]$KeepFolderAcl,   # don't limit write access to the Marquee folder
-  [switch]$NoStart
+  [switch]$NoStart,
+  [string]$CredentialFile   # internal (setup wizard): your Windows password, DPAPI-encrypted for you; deleted once read
 )
 
 $ErrorActionPreference = 'Stop'
@@ -60,8 +61,16 @@ if (-not (Test-Path (Join-Path $dir '.env'))) {
 }
 
 $user = "$env:USERDOMAIN\$env:USERNAME"
-$cred = Get-Credential -UserName $user -Message ("Windows password for $user (for a Microsoft account, the account " +
-  'password, not the PIN). Task Scheduler needs it to start Marquee before anyone signs in.')
+$cred = $null
+if ($CredentialFile) {
+  try {
+    $secure = Get-Content -LiteralPath $CredentialFile -Raw | ConvertTo-SecureString
+    $cred = New-Object Management.Automation.PSCredential($user, $secure)
+  } catch { Write-Warning "Couldn't read the password from the setup wizard ($($_.Exception.Message)); asking instead." }
+  finally { Remove-Item -LiteralPath $CredentialFile -Force -ErrorAction SilentlyContinue }
+}
+if (-not $cred) { $cred = Get-Credential -UserName $user -Message ("Windows password for $user (for a Microsoft account, the account " +
+  'password, not the PIN). Task Scheduler needs it to start Marquee before anyone signs in.') }
 
 # Limit who can change the files the task runs. New folders under C:\ let every signed-in user
 # modify files in them (Authenticated Users: Modify), which would let another account on this PC

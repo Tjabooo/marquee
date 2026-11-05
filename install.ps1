@@ -41,6 +41,11 @@ if ($Uninstall) {
     $p = Join-Path $Dir $item
     if (Test-Path $p) { Step "delete $p" { Remove-Item -Recurse -Force $p } }
   }
+  # Left by the setup wizard (MarqueeSetup.exe): its copy and the Start menu entries.
+  $menu = Join-Path ([Environment]::GetFolderPath('Programs')) 'Marquee'
+  foreach ($p in (Join-Path $Dir 'MarqueeSetup.exe'), $menu) {
+    if (Test-Path $p) { Step "delete $p" { Remove-Item -Recurse -Force $p } }
+  }
   if ($Purge) {
     Write-Host "-Purge deletes EVERYTHING in $Dir, including .env, the database, Notes and cache." -ForegroundColor Yellow
     if ((Read-Host 'Type the folder path to confirm') -ne $Dir) { throw 'Not confirmed; data kept.' }

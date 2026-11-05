@@ -59,7 +59,11 @@ node setup.js
 integrations and can register Marquee to start at boot. Open the address it prints. It's safe to
 run again at any time; `node setup.js doctor` checks an installation without changing anything.
 
-Prefer an installer? It downloads a release, verifies its checksum, and keeps updates separate from
+On Windows, download **MarqueeSetup.exe** from the [latest release](https://github.com/Tjabooo/marquee/releases/latest)
+instead: a setup wizard in a normal window that installs Node.js and Marquee, asks the same questions,
+can add Clipper for game clips and sets up start at boot ([docs/install/windows.md](docs/install/windows.md)).
+
+Prefer an installer script? It downloads a release, verifies its checksum, and keeps updates separate from
 your settings and data (read it first: [install.sh](install.sh), [install.ps1](install.ps1)):
 
 ```sh

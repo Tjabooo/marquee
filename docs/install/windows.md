@@ -3,6 +3,31 @@
 Windows 10 (1803 or later) and Windows 11. Windows 11 is Marquee's main production host. Common
 steps are in [README.md](README.md).
 
+## Easiest: the setup wizard
+
+Download **MarqueeSetup.exe** from the [latest release](https://github.com/Tjabooo/marquee/releases/latest)
+and double-click it. It's a normal Windows window, no terminal:
+
+1. **Install:** installs Node.js LTS with winget if it's missing, then downloads the release, checks it
+   against `SHA256SUMS` and unpacks it (`%USERPROFILE%\marquee` unless you pick another folder; an
+   existing installation is updated and keeps its settings and data).
+2. **Library, Network, Sign-in, Services:** the same questions as `node setup.js`, with folder
+   pickers, a live port check, **Test connections** for TMDB, OpenSubtitles and qBittorrent, and your
+   owner password. FFmpeg can be installed from the Library page.
+3. **Game clips (add-on):** turn on Clipper to set up the Clips tab. *On this PC* downloads the pinned,
+   hash-checked Clipper and installs it; *another Windows or Linux PC* gives you one command to paste
+   there and can share the clips folder on the network for you.
+4. **Startup:** registers the `Marquee` task (start at boot, as you, no admin rights at run time).
+   Your Windows password goes straight to Task Scheduler; Windows asks for admin permission once.
+5. **Finish:** the address to open, a Start-menu entry (**Marquee Setup**, to change settings later)
+   and anything left to do.
+
+The wizard only drives the documented commands (`install.ps1`, `node setup.js --config`,
+`setup.js user add`, `setup.js clipper`, `install-service.ps1`), so the rest of this page still applies.
+Already installed? Open **Marquee Setup** from the Start menu, run `MarqueeSetup.exe` in the Marquee
+folder, or `node setup.js gui`. Windows SmartScreen may warn about the unsigned exe: **More info → Run
+anyway**, or check it against `SHA256SUMS` first.
+
 ## 1. Prerequisites
 
 In PowerShell:

@@ -6,7 +6,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import readline from 'node:readline/promises';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { APP_DIR, ENV_FILE } from '../env.js';
 import { readEnvFile, writeEnvFile, updateEnvText, parseEnv, newSecret, redact } from './envfile.js';
 import * as detect from './detect.js';
@@ -16,6 +16,7 @@ import { installCommand } from './packages.js';
 import { backup, migrateData } from './data.js';
 import * as clipper from './clipper.js';
 import { userCommand, USER_ACTIONS, askNewPassword } from './users.js';
+import { wizardCommand, WIZARD_ACTIONS } from './wizard.js';
 import { openAuthStore } from '../auth.js';
 import { checkConfig } from '../config-check.js';
 import { dataDirProblem, STATE_FILES } from '../paths.js';
@@ -32,6 +33,9 @@ Usage:
   node setup.js service install|status|restart|uninstall [--scope user|system]
   node setup.js user add EMAIL [--owner]   Create a Marquee sign-in (or reset its password)
   node setup.js user passwd|remove|signout EMAIL, user list
+  node setup.js gui              Windows: the graphical setup wizard (also MarqueeSetup.exe)
+  node setup.js wizard info|check|clipper [--config FILE]
+                                 JSON for graphical front ends (the Windows setup wizard); reads only
   node setup.js clipper          Game clips: set up CLIPS_DIR and install Clipper (the recorder)
                                  on this PC, or print the commands for your gaming PC
 
@@ -89,10 +93,14 @@ export function parseArgs(argv) {
   }
   if (positional.length) {
     opts.command = positional[0];
-    if (!['setup', 'doctor', 'backup', 'migrate-data', 'service', 'clipper', 'user'].includes(opts.command)) throw new Error(`Unknown command ${opts.command}. Run node setup.js --help.`);
+    if (!['setup', 'doctor', 'backup', 'migrate-data', 'service', 'clipper', 'user', 'wizard', 'gui'].includes(opts.command)) throw new Error(`Unknown command ${opts.command}. Run node setup.js --help.`);
     if (opts.command === 'service') {
       opts.action = positional[1];
       if (!['install', 'status', 'restart', 'uninstall'].includes(opts.action)) throw new Error('Use: node setup.js service install|status|restart|uninstall');
+    }
+    if (opts.command === 'wizard') {
+      opts.action = positional[1];
+      if (!WIZARD_ACTIONS.includes(opts.action)) throw new Error(`Use: node setup.js wizard ${WIZARD_ACTIONS.join('|')}`);
     }
     if (opts.command === 'user') {
       opts.action = positional[1];
@@ -623,6 +631,20 @@ async function clipperSetup(opts) {
   return status;
 }
 
+// `node setup.js gui`: opens the Windows setup wizard in its own window and returns straight away.
+function openGui() {
+  if (process.platform !== 'win32') {
+    console.log('The graphical setup wizard is for Windows. Here, run: node setup.js');
+    return 1;
+  }
+  const script = path.join(APP_DIR, 'scripts', 'windows', 'setup-wizard.ps1');
+  const child = spawn('powershell.exe', ['-NoProfile', '-STA', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', script],
+    { detached: true, stdio: 'ignore', windowsHide: true });
+  child.unref();
+  console.log('Opening Marquee Setup...');
+  return 0;
+}
+
 // Adds `email` to ADMIN_EMAILS in .env (owners are read at startup, so Marquee needs a restart).
 function addOwnerEmail(file, email) {
   const text = readEnvFile(file) ?? '';
@@ -640,6 +662,13 @@ export async function main(argv = process.argv.slice(2)) {
     if (opts.command === 'doctor') return await doctor(opts);
     if (opts.command === 'service') return await service(opts);
     if (opts.command === 'clipper') return await clipperSetup(opts);
+    if (opts.command === 'gui') return openGui();
+    if (opts.command === 'wizard') {
+      const answers = opts.config ? JSON.parse(fs.readFileSync(opts.config, 'utf8')) : {};
+      const out = await wizardCommand({ action: opts.action, envFile: opts.envFile ? path.resolve(opts.envFile) : ENV_FILE, answers });
+      process.stdout.write(`${JSON.stringify(out)}\n`);
+      return 0;
+    }
     if (opts.command === 'user') {
       const file = opts.envFile ? path.resolve(opts.envFile) : ENV_FILE;
       const env = { ...parseEnv(readEnvFile(file) ?? ''), ...process.env };

@@ -41,6 +41,10 @@ jobs:
             if ($errors) { $errors | ForEach-Object { Write-Error "$($f.Name): $_" }; exit 1 }
           }
           Write-Host "$($files.Count) scripts parse"
+      - name: Build the Windows setup wizard (MarqueeSetup.exe)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows/build-setup-exe.ps1 -Version v0.0.0 -Out "$env:RUNNER_TEMP\MarqueeSetup.exe"
       - name: Check shell scripts
         if: runner.os == 'Linux'
         run: |

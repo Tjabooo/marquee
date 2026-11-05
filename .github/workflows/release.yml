@@ -49,20 +49,42 @@ jobs:
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
 
+  windows-setup:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build MarqueeSetup.exe (the Windows setup wizard)
+        shell: pwsh
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows/build-setup-exe.ps1 -Version "$env:GITHUB_REF_NAME" -Out MarqueeSetup.exe
+      - name: The wizard builds its window
+        shell: pwsh
+        run: powershell -NoProfile -STA -ExecutionPolicy Bypass -File scripts/windows/setup-wizard.ps1 -SelfTest
+      - uses: actions/upload-artifact@v4
+        with:
+          name: marquee-setup-exe
+          path: MarqueeSetup.exe
+          if-no-files-found: error
+
   release:
+    needs: windows-setup
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: marquee-setup-exe
       - name: Check the tag matches package.json
         run: test "v$(node -p 'require("./package.json").version')" = "$GITHUB_REF_NAME"
       - name: Build the source archive and checksums
         run: |
           git archive --format=tar.gz --prefix="marquee-$GITHUB_REF_NAME/" -o "marquee-$GITHUB_REF_NAME.tar.gz" "$GITHUB_REF_NAME"
-          sha256sum "marquee-$GITHUB_REF_NAME.tar.gz" > SHA256SUMS
+          sha256sum "marquee-$GITHUB_REF_NAME.tar.gz" MarqueeSetup.exe > SHA256SUMS
           cat SHA256SUMS
       - uses: actions/attest-build-provenance@v2
         with:
-          subject-path: marquee-${{ github.ref_name }}.tar.gz
+          subject-path: |
+            marquee-${{ github.ref_name }}.tar.gz
+            MarqueeSetup.exe
       - name: Release notes from CHANGELOG.md
         run: |
           v="${GITHUB_REF_NAME#v}"
@@ -73,7 +95,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" --verify-tag --title "Marquee $GITHUB_REF_NAME" --notes-file notes.md \
-            "marquee-$GITHUB_REF_NAME.tar.gz" SHA256SUMS
+            "marquee-$GITHUB_REF_NAME.tar.gz" MarqueeSetup.exe SHA256SUMS
 
   verify:
     needs: [image, release]
