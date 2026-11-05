@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
-import { nextLibraryEpisode, isNextEpisodeTime, nextEpisodePromptAt, AUTOPLAY_SECONDS, AUTOPLAY_CHAIN } from '../public/player-next.js';
+import { nextLibraryEpisode, isNextEpisodeTime, nextEpisodePromptAt, AUTOPLAY_SECONDS, AUTOPLAY_CHAIN, tvIntroShowing, tvNextShowing, tvFinished } from '../public/player-next.js';
 
 const episode = (id, number, extra = {}) => ({ id, show: 'tv-123', title: 'Example Show', season: 1, episode: number, file: `${id}.mp4`, ...extra });
 const playing = { ...episode('one', 1), kind: 'lib', key: 'one' };
@@ -289,4 +289,32 @@ test('Skip intro shows during the opening, jumps past it, stays away from guests
   h.video.currentTime = 70; h.run('updateSkipIntro()');
   assert.equal(h.video.currentTime, 70, 'seeking back to watch the intro is left alone');
   assert.equal(button.hidden, false);
+});
+
+test('Play on TV: Skip intro shows while the TV is inside the opening titles', () => {
+  const intro = { start: 60, end: 150 };
+  assert.equal(tvIntroShowing({ state: 'playing', position: 59.6, intro }), true);
+  assert.equal(tvIntroShowing({ state: 'paused', position: 100, intro }), true);
+  assert.equal(tvIntroShowing({ state: 'playing', position: 149, intro }), false, 'not in the last moment, the poll would land past it');
+  assert.equal(tvIntroShowing({ state: 'playing', position: 30, intro }), false);
+  assert.equal(tvIntroShowing({ state: 'stopped', position: 100, intro }), false);
+  assert.equal(tvIntroShowing({ state: 'playing', position: null, intro }), false);
+  assert.equal(tvIntroShowing({ state: 'playing', position: 100, intro: null }), false);
+});
+
+test('Play on TV: Up next starts at the credits, or once the TV played the episode to its end', () => {
+  const base = { duration: 1300, creditsAt: 1240, lastPosition: null };
+  assert.equal(tvNextShowing({ ...base, state: 'playing', position: 1239 }), false);
+  assert.equal(tvNextShowing({ ...base, state: 'playing', position: 1240 }), true);
+  assert.equal(tvNextShowing({ ...base, state: 'paused', position: 1250 }), true);
+  assert.equal(tvNextShowing({ ...base, state: 'loading', position: 1250 }), false);
+  // Unknown credits: nothing until the end, never a guessed window.
+  assert.equal(tvNextShowing({ ...base, creditsAt: null, state: 'playing', position: 1290 }), false);
+  assert.equal(tvNextShowing({ ...base, creditsAt: null, state: 'stopped', position: null, lastPosition: 1298 }), true);
+  // Stopped with the TV's own remote halfway: not finished.
+  assert.equal(tvNextShowing({ ...base, creditsAt: null, state: 'stopped', position: null, lastPosition: 700 }), false);
+  assert.equal(tvFinished({ state: 'stopped', lastPosition: 1291, duration: 1300 }), true);
+  assert.equal(tvFinished({ state: 'stopped', lastPosition: 1289, duration: 1300 }), false);
+  assert.equal(tvFinished({ state: 'playing', lastPosition: 1299, duration: 1300 }), false);
+  assert.equal(tvFinished({ state: 'stopped', lastPosition: 1299, duration: null }), false);
 });

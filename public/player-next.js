@@ -34,3 +34,26 @@ export function isNextEpisodeTime({ ended, time, duration, creditsAt }) {
   const promptAt = nextEpisodePromptAt(duration, creditsAt);
   return promptAt !== null && Number.isFinite(time) && time >= promptAt;
 }
+
+// ---- Play on TV ----
+// The TV can't show Marquee's buttons, so the phone's remote shows them instead. All it knows is what the
+// TV reports every poll (state, position, duration), so the cues come from that position: Skip intro
+// while the opening titles play, Up next from the credits start, or once the TV finished the episode.
+export const TV_END_SLACK = 10; // seconds: a TV that stops this close to the end has played the episode to its end
+
+export function tvIntroShowing({ state, position, intro }) {
+  if (!intro || !Number.isFinite(position) || !['playing', 'paused', 'loading'].includes(state)) return false;
+  return position >= intro.start - 0.5 && position < intro.end - 1.5; // polled position: stop offering it just before the end
+}
+
+// lastPosition is the last position the TV reported while it was still playing.
+export function tvFinished({ state, lastPosition, duration }) {
+  return state === 'stopped' && Number.isFinite(duration) && duration > 0
+    && Number.isFinite(lastPosition) && lastPosition >= duration - TV_END_SLACK;
+}
+
+export function tvNextShowing({ state, position, duration, creditsAt, lastPosition }) {
+  if (tvFinished({ state, lastPosition, duration })) return true;
+  if (!['playing', 'paused'].includes(state)) return false;
+  return isNextEpisodeTime({ ended: false, time: position, duration, creditsAt });
+}

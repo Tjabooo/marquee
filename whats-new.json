@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-05-tv-skip-next",
+    "date": "2026-11-05",
+    "title": "Skip intro and Next episode on the TV",
+    "items": [
+      {
+        "title": "On your phone's TV remote",
+        "text": "When you play an episode on the TV, the remote on your phone now shows Skip intro while the opening plays, and Up next once the credits start. Next episode starts it on the TV, with the same 10-second countdown as on the phone. Keep the remote open for the countdown: a locked phone can't start the next one."
+      }
+    ]
+  },
+  {
     "id": "2026-11-05-convert-label",
     "date": "2026-11-05",
     "title": "Clearer conversion banner",

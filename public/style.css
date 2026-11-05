@@ -2377,3 +2377,26 @@ html.wrapped-on { overflow: hidden; }
 .party-host { align-self: flex-start; }
 .party-card .party-text { flex: 1 1 180px; }
 .party-here { display: inline-flex; align-items: center; gap: 7px; margin-top: 3px; font-size: 13px; }
+
+/* Play on TV remote: Skip intro and Up next, shown on the phone because the TV can't show them. */
+.remote-skip-intro {
+  align-self: center; display: inline-flex; align-items: center; gap: 10px;
+  min-height: 48px; padding: 10px 20px 10px 22px; margin: 2px 0 10px;
+  color: var(--on-bulb); background: var(--bulb); border: 0; border-radius: 10px;
+  font-size: 16px; font-weight: 700; letter-spacing: .01em;
+  animation: skip-intro-in .25s ease-out;
+}
+.remote-skip-intro[hidden] { display: none; }
+.remote-skip-intro svg { width: 16px; height: 16px; fill: currentColor; stroke: none; }
+.remote-skip-intro:active { transform: scale(0.97); }
+.remote-up-next {
+  margin: 2px 0 12px; padding: 16px;
+  background: var(--curtain); border: 1px solid var(--line); border-radius: 14px;
+  animation: skip-intro-in .25s ease-out;
+}
+.remote-up-next[hidden] { display: none; }
+.remote-up-next h3 { margin: 0; font: 700 17px/1.35 var(--display); overflow-wrap: anywhere; }
+.remote-up-next .up-next-label { color: var(--dust); }
+.remote-up-next .up-next-dismiss { color: inherit; background: transparent; border-color: var(--line) !important; }
+.remote-up-next .up-next-error { color: var(--alert); }
+@media (prefers-reduced-motion: reduce) { .remote-skip-intro, .remote-up-next { animation: none; } }

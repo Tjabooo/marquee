@@ -1,7 +1,7 @@
 // Marquee web client. Plain ES modules, no build step.
 import { WatchSession, offsetCues } from './watch-sync.js';
 import { createNotesView } from './notes-view.js';
-import { nextLibraryEpisode, isNextEpisodeTime, AUTOPLAY_SECONDS, AUTOPLAY_CHAIN } from './player-next.js';
+import { nextLibraryEpisode, isNextEpisodeTime, AUTOPLAY_SECONDS, AUTOPLAY_CHAIN, tvIntroShowing, tvNextShowing, tvFinished } from './player-next.js';
 import { audioChoices, nativeAudioMapping } from './player-audio.js';
 import { createSeekPreview } from './seek-preview.js';
 import * as pushDevice from './notifications.js';
@@ -37,6 +37,7 @@ const ICONS = {
   airplay: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 17H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-1"/><path d="M12 14l5 6H7z"/></svg>',
   play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l13-7.5z"/></svg>',
   pause: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 4.5h4v15h-4zM13.5 4.5h4v15h-4z"/></svg>',
+  skip: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5l8 7-8 7zM14 5l8 7-8 7z"/></svg>',
   tv: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4.5" width="18" height="12" rx="2"/><path d="M8.5 20h7M12 16.5V20"/></svg>',
   back: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>',
   search: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>',
@@ -2783,13 +2784,18 @@ function renderNowbar() {
 }
 
 const STATE_TEXT = { playing: 'Playing', paused: 'Paused', loading: 'Loading on the TV…', stopped: 'Stopped', unknown: '' };
+let activeRemote = null; // the open remote; a replaced one must not hide its successor when it closes
 
 function openRemote(session, { replace = false } = {}) {
   const id = session.deviceId;
   const r = {};
+  const token = activeRemote = {};
   let st = { state: 'loading', position: null, duration: null, volume: null };
   let dragging = false;
   let lastAction = 0;
+  // Skip intro / Up next on the phone, from the TV's reported position (the TV can't show Marquee's buttons).
+  const cue = { intro: null, creditsAt: null, duration: null, lastPosition: null, introDone: false,
+    dismissed: false, busy: false, error: '', autoLeft: null, autoTimer: null, announced: null };
 
   $('#remote-body').replaceChildren(
     h('div', { class: 'remote-top' },
@@ -2806,6 +2812,17 @@ function openRemote(session, { replace = false } = {}) {
         h('button', { class: 'skip-btn', 'aria-label': 'Back 10 seconds', onclick: () => jump(-10) }, '−10s'),
         r.toggle = h('button', { class: 'toggle-btn', onclick: toggle }),
         h('button', { class: 'skip-btn', 'aria-label': 'Forward 30 seconds', onclick: () => jump(30) }, '+30s')),
+      r.skipIntro = h('button', { class: 'remote-skip-intro', type: 'button', hidden: true, onclick: () => skipIntroOnTv() },
+        'Skip intro', icon('skip')),
+      r.upNext = h('section', { class: 'remote-up-next', hidden: true, 'aria-label': 'Up next' },
+        h('div', { class: 'up-next-copy' },
+          r.upNextArt = h('div', { class: 'up-next-art', 'aria-hidden': 'true' }),
+          h('div', {}, h('p', { class: 'up-next-label' }, 'Up next'), r.upNextTitle = h('h3', {}))),
+        h('div', { class: 'up-next-actions' },
+          r.upNextPlay = h('button', { class: 'up-next-play', type: 'button', onclick: () => playNextOnTv() }, 'Next episode'),
+          r.upNextDismiss = h('button', { class: 'up-next-dismiss', type: 'button', onclick: () => { cue.dismissed = true; renderCues(); } }, 'Keep watching')),
+        r.upNextError = h('p', { class: 'up-next-error', hidden: true })),
+      r.cueStatus = h('p', { class: 'sr-only', role: 'status' }),
       r.volWrap = h('label', { class: 'volume', hidden: true }, icon('volume'),
         r.vol = h('input', { type: 'range', min: '0', max: '100', step: '1', 'aria-label': 'TV volume' })),
       r.subs = h('div', { class: 'remote-subs', hidden: true }),
@@ -2837,6 +2854,121 @@ function openRemote(session, { replace = false } = {}) {
     }
     r.volWrap.hidden = st.volume == null;
     if (st.volume != null && document.activeElement !== r.vol) r.vol.value = String(st.volume);
+    renderCues();
+  }
+
+  // ---- Skip intro and Up next for the TV ----
+  async function loadCues() {
+    const ref = session.media;
+    if (!ref?.kind || !ref.id) return;
+    const base = `/api/media/${ref.kind}/${encodeURIComponent(ref.id)}`;
+    api(`${base}/intro`).then((data) => {
+      const start = Number(data.intro?.start), end = Number(data.intro?.end);
+      cue.intro = Number.isFinite(start) && Number.isFinite(end) && end - start >= 5 ? { start, end } : null;
+      if (activeRemote === token) renderCues();
+    }).catch(() => { /* no known intro: no button */ });
+    // The first lookup of a long episode can take half a minute; Up next waits for the end until then.
+    api(`${base}/credits`).then((data) => {
+      cue.creditsAt = Number.isFinite(data.creditsAt) && data.creditsAt > 0 ? data.creditsAt : null;
+      if (activeRemote === token) renderCues();
+    }).catch(() => {});
+  }
+  const nextUp = () => nextLibraryEpisode({ kind: session.media?.kind, id: session.media?.id }, state.library, state.libraryShows);
+
+  function renderCues() {
+    if (activeRemote !== token) return;
+    if (Number.isFinite(st.duration) && st.duration > 0) cue.duration = st.duration;
+    if (st.state === 'playing' && Number.isFinite(st.position)) cue.lastPosition = st.position;
+    const reading = { state: st.state, position: st.position, duration: cue.duration, creditsAt: cue.creditsAt, lastPosition: cue.lastPosition };
+
+    const introOn = !dragging && tvIntroShowing({ ...reading, intro: cue.intro });
+    if (introOn && prefs().skipIntro === 'auto' && !cue.introDone && st.state === 'playing') { skipIntroOnTv(true); return; }
+    r.skipIntro.hidden = !introOn;
+
+    const next = nextUp();
+    const show = Boolean(next && !cue.dismissed && !dragging && tvNextShowing(reading));
+    r.upNext.hidden = !show;
+    // Counts only when the episode really plays out: at the credits, or after the TV finished it
+    // (not after someone stopped it with the TV's own remote halfway through the credits).
+    const ended = tvFinished(reading);
+    const counting = show && !cue.busy && !cue.error && autoChain < AUTOPLAY_CHAIN && (st.state === 'playing' || ended);
+    if (counting && cue.autoLeft == null && !cue.autoTimer) startTvAutoplay();
+    else if (!counting && !(show && st.state === 'paused')) stopTvAutoplay();
+    if (!show) return;
+    const title = [episodeLabel(next), next.episodeName || next.title].filter(Boolean).join(' · ');
+    if (r.upNextTitle.textContent !== title) r.upNextTitle.textContent = title;
+    if (r.upNextArt.dataset.for !== next.id) {
+      r.upNextArt.dataset.for = next.id;
+      r.upNextArt.replaceChildren(episodeArt(next.still, state.libraryShows.find((s) => s.id === next.show)));
+    }
+    const left = cue.autoLeft == null ? null : Math.max(1, Math.ceil(cue.autoLeft));
+    r.upNextPlay.disabled = cue.busy;
+    r.upNextPlay.textContent = cue.busy ? 'Starting on the TV…' : left ? `Next episode in ${left}` : 'Next episode';
+    r.upNextPlay.classList.toggle('counting', left != null);
+    r.upNextPlay.style.setProperty('--auto-progress', left == null ? '0' : String(1 - cue.autoLeft / AUTOPLAY_SECONDS));
+    r.upNextDismiss.textContent = ended ? 'Dismiss' : 'Keep watching';
+    r.upNextError.textContent = cue.error;
+    r.upNextError.hidden = !cue.error;
+    if (cue.announced !== next.id) {
+      cue.announced = next.id;
+      r.cueStatus.textContent = `Up next: ${title}.`;
+    }
+  }
+
+  function skipIntroOnTv(auto = false) {
+    if (!cue.intro || (auto && cue.introDone)) return;
+    cue.introDone = true; // once per cast: seeking back to watch it is left alone
+    st.position = cue.intro.end;
+    send('seek', cue.intro.end);
+    toast(auto ? 'Intro skipped' : 'Skipped the intro');
+  }
+
+  // Real seconds while the credits play on the TV (or after it finished); paused on the TV = paused here.
+  // A locked phone runs no timers, so the TV only moves on while someone has the remote open.
+  function startTvAutoplay() {
+    cue.autoLeft = AUTOPLAY_SECONDS;
+    let last = Date.now();
+    const tick = () => {
+      if (activeRemote !== token || cue.autoLeft == null) { cue.autoTimer = null; return; }
+      const now = Date.now();
+      if (!document.hidden && st.state !== 'paused') cue.autoLeft -= (now - last) / 1000;
+      last = now;
+      if (cue.autoLeft <= 0) {
+        cue.autoLeft = null; cue.autoTimer = null;
+        autoChain++;
+        playNextOnTv();
+        return;
+      }
+      cue.autoTimer = setTimeout(tick, 250);
+      renderCues();
+    };
+    cue.autoTimer = setTimeout(tick, 250);
+  }
+  function stopTvAutoplay() {
+    if (cue.autoTimer) clearTimeout(cue.autoTimer);
+    cue.autoTimer = null; cue.autoLeft = null;
+  }
+
+  async function playNextOnTv() {
+    const next = nextUp();
+    if (!next || cue.busy) return;
+    cue.busy = true; cue.error = '';
+    stopTvAutoplay();
+    renderCues();
+    const start = (sub) => api('/api/cast/play', jsonPost({ deviceId: id, kind: 'lib', id: next.id, ...(sub ? { sub } : {}) }));
+    try {
+      let result;
+      // Keep the subtitles on; if the next episode has none in that language, play it without.
+      try { result = await start(session.sub); } catch (err) { if (!session.sub) throw err; result = await start(null); }
+      const s = result.session;
+      state.sessions = [s, ...state.sessions.filter((x) => x.deviceId !== s.deviceId)];
+      if (activeRemote === token) openRemote(s, { replace: true });
+    } catch (err) {
+      cue.busy = false;
+      cue.error = `${err.message} Try Next episode again.`;
+      r.cueStatus.textContent = cue.error;
+      renderCues();
+    }
   }
 
   async function poll() {
@@ -2962,6 +3094,7 @@ function openRemote(session, { replace = false } = {}) {
   }
   render();
   loadSubs();
+  loadCues();
   $('#remote').hidden = false;
   document.body.style.overflow = 'hidden';
   renderNowbar();
@@ -2971,6 +3104,9 @@ function openRemote(session, { replace = false } = {}) {
 
   const close = () => {
     clearInterval(timer);
+    stopTvAutoplay();
+    if (activeRemote !== token) return; // replaced by the next episode's remote
+    activeRemote = null;
     $('#remote').hidden = true;
     document.body.style.overflow = '';
     renderNowbar();
