@@ -1,0 +1,69 @@
+# Changelog
+
+All notable changes to Marquee. Versions follow [Semantic Versioning](https://semver.org).
+
+## [1.1.0] - 2026-11-05
+
+The first public release meant for installing on your own machine: a setup wizard, installers,
+Docker images, autostart on every major platform, and a security fix for how accounts are identified.
+
+### Security
+
+- **Identity headers are no longer trusted from every client.** Earlier versions took the account
+  from `Cf-Access-Authenticated-User-Email` on any request, so a device that could reach Marquee's
+  port directly could act as any account, including the owner. Proxy and identity headers are now
+  removed unless the connection comes from `TRUSTED_PROXIES` (default: this machine, where
+  cloudflared or a local proxy connects from), or the request carries a Cloudflare Access token that
+  Marquee verifies itself (`CF_ACCESS_TEAM_DOMAIN` + `CF_ACCESS_AUD`).
+
+### Added
+
+- `node setup.js`: interactive or unattended (`--yes`, `--config`) setup that detects the system,
+  edits `.env` in place without losing comments or unknown keys, generates `HOUSE_TOKEN` and
+  `SCREENTIME_TOKEN`, checks integrations, can install ffmpeg/Tesseract and set qBittorrent's save
+  path, and registers autostart. Privileged or system-changing steps always ask first; unattended
+  runs need explicit `--allow-*` flags. `--dry-run` shows changes without making them.
+- `node setup.js doctor`: read-only health check of runtime, settings, data, disk space, ffmpeg
+  (with real test encodes), OCR, Apple TV, port, autostart and integrations.
+- `node setup.js backup` (consistent SQLite copy plus state) and `migrate-data` (move state to a new
+  `DATA_DIR`, keeping the originals aside).
+- `node setup.js service install|status|restart|uninstall` for Windows Task Scheduler, systemd (user
+  or system; waits for network and the media mount), launchd and OpenRC.
+- `install.sh` and `install.ps1`: install or update from a release archive verified against its
+  SHA-256 checksum; updates replace application files only and keep the previous version.
+- Docker image `ghcr.io/tjabooo/marquee` for linux/amd64 and linux/arm64 (non-root, healthcheck,
+  ffmpeg and Tesseract included) and a Compose file with qBittorrent, VPN (Gluetun, fails closed) and
+  FlareSolverr profiles, plus an NVIDIA override.
+- `DATA_DIR`, `HOST`, `TRUSTED_PROXIES`, `CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD`, `TESSERACT` and
+  `MARQUEE_ENV_FILE` settings; `GET /api/health`.
+- Windows: a "Marquee Watchdog" task that starts Marquee if Windows skipped its boot trigger.
+- Notes image search on Linux and macOS through Tesseract.
+- Startup warnings for broken settings; clean shutdown on SIGTERM.
+- Documentation: install guides per platform, configuration reference (checked against the code by
+  a test), remote access, hardware acceleration, upgrading and backups, troubleshooting.
+- CI on Ubuntu, Windows and macOS with Node.js 22.16 and 24, Docker build and Compose start-up; a
+  release workflow with build provenance attestations.
+
+### Changed
+
+- **Node.js 22.16 or later is required.** Notes search uses SQLite FTS5, which `node:sqlite` in
+  Node.js 22.13-22.15 lacks; 1.0 documented Node.js 20, which never worked.
+- Server code moved into `src/`; `node server.js` still starts Marquee. Windows scripts moved to
+  `scripts/windows/` (`setup-autostart.ps1` is now `install-service.ps1`); `start-marquee.cmd` stays
+  at the root so existing scheduled tasks keep working.
+- `.env.example` lists every setting with integrations off by default; the README is now a short
+  landing page with details under `docs/`.
+
+### Fixed
+
+- Nine tests that no longer matched the app.
+
+### Upgrading from 1.0
+
+See [docs/upgrading-and-backups.md](docs/upgrading-and-backups.md#upgrading-to-11-from-10). If
+cloudflared or your reverse proxy runs on a different machine than Marquee, set `TRUSTED_PROXIES` or
+the Access token settings, or everyone will appear as the Home network account.
+
+## [1.0.0]
+
+Initial version, developed in the open on `master` without tagged releases.

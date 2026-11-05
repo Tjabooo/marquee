@@ -26,6 +26,7 @@ test('selected audio links bind source and stream and retain signed range playba
   const port = reserve.address().port; await new Promise((r) => reserve.close(r));
   for (const entry of await fs.readdir(root)) if (entry.endsWith('.js') || entry === 'package.json') await fs.copyFile(path.join(root, entry), path.join(app, entry));
   await fs.cp(path.join(root, 'public'), path.join(app, 'public'), { recursive: true });
+  await fs.cp(path.join(root, 'src'), path.join(app, 'src'), { recursive: true });
   const child = spawn(process.execPath, ['server.js'], { cwd: app, env: {
     PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, WINDIR: process.env.WINDIR, TEMP: process.env.TEMP, TMP: process.env.TMP,
     PORT: String(port), MEDIA_DIR: media, ADMIN_EMAILS: 'owner@test.local',

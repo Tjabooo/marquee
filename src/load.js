@@ -51,7 +51,7 @@ export class Rate {
 }
 
 let file = null;
-let nameForIp = () => null;      // ip -> "magi", "Living room TV", ...
+let nameForIp = () => null;      // ip -> "desktop", "Living room TV", ...
 let torrentRate = null;          // async () => { up, down, upLimit } bytes/s, or null without qBittorrent
 let conversion = () => null;     // () => { name, percent, speed } of the running conversion
 const watched = [];              // [{ label, dir }]: the drives media and clips live on

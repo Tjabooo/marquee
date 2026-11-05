@@ -6,8 +6,8 @@ import os from 'node:os';
 import net from 'node:net';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { NotesStore } from '../notes.js';
-import { previewOf, PREVIEW_BOT } from '../note-share.js';
+import { NotesStore } from '../src/notes.js';
+import { previewOf, PREVIEW_BOT } from '../src/note-share.js';
 
 test('preview text uses the first line as title and the rest as description', () => {
   const p = previewOf({ text: 'Buy milk\nand eggs\n\nsoon', attachments: [] });
@@ -23,6 +23,7 @@ test('shared notes give bots a preview and send people to the protected app', { 
   const app = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-note-share-'));
   for (const name of await fs.readdir(root)) if (name.endsWith('.js') || name === 'package.json') await fs.copyFile(path.join(root, name), path.join(app, name));
   await fs.cp(path.join(root, 'public'), path.join(app, 'public'), { recursive: true });
+  await fs.cp(path.join(root, 'src'), path.join(app, 'src'), { recursive: true });
   const store = new NotesStore(app); await fs.mkdir(store.fileDir, { recursive: true });
   const fileId = 'c'.repeat(64), png = Buffer.from('89504e470d0a1a0a', 'hex');
   await fs.writeFile(path.join(store.fileDir, `${fileId}.bin`), png);
@@ -88,6 +89,7 @@ test('a shared video gets a Discord-friendly MP4 and thumbnail anyone can load',
   const app = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-note-video-'));
   for (const name of await fs.readdir(root)) if (name.endsWith('.js') || name === 'package.json') await fs.copyFile(path.join(root, name), path.join(app, name));
   await fs.cp(path.join(root, 'public'), path.join(app, 'public'), { recursive: true });
+  await fs.cp(path.join(root, 'src'), path.join(app, 'src'), { recursive: true });
   const store = new NotesStore(app); await fs.mkdir(store.fileDir, { recursive: true });
   // a .mov in a codec Discord can't play (MPEG-4 Part 2), standing in for a phone video
   const fileId = 'd'.repeat(64), mov = path.join(store.fileDir, `${fileId}.bin`);

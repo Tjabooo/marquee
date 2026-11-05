@@ -23,6 +23,7 @@ test('screentime daemons push daily summaries; the owner sees days, weeks and al
   const app = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-screentime-'));
   for (const name of await fs.readdir(root)) if (name.endsWith('.js') || name === 'package.json') await fs.copyFile(path.join(root, name), path.join(app, name));
   await fs.cp(path.join(root, 'public'), path.join(app, 'public'), { recursive: true });
+  await fs.cp(path.join(root, 'src'), path.join(app, 'src'), { recursive: true });
   const reserve = net.createServer(); await new Promise((r) => reserve.listen(0, '127.0.0.1', r));
   const port = reserve.address().port; await new Promise((r) => reserve.close(r));
   const env = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, WINDIR: process.env.WINDIR, TEMP: process.env.TEMP, TMP: process.env.TMP,

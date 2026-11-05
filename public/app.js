@@ -4623,7 +4623,7 @@ function peopleSection(q) {
   const a = state.access || {};
   const out = [];
   if (state.access && !a.configured) {
-    out.push(h('p', { class: 'muted' }, 'Set CF_API_TOKEN, CF_ACCOUNT_ID and CF_ACCESS_LIST_ID in .env to invite people from here (see the README).'));
+    out.push(h('p', { class: 'muted' }, 'Set CF_API_TOKEN, CF_ACCOUNT_ID and CF_ACCESS_LIST_ID in .env to invite people from here (see docs/remote-access.md in the Marquee folder).'));
   } else if (state.access) {
     const noteInput = h('input', { id: 'invite-note', class: 'invite-note', type: 'text', maxlength: '60', placeholder: 'Who’s it for?' });
     out.push(h('div', { class: 'invite-new' }, noteInput,

@@ -1,0 +1,15 @@
+# NVIDIA NVENC encoding inside the container. Needs the NVIDIA driver and the NVIDIA Container
+# Toolkit on the host (https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/).
+#   docker compose -f docker-compose.yml -f docker/compose.nvidia.yml up -d
+# Check with: docker compose exec marquee node setup.js doctor --offline
+services:
+  marquee:
+    environment:
+      NVIDIA_DRIVER_CAPABILITIES: compute,video,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, video]

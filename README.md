@@ -1,611 +1,136 @@
 # Marquee
 
-A self-hosted media server for your home network. Browse and search films and shows, find and download torrents, fetch subtitles, and play anything on your phone, in a browser, or on a smart TV or Apple TV.
+[![CI](https://github.com/Tjabooo/marquee/actions/workflows/ci.yml/badge.svg)](https://github.com/Tjabooo/marquee/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Tjabooo/marquee)](https://github.com/Tjabooo/marquee/releases)
+[![Image](https://img.shields.io/badge/ghcr.io-tjabooo%2Fmarquee-blue)](https://github.com/Tjabooo/marquee/pkgs/container/marquee)
 
-Marquee is a single Node.js process with no dependencies, served as a mobile-first web app that can be added to your phone's home screen.
+![Marquee](public/og-marquee.png)
+
+A self-hosted media server for your home, made for phones first. Find a film or show, press
+Download, and watch it in the browser, on your phone or on the TV, with subtitles that fit.
+
+Marquee is one Node.js process with no npm dependencies. It runs on Windows, Linux, macOS and in
+Docker, and installs as a web app on your phone's home screen.
 
 ## Features
 
-- **Accounts**: everyone who signs in through Cloudflare Access gets their own Marquee, with no extra login: their own library, watch progress that follows them between devices, colours and preferences. See [Accounts](#accounts).
-- **Discover**: trending titles, search, posters and descriptions from TMDB. Titles in your library are marked **In your library**; titles someone else already has on the server are marked **On server** and can be added to your library with one tap instead of being downloaded again.
-- **Film identity**: availability follows the film's TMDB ID. If two films share a title and year, the owner can open **Library → film → Identify film** and choose by poster, release date and description. That choice is saved for that file alone. Downloads started from a film's details remember the selected identity, too. Discover carousels have previous/next arrows as well as touch scrolling.
-- **Library**: poster covers for films and shows, with **Continue watching** and **Leaving soon** shelves, then your downloads, titles added from the server and your collection. Filter by films or shows. Open a title to play, resume or **Keep 7 more days**; shows have a keep-all button above their seasons as well as individual episode controls.
-- **Timeline previews**: hovering (or dragging) the seek bar shows the frame at that time, for library media, clips and shared clip pages. The first time a video is opened, ffmpeg decodes only its keyframes in the background (a few seconds for a clip, a minute or two for a 4K film, below normal priority, one video at a time) and tiles them into small JPEG sheets in `cache/previews/`; the bar shows what's ready while the rest fills in. Storyboards not opened for 30 days are removed.
-- **Next episode**: an **Up next** card with a 10-second countdown appears the moment the closing credits start, then plays the immediately following episode from your library. The credits start comes from an explicit credits chapter, or else from the closing-credits music the episode shares with another episode of the same season (an audio fingerprint of the last six minutes, computed once per file and cached in `.marquee-credits.json`). When neither is certain, the card and countdown wait for the actual end of the file: nothing skips ahead on a guess. Pausing during the credits pauses the countdown, seeking back cancels it, and **Keep watching** dismisses it for that playback session. After three episodes in a row with no key press or tap, the card stops counting down and waits. It never skips missing episodes; a next-season episode is offered only when metadata confirms the season finale. The card is hidden during Watch Together and native fullscreen, picture in picture or casting.
-- **Watch Together**: open a library title in the player, press **Watch together**, then **Room → Copy invite**. Family members sign in normally, join and press **Play** to enable playback. The host controls play, pause and seek; subtitle language, size, visibility, offsets and volume stay personal. Rooms wait for buffering viewers and correct small playback drift. Room details stay collapsed beside the subtitle/volume controls; **Hide**, Escape or a click outside closes them.
-- **Download**: one button on a film or show. A film's Download picks a release right away from your saved preferences (title and year must match; size, free space and audio language are respected; nothing unsuitable is substituted). A show's Download opens a small panel: season, quality (Save Space, Balanced · 1080p, Best Quality), **Download Season**. Marquee prefers a complete season pack, switches off the episodes you already have once its file list arrives, and fetches only what's still missing episode by episode; episodes it can't find are named, with **Retry unavailable**. Season episodes download in order: episode 1 at full speed, then episode 2 while episode 1 is converted to MP4, and so on. **Advanced options** hold an exact resolution and the release list for choosing one yourself.
-- **Torrent search**: Find torrents (and Advanced options on a title) searches The Pirate Bay and 1337x in parallel, ranked by seeders, with quality filters (4K, 1440p, 1080p, 720p) and cinema recordings flagged. One tap sends a result to qBittorrent. Explicit 1440p, QHD and 2560×1440 release labels count as 1440p; generic 2K does not.
-- **Unified Library**: films and shows appear as soon as downloading begins, with live progress and contextual transfer controls. Availability filters separate ready, downloading and attention-needed titles. The owner can inspect everyone's transfers in **Manage downloads** without mixing them into their personal Library.
-- **Auto-delete**: downloads are deleted 7 days after they finish (the owner can change this), counted per person; a video someone else still has in their library stays.
-- **Settings**: colour themes (nine presets, or pick your own four colours), default subtitles, preferred torrent quality, start page and library order. The owner also sets the auto-delete rules, who may download, and sees everyone's library size.
-- **Subtitles**: pick a language in the player or TV remote and Marquee fetches the best match from OpenSubtitles, preferring subtitles timed for your exact file. Downloaded subtitles that weren't made for your exact file have their timing checked and fixed automatically. Subtitles can also be requested when starting a download and are fetched automatically when it finishes.
-- **Casting**: play on DLNA smart TVs (Samsung, LG, Sony and others) and Apple TV, with a full-screen remote for play/pause, seeking, volume and subtitles.
-- **Automatic conversion**: MKV, AVI, WebM and similar files get an MP4 copy that plays on iPhone and Apple TV. Streams are copied where possible; video is re-encoded on an NVIDIA GPU (NVENC) or CPU only when needed.
-- **Audio languages**: the speaker button beside Subtitles lists a video’s available audio languages, with Stereo/5.1 labels when the same language has multiple renditions. Pick a track without losing your position. Playback continues while a browser-safe rendition is prepared; the checked row changes when the new audio is playable. Selecting the active row cancels preparation. The control is hidden for single-track videos, Watch Together and casting.
-- **Browser audio fix**: Chrome and Firefox can't decode Dolby (AC3/E-AC3) or DTS. Marquee adds a stereo AAC track so these files play with sound, while TVs still receive the original surround audio.
-- **House** (owner only): the server's disks, qBittorrent, FlareSolverr and AdGuard Home at a glance, plus the Linux machines at home (disk space, failed services, updates, battery, Secure Boot, backups), with anything that needs a look listed at the top. **Power** turns a dual-boot PC on (Wake-on-LAN) into the system you pick, or restarts it into another one. **Sharing** shows what streams and encodes cost the server: who is watching what (over the internet or at home, how fast versus what the file needs), clip share copies and conversions with their CPU, internet upload against its limit, the GPU's encoder, the media drives and the busiest programs, with a day of history.
-- **Clips** (owner only): game clips synced from a PC, grouped by game. **Share** gives a clip a public link: it opens a fullscreen Marquee player with just that clip, for anyone, without signing in (and nothing else in Marquee); in Discord it shows as a large thumbnail card. Sharing makes a full-resolution, near-lossless H.264 copy (all audio tracks mixed into one) that plays in every browser, and unsharing kills the link. **Delete** (two taps) removes a clip: it waits 30 days in a hidden `.deleted` folder before it's gone for good. Clicking a clip plays it in the same player as films and shows (without subtitles, audio choices, casting or Watch Together). **Edit** trims a clip or cuts parts out of it without re-encoding (ffmpeg stream copy: identical quality, every audio track kept, no GPU needed): split at the playhead, remove or restore parts, trim the start or end, undo. The kept parts are joined into one file in `Trimmed Clips/<Game>/`. Each kept part starts on the keyframe at or before its chosen start; the editor shows that lead-in and flags a cut that's too short to clear the next keyframe.
-- **Notes** (admins only): a shared message-style inbox for information and reminders. Enter sends a note (Shift+Enter adds a line); search finds keywords across the entire history. Edit messages, pin important ones, add reminder dates, mark them done, or move notes to recoverable Trash. Dates stay unchanged when editing. Conflicting edits are rejected instead of overwriting someone else's changes. Notes refresh while idle and are hidden from ordinary members, including direct API and attachment access. **Share** copies a `/c/n/<token>` link: Discord shows the note's text and first image as a preview, but anyone who clicks it is sent to the note inside Marquee, behind the usual sign-in. **Stop sharing** or moving the note to Trash makes the link stop working.
-- **Invites** (owner only): make a one-time link, send it, and the person enters their email and is added to the Cloudflare email list your Access policy allows, so they can sign in from then on (Google, a one-time email code, whatever you've enabled). Who has access is listed in the Activity tab, with a Remove button.
-- **Discord embeds**: shared clips show up as thumbnail cards that open the clip's player, shared notes as previews, and `/c/` is an invite card for Marquee itself.
-- **Library management**: delete films, single episodes or whole torrents. Files are removed through qBittorrent, together with any copies and subtitles Marquee created.
+- **Discover and search** with posters and details from TMDB; titles already on the server are marked.
+- **One-press downloads** through qBittorrent: films pick a suitable release, shows download a season
+  in episode order and skip what you already have. Torrent search covers The Pirate Bay and 1337x.
+- **Plays everywhere**: automatic MP4 copies for iPhone and Apple TV, browser-safe audio for Dolby/DTS,
+  H.264 copies of HEVC for Firefox, timeline previews, Up next with credits detection.
+- **Subtitles** from OpenSubtitles, with their timing checked and fixed against the audio.
+- **Casting** to DLNA smart TVs and Apple TV, with a full-screen remote.
+- **Watch Together** rooms with synced playback.
+- **Personal accounts** through Cloudflare Access: everyone gets their own library, progress and
+  settings; files exist once on disk and auto-delete when nobody keeps them.
+- **For the owner**: Activity, a House dashboard for the server and home machines, game Clips with
+  share links and a lossless trimmer, and a shared Notes inbox with image text search.
+
+Details: [docs/features.md](docs/features.md).
 
 ## Requirements
 
-| Component | Required | Used for |
-| --- | --- | --- |
-| [Node.js](https://nodejs.org) 20 or later | Yes | Running the server |
-| [TMDB](https://www.themoviedb.org) API token | Recommended | Discover, search, posters |
-| [qBittorrent](https://www.qbittorrent.org) with Web UI | Optional | Downloads |
-| [ffmpeg](https://ffmpeg.org) | Optional | Conversion and browser audio fix |
-| [OpenSubtitles](https://www.opensubtitles.com) API key | Optional | Subtitles |
-| [pyatv](https://pyatv.dev) | Optional | Apple TV |
-| [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr) | Optional | 1337x when it's behind a Cloudflare check |
+- **Node.js 22.16 or later** (uses the built-in `node:sqlite` with FTS5)
+- Optional: **ffmpeg** (conversion, subtitle timing, previews), **qBittorrent** with Web UI (downloads),
+  a **TMDB** token (search and posters), an **OpenSubtitles** API key, **pyatv** (Apple TV),
+  **Tesseract** (Notes image search outside Windows)
 
-Marquee is developed on Windows, and the auto-start scripts are Windows-only. The server itself runs anywhere Node.js does.
+Anything you don't set up is simply off, so you can start small.
 
 ## Quick start
 
-```bash
-git clone https://github.com/Tjabooo/marquee.git
+```sh
+git clone --branch v1.1.0 https://github.com/Tjabooo/marquee.git
 cd marquee
-cp .env.example .env      # Windows: copy .env.example .env
+node setup.js
 ```
 
-Edit `.env`: at minimum set `MEDIA_DIR` to your video folder and add a `TMDB_TOKEN`. Then start the server:
+`setup.js` detects your system, asks only what it can't work out, writes `.env`, checks your
+integrations and can register Marquee to start at boot. Open the address it prints. It's safe to
+run again at any time; `node setup.js doctor` checks an installation without changing anything.
 
-```bash
-npm start
+Prefer an installer? It downloads a release, verifies its checksum, and keeps updates separate from
+your settings and data (read it first: [install.sh](install.sh), [install.ps1](install.ps1)):
+
+```sh
+curl -fsSLO https://raw.githubusercontent.com/Tjabooo/marquee/v1.1.0/install.sh && sh install.sh
 ```
 
-The console lists which features are enabled and the address to open. On your phone, browse to `http://<server-ip>:8080`. To use it like an app, choose **Add to Home Screen** (Safari: Share menu; Chrome: browser menu).
+```powershell
+irm https://raw.githubusercontent.com/Tjabooo/marquee/v1.1.0/install.ps1 -OutFile install.ps1; powershell -ExecutionPolicy Bypass -File install.ps1
+```
 
-Any feature whose settings are left blank is simply switched off, so you can start small and add integrations later.
+## Docker
+
+```sh
+curl -fsSLO https://raw.githubusercontent.com/Tjabooo/marquee/v1.1.0/docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/Tjabooo/marquee/v1.1.0/.env.example -o marquee.env   # add your tokens
+MEDIA_PATH=/srv/media docker compose up -d
+```
+
+Images for `linux/amd64` and `linux/arm64` are published as `ghcr.io/tjabooo/marquee`. Optional
+Compose profiles add qBittorrent, qBittorrent behind a VPN (Gluetun) and FlareSolverr. See
+[docs/install/docker.md](docs/install/docker.md).
 
 ## Configuration
 
-All settings live in `.env`. Changes take effect after a restart.
+Settings live in `.env` (or the container environment). The ones most people set:
 
-### Server
-
-| Variable | Default | Description |
-| --- | --- | --- |
-| `PORT` | `8080` | Port for the web app. |
-| `SERVER_IP` | auto | LAN address TVs use to stream from the server. Set it if the address printed at startup is wrong. |
-| `ADMIN_EMAILS` | | Cloudflare Access emails that see the Activity, House and Clips tabs and the owner's settings, comma-separated. The first one is the owner: files added outside Marquee go into their library. |
-| `PUBLIC_URL` | from the request | Public address used in share links and Discord embeds, e.g. `https://marquee.example.com`. |
-
-### Metadata and library
-
-| Variable | Default | Description |
-| --- | --- | --- |
-| `TMDB_TOKEN` | | TMDB API Read Access Token. |
-| `TMDB_API_KEY` | | Alternative to `TMDB_TOKEN`: a TMDB v3 API key. |
-| `TMDB_LANG` | `en-US` | Language for titles and descriptions. |
-| `MEDIA_DIR` | | Folder containing your videos. Subfolders are scanned. |
-
-### Downloads and torrent search
-
-| Variable | Default | Description |
-| --- | --- | --- |
-| `QBIT_URL` | | qBittorrent Web UI address, e.g. `http://localhost:8081`. |
-| `QBIT_USER` / `QBIT_PASS` | | Web UI credentials. |
-| `QBIT_REMOVE_FINISHED` | `on` | Remove finished downloads from qBittorrent (files kept) so nothing seeds. Set to `off` to seed as usual. A torrent tagged `seed` in qBittorrent is never touched. |
-| `TORRENTS` | `on` | Set to `off` to hide torrent search. |
-| `TPB_API` | `https://apibay.org` | The Pirate Bay API endpoint. |
-| `X1337_URL` | built-in list | Comma-separated 1337x mirrors, tried in order. |
-| `FLARESOLVERR_URL` | | FlareSolverr address, e.g. `http://localhost:8191`. |
-
-### Subtitles
-
-| Variable | Default | Description |
-| --- | --- | --- |
-| `OPENSUBTITLES_API_KEY` | | Enables subtitles. |
-| `OPENSUBTITLES_USER` / `OPENSUBTITLES_PASS` | | Optional account login; raises the daily download limit from 5 to 20. |
-| `SUB_LANGS` | `en,sv,da,...` | Languages offered, in display order. Codes follow OpenSubtitles (`en`, `pt-br`, `zh-cn`, ...). |
-| `SUBSYNC` | `on` | Check and fix the timing of downloaded subtitles automatically. `off` leaves them as downloaded; the player's **Fix timing** button still works. Needs ffmpeg. |
-
-### Casting
-
-| Variable | Default | Description |
-| --- | --- | --- |
-| `DLNA_DEVICES` | | Description URLs for TVs that aren't discovered automatically. |
-| `CAST_APPLETV` | `on` | Set to `off` to disable Apple TV support. |
-| `CAST_WHEN_AWAY` | `off` | Set to `on` to allow casting to home TVs from outside the home network. |
-| `STREAM_SECRET` | generated | Key for signing `/play/` links. Generated into `.marquee-secret` on first run if empty. |
-| `ATVSCRIPT` | `atvscript` | Full path to pyatv's `atvscript` if it isn't on `PATH`. |
-| `ATV_HOSTS` | | Apple TV IP addresses to query directly if discovery fails. |
-
-### House, clips and invites
-
-| Variable | Default | Description |
-| --- | --- | --- |
-| `HOUSE_TOKEN` | | Shared secret for `agents/marquee-house`. Leave empty to turn machine reports off; the House tab still shows the server. |
-| `ADGUARD_URL` | | AdGuard Home's web address, e.g. `http://localhost:3000`, for protection state and query stats. Without it House only checks that something answers DNS on port 53. |
-| `ADGUARD_USER` / `ADGUARD_PASS` | | AdGuard Home login. |
-| `CF_API_TOKEN` | | Cloudflare API token for invites, permission *Account · Zero Trust → Edit*. |
-| `CF_ACCOUNT_ID` / `CF_ACCESS_LIST_ID` | | The Cloudflare account and the email list your Marquee policy allows. |
-| `INVITE_DAYS` | `7` | How long an unused invite link works. |
-| `UPLOAD_MBPS` | | The internet connection's upload speed in Mbit/s. Measure it on the server with several connections at once: a single upload rarely fills a fast line. House → Sharing shows streams plus qBittorrent seeding against it and warns when it's nearly full. |
-| `NVENC_SESSION_LIMIT` | `8` | Hardware encodes the GPU runs at once (GeForce cards: 8 on current drivers). |
-| `LOAD_SAMPLER` | | `off` stops House → Sharing reading Windows performance counters and `nvidia-smi` every 5 s. |
-| `WOL_BROADCAST` | | Extra addresses for Wake-on-LAN packets, comma-separated. Only needed if waking doesn't work: the server already sends to its own network's broadcast address and `255.255.255.255`. |
-| `CLIPS_DIR` | | Folder the clips are synced to, e.g. `D:\Clips` (the share behind the desktop's `/mnt/magi-clips`). Leave empty to hide the Clips tab. |
-
-### Conversion
-
-| Variable | Default | Description |
-| --- | --- | --- |
-| `CONVERT` | `on` | Set to `off` to disable automatic conversion. |
-| `CONVERT_DELETE_ORIGINAL` | `off` | Delete originals after conversion. Files owned by qBittorrent are never deleted. |
-| `FFMPEG` / `FFPROBE` | on `PATH` | Full paths to the binaries if they aren't on `PATH`. |
-| `AUDIO_FIX_DIR` | `./cache/audio` | Where audio-fixed copies of downloaded MP4s are stored. |
-| `PREPARE_NEXT_EPISODES` | `2` | When an episode needs a browser copy (HEVC in a browser without HEVC), this many following episodes get theirs made in the background. `0` turns it off. |
-
-## Setting up integrations
-
-### TMDB
-
-1. Create a free account at [themoviedb.org](https://www.themoviedb.org).
-2. Go to **Settings > API** and request an API key.
-3. Copy the **API Read Access Token** into `TMDB_TOKEN`.
-
-### qBittorrent
-
-1. In qBittorrent, open **Tools > Options > Web UI** and enable the Web User Interface.
-2. Choose a port other than Marquee's (for example `8081`) and set a username and password.
-3. Set `QBIT_URL`, `QBIT_USER` and `QBIT_PASS` in `.env`.
-4. Recommended: under **Options > Downloads**, set the default save path to a `Downloads` subfolder inside `MEDIA_DIR` (for example `E:\Media\Downloads`). Marquee overrides this per torrent for recognized movies (`Movies`) and shows (`TV`). Unclassified torrents retain qBittorrent's default.
-
-If Marquee signs in but is still refused, enable **Bypass authentication for clients on localhost** in the Web UI settings.
-
-### Torrents through a VPN (Windows)
-
-To keep your own IP out of torrent swarms, `tools/torrent-vpn` puts qBittorrent alone behind a WireGuard VPN (Mullvad, or any provider that gives out WireGuard configs). The rest of the server keeps its normal connection. It fails closed: qBittorrent is bound to the tunnel and fenced in by firewall rules, and a watchdog keeps it that way. See [tools/torrent-vpn/README.md](tools/torrent-vpn/README.md).
-
-### OpenSubtitles
-
-1. Create a free account at [opensubtitles.com](https://www.opensubtitles.com).
-2. Open your profile, go to **API consumers**, and create a new consumer.
-3. Copy its API key into `OPENSUBTITLES_API_KEY`. Add your username and password as well for the higher download limit.
-
-Checking which languages are available doesn't count toward the limit; only downloads do. Each subtitle is saved beside its video as `<name>.<lang>.srt` and never downloaded twice.
-
-### ffmpeg
-
-```powershell
-winget install Gyan.FFmpeg
-```
-
-On first run the converter processes existing files in the background at below-normal priority. NVENC is used automatically when an NVIDIA GPU is available.
-
-### Shared admin notes and Discord imports
-
-The Notes toolbar is a compact filter selector and overflow menu; Refresh and
-Import Discord live in that menu. The single-row composer grows while typing,
-and reminder options open from its three-dot menu. On phones, the timeline gets
-the remaining screen space rather than being squeezed by permanent controls.
-
-Use **+** to attach photos, videos, audio or documents from your phone or computer.
-Multiple files and media-only notes work. Uploads show progress and use 8 MiB
-chunks (up to 1 GB per file), retry interrupted chunks, and stay private to
-admins. Photos, videos and audio have inline previews where the browser supports
-the original format; the original file is always available to download.
-
-Set `NOTES_FILES_DIR=D:\Marquee\Notes` in `.env` to keep all Notes media on D:.
-Copy the contents of the old media folder to the new location before restarting
-when changing this setting. Include that directory and `.marquee.db` in private
-backups. File names are metadata; stored media uses generated IDs.
-
-Everyone listed in `ADMIN_EMAILS` shares the **Notes** inbox. Ordinary accounts
-and the unauthenticated Home network account cannot read or change notes or
-fetch their archived files. Notes live in `.marquee.db`; archived attachments
-live in `NOTES_FILES_DIR` (default `.marquee-notes-files/`). Include both in private server backups.
-Neither the note text nor imported message contents go into the Activity log.
-
-Use the search field for words or word prefixes; several words must all match.
-Text inside attached images (screenshots, receipts, photos of signs) is searchable too:
-Marquee reads it with Windows' built-in OCR right after an upload and stores it as hidden keywords
-on the note. Nothing to install; images posted before this existed are read in the background
-after startup. Add more OCR languages in Windows Settings › Time & language › Language.
-Set `NOTES_OCR=off` in `.env` to turn it off.
-**Pinned**, **Due**, and **Trash** narrow the view. Reminder dates are shown in
-local time, with due reminders highlighted when Notes is open; these are not
-background push notifications. Deleted notes can be restored from Trash.
-
-**Import Discord** accepts the MEE6 conversation's `messages.json` or
-`messages.csv` from Discord's data package, or a common JSON conversation
-export. Preview the count and choose your own author when the file includes
-other people or bot replies. Original message IDs and UTC dates are retained;
-retrying an import skips existing IDs and never resurrects trashed notes.
-Browser uploads preserve attachment links. Those links may expire on Discord.
-
-For an archive that also keeps actual Discord attachments on the server, run:
-
-```powershell
-node tools/import-discord-notes.mjs C:\path\to\mee6.json --dry-run
-node tools/import-discord-notes.mjs C:\path\to\mee6.json
-```
-
-The command uses the first configured admin as the importing account. If a
-conversation export has multiple human authors, pass `--author-id YOUR_ID`.
-It downloads only HTTPS files from Discord's attachment CDN and image/video
-files from Tenor/Giphy, follows only approved-CDN redirects, and limits each file
-to 100 MB. Successful files are served
-through an admin-only download route with `no-store` and `nosniff`; originals
-stay unchanged in Discord. Unavailable files retain their original links and
-are counted in a private import report under `.marquee-notes-imports/`.
-Do not commit exports, reports, database files, or archived attachments.
-
-### Away from home
-
-TVs are only offered to visitors on the server's home network, since that's the only network the server can see. Direct visits are judged by their LAN address. Visits through Cloudflare Tunnel are compared with the home network's public IPv4 address and IPv6 /64, which the server looks up every 10 minutes through icanhazip.com, Cloudflare or ipify. If no lookup succeeds, casting stays available. Set `CAST_WHEN_AWAY=on` to allow casting from anywhere; `GET /api/network` shows how a request was classified.
-
-### AirPlay and Chromecast from your phone
-
-Wherever you are, the player and the **Play on TV** sheet offer your phone's own AirPlay (Safari) or Chromecast (Chrome on Android) list, so you can use TVs on the network you're on. The TV streams straight from the server at full quality while the phone acts as a remote. With AirPlay, the TV receives the version with the original surround audio.
-
-The TV fetches the video itself and can't sign in to Cloudflare Access, so the player uses signed `/play/` links: each one works for a single file for 12 hours. If Marquee is behind Cloudflare Access, add a second Access application for the path `<your-hostname>/play` with a **Bypass** policy (Include: Everyone). Everything else stays behind your login.
-
-### Smart TVs (DLNA)
-
-Each phone or browser only sees the remote for the TVs it started, so several people can cast to different TVs at once. The TV list shows when someone else is watching a TV, has a button for that TV's remote, and asks for a second tap before taking the TV over.
-
-Most DLNA TVs are discovered automatically; no setup is needed. If yours doesn't appear, add its device description URL (the `LOCATION` it advertises over UPnP) to `DLNA_DEVICES`.
-
-Subtitle support over DLNA varies by manufacturer. Marquee advertises subtitles in the formats used by Samsung, LG and Sony.
-
-### Apple TV
-
-```bash
-pip install pyatv
-atvremote wizard      # pair once with each Apple TV
-```
-
-If the server runs as a scheduled task and can't find `atvscript`, set its full path in `ATVSCRIPT`. AirPlay can't display external subtitle files, so subtitles are available on Apple TV only through the phone or browser player.
-
-### House: reports from your Linux machines
-
-`agents/marquee-house` is a small bash script for each Linux machine at home (needs `curl` and `jq`). It reports disk space, failed services, pending updates (from the waybar update counter's cache), battery, Secure Boot state and the last backup, and only talks to the server on the home network: setup remembers the router's MAC address and nothing is sent anywhere else. On the server, the reports are only accepted with `HOUSE_TOKEN` **and** straight from the LAN; requests through Cloudflare are refused even with the token.
-
-```bash
-# on each machine, at home (HOUSE_TOKEN = the same value as in the server's .env)
-install -m755 agents/marquee-house ~/.local/bin/
-install -m644 agents/marquee-house.{service,timer} ~/.config/systemd/user/
-marquee-house setup http://<server-ip>:8080 <HOUSE_TOKEN>
-systemctl --user enable --now marquee-house.timer
-```
-
-For a status-bar dot, `marquee-house status` prints waybar JSON (`"return-type": "json"`); it hides itself away from home.
-
-The same token reads House → Sharing as JSON from the home network: `curl -H "X-Marquee-Token: $HOUSE_TOKEN" http://<server-ip>:8080/api/house/load` (add `?hours=24` for a day of history). Archfleet's server view uses it.
-
-### House: turn the PC on, and pick Linux or Windows
-
-The **Power** section of the House tab wakes a dual-boot (GRUB) PC with Wake-on-LAN and boots it into the system you tap, or restarts it into another one while it's on.
-
-A PC that's off can't be told what to boot, so Linux decides on the way up. GRUB always starts Linux. `marquee-house boot`, a root timer on the PC, asks the server right after boot (and every 30 s after that) whether a different system was picked. If one was, it sets GRUB's one-shot next entry with `grub-reboot`, the same thing a "reboot to Windows" menu does, and restarts. Waking into Windows therefore passes through Linux for a few seconds. The same check carries **Restart into…** while the PC is on, tells the server the PC's MAC address and boot menu, and switches Wake-on-LAN on for the wired network card on every boot.
-
-On the PC (Arch, at home, with the user agent above already set up):
-
-```bash
-sudo pacman -S --needed ethtool
-sudo install -m755 agents/marquee-house /usr/local/bin/
-sudo install -m600 ~/.config/marquee-house.env /etc/marquee-house.env
-sudo install -m644 agents/marquee-house-boot.{service,timer} /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now marquee-house-boot.timer
-```
-
-The PC shows up under **Power** within 30 seconds. It also needs:
-
-- **A network cable.** Wake-on-LAN almost never works over Wi-Fi from a powered-off PC.
-- **Wake-on-LAN on in the BIOS/UEFI**, often called *Wake on LAN*, *Power On By PCI-E* or *Resume by PCI-E device*. Turn off *ErP Ready* / *Deep Sleep*: it cuts power to the network card when the PC is off.
-- **GRUB starting Linux by default** (`GRUB_DEFAULT=0`, or `saved` with Linux saved). The card warns you if it doesn't.
-- **On Windows:** Fast Startup off (*Control Panel → Power Options → Choose what the power buttons do*), and in *Device Manager → network adapter → Properties*: *Advanced → Wake on Magic Packet* (and *Shutdown Wake-On-Lan*, if present) enabled, *Power Management → Allow this device to wake the computer* ticked. Windows sets up the card for the next wake whenever it's the one that shuts down.
-
-While the PC is in Windows, Marquee sees it as "Off, or in Windows": Windows doesn't run the agent, so it can't be restarted from Marquee.
-
-### Clips and Discord share links
-
-Set `CLIPS_DIR` and the owner gets a **Clips** tab. Shared clips live under `/c/<token>`: a page with Marquee's player and only that clip (its script and the stylesheet are served at `/c/player.js` and `/c/style.css`), the video itself and a thumbnail. For those links to work for everyone (and for Discord to embed them), let `/c/` past Cloudflare Access, the same way as `/play/`:
-
-Hover over a clip's name to reveal its outline and pencil, then click to rename it.
-On touchscreens the pencil stays visible. Clicking outside the field or pressing
-Enter saves; Escape cancels before a save starts. Errors keep the draft available
-for correction and retry. Names persist across restarts and appear
-in search and shared pages. Original files, clip IDs and existing share links
-stay unchanged. Include `.marquee-clip-titles.json` in server backups.
-
-1. Cloudflare Zero Trust → **Access → Applications → Add an application → Self-hosted**.
-2. Application domain: your Marquee hostname, path `c`.
-3. Policy: action **Bypass**, include **Everyone**. Access applies the most specific path, so the rest of Marquee stays behind your login.
-
-Invite links (`/c/i/<token>`) are covered by the same rule. Shared note links (`/c/n/<token>`) are covered too: link-preview bots such as Discordbot get the note's preview (and its first image at `/c/n/<token>/image`); everyone else is redirected to `/?note=<id>` in the protected app. Only shared clips, shared note previews, open invites and the invite card are reachable there. Links are 96-bit random tokens, unknown or unshared tokens get a 404, and unsharing deletes the shared copy. `https://<your-host>/c/` on its own is an invite card for Marquee: paste that in Discord to get an embed of the site itself, and anyone who clicks it is sent on to the normal (protected) app.
-
-### Invites (Zero Trust email list)
-
-Invites add people to a Zero Trust **email list**; your Marquee application's policy allows everyone in it.
-
-1. Zero Trust → **Reusable components → Lists → Create list**: name *Marquee users*, type **Emails**, and add everyone who already has access (yourself included). Save, and copy the list's **ID** (its details page / URL).
-2. Zero Trust → **Access controls → Applications** → your Marquee app → its **Allow** policy → Include → **Emails in list** (the selector may be called *Email list*) → *Marquee users*. Your existing email rules can stay.
-3. Cloudflare dashboard → **My Profile → API Tokens → Create Token → Custom token**: permission **Account · Zero Trust · Edit**, limited to your account.
-4. `.env`: `CF_API_TOKEN`, `CF_ACCOUNT_ID` (dashboard → any domain → Overview, right column) and `CF_ACCESS_LIST_ID`. Restart Marquee.
-5. The `/c/` bypass above must be in place: the invite page has to open for someone who can't sign in yet.
-
-In the Activity tab: **Invite someone** (optionally with a note such as "for Leo") copies a link. It works once and expires after `INVITE_DAYS`. The person opens it, enters the email they'll sign in with and is sent to Marquee, where Cloudflare's login page lets them pick a login method; with *One-time PIN* enabled anyone with an email address can sign in, and Google etc. work when the account uses that same address. Everyone with access is listed with a **Remove** button; owners (`ADMIN_EMAILS`) can't be removed there. Only the one address is added or removed; nothing else in the list or the policy changes.
-
-### FlareSolverr
-
-1337x sometimes places its pages behind a Cloudflare check. Marquee first tries each mirror in turn; if all of them are blocked, it can route the request through FlareSolverr.
-
-1. Download the latest release from the [FlareSolverr releases page](https://github.com/FlareSolverr/FlareSolverr/releases) and run it.
-2. Set `FLARESOLVERR_URL=http://localhost:8191`.
-
-The first search after a while takes a few seconds while the check is solved; later requests reuse the clearance.
-
-## Running at startup (Windows)
-
-`setup-autostart.ps1` registers a scheduled task that starts Marquee at boot, before anyone signs in, and restarts it if it exits.
-
-```powershell
-# From the project folder, in an elevated PowerShell
-powershell -ExecutionPolicy Bypass -File .\setup-autostart.ps1
-```
-
-| Script | Purpose |
+| Setting | Purpose |
 | --- | --- |
-| `setup-autostart.ps1` | Registers and starts the `Marquee` scheduled task. |
-| `restart-marquee.ps1` | Restarts the task and prints which features are enabled. |
-| `start-marquee.cmd` | Runs the server in a restart loop; used by the task. |
+| `MEDIA_DIR` | Folder with your films and shows |
+| `TMDB_TOKEN` | Search, posters and episode details |
+| `QBIT_URL`, `QBIT_USER`, `QBIT_PASS` | Downloads through qBittorrent |
+| `OPENSUBTITLES_API_KEY` | Subtitles |
+| `ADMIN_EMAILS` | Owner accounts (with Cloudflare Access) |
+| `PORT`, `HOST`, `DATA_DIR` | Where it listens and keeps its state |
 
-Output is written to `logs/marquee.log`.
+Every setting: [docs/configuration.md](docs/configuration.md).
 
-Restarting ends active Watch Together rooms. Downloads run in qBittorrent and carry on regardless. A conversion in progress is stopped together with the server (`restart-marquee.ps1` also stops any ffmpeg Marquee started) and starts again from the beginning shortly after the server is back; the MP4 is written under a temporary name and only renamed once complete, so an interrupted conversion never leaves a broken file, and leftover temporary files are cleaned up automatically. Subtitles waiting for downloads and subtitle timing checks also pick up where they left off.
+## Platforms
 
-To remove the task:
+Windows 10/11, Debian/Ubuntu, Fedora, Arch, macOS (Intel and Apple silicon), Raspberry Pi 4/5 (64-bit),
+Docker, Unraid, Synology, TrueNAS SCALE, Proxmox LXC and WSL2. Guides: [docs/install/](docs/install/README.md).
 
-```powershell
-Unregister-ScheduledTask -TaskName Marquee -Confirm:$false
+CI runs the tests and a start-up check on Ubuntu, Windows and macOS with Node.js 22.16 and 24, and
+builds and starts the Docker image. The NAS, Raspberry Pi, Proxmox and WSL2 guides follow those
+platforms' standard procedures and haven't been verified on that hardware.
+
+## Security model
+
+Marquee has no login screen of its own. On your home network everyone shares one account; personal
+accounts come from an authenticating proxy, normally Cloudflare Access. Marquee believes identity
+headers only from trusted proxies (by default, this machine) or with a verified Access token.
+
+**Don't expose Marquee's port to the internet.** For remote access use Tailscale, Cloudflare Tunnel
+with Access, or a reverse proxy that requires sign-in: [docs/remote-access.md](docs/remote-access.md).
+To report a vulnerability, see [SECURITY.md](SECURITY.md).
+
+## Documentation
+
+- [Installation](docs/install/README.md) and [upgrading, backups and rollback](docs/upgrading-and-backups.md)
+- [Configuration reference](docs/configuration.md)
+- [Integrations](docs/integrations.md): TMDB, qBittorrent, OpenSubtitles, ffmpeg, TVs, House, Clips, Invites
+- [Remote access and security](docs/remote-access.md)
+- [Hardware acceleration](docs/hardware-acceleration.md)
+- [How it works](docs/architecture.md), including the HTTP API
+- [Troubleshooting](docs/troubleshooting.md)
+- [Changelog](CHANGELOG.md)
+
+## Development
+
+```sh
+npm test                       # node --test, no dependencies to install
+node server.js                 # run from the checkout
+node scripts/ci/smoke.mjs      # setup, start, health check and clean stop in a temp folder
 ```
 
-## How it works
-
-### Playback
-
-The Library refreshes automatically while open and after downloads complete or leave the download list. Returning to the page on a phone refreshes it too; unchanged responses preserve the current cards, focus and scroll position.
-
-Videos are streamed with HTTP range requests, so seeking works in every browser and on iOS. Watch progress is stored in the browser, and playback resumes where you left off.
-
-### Conversion
-
-The converter scans the library and finished downloads every two minutes. Any MKV, AVI, WebM, WMV, FLV, TS or MPEG file gets an MP4 copy next to it; once that exists, the library lists the copy instead. H.264 and HEVC video are copied without re-encoding; other codecs are re-encoded. Text subtitles are saved beside the copy as `.srt` files (some TVs refuse MP4s with many subtitle tracks) and image-based subtitles are dropped.
-
-### Browser audio
-
-The player’s **Audio** menu uses the tracks from the browser version actually being played, including any stereo copy conversion added. Browsers that expose a verifiable native audio-track mapping switch directly. Other browsers prepare a separate copy with the chosen audio in AAC and copied video, then switch at the current position while preserving pause, subtitles, volume and fullscreen. Failed preparation keeps the current audio available and offers **Retry**. Audio choices reset for each video. Automatic audio compatibility and timing fixes continue to work; the old manual **Audio out of sync** menu has been replaced.
-
-Output files start with a stereo AAC track, followed by the original tracks, so browsers play them with sound and receivers still get surround. MP4 files downloaded as-is are never modified because qBittorrent may be seeding them; if their audio isn't browser-compatible, a fixed copy is written to `AUDIO_FIX_DIR` and served only to browsers. When you open such a file, it moves to the front of the queue and the player switches to the fixed copy when it's ready.
-
-### Subtitle timing
-
-Subtitles from OpenSubtitles are often made for a different release of the same film, so they can start a few seconds early or late, or slowly drift when the release runs at a different frame rate (23.976 vs 25 fps). After a download, Marquee lines the file up in the background against the first of these it finds:
-
-1. a subtitle track inside the video (or the MKV it was converted from), including the display/clear timings of PGS/DVD bitmap captions,
-2. a subtitle file Marquee extracted from such a track,
-3. the film's audio, by finding where people are talking.
-
-Both subtitle files are turned into on/off signals and compared at every offset up to ten minutes and for the common frame-rate ratios; the best match is applied only when it clearly beats every alternative, otherwise the file is left alone. Checking against a subtitle track takes a second; against the audio, roughly a minute for a feature film. Subtitles OpenSubtitles matched to your exact file are skipped.
-
-The subtitle menu in the player shows the result and has **Undo timing fix**; the original is kept in `cache/subsync/`. **Fix timing** runs the check on demand for subtitles that weren't checked automatically. The **Subtitle offset** buttons (−1 s, −¼ s, +¼ s, +1 s) in the player's subtitle menu and in the TV remote move every line by hand; on a TV the new timing is sent over a moment after the last tap, restarting at the same spot. **Reset offset** puts the lines back. A fix moves or stretches the whole file, so subtitles for a different cut of the film (extra or missing scenes) can't be fully corrected.
-
-Subtitle selection uses the original release's file hash when a converted copy is being played, prefers the matching BluRay/WEB/TV source, and checks episode numbers when choosing a file from a multi-file upload. Identified films are searched by TMDB ID. Existing automatic results are revisited once with the bitmap-aware engine when subtitles are opened; manual offsets and undone fixes are preserved. **Check timing again** is also available after an uncertain result. Bitmap timing requires the original file to still exist; it aligns text subtitles but does not turn subtitle pictures into text. A weak match is left unchanged.
-
-### Browser copies of MP4s
-
-Downloaded MP4s are never modified, since qBittorrent may still be seeding them. When one won't play in browsers, a browser copy is made in `cache/audio/` and played instead; TVs still get the original. That happens when the audio isn't AAC or MP3 or starts out of sync, and when the video won't play in Safari: HEVC labelled `hev1` (relabelled to `hvc1`, which is quick and keeps the quality), 10-bit H.264, AV1 or other codecs (re-encoded to H.264). Opening such a file in the player moves it to the front of the queue, and playback switches to the copy by itself when it's ready.
-
-HEVC episodes keep their HEVC video in the MP4 copy: that's lossless and quick, and TVs, iPhones, Safari and Chrome play it. Firefox (and browsers built on it, like Zen) can't, so those get an H.264 copy, which takes a minute or two per episode. When that happens, the next episodes of the show (`PREPARE_NEXT_EPISODES`, default 2) get their copies made in the background, so the next one starts right away.
-
-### Download: what, not how
-
-The details sheet of a film or show has one Download (smart-download.js, ranking in recommend.js). Preferences are set once in **Settings → Downloads**: a quality profile (Save Space: compact 1080p or 720p; Balanced, the default: good 1080p at sensible sizes; Best Quality: 4K when there is one), the largest download per film or episode, and an audio language. A fixed resolution chosen before profiles existed keeps working until a profile is picked.
-
-- **Films**: already in your library, on the server (it joins your library) or downloading? Nothing new is queued. Otherwise the best match for the title and year is downloaded: 5+ seeders first, remuxes, burned-in subtitles, Dolby Vision without HDR10 and dubs in another language count against, and a release larger than your limit or the free space on the media disk (minus what queued downloads still need, minus 5 GB) is never chosen. No suitable release: the sheet says why, with Try again.
-- **Seasons**: TMDB's aired episodes minus what's already in the library, on the server or in qBittorrent. With three or more missing, a pack of exactly that season (never a multi-season or complete-series bundle) is added; once its file list arrives the episodes you already have are switched off (priority 0), and episodes the pack turns out not to contain are fetched one by one. A pack with nothing new in it is removed again. Fewer missing, or no suitable pack: episode by episode (`SxxExx`, then `1x05` and known aliases like House / House MD, TV category then everywhere). A failed search is retried once; a release qBittorrent rejected isn't picked again for six hours. Episodes that can't be found are listed with **Retry unavailable**.
-- **Episodes in order** (episode-order.js): for a season Marquee downloads, the next unfinished episode in a pack gets qBittorrent's top file priority, and separate episode torrents run one at a time (the rest show as Queued). A stalled episode lets the next one run alongside it (up to three). A finished episode is converted to MP4 straight away, even while the rest of its pack downloads. Pausing, resuming or removing one yourself takes it out of the order.
-- **Advanced options** on a title: an exact resolution (finds nothing rather than another one) and the release list to pick from yourself.
-
-### Shows in the library
-
-Films and shows appear as poster cards, separated into Films and Shows inside each library section. A card shows the next deletion countdown; the Leaving soon shelf collects titles with less than 48 hours left and offers a keep button directly on the card. Opening a film or show puts its countdown and keep controls above the synopsis and seasons. Titles without a countdown say that no automatic deletion is scheduled. Film posters, backdrops and descriptions come from TMDB, matched by title and year and cached in `.marquee-shows.json` (30 days for matches, one day for misses); unavailable artwork falls back to the title.
-
-Episodes are recognised from `S01E05`, `S01E01E02`, `1x05` and `Season 1 Episode 5` in the file name. A file named only `S02E05.mkv` takes the show's name from its folder (`The Bear (2022)/Season 2/`). Episodes are grouped into one show when their names match loosely (case, punctuation and a leading "The" are ignored) or when TMDB resolves them to the same show, so episodes from different releases end up together. TMDB supplies the show's and each season's poster and the episode names; lookups are cached in `.marquee-shows.json` (found shows for 30 days, refreshed weekly for new seasons; unknown names are retried daily). Without TMDB, shows are still grouped by name.
-
-### Finished downloads
-
-With `QBIT_REMOVE_FINISHED=on` (the default), a finished download is removed from qBittorrent within a minute, with its files kept, so it never seeds. Categorized downloads go into `MEDIA_DIR/Movies` or `MEDIA_DIR/TV` (unclassified ones use qBittorrent's default, ideally `MEDIA_DIR/Downloads`), so the video stays in the Library and gets its MP4 copy as usual. A download still waiting for subtitles requested with it is stopped first and removed once they're fetched (at most 2 hours later). Downloads saved outside `MEDIA_DIR` are only stopped, so they stay accessible from Library transfer details. Give a torrent the tag `seed` in qBittorrent to keep it seeding. Once a download is removed, its files count as ordinary library files, so `CONVERT_DELETE_ORIGINAL=on` applies to them.
-
-### Accounts
-
-There's no separate login. Cloudflare Access adds the signed-in email to every request (`Cf-Access-Authenticated-User-Email`) and that email is the account; one is created the first time someone opens Marquee. Visits through the server's local address carry no email and share a "Home network" account. Accounts live in `.marquee.db`, a SQLite database (Node's built-in `node:sqlite`, so still no dependencies): people and their settings, what's in each library, who started each download, and watch progress.
-
-- **One file, many libraries.** A video exists once on disk. "Add to my library" adds it to your list; nothing is copied or downloaded again. A video's identity is its path in `MEDIA_DIR` without the extension, so the MP4 copy and the original count as the same video.
-- **Whose download.** Torrents added through Marquee get the qBittorrent tag `marquee-u<id>` (and a magnet's infohash is recorded). When one finishes, its videos go into that person's library, before the no-seeding cleanup removes the torrent. Torrents added straight in qBittorrent count as the owner's (the first address in `ADMIN_EMAILS`). A whole-season download puts episodes that are already on the server into your library instead of downloading them again.
-- **Already there.** On the first start with accounts, every video already on the server goes into the owner's library as **kept** (no countdown), so nothing that was there gets auto-deleted. Videos copied into `MEDIA_DIR` by hand later are treated the same way.
-- **Auto-delete.** Each video in someone's library has a date it goes: by default 7 days after the download finished (or after it was added from the server). **Keep 7 more days** pushes it back. When the date passes it leaves that person's library, and once it's in nobody's library the file is deleted (with its MP4 copy and subtitles), checked every 10 minutes. A file that's playing is retried later. The owner can change the period (or turn it off), the extension, and how many times a video can be extended, and can exempt someone (**Never auto-delete**) in Settings.
-- **Deleting** takes a video out of your library; the file is only deleted when nobody else has it. The owner can also delete it for everyone.
-- **Privacy.** People only see their own library and downloads. Search tells them a title is on the server, not whose it is. The owner's Settings tab lists everyone with how much they have.
-- **Staying signed in.** How long a sign-in lasts is Cloudflare's setting: Zero Trust → Access → Applications → your Marquee app → **Session duration** (24 hours by default; up to a month). If a sign-in runs out while Marquee is open, it says so and signs back in with one tap.
-
-### Activity
-
-The name chosen in **Settings → Profile** is the default person label in Activity, the access list, download ownership and Watch Together. Activity resolves names when read, so a profile rename also updates older events; email addresses remain searchable and are shown secondarily in the owner's People/access lists. Active watch rooms receive profile-name changes immediately and refresh them on heartbeat/rejoin.
-
-City and country appear beside the OS/browser for people and events, using Cloudflare's `CF-IPCity` and `CF-IPCountry` headers. In the domain's Cloudflare dashboard, go to **Rules → Settings → Managed Transforms** and enable **Add visitor location headers**. Location is approximate (VPNs and mobile carriers can change it), not GPS. No external IP lookup service is called. Old events and direct LAN visits have no inferred location; country-only headers still show the country.
-
-The **Activity** tab shows who has been using Marquee and what they did: downloads started, films watched in the browser, casts to TVs, subtitles fetched and deletions. People are identified by the email they log in to Cloudflare Access with, plus the device and browser; visits through the server's local address show up as "Home network". The tab is only shown to the emails listed in `ADMIN_EMAILS`, and only through the Cloudflare address, since local visits have no email. The last 2,000 entries are kept in `.marquee-activity.jsonl`. Logins themselves (who signed in, when, from where) are in the Cloudflare Zero Trust dashboard under **Logs → Access**.
-
-### Deletion
-
-Deleting a video that belongs to a torrent removes it through qBittorrent, so the torrent stops seeding and no "missing files" errors appear. For multi-file torrents you can delete a single episode (qBittorrent is told not to download it again) or the whole torrent. The MP4 copy, subtitles and audio-fixed copy are deleted too, as are any empty folders left behind.
-
-### Watch Together
-
-Rooms work in the browser player, including fullscreen. Invite URLs are `/?watch=<random token>` and stay behind the existing Cloudflare sign-in. The room grants access to that title without adding it to each guest's library. Up to 12 viewers can join. Casting is outside synchronized playback: leave the room before using a TV receiver.
-
-The server publishes a shared timeline over Server-Sent Events, with heartbeats to keep Cloudflare Tunnel from buffering or closing the connection. Each browser estimates clock offset from low-round-trip-time samples, starts at a shared future time and compensates for message arrival delay. Small drift is corrected with a bounded playback-rate adjustment; larger drift seeks to the shared position. The group pauses when a member buffers or needs an autoplay gesture and resumes when everyone is ready. This reduces skew but does not promise frame-perfect playback on every device or connection. Each viewer streams separately, so server upload bandwidth must cover all viewers.
-
-Only play/pause/seek and readiness enter room state. Caption tracks and manual offsets remain in each viewer's player; party offset buttons do not edit the shared SRT file. The host's departure pauses playback and hands control to a remaining viewer. Dropped viewers have a 20-second reconnect grace period. Rooms are in memory, expire within 24 hours and end when Marquee restarts. Active rooms protect their media against file deletion; normal retention cleanup retries later.
-
-## Project structure
-
-```
-marquee/
-├── server.js             HTTP server, API routes, library, qBittorrent, streaming
-├── env.js                Loads .env before other modules
-├── torrents.js           The Pirate Bay and 1337x search
-├── subtitles.js          OpenSubtitles client and local subtitle files
-├── subsync.js            Automatic subtitle timing
-├── convert.js            Background ffmpeg conversion and audio fixes
-├── shows.js              Groups episodes into shows and seasons (TMDB posters, episode names)
-├── season.js             Whole-season downloads, one episode at a time
-├── cast.js               DLNA and Apple TV casting
-├── network.js            Home-network detection for casting
-├── activity.js           Activity log
-├── house.js              House tab: server health + reports from home machines
-├── clips.js              Clips tab, share links and their public pages (/c/)
-├── invites.js            Invite links → Zero Trust email list (/c/i/)
-├── accounts.js           Accounts (SQLite): people, settings, libraries, auto-delete, watch progress
-├── watch.js              Watch rooms, participants, readiness and the shared playback clock
-├── agents/
-│   ├── marquee-house     Health reporter for Linux machines (+ systemd service/timer)
-│   └── marquee-house-boot.{service,timer}   Root timer for `marquee-house boot` (wake / restart into)
-├── public/
-│   ├── index.html
-│   ├── app.js            Web client
-│   ├── player-audio.js   Audio track labels and verified native track mapping
-│   ├── player-next.js    Safe next-episode ordering, credits-timed autoplay countdown
-│   ├── watch-sync.js     Clock compensation, player synchronization and personal subtitle offsets
-│   └── style.css
-├── .env.example          Configuration template
-├── setup-autostart.ps1
-├── restart-marquee.ps1
-└── start-marquee.cmd
-```
-
-Created at runtime and excluded from Git:
-
-| Path | Contents |
-| --- | --- |
-| `.env` | Your configuration and credentials |
-| `.marquee-convert.json` | Conversion failures and audio checks |
-| `.marquee-subs.json` | Subtitles waiting for downloads to finish |
-| `.marquee-activity.jsonl` | Activity log |
-| `.marquee-subsync.json` | Subtitle timing results |
-| `cache/subsync/` | Subtitles as they were before a timing fix |
-| `.marquee-secret` | Key for signed `/play/` links |
-| `cache/audio/` | Audio-fixed copies of downloaded MP4s |
-| `logs/` | Output from the auto-start task |
-| `.marquee-house.json` | Latest report from each home machine |
-| `.marquee-shows.json` | TMDB lookups for grouping shows: show and season posters, episode names |
-| `.marquee-power.json` | Each dual-boot machine's MAC address and boot menu, for waking it |
-| `.marquee-shares.json` | Shared clips (token → clip) |
-| `.marquee-invites.json` | Invite links and who used them |
-| `.marquee.db` | Accounts: people and their settings, each library, who started each download, watch progress, server rules |
-| `cache/clips/` | Clip thumbnails and the Discord-friendly copies of shared clips |
-| `CLIPS_DIR/.deleted/` | Deleted clips, erased automatically after 30 days (move a file back out to restore it) |
-
-## API
-
-The web client uses a JSON API that can also be scripted. `<kind>` is `lib` for library files or `dl` for downloads.
-
-| Method | Route | Description |
-| --- | --- | --- |
-| `GET` | `/api/status` | Enabled features |
-| `GET` | `/api/activity` | Recent activity and people (`ADMIN_EMAILS` only) |
-| `POST` | `/api/watch` | Host a library title (`{ id, clientId, position }`), returns a private room token |
-| `GET` | `/api/watch/clock` | Server clock sample for latency compensation |
-| `GET` | `/api/watch/<token>/preview` | Title and host for the join screen (normal sign-in required) |
-| `POST` | `/api/watch/<token>/join`, `/heartbeat`, `/control`, `/leave` | Room membership and playback; all use `clientId`, control adds `{ action, position }`, heartbeat adds `{ ready, buffering, blocked, rtt }` |
-| `GET` | `/api/watch/<token>/events?clientId=` | Immediate timeline updates over SSE (joined viewers only) |
-| `GET` | `/api/watch/<token>/play-link?clientId=` | Browser stream for the room's title (joined viewers only) |
-| `GET` | `/api/trending`, `/api/search?q=` | TMDB titles |
-| `GET` | `/api/library` | Your library (`items`, with `expiresAt`), and what else is on the server (`server`) |
-| `POST` | `/api/library/add` | Add videos already on the server to your library (`{ ids }`) |
-| `POST` | `/api/library/extend` | Keep videos longer (`{ ids }`) |
-| `GET`, `POST` | `/api/library/identify` | Owner only: search film candidates (`?id=&q=`) or assign a TMDB identity to one file (`{ id, tmdbId }`) |
-| `GET` | `/api/library/delete-info?id=` | What deleting an item would remove, and how many others have it |
-| `POST` | `/api/library/delete` | Remove from your library; deletes the file or torrent when nobody else has it (`{ id, scope: "file" \| "torrent", everyone? }`) |
-| `GET`, `POST` | `/api/me` | You and your settings (`{ name?, theme?, subLang?, quality?, startView?, librarySort? }`) |
-| `GET`, `POST` | `/api/me/progress` | Where you stopped watching (`{ ref, time, duration }`; `time: null` = finished) |
-| `GET`, `POST` | `/api/admin/settings` | Auto-delete rules and defaults (`ADMIN_EMAILS` only) |
-| `GET` | `/api/admin/users` | Everyone who has used Marquee, with their library size (`ADMIN_EMAILS` only) |
-| `POST` | `/api/admin/users/<id>` | `{ canDownload?, keep? }` (`ADMIN_EMAILS` only) |
-| `GET` | `/api/downloads` | Your qBittorrent downloads (`?all=1`: everyone's, owner only) |
-| `POST` | `/api/downloads/add` | Add a magnet or `.torrent` URL (`{ link, subs?, movieId? }`); `movieId` carries the selected TMDB film identity |
-| `POST` | `/api/downloads/smart` | Download a film or season (`{ type: "movie" \| "tv", tmdbId, season?, episodes?, profile?, quality? }`), returns `{ id }` |
-| `GET` | `/api/downloads/smart/:id` | That command's state: `running`, then `outcome` (`started`, `partial`, `have`, `queued`, `none`) with a plain `message` and `unavailable` episodes |
-| `GET` | `/api/torrents/search?q=&type=` | Torrent search (`type`: `movie`, `tv` or `all`) |
-| `GET` | `/api/torrents/magnet?ref=` | Magnet link for a 1337x result |
-| `GET` | `/api/convert` | Conversion progress |
-| `GET` | `/api/subs/langs` | Subtitle languages for a file (`kind`, `id`) or title (`q`, `type`) |
-| `POST` | `/api/subs/fetch` | Download subtitles (`{ kind, id, lang }`) |
-| `GET` | `/api/subs/file/<kind>/<id>/<lang>.vtt` | Subtitles as WebVTT (`.srt` also available) |
-| `GET` | `/api/subs/sync` | Timing check state for saved subtitles (`kind`, `id`, `lang`) |
-| `POST` | `/api/subs/sync` | Fix, undo or shift subtitle timing (`{ kind, id, lang, action: 'sync' \| 'undo' \| 'shift', seconds }`) |
-| `GET` | `/api/stream/<kind>/<id>` | Video stream with range support |
-| `GET` | `/api/play-link?kind=&id=&variant=` | Signed `/play/` link (`variant`: `browser` or `tv`). Optional `audio` stream index + `audioSource` fingerprint prepares a selected-audio browser variant; 202 while preparing, 200 when ready. |
-| `GET` | `/play/...` | Video stream through a signed link; works without signing in |
-| `GET` | `/api/cast/devices`, `/api/cast/sessions` | TVs and what's playing |
-| `GET` | `/api/network` | Whether the request is from the home network, for troubleshooting |
-| `POST` | `/api/cast/play` | Start playback on a TV |
-| `GET` | `/api/house` | Server health and home machines (`ADMIN_EMAILS` only) |
-| `POST` | `/api/house/report` | A machine's report (`X-Marquee-Token`, home network only) |
-| `GET` | `/api/house/summary` | Issues, machines at home and the server's uptime, free space and services, for status bars and the MAGI panel (`X-Marquee-Token`, home network only) |
-| `POST` | `/api/house/boot` | A dual-boot machine's boot menu and network card; the reply says whether to restart, and into what (`X-Marquee-Token`, home network only) |
-| `POST` | `/api/house/power` | `{ host, action: "wake" \| "restart", entry? }`: wake a machine into a boot entry, or restart it (`ADMIN_EMAILS` only) |
-| `GET` | `/api/clips` | Clips and their share state (`ADMIN_EMAILS` only) |
-| `POST` | `/api/clips/<id>/rename` | Set a display name (`{ title, previousTitle? }`); keeps files and share links unchanged (`ADMIN_EMAILS` only) |
-| `GET` | `/api/clips/<id>/thumb.jpg`, `/api/clips/<id>/video` | Thumbnail and video (`ADMIN_EMAILS` only) |
-| `POST` | `/api/clips/<id>/share`, `/api/clips/<id>/unshare` | Create or remove a public link (`ADMIN_EMAILS` only) |
-| `GET` | `/api/clips/<id>/keyframes` | Duration and keyframe times, for the editor (`ADMIN_EMAILS` only) |
-| `POST` | `/api/clips/<id>/trim` | Lossless edit (`{ segments: [{ start, end }, …], deleteOriginal? }`, or a single `start`/`end`) into `Trimmed Clips/<Game>/` (`ADMIN_EMAILS` only) |
-| `POST` | `/api/admin/notes/<id>/share`, `/api/admin/notes/<id>/unshare` | Make or remove a note's preview link; returns `{ note, url }` (`ADMIN_EMAILS` only) |
-| `POST` | `/api/clips/<id>/delete` | Delete a clip: link and copies removed, file moved to `CLIPS_DIR/.deleted/` for 30 days (`ADMIN_EMAILS` only) |
-| `GET` | `/api/access` | Who can sign in + invite links (`ADMIN_EMAILS` only) |
-| `POST` | `/api/access/invite`, `/api/access/invite/<id>/revoke`, `/api/access/remove` | Make or cancel an invite, remove someone's access (`ADMIN_EMAILS` only) |
-| `GET`, `POST` | `/c/i/<token>` | Public: the invite page and its email form |
-| `GET` | `/c/`, `/c/<token>`, `/c/<token>/video.mp4`, `/c/<token>/thumb.jpg`, `/c/player.js`, `/c/style.css` | Public: invite card and shared clips (a player page for one clip), with OpenGraph tags for Discord |
-| `GET` | `/c/n/<token>`, `/c/n/<token>/image` | Public: a shared note's preview for link-preview bots; people are redirected to `/?note=<id>` |
-
-## Security
-
-Marquee has no user accounts or authentication. Anyone who can reach the server can browse, download and **delete** files. Run it only on a trusted home network and do not expose its port to the internet. For remote access, use a VPN such as WireGuard or Tailscale.
-
-Keep `.env` private: it contains your API keys and passwords, and it is excluded by `.gitignore`.
-
-`/c/` is public by design (see *Clips and Discord share links*): it serves only clips you shared, previews of notes you shared (people who click those are sent to the protected app), open invite links and the invite card, nothing else. An invite link lets whoever has it add one email to your access list, once; send it privately. House reports and boot checks need `HOUSE_TOKEN` and are refused when they arrive through Cloudflare. A boot check only ever restarts into an entry from the PC's own GRUB menu.
-
-## Troubleshooting
-
-| Problem | Solution |
-| --- | --- |
-| A feature shows as `off` at startup | Check the matching variable in `.env`, then restart. `GET /api/status` shows what's enabled. |
-| No sound in the browser | The file uses Dolby or DTS audio. Keep the player open; it switches to a fixed copy once it's ready. Requires ffmpeg. |
-| TV not listed | Make sure it's on the same network and has DLNA/media sharing enabled, or add it to `DLNA_DEVICES`. |
-| TV plays but shows the wrong server address | Set `SERVER_IP` to the server's LAN address. |
-| "Every 1337x mirror is showing a Cloudflare check" | Set up FlareSolverr. The Pirate Bay results keep working meanwhile. |
-| "Today's subtitle download limit is used up" | Add `OPENSUBTITLES_USER` and `OPENSUBTITLES_PASS`, or wait for the daily reset. |
-| Apple TV asks for pairing | Run `atvremote wizard` on the server. |
-| Delete fails with "file is in use" | Stop playback in the browser and on any TV, then try again. |
+The server is plain ES modules in `src/`, the web app plain JavaScript in `public/`; there is no
+build step.
 
 ## Disclaimer
 
-Marquee is a media management tool. The torrent search queries third-party sites and does not host, index or distribute any content. Downloading copyrighted material without permission is illegal in many countries. You are responsible for how you use this software and for complying with the laws that apply to you.
-
-### Using a separate media drive (Windows)
-
-Set `MEDIA_DIR=E:\Media` in Marquee's `.env`, and set qBittorrent's default save path to `E:\Media\Downloads`. Restart Marquee. For **new** downloads, Marquee creates `E:\Media\Movies` and `E:\Media\TV` when needed and sends their absolute paths to qBittorrent's per-torrent `savepath` field. Episode-by-episode batches always use `TV`; downloads from an identified film or TV page use the corresponding folder; recognized episode/season filenames are also treated as TV. Generic magnets and unclassified torrents use qBittorrent's default save path. All three folders are scanned by the existing library scanner.
-
-This change **does not move existing files**. For existing torrents still registered in qBittorrent, use its **Set Location** command to relocate them safely and preserve seeding. Move only torrents that are finished and not actively checking/downloading, and let qBittorrent complete any move before changing another setting. For older media no longer managed by qBittorrent, you may move files to `Movies` and `TV` manually; Marquee scans both. Moving existing files changes their paths/IDs and may affect watch progress and existing library ownership entries, so back up Marquee's application data first and test a few files before migrating the rest. Avoid making duplicate copies when storage is limited.
+Marquee is a media management tool. Its torrent search queries third-party sites and does not host,
+index or distribute content. Downloading copyrighted material without permission is illegal in many
+countries; you are responsible for how you use this software.

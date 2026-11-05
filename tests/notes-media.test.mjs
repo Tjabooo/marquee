@@ -4,8 +4,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { Readable } from 'node:stream';
-import { NotesStore } from '../notes.js';
-import { NotesUploads, UPLOAD_LIMIT, UPLOAD_CHUNK, mediaType } from '../notes-media.js';
+import { NotesStore } from '../src/notes.js';
+import { NotesUploads, UPLOAD_LIMIT, UPLOAD_CHUNK, mediaType } from '../src/notes-media.js';
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aK1cAAAAASUVORK5CYII=','base64');
 const request = (chunks) => Object.assign(Readable.from(chunks),{headers:{}});
 

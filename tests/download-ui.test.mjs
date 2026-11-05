@@ -18,7 +18,7 @@ test('title sheets offer Play / Download, never a release list, quality rail or 
 });
 
 test('a film downloads with one press; a show uses the minimal season panel', () => {
-  assert.match(ui, /get\.addEventListener\('click', start\)/);
+  assert.match(ui, /get\.addEventListener\('click', async \(\) => \{[\s\S]*?return start\(\);/);
   assert.match(ui, /runDownloadCommand\(body\(\)\)/);
   assert.match(ui, /api\('\/api\/downloads\/smart', jsonPost\(body\)\)/);
   for (const text of ['\'Season\'', '\'Quality\'', 'Smart selection chooses a suitable season download and skips episodes you already have.',

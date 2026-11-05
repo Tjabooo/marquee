@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { locationOf, initActivity, seen, record, report } from '../activity.js';
+import { locationOf, initActivity, seen, record, report } from '../src/activity.js';
 
 test('activity stores city/country alongside device, without an external geolocation lookup', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'marquee-activity-'));

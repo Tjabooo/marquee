@@ -1,28 +1,29 @@
-# Secrets
+# Settings and secrets
 .env
+.env.*
+!.env.example
 
-# Runtime data
-logs/
-cache/
-.marquee-convert.json
-.marquee-subs.json
-.marquee-subsync.json
-.marquee-activity.jsonl
-.marquee-secret
-.marquee-subfiles.json
-.marquee-house.json
-.marquee-power.json
-.marquee-shares.json
-.marquee-clip-titles.json
-.marquee-credits.json
-.marquee-invites.json
-.marquee-shows.json
+# Runtime state (kept in DATA_DIR, which defaults to this folder)
 .marquee.db
 .marquee.db-*
+.marquee-*.json
+.marquee-*.jsonl
+.marquee-*.tmp
+.marquee-*.json.tmp
+.marquee-secret
+.marquee-stopped
 .marquee-notes-files/
 .marquee-notes-imports/
+data/
+logs/
+cache/
 *.subsync-tmp
-*.marquee-tmp.mp4
+*.marquee-tmp.*
+
+# Setup and installer leftovers
+.setup-state.json
+.update-*/
+.backup-*/
 
 # Dependencies and environments
 node_modules/
@@ -33,7 +34,3 @@ venv*/
 .DS_Store
 Thumbs.db
 desktop.ini
-.marquee-load.json
-.marquee-screentime.json
-.marquee-screentime.json.tmp
-.marquee-episode-order.json 

@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }} · Node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: ['22.16.0', '24']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      # ffmpeg/Tesseract-dependent tests skip themselves elsewhere; Linux runs them.
+      - name: Install ffmpeg and Tesseract (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -q && sudo apt-get install -y -q ffmpeg tesseract-ocr
+      - run: npm test
+      - name: Setup, start, health check and clean stop
+        run: node scripts/ci/smoke.mjs
+      - name: Check PowerShell scripts parse
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem -Recurse -Include *.ps1,*.psm1 -Path scripts, tools, install.ps1
+          foreach ($f in $files) {
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$null, [ref]$errors) | Out-Null
+            if ($errors) { $errors | ForEach-Object { Write-Error "$($f.Name): $_" }; exit 1 }
+          }
+          Write-Host "$($files.Count) scripts parse"
+      - name: Check shell scripts
+        if: runner.os == 'Linux'
+        run: |
+          sh -n install.sh
+          shellcheck -S warning install.sh agents/marquee-house
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: ghcr.io/tjabooo/marquee:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Compose files are valid for every profile
+        run: |
+          for p in "" qbittorrent vpn flaresolverr; do docker compose ${p:+--profile $p} config -q; done
+          docker compose -f docker-compose.yml -f docker/compose.nvidia.yml config -q
+      - name: Start with Compose and wait for the healthcheck
+        env:
+          MARQUEE_VERSION: ci
+          PUID: '1001'
+          PGID: '1001'
+        run: |
+          mkdir -p data media && sudo chown 1001:1001 data media
+          docker compose up -d marquee
+          for i in $(seq 1 30); do
+            s=$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose ps -q marquee)")
+            [ "$s" = healthy ] && break; sleep 3
+          done
+          docker compose logs marquee
+          [ "$s" = healthy ] || { echo "container is $s"; exit 1; }
+          curl -fsS http://127.0.0.1:8080/api/health
+          test -f data/.marquee.db
+          docker compose exec -T marquee id -u | grep -qx 1001
+          docker compose exec -T marquee node setup.js doctor --offline
+          docker compose stop -t 20 marquee
+          test "$(docker inspect -f '{{.State.ExitCode}}' "$(docker compose ps -aq marquee)")" = 0

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { matchesRelease } from '../release-match.js';
+import { matchesRelease } from '../src/release-match.js';
 
 // Mirrors the server's release-name structure; independent from torrent provider/network.
 function parseName(name) {

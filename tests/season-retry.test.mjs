@@ -1,8 +1,8 @@
 // Episode-by-episode recovery inside the unified Download job (smart-download.js).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { startSmartJob, smartJob } from '../smart-download.js';
-import { episodesIn } from '../season.js';
+import { startSmartJob, smartJob } from '../src/smart-download.js';
+import { episodesIn } from '../src/season.js';
 
 const parseName = (name) => {
   const match = /^(.*?)\.S(\d{2})E(\d{2})/i.exec(name);

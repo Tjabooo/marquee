@@ -4,7 +4,7 @@
 //
 // Sharing gives a clip an unguessable link, /c/<token>. That page, its video and its thumbnail
 // are the only public things on the server: they work without Cloudflare Access once /c/ is
-// bypassed there (see README). The page is Marquee's player with only that clip in it, so anyone
+// bypassed there (see docs/remote-access.md). The page is Marquee's player with only that clip in it, so anyone
 // with the link can watch it (and nothing else); in Discord the link shows the clip's thumbnail.
 // The clips are AV1 with separate game / friends / mic tracks, which not every browser can play,
 // so sharing makes a full-resolution, near-lossless H.264 copy with the tracks mixed into one.
@@ -264,7 +264,7 @@ const hasExactTools = () => (exactTools ??= Promise.all([run(FFMPEG, ['-hide_ban
   .then(([enc, dec]) => /\blibsvtav1\b/.test(enc) && /\blibdav1d\b/.test(dec)).catch(() => false));
 const canCutExactly = (v) => v?.codec_name === 'av1' && ['yuv420p', 'yuv420p10le'].includes(v.pix_fmt) && /^1\/\d+$/.test(v.time_base || '');
 // ---------- audio tracks ----------
-// clip-replay (magi) records four tracks: 1 everything mixed (what browsers, Discord and phones
+// A typical replay recorder writes four tracks: 1 everything mixed (what browsers, Discord and phones
 // play), 2 game, 3 friends (Discord), 4 you (mic). Older clips have three tracks and no mix.
 // Copies Marquee makes name their tracks, so the mix is still found when there are fewer than four.
 const RECORDER_TRACKS = ['Mix', 'Game', 'Friends', 'You'];
@@ -620,12 +620,12 @@ export async function handlePublic(req, res, url, { sendVideo, previews }) {
   }
   // The shared clip player: Marquee's own stylesheet and a player script for one clip.
   if (p === '/c/style.css' || p === '/c/player.js' || p === '/c/seek-preview.js') {
-    const file = new URL({ '/c/style.css': './public/style.css', '/c/player.js': './public/clip-share.js', '/c/seek-preview.js': './public/seek-preview.js' }[p], import.meta.url);
+    const file = new URL({ '/c/style.css': '../public/style.css', '/c/player.js': '../public/clip-share.js', '/c/seek-preview.js': '../public/seek-preview.js' }[p], import.meta.url);
     try { return send(200, p.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/javascript; charset=utf-8', await fs.promises.readFile(file), { 'Cache-Control': 'no-cache' }); }
     catch { return send(404, 'text/plain', 'Not found.'); }
   }
   if (p === '/c/marquee.png') {
-    const file = new URL('./public/og-marquee.png', import.meta.url);
+    const file = new URL('../public/og-marquee.png', import.meta.url);
     try { return send(200, 'image/png', await fs.promises.readFile(file)); } catch { return send(404, 'text/plain', 'Not found.'); }
   }
 

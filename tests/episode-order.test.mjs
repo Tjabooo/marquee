@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { planEpisodeOrder, TOP, NORMAL } from '../episode-order.js';
+import { planEpisodeOrder, TOP, NORMAL } from '../src/episode-order.js';
 
 const file = (index, ep, progress = 0, priority = NORMAL) => ({ index, name: `Show.S01/Show.S01E${String(ep).padStart(2, '0')}.1080p.mkv`, progress, priority });
 const single = (hash, ep, extra = {}) => ({ hash, name: `Show.S01E${String(ep).padStart(2, '0')}.1080p.WEB`, state: 'downloading', progress: 0, files: [{ index: 0, name: `Show.S01E${String(ep).padStart(2, '0')}.mkv`, progress: 0, priority: 1 }], ...extra });

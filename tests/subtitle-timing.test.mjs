@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { bitmapCues } from '../subsync.js';
-import { selectSubtitle } from '../subtitles.js';
+import { bitmapCues } from '../src/subsync.js';
+import { selectSubtitle } from '../src/subtitles.js';
 
 test('bitmap subtitle pictures have usable display times even with indefinite duration', () => {
   const cues = bitmapCues([
@@ -45,7 +45,7 @@ test('subtitle search uses the selected movie ID rather than an ambiguous title'
   const requested = [];
   globalThis.fetch = async (url) => { requested.push(new URL(url)); return { ok: true, status: 200, json: async () => ({ data: [], total_pages: 1 }) }; };
   try {
-    const isolated = await import('../subtitles.js?identity-test');
+    const isolated = await import('../src/subtitles.js?identity-test');
     await isolated.languagesForTitle({ title: 'Verity', year: 2026, tmdbId: 1812260 });
     assert.equal(requested[0].searchParams.get('tmdb_id'), '1812260');
     assert.equal(requested[0].searchParams.has('query'), false);

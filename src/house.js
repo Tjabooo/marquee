@@ -43,7 +43,7 @@ export function initHouse({ dataDir, mediaDir, clipsDir, qbitCheck }) {
 
 export const houseConfigured = () => Boolean(TOKEN);
 
-// "magi" for a request from the desktop: the address its last report or boot poll came from.
+// "desktop" for a request from that machine: the address its last report or boot poll came from.
 export function hostForIp(ip) {
   ip = clean(ip);
   if (!ip) return null;
@@ -430,7 +430,7 @@ export async function houseReport() {
   return { checkedAt: Date.now(), server, machines: list, power: powerList, issues, agents: houseConfigured() };
 }
 
-// For the machines themselves (token + LAN only): waybar's house dot and the MAGI panel on the desktop.
+// For the machines themselves (token + LAN only): status bars and desktop panels (e.g. a Waybar module).
 export async function houseSummary() {
   const r = await houseReport();
   return {

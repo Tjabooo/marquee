@@ -65,9 +65,10 @@ async function fixture(t, { authenticated = false, missingMedia = false, inspect
   const reserve = net.createServer(); await new Promise((r) => reserve.listen(0, '127.0.0.1', r));
   const port = reserve.address().port; await new Promise((r) => reserve.close(r));
   for (const name of await fs.readdir(root)) if (name.endsWith('.js') || name === 'package.json') await fs.copyFile(path.join(root, name), path.join(app, name));
-  let source = await fs.readFile(path.join(app, 'server.js'), 'utf8');
+  await fs.cp(path.join(root, 'src'), path.join(app, 'src'), { recursive: true });
+  let source = await fs.readFile(path.join(app, 'src', 'server.js'), 'utf8');
   if (inspectCandidates) source = source.replace("  if (p === '/api/library') {", "  if (p === '/api/test-candidates') return sendJson(res, 200, { items: await conversionCandidates() });\n  if (p === '/api/library') {");
-  await fs.writeFile(path.join(app, 'server.js'), source.replace('https://api.themoviedb.org/3', mockBase));
+  await fs.writeFile(path.join(app, 'src', 'server.js'), source.replace('https://api.themoviedb.org/3', mockBase));
   await fs.cp(path.join(root, 'public'), path.join(app, 'public'), { recursive: true });
   const child = spawn(process.execPath, ['server.js'], { cwd: app, env: {
     PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, WINDIR: process.env.WINDIR, TEMP: process.env.TEMP, TMP: process.env.TMP,
@@ -224,13 +225,14 @@ test('conversion waits for a trustworthy torrent inventory and never processes d
   state.name = 'Example.Show.S01E01.mp4';
   const full = await file(state.name); const old = new Date(Date.now() - 600000); await fs.utimes(full, old, old);
   state.down = true;
-  assert.deepEqual((await request('/api/test-candidates')).items, []);
+  // null = inventory unavailable: the converter skips the whole scan, including cache cleanup.
+  assert.equal((await request('/api/test-candidates')).items, null);
   state.down = false;
   state.torrents = [{ hash: HASH, name: state.name, progress: 0.5, state: 'downloading', save_path: media, content_path: full }];
   state.files = [{ name: state.name, progress: 0.5, size: 10, priority: 1 }];
   assert.deepEqual((await request('/api/test-candidates')).items, []);
   state.filesFail = true;
-  assert.deepEqual((await request('/api/test-candidates')).items, []);
+  assert.equal((await request('/api/test-candidates')).items, null);
   state.filesFail = false; state.files[0].progress = 1; state.files[0].priority = 0;
   state.torrents[0].progress = 1; state.torrents[0].state = 'stoppedUP';
   assert.deepEqual((await request('/api/test-candidates')).items, []);

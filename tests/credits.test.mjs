@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { execFile } from 'node:child_process';
-import { creditsStart, creditsFor, initCredits, fingerprint, matchEndings, RATE, HOP } from '../credits.js';
+import { creditsStart, creditsFor, initCredits, fingerprint, matchEndings, RATE, HOP } from '../src/credits.js';
 
 const info = (title, start = '1900') => ({ format: { duration: '2100' }, chapters: [{ start_time: start, tags: { title } }] });
 

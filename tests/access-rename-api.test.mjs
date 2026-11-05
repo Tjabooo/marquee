@@ -12,8 +12,9 @@ test('owners rename access-list accounts, including future visitors, without cha
   const app = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-access-rename-'));
   for (const name of await fs.readdir(root)) if (name.endsWith('.js') || name === 'package.json') await fs.copyFile(path.join(root, name), path.join(app, name));
   await fs.cp(path.join(root, 'public'), path.join(app, 'public'), { recursive: true });
+  await fs.cp(path.join(root, 'src'), path.join(app, 'src'), { recursive: true });
   // Only the remote access list is replaced. No real Cloudflare calls or accounts.
-  await fs.writeFile(path.join(app, 'invites.js'), `
+  await fs.writeFile(path.join(app, 'src', 'invites.js'), `
     export const initInvites = () => {};
     export const invitesConfigured = () => true;
     export const members = async () => ['owner@names.test', 'member@names.test', 'future@names.test'];

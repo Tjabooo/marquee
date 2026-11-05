@@ -6,7 +6,7 @@ import os from 'node:os';
 import net from 'node:net';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { NotesStore } from '../notes.js';
+import { NotesStore } from '../src/notes.js';
 
 test('notes API denies non-admins and shares messages safely between admins', { timeout: 20000 }, async () => {
   const root = fileURLToPath(new URL('../', import.meta.url));
@@ -14,6 +14,7 @@ test('notes API denies non-admins and shares messages safely between admins', { 
   const fileDir = await fs.mkdtemp(path.join(os.tmpdir(),'marquee-notes-external-'));
   for (const name of await fs.readdir(root)) if (name.endsWith('.js') || name === 'package.json') await fs.copyFile(path.join(root, name), path.join(app, name));
   await fs.cp(path.join(root, 'public'), path.join(app, 'public'), { recursive: true });
+  await fs.cp(path.join(root, 'src'), path.join(app, 'src'), { recursive: true });
   const fileId = 'a'.repeat(64), privateFile = 'Private attachment fixture';
   const files = new NotesStore(app,{fileDir}); await fs.mkdir(files.fileDir, { recursive: true });
   await fs.writeFile(path.join(files.fileDir, `${fileId}.bin`), privateFile);

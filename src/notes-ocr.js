@@ -1,7 +1,8 @@
 // Reads text out of Notes images in the background and stores it as hidden search keywords.
-// Uses Windows' built-in OCR engine through notes-ocr.ps1, so there's nothing to install.
+// Windows uses its built-in OCR engine through notes-ocr.ps1, so there's nothing to install.
+// Elsewhere Tesseract is used when it's installed (TESSERACT sets its path); otherwise OCR is off.
 import path from 'node:path';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { trackChild } from './load.js';
 
@@ -33,8 +34,40 @@ export function windowsOcr(files) {
   });
 }
 
+const TESSERACT = process.env.TESSERACT || 'tesseract';
+
+// One file at a time; Tesseract is single-image per run and quick on screenshots.
+export async function tesseractOcr(files) {
+  const results = [];
+  for (const file of files) {
+    results.push(await new Promise((resolve) => {
+      const child = spawn(TESSERACT, [file, 'stdout'], { windowsHide: true });
+      trackChild(child, TESSERACT, [path.basename(file)], 'ocr');
+      let out = '', err = '';
+      const timer = setTimeout(() => child.kill(), 60000);
+      child.stdout.setEncoding('utf8').on('data', (c) => { out += c; });
+      child.stderr.setEncoding('utf8').on('data', (c) => { err += c; });
+      child.once('error', (e) => { clearTimeout(timer); resolve({ error: e.message }); });
+      child.once('close', (code) => {
+        clearTimeout(timer);
+        resolve(code === 0 ? { text: out.replace(/\s+/g, ' ').trim() } : { error: err.trim().split(/\r?\n/).pop() || `exit ${code}` });
+      });
+    }));
+  }
+  return results;
+}
+
+export const tesseractAvailable = () => spawnSync(TESSERACT, ['--version'], { windowsHide: true, timeout: 5000 }).status === 0;
+
+// Windows OCR on Windows, Tesseract elsewhere, nothing when neither is available or NOTES_OCR=off.
+export function defaultOcr() {
+  if (process.env.NOTES_OCR === 'off') return null;
+  if (process.platform === 'win32') return windowsOcr;
+  return tesseractAvailable() ? tesseractOcr : null;
+}
+
 export class NotesOcr {
-  constructor(store, { run = windowsOcr, enabled = process.platform === 'win32' && process.env.NOTES_OCR !== 'off', log = console } = {}) {
+  constructor(store, { run = defaultOcr(), enabled = Boolean(run), log = console } = {}) {
     Object.assign(this, { store, run, enabled, log, busy: null, again: false, retryTimer: null });
   }
   // Call whenever an image may need reading. Repeated calls while busy fold into one more pass.

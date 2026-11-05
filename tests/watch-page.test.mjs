@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { handleWatchPage } from '../watch-page.js';
+import { handleWatchPage } from '../src/watch-page.js';
 
 const TOKEN = 'abcdefghijklmnopqrstuvwx';
 function render(path, rooms, artwork = () => null) {

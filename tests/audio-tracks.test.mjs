@@ -20,7 +20,7 @@ test('audio selection uses actual served stream IDs and copies video without rep
     '-disposition:a:0', '0', '-disposition:a:1', 'default', '-movflags', '+faststart', '-y', file]);
   const saved = process.env.CONVERT;
   process.env.CONVERT = 'off';
-  const convert = await import('../convert.js?audio-test');
+  const convert = await import('../src/convert.js?audio-test');
   await convert.startConverter({ dataDir: dir });
   if (saved === undefined) delete process.env.CONVERT; else process.env.CONVERT = saved;
   const before = await fs.readFile(file);

@@ -3,7 +3,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { createRequire } from 'node:module';
-import { importTimestamp } from './public/notes-import.js';
+import { importTimestamp } from '../public/notes-import.js';
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite');
 const fail = (status, message) => { throw Object.assign(new Error(message), { status }); };
 const MAX_TEXT = 1_000_000; // Practical ceiling: keeps accidental giant payloads bounded without limiting normal prompts/documents.
