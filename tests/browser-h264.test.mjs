@@ -39,3 +39,27 @@ test('a freshly downloaded HEVC file gets an H.264 browser copy before anyone pl
   assert.equal(convert.preferConverted(file), file, 'TVs keep the original');
   assert.equal((await fs.stat(file)).size > 0, true);
 });
+
+
+test('an unavailable candidate inventory preserves existing browser copies', { timeout: 20000 }, async (t) => {
+  const run = promisify(execFile);
+  try { await run(process.env.FFMPEG || 'ffmpeg', ['-version']); await run(process.env.FFPROBE || 'ffprobe', ['-version']); }
+  catch { t.skip('FFmpeg unavailable'); return; }
+
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-cache-outage-'));
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  const cache = path.join(dir, 'cache', 'audio');
+  await fs.mkdir(cache, { recursive: true });
+  const existing = path.join(cache, '0123456789abcdef01234567.mp4');
+  await fs.writeFile(existing, 'valid browser copy');
+  const old = new Date(Date.now() - 2 * 3600 * 1000);
+  await fs.utimes(existing, old, old);
+
+  const convert = await import('../convert.js?cache-outage-test');
+  await convert.startConverter({ dataDir: dir, listCandidates: async () => null });
+
+  // Initial scan runs after five seconds. If null were treated as [], cleanFixDir() would remove this
+  // cached copy because it is older than one hour.
+  await new Promise((r) => setTimeout(r, 6000));
+  assert.equal(existsSync(existing), true, 'temporary inventory failure must not delete browser cache files');
+});
