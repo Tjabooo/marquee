@@ -63,6 +63,11 @@ test('notes API denies non-admins and shares messages safely between admins', { 
     assert.equal((await request('/import', data)).skipped, 1);
     assert.equal((await request('?q=old')).notes[0].createdAt, Date.parse(data.messages[0].createdAt));
     assert.ok(!logs.includes('Private needle'), 'Private note contents never enter the server log');
+    const longText = 'long-note-'.repeat(20_000); // ~200 KB: proves Notes is no longer constrained by the generic 100 KB JSON cap.
+    const longNote = (await request('', { text: longText }, undefined, 201)).note;
+    assert.equal(longNote.text.length, longText.length);
+    const longEdited = (await request(`/${longNote.id}`, { text: longText + 'edited', version: longNote.version }, 'admin@notes.test')).note;
+    assert.equal(longEdited.text.length, longText.length + 6);
     await request('', null, undefined, 400);
     const download = await fetch(`http://127.0.0.1:${port}/api/admin/notes/files/${fileId}`, { headers: { 'cf-access-authenticated-user-email': 'owner@notes.test' } });
     assert.equal(download.status, 200); assert.match(download.headers.get('content-disposition'), /^attachment;/);
