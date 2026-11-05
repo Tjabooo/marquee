@@ -168,7 +168,27 @@ While the PC is in Windows, Marquee sees it as "Off, or in Windows": Windows doe
 
 ## Clips and Discord share links
 
-Set `CLIPS_DIR` and the owner gets a **Clips** tab. Shared clips live under `/c/<token>`: a page with Marquee's player and only that clip (its script and the stylesheet are served at `/c/player.js` and `/c/style.css`), the video itself and a thumbnail. For those links to work for everyone (and for Discord to embed them), let `/c/` past Cloudflare Access, the same way as `/play/`:
+Set `CLIPS_DIR` and the owner gets a **Clips** tab. It shows game clips laid out as
+`Kept/<game>/*.mp4` and `Trimmed Clips/`, the way [Clipper](https://github.com/Tjabooo/clipper)
+writes them. Clipper is a replay buffer for Linux and Windows: it keeps the last 90 s of your
+screen, a hotkey saves it, and kept clips are copied into this folder over your network (it writes
+`.part` files first, which Marquee skips, so half-copied clips never show up).
+
+`node setup.js clipper` sets this up:
+
+- creates `CLIPS_DIR` (default: a `Clips` folder next to `MEDIA_DIR`) and sets it in `.env`;
+- asks where you play. **This computer**: it downloads Clipper from GitHub and runs its installer
+  pointed at `CLIPS_DIR`. **Another Windows or Linux PC**: it prints how to share the folder from
+  this server and the one-line install to paste on that PC, with the share and Marquee's address
+  filled in;
+- asks for the clip quality: a preset (`compact`, `balanced`, `high`, `max`, `smooth`) or a
+  benchmark (`bench:quality`, `bench:smooth`, `bench:small`), where Clipper records a few seconds
+  of you playing, tries its encoder's settings on it and keeps the best for that goal.
+
+Unattended: `node setup.js clipper --yes --remote windows --quality high --share '\\server\Clips'`,
+or `--here --allow-install` to install on this computer. Restart Marquee after `CLIPS_DIR` changes.
+
+Shared clips live under `/c/<token>`: a page with Marquee's player and only that clip (its script and the stylesheet are served at `/c/player.js` and `/c/style.css`), the video itself and a thumbnail. For those links to work for everyone (and for Discord to embed them), let `/c/` past Cloudflare Access, the same way as `/play/`:
 
 Hover over a clip's name to reveal its outline and pencil, then click to rename it.
 On touchscreens the pencil stays visible. Clicking outside the field or pressing

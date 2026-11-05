@@ -14,6 +14,7 @@ import { checkIntegrations, setQbitSavePath, checkQbit } from './integrations.js
 import { servicePlan, describeStep } from './services.js';
 import { installCommand } from './packages.js';
 import { backup, migrateData } from './data.js';
+import * as clipper from './clipper.js';
 import { checkConfig } from '../config-check.js';
 import { dataDirProblem, STATE_FILES } from '../paths.js';
 
@@ -27,6 +28,8 @@ Usage:
   node setup.js backup [--to DIR]        Consistent copy of the database and state
   node setup.js migrate-data --to DIR    Move state to a new DATA_DIR (Marquee stopped)
   node setup.js service install|status|restart|uninstall [--scope user|system]
+  node setup.js clipper          Game clips: set up CLIPS_DIR and install Clipper (the recorder)
+                                 on this PC, or print the commands for your gaming PC
 
 Options:
   --dry-run            Show what would change; write and run nothing
@@ -39,10 +42,20 @@ Options:
   --offline            Skip network checks of integrations
   --scope user|system  systemd service scope (default: system on servers, user otherwise)
   --env FILE           Use this .env instead of the one in the Marquee folder
+
+Clipper options (node setup.js clipper):
+  --here               Install Clipper on this computer (downloads it from GitHub)
+  --remote windows|linux   Print the commands for another PC instead
+  --clips-dir DIR      Folder for clips (CLIPS_DIR); default: next to MEDIA_DIR
+  --quality Q          compact, balanced, high, max, smooth, or bench:quality|smooth|balanced|small
+                       (measure the gaming PC and pick for that goal)
+  --share PATH         How the gaming PC reaches the folder (\\\\server\\Clips, or its mount point)
+  --clipper-source DIR Install from this Clipper checkout instead of downloading it
 `;
 
 export function parseArgs(argv) {
-  const opts = { command: 'setup', action: null, yes: false, dryRun: false, config: null, allow: new Set(), offline: false, scope: null, to: null, help: false, envFile: null };
+  const opts = { command: 'setup', action: null, yes: false, dryRun: false, config: null, allow: new Set(), offline: false, scope: null, to: null, help: false, envFile: null,
+    where: null, clipsDir: null, quality: null, share: null, clipperSource: null };
   const rest = [...argv];
   const value = (flag) => { const v = rest.shift(); if (!v || v.startsWith('--')) throw new Error(`${flag} needs a value`); return v; };
   const positional = [];
@@ -56,13 +69,19 @@ export function parseArgs(argv) {
     else if (a === '--to') opts.to = value(a);
     else if (a === '--env') opts.envFile = value(a);
     else if (a === '--help' || a === '-h') opts.help = true;
+    else if (a === '--here') opts.where = 'here';
+    else if (a === '--remote') { opts.where = value(a); if (!['windows', 'linux'].includes(opts.where)) throw new Error('--remote must be windows or linux'); }
+    else if (a === '--clips-dir') opts.clipsDir = value(a);
+    else if (a === '--quality') { opts.quality = value(a); clipper.parseQuality(opts.quality); }
+    else if (a === '--share') opts.share = value(a);
+    else if (a === '--clipper-source') opts.clipperSource = value(a);
     else if (/^--allow-(install|service|sudo|qbit-config)$/.test(a)) opts.allow.add(a.slice(8));
     else if (a.startsWith('-')) throw new Error(`Unknown option ${a}. Run node setup.js --help.`);
     else positional.push(a);
   }
   if (positional.length) {
     opts.command = positional[0];
-    if (!['setup', 'doctor', 'backup', 'migrate-data', 'service'].includes(opts.command)) throw new Error(`Unknown command ${opts.command}. Run node setup.js --help.`);
+    if (!['setup', 'doctor', 'backup', 'migrate-data', 'service', 'clipper'].includes(opts.command)) throw new Error(`Unknown command ${opts.command}. Run node setup.js --help.`);
     if (opts.command === 'service') {
       opts.action = positional[1];
       if (!['install', 'status', 'restart', 'uninstall'].includes(opts.action)) throw new Error('Use: node setup.js service install|status|restart|uninstall');
@@ -335,6 +354,8 @@ async function setup(opts) {
     } else { skipped.push('Autostart not set up (node setup.js service install)'); }
   }
 
+  if (!env.CLIPS_DIR) skipped.push('Game clips: not set up (node setup.js clipper)');
+
   // Summary
   const lan = info.lan[0]?.address;
   console.log(bold('\nSummary'));
@@ -448,6 +469,78 @@ async function service(opts) {
   return runPlan(steps, { dryRun: opts.dryRun }) ? 0 : 1;
 }
 
+async function clipperSetup(opts) {
+  const envFile = opts.envFile ? path.resolve(opts.envFile) : ENV_FILE;
+  const answers = opts.config ? JSON.parse(fs.readFileSync(opts.config, 'utf8')) : {};
+  const ask = new Prompter({ yes: opts.yes, answers });
+  const { existing, text, values } = loadEnv(envFile);
+  const env = { ...values };
+  console.log(bold('\nGame clips') + dim(opts.dryRun ? '  (dry run: nothing will be written or run)' : ''));
+  console.log(dim('Clipper keeps the last 90 s of your screen in memory; a hotkey saves it, and kept clips land in'));
+  console.log(dim('Marquee\'s Clips tab. https://github.com/' + clipper.CLIPPER_REPO));
+
+  // 1. The folder
+  const clipsDir = path.resolve(opts.clipsDir || await ask.text('CLIPS_DIR', 'Folder for game clips (CLIPS_DIR)', values.CLIPS_DIR || clipper.defaultClipsDir(env)));
+  if (opts.dryRun) console.log(`  would create ${clipsDir}${path.sep}Kept`);
+  else clipper.prepareClipsDir(clipsDir);
+  console.log(`${mark.ok} Clips folder: ${clipsDir}`);
+  let restartNeeded = false;
+  if ((values.CLIPS_DIR ? path.resolve(values.CLIPS_DIR) : '') !== clipsDir) {
+    if (!opts.dryRun) writeEnvFile(envFile, updateEnvText(text, { CLIPS_DIR: clipsDir }));
+    console.log(`${mark.ok} ${opts.dryRun ? 'Would set' : existing === null ? 'Created' : 'Updated'} ${envFile}: CLIPS_DIR=${clipsDir}`);
+    restartNeeded = true;
+  }
+
+  // 2. Where the games run, and how good the clips should be
+  const desktop = process.platform === 'win32' || (process.platform === 'linux' && Boolean(process.env.XDG_SESSION_TYPE || process.env.WAYLAND_DISPLAY || process.env.DISPLAY));
+  const where = opts.where || await ask.choose('where', 'Where do you play?', [
+    ['here', 'On this computer: download and install Clipper here'],
+    ['windows', 'On another Windows PC: show the commands to run there'],
+    ['linux', 'On another Linux PC: show the commands to run there'],
+    ['none', 'Nowhere yet: just the folder'],
+  ], desktop && process.platform !== 'darwin' ? 'here' : 'windows');
+  const quality = opts.quality || (where === 'none' ? 'balanced' : await ask.choose('quality', 'Clip quality?', clipper.QUALITY_CHOICES, 'balanced'));
+  const q = clipper.parseQuality(quality);
+  const lan = detect.lanAddresses()[0]?.address;
+  const marqueeUrl = values.PUBLIC_URL || `http://${lan || os.hostname()}:${values.PORT || 8080}`;
+
+  let status = 0;
+  if (where === 'here') {
+    if (!['linux', 'win32'].includes(process.platform)) throw new Error('Clipper records on Linux and Windows. Use --remote windows|linux for your gaming PC.');
+    const src = opts.clipperSource ? path.resolve(opts.clipperSource)
+      : process.platform === 'win32' ? path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'clipper', 'src')
+        : path.join(process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share'), 'clipper', 'src');
+    if (process.platform === 'linux' && clipsDir === path.join(os.homedir(), 'Videos', 'Clips')) {
+      throw new Error(`${clipsDir} is Clipper's own working folder (it empties it as clips move on). Pick another CLIPS_DIR.`);
+    }
+    const cmd = clipper.localInstallCommand({ src, clipsDir, marqueeUrl, quality, yes: opts.yes });
+    console.log(`\n  ${opts.clipperSource ? `From ${src}` : `Download ${clipper.clipperTarball()} → ${src}`}, then:`);
+    console.log(`  ${dim('$')} ${cmd.join(' ')}`);
+    if (q.bench) console.log(dim(`  The benchmark records 8 s of you playing: have a game running when it counts down.`));
+    const ok = opts.dryRun || await ask.confirm('Install Clipper on this computer now?', { dflt: true, allow: 'install', allowed: opts.allow });
+    if (!ok) { console.log(`${mark.info} Skipped. Run the command above when you're ready.`); }
+    else if (!opts.dryRun) {
+      if (!opts.clipperSource) await clipper.downloadClipper(src, { spawn: spawnSync });
+      const r = spawnSync(cmd[0], cmd.slice(1), { stdio: 'inherit' });
+      if (r.status === 0) console.log(`${mark.ok} Clipper is installed; kept clips go to ${clipsDir}`);
+      else { console.log(`${mark.error} Clipper's installer failed (see above)`); status = 1; }
+    }
+  } else if (where === 'windows' || where === 'linux') {
+    const host = os.hostname();
+    const share = clipper.shareInstructions({ clipsDir, host, target: where });
+    const reach = opts.share || await ask.text('share', where === 'windows' ? 'How the gaming PC reaches the folder' : 'Where the gaming PC mounts the folder', share.share);
+    console.log(bold('\nOn this server'));
+    for (const l of share.lines) console.log(`  ${l}`);
+    console.log(bold(`\nOn the gaming PC (${where === 'windows' ? 'PowerShell' : 'a terminal'})`));
+    console.log(`  ${clipper.remoteInstallCommand({ target: where, share: reach, marqueeUrl, quality })}`);
+    if (q.bench) console.log(dim('  Start a game before running it: the benchmark records 8 s of you playing.'));
+  }
+  if (restartNeeded) console.log(`\n${mark.warn} Restart Marquee to show the Clips tab: node setup.js service restart`);
+  console.log(dim('\nThe Clips tab is for the owner (ADMIN_EMAILS); see docs/integrations.md#clips-and-discord-share-links.'));
+  ask.close();
+  return status;
+}
+
 export async function main(argv = process.argv.slice(2)) {
   let opts;
   try { opts = parseArgs(argv); } catch (e) { console.error(e.message); return 2; }
@@ -455,6 +548,7 @@ export async function main(argv = process.argv.slice(2)) {
   try {
     if (opts.command === 'doctor') return await doctor(opts);
     if (opts.command === 'service') return await service(opts);
+    if (opts.command === 'clipper') return await clipperSetup(opts);
     if (opts.command === 'backup' || opts.command === 'migrate-data') {
       const env = { ...parseEnv(readEnvFile(opts.envFile ? path.resolve(opts.envFile) : ENV_FILE) ?? ''), ...process.env };
       const dataDir = env.DATA_DIR ? path.resolve(env.DATA_DIR) : APP_DIR;

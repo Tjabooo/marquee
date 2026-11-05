@@ -2,6 +2,17 @@
 
 All notable changes to Marquee. Versions follow [Semantic Versioning](https://semver.org).
 
+## [Unreleased]
+
+### Added
+
+- `node setup.js clipper`: sets up game clips in one go. It creates `CLIPS_DIR` (next to
+  `MEDIA_DIR` by default) and either downloads and installs [Clipper](https://github.com/Tjabooo/clipper),
+  the replay-buffer recorder, on this computer, or prints what to run on your gaming PC (Windows
+  or Linux) with the share path, Marquee's address and the quality filled in, plus how to share
+  the folder. Quality is a preset (`compact`, `balanced`, `high`, `max`, `smooth`) or
+  `bench:quality|smooth|balanced|small`, which has Clipper measure the PC and pick.
+
 ## [1.1.0] - 2026-11-05
 
 The first public release meant for installing on your own machine: a setup wizard, installers,

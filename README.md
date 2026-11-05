@@ -25,7 +25,9 @@ Docker, and installs as a web app on your phone's home screen.
 - **Personal accounts** through Cloudflare Access: everyone gets their own library, progress and
   settings; files exist once on disk and auto-delete when nobody keeps them.
 - **For the owner**: Activity, a House dashboard for the server and home machines, game Clips with
-  share links and a lossless trimmer, and a shared Notes inbox with image text search.
+  share links and a lossless trimmer (`node setup.js clipper` installs
+  [Clipper](https://github.com/Tjabooo/clipper) to record them), and a shared Notes inbox with image
+  text search.
 
 Details: [docs/features.md](docs/features.md).
 

@@ -225,3 +225,57 @@ test('integration checks only call the configured service and never log in twice
   assert.equal(tm.ok, false); assert.deepEqual(calls, ['https://api.themoviedb.org/3/configuration']);
   assert.deepEqual(await checkIntegrations({}, async () => assert.fail('nothing configured, nothing fetched')), []);
 });
+
+test('clipper: quality names, install commands and share instructions', async () => {
+  const c = await import('../src/setup/clipper.js');
+  assert.deepEqual(c.parseQuality('max'), { preset: 'max' });
+  assert.deepEqual(c.parseQuality('bench'), { bench: 'quality' });
+  assert.deepEqual(c.parseQuality('bench:smooth'), { bench: 'smooth' });
+  assert.throws(() => c.parseQuality('ultra'), /Unknown quality/);
+  assert.throws(() => parseArgs(['clipper', '--quality', 'bench:fast']), /Unknown quality/);
+  const a = parseArgs(['clipper', '--remote', 'linux', '--clips-dir', '/srv/clips', '--quality', 'high']);
+  assert.deepEqual([a.command, a.where, a.clipsDir, a.quality], ['clipper', 'linux', '/srv/clips', 'high']);
+  assert.throws(() => parseArgs(['clipper', '--remote', 'mac']), /windows or linux/);
+
+  assert.equal(c.defaultClipsDir({ MEDIA_DIR: 'D:\\Media' }, 'C:\\Users\\me', 'win32'), 'D:\\Clips');
+  assert.equal(c.defaultClipsDir({}, '/home/me', 'linux'), '/home/me/Marquee Clips');
+
+  const win = c.remoteInstallCommand({ target: 'windows', share: "\\\\box\\Clips", marqueeUrl: 'http://box:8080', quality: 'bench:smooth' });
+  assert.match(win, /^& \(\[scriptblock\]::Create\(\(irm https:\/\/raw\.githubusercontent\.com\/Tjabooo\/clipper\/main\/install\.ps1\)\)\) /);
+  assert.match(win, /-Share '\\\\box\\Clips' -MarqueeUrl 'http:\/\/box:8080' -Bench smooth$/);
+  const lin = c.remoteInstallCommand({ target: 'linux', share: "/mnt/my clips", quality: 'max' });
+  assert.equal(lin, "curl -fsSL https://raw.githubusercontent.com/Tjabooo/clipper/main/install.sh | sh -s -- --marquee '/mnt/my clips' --quality max");
+
+  const sw = c.shareInstructions({ clipsDir: 'D:\\Clips', host: 'box', target: 'windows', platform: 'win32', user: 'me' });
+  assert.equal(sw.share, '\\\\box\\Clips');
+  assert.ok(sw.lines.some((l) => l.includes("New-SmbShare -Name Clips -Path 'D:\\Clips'")));
+  const sl = c.shareInstructions({ clipsDir: '/srv/Marquee Clips', host: 'box', target: 'linux', platform: 'linux', user: 'me' });
+  assert.equal(sl.share, '/mnt/clips');
+  assert.ok(sl.lines.some((l) => l.startsWith('  //box/MarqueeClips  /mnt/clips  cifs')));
+
+  assert.deepEqual(c.localInstallCommand({ src: '/s', clipsDir: '/srv/clips', quality: 'bench', yes: true, platform: 'linux' }),
+    ['sh', '/s/linux/install.sh', '--marquee', '/srv/clips', '--quality', 'bench:quality', '--yes']);
+  assert.deepEqual(c.localInstallCommand({ src: 'C:\\s', clipsDir: 'D:\\Clips', marqueeUrl: 'http://x', quality: 'high', platform: 'win32' }).slice(5),
+    ['C:\\s\\windows\\install.ps1', '-Share', 'D:\\Clips', '-MarqueeUrl', 'http://x', '-Quality', 'high']);
+  assert.throws(() => c.localInstallCommand({ src: '/s', clipsDir: '/c', platform: 'darwin' }), /Linux and Windows/);
+});
+
+test('clipper setup sets CLIPS_DIR and prints the gaming PC commands (dry run writes nothing)', (t) => {
+  const dir = tmp(t, 'clipper');
+  const envFile = path.join(dir, '.env');
+  fs.writeFileSync(envFile, 'PORT=8099\nCLIPS_DIR=\n');
+  const clips = path.join(dir, 'clips');
+  const run = (...extra) => spawnSync(process.execPath, ['setup.js', 'clipper', '--yes', '--env', envFile, '--clips-dir', clips, '--remote', 'linux', '--quality', 'bench:smooth', ...extra], { cwd: root, encoding: 'utf8' });
+  const dry = run('--dry-run');
+  assert.equal(dry.status, 0, dry.stderr);
+  assert.ok(!fs.existsSync(clips));
+  assert.equal(parseEnv(fs.readFileSync(envFile, 'utf8')).CLIPS_DIR, '');
+  const r = run();
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(fs.existsSync(path.join(clips, 'Kept')));
+  assert.equal(parseEnv(fs.readFileSync(envFile, 'utf8')).CLIPS_DIR, clips);
+  assert.match(r.stdout, /install\.sh \| sh -s -- --marquee \/mnt\/clips --quality bench:smooth/);
+  assert.match(r.stdout, /cifs/);
+  assert.match(r.stdout, /Restart Marquee/);
+  assert.doesNotMatch(run().stdout, /Restart Marquee/, 'unchanged CLIPS_DIR needs no restart');
+});
