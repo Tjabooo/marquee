@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-05-app-icon",
+    "date": "2026-11-05",
+    "title": "A new home-screen icon",
+    "items": [
+      {
+        "title": "Marquee in lights",
+        "text": "Marquee has a new icon when you add it to your phone's home screen: a lit-up marquee M. On Android it now fills the icon shape properly instead of sitting in a white circle. Already added Marquee? Remove it from your home screen and add it again to get the new icon (iPhones keep the old one until you do)."
+      }
+    ]
+  },
+  {
     "id": "2026-11-05-phone",
     "date": "2026-11-05",
     "title": "Download to phone",
