@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-05-convert-label",
+    "date": "2026-11-05",
+    "title": "Clearer conversion banner",
+    "items": [
+      {
+        "title": "Says what it's converting for",
+        "text": "Some new films get a second, one-time copy that plays in every browser. The banner at the top of the library now says that, so it no longer looks like the same film is being converted twice. You can watch while it runs."
+      }
+    ]
+  },
+  {
     "id": "2026-11-05-trailers",
     "date": "2026-11-05",
     "title": "Watch the trailer",

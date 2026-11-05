@@ -590,7 +590,7 @@ async function convert(job) {
   const attempt = async (encoder) => {
     const p = lastPlan = plan(file, tmp, info, encoder, shift, safeAudio, sidecars, Boolean(job.h264), fallbacks);
     const started = Date.now();
-    status.current = { name, mode: p.reencode ? 'Re-encoding' : job.fix ? 'Making a browser copy' : 'Repackaging', percent: 0, speed: null, eta: null };
+    status.current = { name, mode: p.reencode ? 'Re-encoding' : job.fix ? 'Making a browser copy' : 'Repackaging', purpose: job.h264 ? 'browser-h264' : job.fix ? 'browser-audio' : 'apple', percent: 0, speed: null, eta: null };
     let buf = '';
     await run(FFMPEG, p.args, {
       priorityLow: true,

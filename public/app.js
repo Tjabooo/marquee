@@ -856,6 +856,14 @@ async function loadConvert() {
   try { const next = await api('/api/convert'); if (state.convert?.current?.name && state.convert.current.name !== next.current?.name) libraryRefreshNeeded = true; state.convert = next; } catch { state.convert = null; }
 }
 
+// What each conversion job is for (src/convert.js sets `purpose`): one file can get two jobs,
+// an MP4 for Apple devices and later an H.264 copy for browsers that can't play HEVC.
+const CONVERT_PURPOSE = {
+  apple: 'Making an MP4 copy that plays on iPhone and Apple TV',
+  'browser-h264': 'Making a one-time H.264 copy so it plays in every browser (Firefox can\u2019t play HEVC). You can already watch it.',
+  'browser-audio': 'Making a browser copy with audio every browser can play. You can already watch it.',
+};
+
 // Conversion progress banner shown at the top of the library.
 function renderConvertBanner() {
   const el = $('#convert-banner');
@@ -871,7 +879,7 @@ function renderConvertBanner() {
       c.queued > 0 && `${c.queued} more waiting`];
     parts.push(
       h('div', { class: 'row-title' }, `Preparing playback: ${cur.name}`),
-      h('div', { class: 'dl-state' }, 'Making an MP4 copy that plays on iPhone and Apple TV'),
+      h('div', { class: 'dl-state' }, CONVERT_PURPOSE[cur.purpose] || CONVERT_PURPOSE.apple),
       h('div', { class: 'bulbs', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100',
         'aria-valuenow': String(Math.floor(cur.percent || 0)), 'aria-label': 'Conversion progress',
         style: `--p:${cur.percent || 0}%` }, h('i')),
