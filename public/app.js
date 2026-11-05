@@ -9,6 +9,7 @@ import { createStreamStats } from './player-stats.js';
 import { SUB_SIZES, SUB_BACKGROUNDS, SUB_POSITIONS, subLook, subRaise, secondChoices, createNightAudio,
   SLEEP_MINUTES, sleepTimer, sleepSecondsLeft, sleepFade, sleepLabel } from './player-comfort.js';
 import { comingUp, newEpisodes, watchStatus, todayIso } from './watchlist.js';
+import { travelTitle, sizeWords, stateWords, travelSummary, travelOrder } from './travel.js';
 import { libraryUnion, libraryAvailability, filterLibrary, transferState, transferAttention, transferPaused } from './library-downloads.js';
 import { createSocial, titleKeyOf, REACTIONS, countdownText, startLabel } from './social.js';
 
@@ -46,6 +47,7 @@ const ICONS = {
   send: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg>',
   download: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>',
   check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  phone: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="2.5" width="11" height="19" rx="2.2"/><path d="M12 6.5v7M9.2 10.8l2.8 2.8 2.8-2.8M10.5 18h3"/></svg>',
   volume: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6"/></svg>',
   volumeHigh: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11"/></svg>',
   muted: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M16 9.5l5 5M21 9.5l-5 5"/></svg>',
@@ -450,11 +452,133 @@ function fileRow(f) {
       pct > 1 && h('div', { class: 'resume-track', title: 'Watched so far' }, h('i', { style: `width:${pct}%` }))),
     f.done && h('div', { class: 'row-actions' },
       f.kind === 'lib' && h('button', { class: 'cast-btn del-btn', 'aria-label': `Delete ${title}`, title: 'Delete', onclick: (e) => openDelete(f, e.currentTarget) }, icon('trash')),
+      f.kind === 'lib' && h('button', { class: 'cast-btn', 'aria-label': `Download ${title} to a phone`, title: 'Download to phone', onclick: (e) => openTravel(f, e.currentTarget) }, icon('phone')),
       h('button', { class: 'cast-btn', 'aria-label': `Play ${title} on a TV`, title: 'Play on TV', onclick: (e) => openPicker(f, e.currentTarget) }, icon('tv')),
       f.kind === 'lib' && h('button', { class: 'cast-btn', 'aria-label': `Plan a watch party for ${title}`, title: 'Plan a watch party', onclick: (e) => openPlanParty(f, e.currentTarget) }, icon('party')),
       f.converting
         ? h('button', { class: 'play-btn round is-disabled', 'aria-disabled': 'true', title: 'Cannot play while converting', 'aria-label': `${title}: cannot play while converting`, onclick: () => toast('Cannot play while converting') }, icon('play'))
         : h('button', { class: 'play-btn round', 'aria-label': `Play ${title} here`, onclick: () => openPlayer(f) }, icon('play'))));
+}
+
+// ---------- Download to phone (travel.js; the server makes the copies, src/travel.js) ----------
+// Small MP4s to watch offline: Small (480p) or Standard (720p), or the file at full quality.
+// The picker sheet shows one video's choices, a season's, or your list ("For your phone").
+const travelView = { items: [], loaded: false, open: null }; // open: () => redraw the picker while it shows travel
+async function loadTravel() {
+  try { travelView.items = (await api('/api/travel')).items; travelView.loaded = true; } catch { return; }
+  travelView.open?.();
+  if (state.view === 'library') renderLibrary();
+}
+function travelOverlay(opener, draw) {
+  travelView.open = draw;
+  draw();
+  if ($('#picker').hidden || !$('#picker').classList.contains('open')) {
+    pushOverlay(showSheet($('#picker'), $('#picker-backdrop'), () => { travelView.open = null; opener?.focus({ preventScroll: true }); }));
+  }
+}
+const travelLink = (url, label = 'Download') => h('a', { class: 'chip travel-get', href: url, download: '' }, icon('download'), label);
+async function askTravel(items, quality, btn) {
+  if (btn) btn.disabled = true;
+  try {
+    travelView.items = (await api('/api/travel', jsonPost({ items, quality }))).items;
+    travelView.loaded = true;
+    return true;
+  } catch (err) { toast(err.message); return false; } finally { if (btn) btn.disabled = false; }
+}
+function travelProgress(item) {
+  return item.state === 'making' && h('div', { class: 'resume-track travel-track', role: 'progressbar', 'aria-valuenow': item.percent ?? 0, 'aria-valuemin': 0, 'aria-valuemax': 100 },
+    h('i', { style: `width:${item.percent ?? 0}%` }));
+}
+
+function openTravel(file, opener) {
+  const f = { ...file, kind: file.kind || 'lib' };
+  const id = mediaId(f), title = travelTitle(f);
+  let data = null, error = null;
+  const base = `/api/media/${f.kind}/${encodeURIComponent(id)}/travel`;
+  const fetchOptions = async () => {
+    try { data = await api(base); error = null; } catch (err) { error = err.message; }
+    if (travelView.open === draw) draw();
+  };
+  function draw() {
+    const rows = !data ? [h('li', { class: 'searching', role: 'status' }, error || 'Working out the sizes…')]
+      : [...data.qualities.map((q) => {
+        const mine = travelView.items.find((i) => i.kind === f.kind && i.id === id && i.quality === q.quality);
+        const item = { ...q, ...(mine || {}) };
+        const action = item.state === 'ready' && mine?.url ? travelLink(mine.url)
+          : item.state === 'making' || item.state === 'queued' ? null
+            : h('button', { type: 'button', class: 'chip', onclick: async (e) => {
+              if (await askTravel([{ kind: f.kind, id, title }], q.quality, e.currentTarget)) fetchOptions();
+            } }, item.state === 'ready' ? 'Get it' : item.state === 'failed' ? 'Try again' : 'Make it');
+        return h('li', { class: 'row travel-row' },
+          h('div', { class: 'row-text' },
+            h('div', { class: 'row-title' }, `${q.label} · ${q.height}p`),
+            h('div', { class: 'row-meta' }, [sizeWords(item, fmtBytes), q.note, mine || item.state === 'ready' ? stateWords(item) : null].filter(Boolean).map((t) => h('span', {}, t))),
+            travelProgress(item)),
+          action && h('div', { class: 'row-actions' }, action));
+      }),
+      h('li', { class: 'row travel-row' },
+        h('div', { class: 'row-text' },
+          h('div', { class: 'row-title' }, 'Full quality'),
+          h('div', { class: 'row-meta' }, [data.original.size && fmtBytes(data.original.size), 'The file as it is, ready now'].filter(Boolean).map((t) => h('span', {}, t)))),
+        h('div', { class: 'row-actions' }, travelLink(data.original.url)))];
+    $('#picker-body').replaceChildren(
+      h('h2', { id: 'picker-title' }, 'Download to phone'),
+      h('p', { class: 'muted picker-sub' }, title),
+      h('ul', { class: 'rows travel-list' }, rows),
+      h('p', { class: 'muted travel-note' }, 'Small and Standard are made on the server first, so you can close this and come back (with notifications on, you’ll hear when one is ready). They play in your phone’s own video player, subtitles included, and stay here for a week after your last download.'),
+      travelView.items.length > 0 && h('button', { type: 'button', class: 'retry', onclick: () => openTravelList() }, 'All phone copies'));
+  }
+  travelOverlay(opener, draw);
+  if (!travelView.loaded) loadTravel();
+  fetchOptions();
+}
+
+// A whole season in one go: pick a size, then the list shows each episode as it's made.
+function openTravelSeason(files, label, opener) {
+  const items = files.map((f) => ({ kind: 'lib', id: f.id, title: travelTitle(f) }));
+  function draw() {
+    $('#picker-body').replaceChildren(
+      h('h2', { id: 'picker-title' }, 'Season to phone'),
+      h('p', { class: 'muted picker-sub' }, `${label} · ${items.length} episode${items.length === 1 ? '' : 's'}`),
+      h('ul', { class: 'rows travel-list' }, ['small', 'standard'].map((quality) => {
+        const q = quality === 'small' ? { label: 'Small · 480p', note: 'About 230 MB per half hour' } : { label: 'Standard · 720p', note: 'About 520 MB per half hour' };
+        return h('li', { class: 'row travel-row' },
+          h('div', { class: 'row-text' }, h('div', { class: 'row-title' }, q.label), h('div', { class: 'row-meta' }, h('span', {}, q.note))),
+          h('div', { class: 'row-actions' }, h('button', { type: 'button', class: 'chip', onclick: async (e) => {
+            if (await askTravel(items, quality, e.currentTarget)) openTravelList();
+          } }, 'Make them')));
+      })),
+      h('p', { class: 'muted travel-note' }, 'Episodes are made one at a time. Each gets its own Download button in the list when it’s ready.'));
+  }
+  travelOverlay(opener, draw);
+}
+
+// Everything you asked for, with Download buttons as copies finish.
+function openTravelList(opener) {
+  function draw() {
+    const items = travelOrder(travelView.items);
+    $('#picker-body').replaceChildren(
+      h('h2', { id: 'picker-title' }, 'For your phone'),
+      h('p', { class: 'muted picker-sub' }, travelSummary(items).replace(' for your phone', items.length === 1 ? ' copy' : ' copies') || 'Nothing yet. Open a film or episode and choose Download to phone.'),
+      h('ul', { class: 'rows travel-list' }, items.map((item) => h('li', { class: 'row travel-row' },
+        h('div', { class: 'row-text' },
+          h('div', { class: 'row-title' }, item.title),
+          h('div', { class: `row-meta${item.state === 'failed' ? ' is-error' : ''}` }, [item.label, sizeWords(item, fmtBytes), stateWords(item),
+            item.downloadedAt && 'Downloaded'].filter(Boolean).map((t) => h('span', {}, t))),
+          travelProgress(item)),
+        h('div', { class: 'row-actions' },
+          item.state === 'failed' && h('button', { type: 'button', class: 'chip', onclick: (e) => askTravel([{ kind: item.kind, id: item.id, title: item.title }], item.quality, e.currentTarget).then(draw) }, 'Try again'),
+          item.url && travelLink(item.url),
+          h('button', { type: 'button', class: 'cast-btn del-btn', title: 'Remove', 'aria-label': `Remove ${item.title} (${item.label}) from your phone list`, onclick: async (e) => {
+            e.currentTarget.disabled = true;
+            try { travelView.items = (await api('/api/travel/remove', jsonPost({ kind: item.kind, id: item.id, quality: item.quality }))).items; } catch (err) { toast(err.message); }
+            draw();
+            if (state.view === 'library') renderLibrary();
+          } }, icon('trash')))))),
+      items.length > 0 && h('p', { class: 'muted travel-note' }, 'Removing one here doesn’t touch the copy already on your phone. Copies leave the server a week after you last download them.'));
+  }
+  travelOverlay(opener, draw);
+  loadTravel();
 }
 
 // ---------- Discover ----------
@@ -770,9 +894,9 @@ function renderLibrary() {
       return [type, { list, section: h('section', { class: 'lib-group' }, h('h3', { class: 'lib-subhead' }, { movie: 'Films', tv: 'Shows', unknown: 'Unidentified' }[type]), list) }];
     }));
     const root = h('div', { class: 'unified-library' });
-    libraryUI = { root, groups, filters, availability, notices: h('div'), parties: h('div', { class: 'parties-slot' }), shelves: h('div'), summary: h('button', { class: 'library-summary', onclick: () => { state.libAvailability = 'downloading'; renderLibrary(); } }), empty: h('div') };
+    libraryUI = { root, groups, filters, availability, notices: h('div'), travel: h('button', { type: 'button', class: 'library-summary travel-summary', hidden: true, onclick: (e) => openTravelList(e.currentTarget) }), parties: h('div', { class: 'parties-slot' }), shelves: h('div'), summary: h('button', { class: 'library-summary', onclick: () => { state.libAvailability = 'downloading'; renderLibrary(); } }), empty: h('div') };
     root.append(h('div', { class: 'dl convert-banner', id: 'convert-banner', hidden: true }),
-      h('div', { class: 'library-toolbar' }, filters, h('label', { class: 'library-availability' }, 'Availability', availability)), libraryUI.summary, libraryUI.notices, libraryUI.parties, libraryUI.shelves, ...[...groups.values()].map(g => g.section), libraryUI.empty);
+      h('div', { class: 'library-toolbar' }, filters, h('label', { class: 'library-availability' }, 'Availability', availability)), libraryUI.summary, libraryUI.travel, libraryUI.notices, libraryUI.parties, libraryUI.shelves, ...[...groups.values()].map(g => g.section), libraryUI.empty);
     body.replaceChildren(root);
     loadParties();
     libraryCards.clear();
@@ -785,6 +909,9 @@ function renderLibrary() {
   const active = all.flatMap(e => e.active).length, attention = all.filter(e => e.attention).length;
   ui.summary.hidden = !active;
   ui.summary.textContent = `${active} downloading${attention ? ` · ${attention} needs attention` : ''}`;
+  const phone = travelSummary(travelView.items);
+  ui.travel.hidden = !phone;
+  if (ui.travel.textContent !== phone) ui.travel.replaceChildren(icon('phone'), h('span', {}, phone));
   const errors = [state.libraryError && `Library scan unavailable: ${state.libraryError}`, state.downloadsError && `Downloads unavailable: ${state.downloadsError}`, !state.status.library && 'No media folder is configured. Downloads will still appear here.'].filter(Boolean);
   const noticeText = errors.join(' ');
   if (ui.notices.textContent !== noticeText) ui.notices.replaceChildren(...errors.map(message => h('p', { class: 'library-source-notice', role: 'status' }, message)));
@@ -1065,6 +1192,7 @@ function renderFilm() {
           f.converting ? 'Preparing playback…' : partlyWatched(progress) ? `Resume at ${fmtTime(progress.time)}` : 'Play'),
         h('button', { class: 'chip', onclick: (e) => openPicker(file, e.currentTarget) }, icon('tv'), 'Play on TV'),
         !f.converting && h('button', { class: 'chip', onclick: (e) => openPlanParty(file, e.currentTarget) }, icon('party'), 'Watch party'),
+        h('button', { class: 'chip', onclick: (e) => openTravel(file, e.currentTarget) }, icon('phone'), 'To phone'),
         h('button', { class: 'chip', onclick: (e) => openDelete(file, e.currentTarget) }, icon('trash'), 'Delete'),
         state.me?.isOwner && h('button', { class: 'chip', onclick: (e) => openFilmIdentity(f, e.currentTarget) }, 'Identify film')),
       f.overview && h('p', { class: 'overview' }, f.overview)));
@@ -1172,7 +1300,8 @@ function renderShow() {
     for (const {d,ep} of byEpisode.values()) rows.push({ number: ep.episode, node: h('li', { class: 'row episode-row pending-episode', 'data-transfer-hash': d.hash, 'data-episode-number': ep.episode, 'data-episode-season': ep.season }, thumb(ep.episode), h('div', { class: 'row-text' }, h('div', { class: 'row-title' }, epTitle(ep.episode)), h('div', { class: 'row-meta episode-transfer-state' }, ep.available ? 'Ready in download details' : `${transferState(d)}${Number.isFinite(ep.progress) ? ` · ${Math.floor(ep.progress*100)}%` : ''}`)), h('button', { class: 'chip', onclick: e => openTransferDetails({ ...entry, transfers: [d] }, e.currentTarget) }, 'Details')) });
     if (Number.isInteger(open.total) && open.total > 0 && open.total <= 1000) for (let number = 1; number <= open.total; number++) if (!rows.some(row => row.number === number)) rows.push({ number, node: h('li', { class: 'row episode-row missing-episode' }, thumb(number), h('div', { class: 'row-text' }, h('div', { class: 'row-title' }, epTitle(number)), h('div', { class: 'row-meta' }, 'Not in library')), tvId && episodeDownload(tvId, open.number, number)) });
     content = [!single && h('button', { class: 'chip season-back', onclick: () => pick(null) }, icon('back'), 'All seasons'), h('h3', {}, open.name),
-      h('div', { class: 'season-summary' }, h('p', { class: 'muted' }, `${open.total ? `${episodeCount(ready)} of ${open.total}` : episodeCount(ready)} episodes ready`), deleteSeason),
+      h('div', { class: 'season-summary' }, h('p', { class: 'muted' }, `${open.total ? `${episodeCount(ready)} of ${open.total}` : episodeCount(ready)} episodes ready`),
+        ready.length > 0 && h('button', { type: 'button', class: 'chip delete-many travel-season', onclick: e => openTravelSeason(ready, `${show.title} · ${open.name}`, e.currentTarget) }, icon('phone'), 'Season to phone'), deleteSeason),
       ...pendingFor(open.number).filter(d => !(d.episodes || []).some(ep => ep.season === open.number)).map(d => h('div', { class: 'pack-transfer' }, h('strong', {}, `${open.name} pack`), h('p', {}, 'Episode availability is shown when individual files are verified.'), h('button', { class: 'chip', onclick: e => openTransferDetails({ ...entry, transfers: [d] }, e.currentTarget) }, 'Season pack details'))),
       h('ul', { class: 'rows' }, rows.sort((a,b) => a.number-b.number).map(r => r.node))];
   }
@@ -1515,6 +1644,7 @@ async function applyLive() {
   }
   if (has('sessions')) jobs.push(loadSessions());
   if (has('watchlist')) jobs.push(loadWatchlist());
+  if (has('travel')) jobs.push(loadTravel());
   if (has('push')) { pushView.loaded = false; if (view === 'settings' && !editingIn('#settings-body')) jobs.push(loadPush().then(renderSettings)); }
   if (has('social')) social.refreshRates();
   if (has('parties') && view === 'library') jobs.push(loadParties());
@@ -5394,6 +5524,7 @@ const ACTIVITY_TEXT = {
   watch: (d) => d,
   download: (d) => `started downloading ${d}`,
   delete: (d) => `deleted ${d}`,
+  travel: (d) => `saved ${d}`,
   pause: (d) => `paused the download of ${d}`,
   resume: (d) => `resumed the download of ${d}`,
   play: (d) => `watched ${d}`,
@@ -6802,6 +6933,7 @@ navigator.serviceWorker?.addEventListener('message', async (event) => {
   if (url.origin !== location.origin) return;
   const token = url.searchParams.get('watch');
   if (token) { await offerWatchRoom(token); return; }
+  if (url.searchParams.has('travel')) { await setView('library'); openTravelList(); return; }
   const view = url.hash.slice(1);
   if (view && view !== state.view && $(`#view-${view}`)) await setView(view);
 });
@@ -6821,7 +6953,7 @@ navigator.serviceWorker?.addEventListener('message', async (event) => {
   if (state.status.admin) { enableActivityTab(); enableHouseTab(); enableNotesTab(); }
   if (state.status.clips) enableClipsTab();
   updateTabOverflow();
-  await Promise.all([loadLibrary(), loadDownloads(), loadSessions(), loadProgress(), loadWatchlist()]);
+  await Promise.all([loadLibrary(), loadDownloads(), loadSessions(), loadProgress(), loadWatchlist(), loadTravel()]);
   // A reload stays on the tab it was on (#library); a fresh visit opens the chosen start tab.
   const start = linkedView() || prefs().startView;
   if (start && start !== 'discover') { state.view = null; await setView(start); } else { rememberView('discover'); renderDiscover(); }
@@ -6832,6 +6964,11 @@ navigator.serviceWorker?.addEventListener('message', async (event) => {
   if (noteId) {
     const url = new URL(location.href); url.searchParams.delete('note'); history.replaceState(null, '', url.pathname + url.search + url.hash);
     if (state.status.admin && /^\d+$/.test(noteId)) { await setView('notes'); await notesView.focus(Number(noteId)); }
+  }
+  // A "Ready for your phone" notification opens Marquee as ?travel=1.
+  if (new URL(location.href).searchParams.has('travel')) {
+    const url = new URL(location.href); url.searchParams.delete('travel'); history.replaceState(null, '', url.pathname + url.search + url.hash);
+    await setView('library'); openTravelList();
   }
   schedulePoll();
   connectLive();

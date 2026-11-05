@@ -1,5 +1,25 @@
 [
   {
+    "id": "2026-11-05-phone",
+    "date": "2026-11-05",
+    "title": "Download to phone",
+    "items": [
+      {
+        "title": "Take it with you",
+        "text": "Going somewhere without Wi-Fi? Open a film or episode and press To phone (the phone button on episode rows). Marquee makes a small copy (Small 480p, about 450 MB an hour, or Standard 720p) that plays in your phone's own video player with subtitles built in. Or download the file at full quality."
+      },
+      {
+        "title": "A whole season",
+        "text": "Season to phone makes every episode of the season you're looking at. They're listed under For your phone in the Library, each with its own Download button as it's ready. With notifications on, you hear when one is done."
+      },
+      {
+        "title": "Phone copies",
+        "audience": "owner",
+        "text": "Copies are made one at a time with the GPU when it has NVENC, kept in cache/travel for 7 days after their last download (TRAVEL_KEEP_DAYS) and capped at 50 GB (TRAVEL_MAX_GB). HDR is tone-mapped to SDR."
+      }
+    ]
+  },
+  {
     "id": "2026-11-05-seek-look",
     "date": "2026-11-05",
     "title": "A nicer timeline preview",

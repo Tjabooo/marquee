@@ -2096,3 +2096,18 @@ button.st-col:hover .st-stack { filter: brightness(1.12); }
 @media (prefers-reduced-motion: reduce) { .wr-slide { animation: none; } }
 .player.party-waiting .player-center { visibility: hidden; }
 html.wrapped-on { overflow: hidden; }
+
+/* ---------- Download to phone ---------- */
+.travel-list { margin-bottom: 14px; }
+.travel-row { align-items: center; }
+.travel-row .row-meta.is-error { color: var(--alert); }
+.travel-track { max-width: 260px; }
+.travel-track i { background: var(--bulb); transition: width .4s ease; }
+.chip.travel-get { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; height: auto; text-decoration: none;
+  color: var(--on-bulb); background: var(--bulb); border-color: var(--bulb); }
+.chip.travel-get svg { width: 18px; height: 18px; }
+.travel-row .row-actions .chip:not(.travel-get) { min-height: 44px; height: auto; }
+.travel-note { font-size: 13px; line-height: 1.45; margin: 0 0 14px; }
+.library-summary.travel-summary { display: flex; align-items: center; gap: 8px; padding-top: 0; }
+.library-summary.travel-summary svg { width: 18px; height: 18px; flex: none; }
+.library-summary.travel-summary[hidden] { display: none; }

@@ -28,6 +28,11 @@ All notable changes to Marquee. Versions follow [Semantic Versioning](https://se
 
 ### Added
 
+- **Download to phone.** **To phone** on a film, a phone button on each episode and **Season to
+  phone** make small offline copies: Small (480p) or Standard (720p) H.264/AAC MP4s with the saved
+  subtitles as tracks and HDR tone-mapped to SDR, made one at a time (NVENC or x264), listed under
+  **For your phone** in the Library and announced by notification when ready. **Full quality**
+  downloads the file as it is. `TRAVEL_DIR`, `TRAVEL_KEEP_DAYS` (7), `TRAVEL_MAX_GB` (50).
 - **Skip intro**: a button (or **S**) during an episode's opening titles, found from an
   Intro/Opening chapter or the theme song shared with neighbouring episodes of the season (audio
   fingerprint of the first eight minutes, cached with the credits). Settings → Watching → **Intros**

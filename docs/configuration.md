@@ -102,6 +102,14 @@ See [remote-access.md](remote-access.md) for how accounts work and how to publis
 Video is encoded with NVIDIA NVENC when ffmpeg has a working `h264_nvenc`, otherwise with libx264 on
 the CPU. See [hardware-acceleration.md](hardware-acceleration.md).
 
+## Download to phone
+
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| `TRAVEL_DIR` | `cache/travel` in `DATA_DIR` | Where phone copies (Small 480p and Standard 720p MP4s) are kept. |
+| `TRAVEL_KEEP_DAYS` | `7` | A phone copy is deleted this many days after anyone last asked for or downloaded it. |
+| `TRAVEL_MAX_GB` | `50` | Size cap for phone copies. When a new one doesn't fit, copies everyone has already downloaded go first, oldest first. |
+
 ## Notes
 
 | Setting | Default | Purpose |

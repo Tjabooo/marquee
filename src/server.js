@@ -41,6 +41,7 @@ import * as whatsNew from './whats-new.js';
 import { WatchlistStore, runRound as watchlistRound, baselineFrom } from './watchlist.js';
 import { PushStore, KINDS as PUSH_KINDS } from './push.js';
 import { Previews } from './previews.js';
+import { TravelStore, QUALITIES as TRAVEL_QUALITIES, travelName, estimateBytes, validQuality } from './travel.js';
 import { isHomeRequest, describeRequest } from './network.js';
 import { createTrust } from './trust.js';
 import { createAuth, signInPage, safeNext } from './auth.js';
@@ -116,6 +117,19 @@ const sharedMedia = new noteShare.SharedMedia(notes, { cacheDir: path.join(CACHE
 setTimeout(() => { for (const note of notes.sharedNotes()) sharedMedia.prepare(note); }, 5000).unref();
 // Timeline previews: keyframe storyboards the player shows while you hover the seek bar.
 const previews = new Previews(path.join(CACHE_DIR, 'previews'));
+// Download to phone: small copies to take along (travel.js). The person who asked hears when one is ready.
+const travel = new TravelStore({
+  dataDir: DATA_DIR,
+  dir: process.env.TRAVEL_DIR ? path.resolve(process.env.TRAVEL_DIR) : path.join(CACHE_DIR, 'travel'),
+  keepDays: Math.max(1, Number(process.env.TRAVEL_KEEP_DAYS) || 7),
+  maxBytes: Math.max(1, Number(process.env.TRAVEL_MAX_GB) || 50) * 1024 ** 3,
+  resolve: travelSource,
+  onChange: (userIds) => { for (const userId of userIds) live.publish('travel', { audience: 'user', userId }); },
+  onReady: (userIds, row) => notify(userIds, 'download', { title: 'Ready for your phone',
+    body: `${row.title} (${TRAVEL_QUALITIES[row.quality]?.label || row.quality}) can be downloaded now.`, url: '/?travel=1#library', tag: `travel-${row.copy_key}` }),
+});
+setTimeout(() => travel.resume(), 20_000).unref();
+setInterval(() => travel.sweep(), 6 * 3600 * 1000).unref();
 const notesUploads = new NotesUploads(notes, { onFile: () => notesOcr.kick() });
 setTimeout(() => notesOcr.kick(), 30000).unref();
 setInterval(() => { try { notesUploads.prune(); } catch { /* retried on the next upload */ } }, 3600000).unref();
@@ -1130,6 +1144,24 @@ async function sourceFile(kind, id) {
   }
   throw new HttpError(400, 'Unknown media type.');
 }
+// What a travel copy is made from: the original (all audio tracks), with the subtitles saved beside it
+// or beside its MP4 copy.
+async function travelSource(kind, id) {
+  const source = await sourceFile(kind, id);
+  const served = converter.preferConverted(source);
+  const langs = [...new Set([...subtitles.localLanguages(source), ...subtitles.localLanguages(served)])];
+  const subs = langs.map((lang) => ({ lang, read: () => subtitles.readSubtitle(subtitles.findSidecar(source, lang) ? source : served, lang) }));
+  return { source, subs };
+}
+const travelUrl = (row) => `/api/travel/file/${row.copy_key}/${encodeURIComponent(travelName(row.title, row.quality))}`;
+function travelItem(row) {
+  const copy = travel.copyState(row.copy_key);
+  return { kind: row.kind, id: row.media_id, quality: row.quality, label: TRAVEL_QUALITIES[row.quality]?.label || row.quality,
+    title: row.title, requestedAt: row.requested_at, downloadedAt: row.downloaded_at ?? null, duration: row.duration ?? null,
+    estimate: estimateBytes(row.duration, row.quality, row.audio), ...copy, url: copy.state === 'ready' ? travelUrl(row) : null };
+}
+const attachment = (name) => `attachment; filename="${String(name).replace(/[^\x20-\x7e]|["\\]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(name)}`;
+
 // ---------- signed stream links ----------
 // AirPlay and Chromecast hand the video URL to the TV, which fetches it itself and can't
 // sign in to Cloudflare Access. /play/ links carry an expiring signature instead, so only
@@ -2392,6 +2424,54 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, { ok: true, deleted: result.deleted, removed: result.removed, failed: result.failed, error: result.error });
   }
 
+  // ---- Download to phone (travel.js) ----
+  if ((m = p.match(/^\/api\/media\/(lib|dl)\/([A-Za-z0-9_-]+)\/travel$/))) {
+    const served = converter.preferConverted(await sourceFile(m[1], m[2]));
+    const opts = await travel.options(m[1], m[2]);
+    let size = null;
+    try { size = (await fs.promises.stat(served)).size; } catch { /* gone */ }
+    return sendJson(res, 200, {
+      duration: opts.duration,
+      qualities: opts.qualities.map(({ key, ...q }) => {
+        const row = travel.row(user.id, m[1], m[2], q.quality);
+        return { ...q, mine: Boolean(row), url: row && q.state === 'ready' ? travelUrl(row) : null };
+      }),
+      original: { size, name: path.basename(served), url: `/api/media/${m[1]}/${m[2]}/original/${encodeURIComponent(path.basename(served))}` },
+    });
+  }
+  // The file as it is (the MP4 copy when there is one), for keeping at full quality.
+  if ((m = p.match(/^\/api\/media\/(lib|dl)\/([A-Za-z0-9_-]+)\/original(?:\/[^/]*)?$/))) {
+    const served = converter.preferConverted(await sourceFile(m[1], m[2]));
+    return sendVideo(req, res, served, { headers: { 'Content-Disposition': attachment(path.basename(served)) }, label: `Download · ${path.basename(served)}` });
+  }
+  if (p === '/api/travel') {
+    if (req.method === 'POST') {
+      const body = await readJson(req);
+      const quality = String(body.quality || '');
+      if (!validQuality(quality)) throw new HttpError(400, 'Choose Small or Standard.');
+      const items = (Array.isArray(body.items) ? body.items : []).slice(0, 200).map((it) => ({
+        kind: String(it?.kind || ''), id: String(it?.id || ''), title: String(it?.title || '').slice(0, 160) }));
+      if (!items.length) throw new HttpError(400, 'Nothing to copy.');
+      for (const it of items) if (!['lib', 'dl'].includes(it.kind) || !/^[A-Za-z0-9_-]{1,1000}$/.test(it.id)) throw new HttpError(400, 'Invalid video.');
+      try { await travel.request(user.id, items, quality); } catch (e) { throw e instanceof HttpError ? e : new HttpError(e.status || 500, e.message); }
+      activity.record(req, 'travel', `${items.length === 1 ? items[0].title || 'a video' : `${items.length} videos`} for a phone (${TRAVEL_QUALITIES[quality].label})`, { quietMs: 60000 });
+    }
+    return sendJson(res, 200, { items: travel.rowsFor(user.id).map(travelItem) });
+  }
+  if (p === '/api/travel/remove' && req.method === 'POST') {
+    const body = await readJson(req);
+    travel.remove(user.id, String(body.kind || ''), String(body.id || ''), String(body.quality || ''));
+    return sendJson(res, 200, { items: travel.rowsFor(user.id).map(travelItem) });
+  }
+  if ((m = p.match(/^\/api\/travel\/file\/([a-f0-9]{24})(?:\/[^/]*)?$/))) {
+    const row = travel.rowByKey(user.id, m[1]);
+    if (!row || !travel.ready(m[1])) throw new HttpError(404, 'That phone copy isn’t ready, or has been cleared away. Ask for it again.');
+    // Counted once per download, not per range request.
+    if (req.method === 'GET' && !/^bytes=(?!0-)/.test(String(req.headers.range || ''))) travel.markDownloaded(user.id, m[1]);
+    const name = travelName(row.title, row.quality);
+    return sendVideo(req, res, travel.filePath(m[1]), { headers: { 'Content-Type': 'video/mp4', 'Content-Disposition': attachment(name) }, label: `Phone copy · ${row.title}` });
+  }
+
   // A /sub-<lang>/ segment means the TV was sent subtitles; advertise them via CaptionInfo.sec.
   const caption = (kind, id, lang) => (lang ? { captionUrl: `http://${LAN_IP}:${PORT}/api/subs/file/${kind}/${id}/${lang}.srt` } : {});
   if ((m = p.match(/^\/api\/stream\/lib\/([A-Za-z0-9_-]+)(?:\/sub-([a-z-]+))?(?:\/[^/]*)?$/))) {
@@ -2523,7 +2603,7 @@ const server = http.createServer(async (req, res) => {
         || /^\/api\/access\/(invite|remove|rename|invite\/\w+\/revoke)$/.test(url.pathname) || /^\/c\/i\/[\w-]+\/?$/.test(url.pathname)
         || /^\/api\/auth\/(login|logout|password)$/.test(url.pathname)
         || /^\/api\/(me|me\/progress|library\/add|library\/extend|library\/identify|admin\/settings|admin\/users\/\d+|push\/subscribe|push\/unsubscribe|push\/test)$/.test(url.pathname)
-        || /^\/api\/watchlist(?:\/seen)?$/.test(url.pathname)
+        || /^\/api\/watchlist(?:\/seen)?$/.test(url.pathname) || /^\/api\/travel(?:\/remove)?$/.test(url.pathname)
         || /^\/api\/admin\/notes(?:\/import|\/\d+(?:\/(?:trash|restore|share|unshare))?)?$/.test(url.pathname)
         || /^\/api\/admin\/notes\/uploads(?:\/[a-f0-9]{32}(?:\/(?:finish|cancel))?)?$/.test(url.pathname)
         || /^\/api\/watch(?:\/plan|\/[A-Za-z0-9_-]{24}\/(join|heartbeat|control|leave|invite|chat|react|schedule|cancel))?$/.test(url.pathname)

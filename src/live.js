@@ -11,6 +11,7 @@ const RULES = [
   [/^\/api\/me\/progress$/, 'progress', 'user'],
   [/^\/api\/me$/, 'me', 'user'],
   [/^\/api\/watchlist(?:\/seen)?$/, 'watchlist', 'user'],
+  [/^\/api\/travel(?:\/remove)?$/, 'travel', 'user'],
   [/^\/api\/push\/(subscribe|unsubscribe)$/, 'push', 'user'], // the devices list in Settings
   [/^\/api\/social\/rate$/, 'social', 'all'],
   [/^\/api\/watch\/(plan|[A-Za-z0-9_-]{24}\/(cancel|schedule|join))$/, 'parties', 'all'],

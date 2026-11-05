@@ -203,6 +203,7 @@ export function describeJob(cmd, args, area) {
     clips: thumb ? 'Clip thumbnail' : encoder === 'x264' || encoder === 'NVENC' ? 'Clip share copy' : 'Clip edit',
     convert: thumb ? 'Thumbnail' : args.includes('-vn') || /\.(m4a|aac|srt)$/i.test(output || '') ? 'Audio / subtitle track' : 'Conversion',
     'note-share': thumb ? 'Note preview image' : 'Note preview video',
+    travel: 'Phone copy',
     subsync: exe === 'ffmpeg' ? 'Subtitle sync (audio)' : 'Subtitle sync',
     ocr: 'Image text (OCR)',
     previews: 'Timeline previews',
