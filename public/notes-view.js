@@ -121,9 +121,10 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
     if (note.attachments.length) row.append(h('div', { class: 'note-attachments' }, note.attachments.map(attachmentView)));
     if (note.reminderAt) row.append(h('p', { class: `note-deadline${!note.doneAt && note.reminderAt <= Date.now() ? ' is-due' : ''}` },
       note.doneAt ? 'Done · ' : note.reminderAt <= Date.now() ? 'Due · ' : 'Reminder · ', date(note.reminderAt)));
+    const copy = note.text && button('Copy text', async () => toast(await copyText(note.text) ? 'Text copied' : 'Couldn’t copy the text'));
     const actions = note.deletedAt
-      ? [button('Restore', () => mutate(note, {}, 'restore'))]
-      : [button('Edit', () => {
+      ? [copy, button('Restore', () => mutate(note, {}, 'restore'))]
+      : [copy, button('Edit', () => {
           state.edit = note.id; state.open = null; render();
           const box = shell.querySelector('.note-edit');
           box?.focus({ preventScroll: true }); box?.setSelectionRange(box.value.length, box.value.length);
