@@ -2232,7 +2232,7 @@ function extrasFor(file) {
   try {
     for (const e of fs.readdirSync(path.dirname(file))) {
       const l = e.toLowerCase();
-      if (l.startsWith(stem) && l.endsWith('.srt')) out.push(path.join(path.dirname(file), e));
+      if (l.startsWith(stem) && /\.(srt|mks)$/.test(l)) out.push(path.join(path.dirname(file), e)); // .mks: subtitles kept from a deleted original
     }
   } catch { /* folder gone */ }
   return out;

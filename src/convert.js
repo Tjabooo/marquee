@@ -50,6 +50,7 @@ const audioTrackJobs = new Map();
 let nvencBroken = false;
 let running = false;
 let currentFile = null;
+let retiringFile = null; // original whose subtitles are being saved before it's deleted (see retireOriginal)
 const queue = [];
 
 export const isTempFile = (name) => name.includes(TMP_TAG);
@@ -293,7 +294,9 @@ function runFirst(job) {
   if (failed) return { fixable: false, error: failed.error };
   if (job.file !== currentFile) {
     const i = queue.findIndex((q) => q.file === job.file);
-    queue.unshift({ ...(i >= 0 ? queue.splice(i, 1)[0] : job), redo: job.redo, fix: job.fix, force: true });
+    const queued = i >= 0 ? queue.splice(i, 1)[0] : null;
+    // A queued deletion of the original is dropped; the next scan queues it again once the copy is redone.
+    queue.unshift({ ...(queued && !queued.retire ? queued : job), redo: job.redo, fix: job.fix, force: true });
     drain(onConvertedHook);
   }
   return job.file === currentFile
@@ -352,7 +355,7 @@ export function syncState(file) {
   return { shift: syncShift[key] || 0, applied: syncApplied[key] || 0, state: jobState(job.file) };
 }
 
-export const jobState = (file) => (file === currentFile ? 'converting' : queue.some((q) => q.file === file) ? 'queued' : null);
+export const jobState = (file) => (file === currentFile ? 'converting' : queue.some((q) => q.file === file && !q.retire) ? 'queued' : null);
 
 export function converterStatus() { return { ...status, queued: queue.length }; }
 
@@ -599,7 +602,58 @@ async function convert(job) {
   delete failures[key]; // an earlier failure no longer applies
   syncApplied[key] = shift;
   saveFailures();
-  if (job.deleteOriginal && !job.fix) removeOriginal(file);
+  if (job.deleteOriginal && !job.fix) await retireOriginal(file);
+}
+
+// ---------- deleting originals ----------
+// With CONVERT_DELETE_ORIGINAL=on, a library original (never one qBittorrent still lists) is deleted
+// once its MP4 copy is complete, also when the copy was made earlier while the download was still in
+// qBittorrent. Picture and audio are already in the MP4, but image subtitles (PGS from Blu-rays, VobSub
+// from DVDs) can't go in MP4, and forced or untagged text tracks get no .srt. So every subtitle track,
+// plus the fonts styled ASS subtitles use, is first copied unchanged into "<name>.subtitles.mks" beside
+// it (mpv, VLC and Plex load it as an external subtitle file). The original is kept if anything fails.
+export const subtitleArchivePath = (file) => path.join(path.dirname(file), `${path.basename(file, path.extname(file))}.subtitles.mks`);
+const retireSkipped = new Map(); // file key -> reason; checked again only after a restart or a change to the file
+
+async function retireOriginal(file) {
+  const name = path.basename(file);
+  const keep = (reason) => {
+    retireSkipped.set(failureKey(file), reason);
+    console.warn(`[convert] keeping ${name}: ${reason}`);
+    return false;
+  };
+  let info, copy;
+  try { [info, copy] = await Promise.all([probe(file), probe(twinPath(file))]); }
+  catch (e) { return keep(`it or its MP4 copy couldn't be read (${e.message})`); }
+  const hasVideo = (i) => (i.streams || []).some((st) => st.codec_type === 'video' && !st.disposition?.attached_pic);
+  if (hasVideo(info) && !hasVideo(copy)) return keep('the MP4 copy has no video');
+  const length = (i) => Number(i.format?.duration) || 0;
+  if (length(info) > 0 && Math.abs(length(copy) - length(info)) > Math.max(2, length(info) * 0.005)) {
+    return keep(`the MP4 copy is ${Math.round(length(copy))} s long, the original ${Math.round(length(info))} s`);
+  }
+  const subs = (info.streams || []).filter((st) => st.codec_type === 'subtitle');
+  const archive = subtitleArchivePath(file);
+  if (subs.length && !fs.existsSync(archive)) {
+    const tmp = archive.replace(/\.mks$/, `${TMP_TAG}.mks`);
+    status.current = { name, mode: 'Saving subtitles', percent: 0, speed: null, eta: null };
+    const save = async (fonts) => {
+      fs.rmSync(tmp, { force: true });
+      await run(FFMPEG, ['-v', 'error', '-y', '-i', file, '-map', '0:s', ...(fonts ? ['-map', '0:t?'] : []),
+        '-c', 'copy', '-f', 'matroska', tmp], { priorityLow: true });
+      const saved = (await probe(tmp)).streams?.filter((st) => st.codec_type === 'subtitle').length || 0;
+      if (saved !== subs.length) throw new Error(`only ${saved} of ${subs.length} subtitle tracks were copied`);
+    };
+    try {
+      try { await save(true); }
+      catch { await save(false); } // an attachment ffmpeg can't copy; the subtitles matter, the fonts less
+      fs.renameSync(tmp, archive);
+    } catch (e) {
+      fs.rmSync(tmp, { force: true });
+      return keep(`its subtitles couldn't be saved (${e.message})`);
+    }
+  }
+  removeOriginal(file);
+  return true;
 }
 
 // Deletes an original after its MP4 copy is made. Windows refuses while something has the file open
@@ -634,6 +688,10 @@ function cleanTemps(candidates) {
         const fixTmp = fixPath(currentFile)?.replace(/\.mp4$/, `${TMP_TAG}.mp4`);
         if (full.startsWith(`${stem}.`) || full === fixTmp) continue;
       }
+      if (retiringFile) {
+        const stem = path.join(path.dirname(retiringFile), path.basename(retiringFile, path.extname(retiringFile)));
+        if (full.startsWith(`${stem}.`)) continue;
+      }
       try {
         if (Date.now() - fs.statSync(full).mtimeMs < 10 * 60 * 1000) continue; // possibly being written right now
         fs.rmSync(full, { force: true });
@@ -646,7 +704,7 @@ function cleanTemps(candidates) {
 function retryDeletes() {
   for (const file of [...pendingDeletes]) {
     if (!fs.existsSync(file) || !fs.existsSync(twinPath(file))) pendingDeletes = pendingDeletes.filter((f) => f !== file);
-    else if (file !== currentFile) removeOriginal(file);
+    else if (file !== currentFile && file !== retiringFile) removeOriginal(file);
   }
 }
 
@@ -715,6 +773,14 @@ async function drain(onConverted) {
   while (queue.length) {
     const job = queue.shift();
     if (!fs.existsSync(job.file)) continue;
+    if (job.retire) {
+      if (!fs.existsSync(twinPath(job.file))) continue;
+      retiringFile = job.file;
+      try { await retireOriginal(job.file); }
+      catch (e) { console.warn(`[convert] couldn’t delete ${path.basename(job.file)}: ${e.message}`); }
+      finally { status.current = null; retiringFile = null; }
+      continue;
+    }
     if (!job.force && (job.fix ? fs.existsSync(fixPath(job.file) || '') : (!job.redo && fs.existsSync(twinPath(job.file))))) continue;
     currentFile = job.file;
     try {
@@ -796,9 +862,13 @@ export async function startConverter({ dataDir, listCandidates, onConverted, onS
       for (const c of candidates) {
         if (!needsConversion(c.file) || isTempFile(c.file)) continue;
         if (failures[failureKey(c.file)]) continue; // failed before; retried only if the file changes
-        if (c.file === currentFile || queue.some((q) => q.file === c.file)) continue;
+        if (c.file === currentFile || c.file === retiringFile || queue.some((q) => q.file === c.file)) continue;
         if (fs.existsSync(twinPath(c.file))) {
           if (await audioNeedsFix(twinPath(c.file))) queue.push({ ...c, deleteOriginal: false, redo: true });
+          // A copy made while qBittorrent still had the download: delete the original now that it's gone.
+          else if (c.deleteOriginal && !pendingDeletes.includes(c.file) && !retireSkipped.has(failureKey(c.file))) {
+            queue.push({ file: c.file, retire: true });
+          }
           continue;
         }
         queue.push(c);
