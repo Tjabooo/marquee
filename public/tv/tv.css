@@ -36,6 +36,8 @@ img.is-empty { visibility: hidden; }
   font: 800 104px/1 ui-monospace, "Courier New", monospace; color: var(--bulb); background: var(--curtain); border: 2px solid var(--line); border-radius: 18px; }
 .pair-code span.gap { margin-left: 40px; }
 .pair-note { color: var(--dust); margin: 32px 0; min-height: 1.3em; }
+.pair-alt { margin-top: 24px; color: var(--dust); font-size: 26px; }
+.pair-alt-hint { display: block; margin-bottom: 14px; }
 .pair-home { display: inline-block; padding: 18px 30px; border-radius: 14px; background: var(--curtain); font-size: 30px; }
 
 /* ---- home ---- */

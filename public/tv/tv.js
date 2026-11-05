@@ -134,7 +134,8 @@
   function pairScreen(homeAvailable, note) {
     var codeEl = h('div', { class: 'pair-code', 'aria-live': 'polite' });
     var noteEl = h('p', { class: 'pair-note', text: note || '' });
-    var homeBtn = homeAvailable ? h('button', { class: 'pair-home focusable', text: 'Use the shared Home network account instead' }) : null;
+    var homeBtn = homeAvailable ? h('div', { class: 'pair-alt' }, h('span', { class: 'pair-alt-hint', text: 'No account? Press Down for' }),
+      h('button', { class: 'pair-home', text: 'Use the shared Home network account' })) : null;
     var el = h('div', { class: 'screen pair' },
       h('div', { class: 'wordmark', text: 'Marquee' }),
       h('h1', { text: 'Sign in this TV' }),
@@ -171,10 +172,13 @@
       screen = null;
       start();
     }
+    // Nothing is focused at first, so a stray OK can't sign the TV in as the shared account.
+    var homeFocused = false;
     show({ el: el,
-      focus: function () { if (homeBtn) homeBtn.classList.add('focus'); },
       key: function (code) {
-        if (code === KEY.ENTER && homeBtn) { signedIn({ token: null, name: 'Home network' }); return true; }
+        if (!homeBtn) return false;
+        if (code === KEY.DOWN || code === KEY.UP) { homeFocused = code === KEY.DOWN; homeBtn.lastChild.classList.toggle('focus', homeFocused); return true; }
+        if (code === KEY.ENTER && homeFocused) { signedIn({ token: null, name: 'Home network' }); return true; }
         return false;
       },
       leave: function () { alive = false; clearTimeout(timer); } });
