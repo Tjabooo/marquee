@@ -5,7 +5,7 @@ import vm from 'node:vm';
 
 const source = await fs.readFile(new URL('../public/app.js', import.meta.url), 'utf8');
 class Element {
-  constructor(tag) { this.tag = tag; this.children = []; this.attrs = {}; this.events = {}; this.disabled = false; this.style = {}; this.classList = { toggle() {} }; }
+  constructor(tag) { this.tag = tag; this.children = []; this.attrs = {}; this.events = {}; this.disabled = false; this.style = {}; this.dataset = {}; this.classList = { toggle() {}, contains() { return false; } }; }
   append(c) { this.children.push(c); }
   replaceChildren(...children) { this.children = children; }
   setAttribute(k, v) { this.attrs[k] = v; }
@@ -29,6 +29,7 @@ const create = ({ existing = false, fail = false } = {}) => {
       return { token: 'a'.repeat(24), media: { id: 'movie', kind: 'lib' } };
     },
     toast: (text) => calls.push(text), jsonPost: (body) => ({ body }), episodeLabel: () => '',
+    people: { face: () => new Element('span'), faces: () => null }, icon: () => new Element('svg'), namesText: (names) => names.join(', '),
     pushOverlay: (close) => stack.push(close), showSheet: (_, __, closed) => () => closed?.(),
     closeTopOverlay: () => { throw Error('Unawaited browser-back would close the new player'); },
     dismissTopOverlay: async () => { calls.push('dismiss'); stack.pop()?.(); },
@@ -76,6 +77,8 @@ test('blocked guests can press Play to unlock their browser; ordinary guest play
     state: { host: 'host', intentPlaying: false, playing: false, waitingFor: [], members: [] }, unlock: () => unlocks++ },
     watchPanelOpen: false, current: { kind: 'lib', id: 'movie' }, state: { library: [] }, mediaId: (f) => f.id,
     playerEl: new Element('div'), playBtns: [play], airplayBtn: new Element('button'), audioBtn: new Element('button'), seekEl: new Element('div'), updatePlayState() {}, updateUpNext() {}, cancelAudioIntent() {}, renderAudioControls() {}, partyUnread: 0, updatePartyCountdown() {},
+    renderRoomButton() {}, renderRoster() {}, roomStatus: () => ['wait', ''], roomDocked: () => false, layoutSubs() {}, requestAnimationFrame: (f) => f(),
+    episodeLabel: () => '', personName: (m) => m.name, watchClient: 'me',
   });
   vm.runInContext(source.slice(source.indexOf('function renderParty()'), source.indexOf('function leaveWatchRoom(')), context);
   vm.runInContext(source.slice(source.indexOf('function togglePlay('), source.indexOf('function updatePlayState(')), context);

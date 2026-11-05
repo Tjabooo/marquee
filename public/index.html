@@ -150,31 +150,6 @@
       <button class="pc-btn pc-skip" data-skip="10" aria-label="Forward 10 seconds (L)"></button>
     </div>
     <div class="player-controls" id="player-controls">
-      <div class="watch-bar" id="watch-bar" role="region" aria-label="Watch Together room" hidden>
-        <div class="watch-description"><strong id="watch-status" role="status"></strong><span id="watch-members"></span><small>Subtitles and volume are just for you.</small></div>
-        <div class="watch-actions">
-          <button class="chip" id="watch-ready" type="button" hidden>Ready to watch</button>
-          <button class="chip" id="watch-invite" type="button" aria-expanded="false" aria-controls="watch-invite-list">Invite</button>
-          <button class="chip" id="watch-copy" type="button">Copy invite</button>
-          <select class="chip watch-later" id="watch-later" aria-label="Start with a countdown" hidden>
-            <option value="">Start later…</option><option value="2">In 2 minutes</option><option value="5">In 5 minutes</option>
-            <option value="10">In 10 minutes</option><option value="15">In 15 minutes</option><option value="30">In 30 minutes</option>
-          </select>
-          <button class="chip" id="watch-start-now" type="button" hidden>Start now</button>
-          <button class="chip" id="watch-clear-start" type="button" hidden>No countdown</button>
-          <button class="chip" id="watch-leave" type="button">Leave room</button>
-          <button class="chip" id="watch-hide" type="button">Hide</button>
-        </div>
-        <div class="watch-invite-list" id="watch-invite-list" hidden></div>
-        <div class="watch-social">
-          <div class="reaction-bar" id="reaction-bar" role="group" aria-label="Send a reaction"></div>
-          <ol class="chat-log" id="chat-log" aria-label="Room chat"></ol>
-          <form class="chat-form" id="chat-form" autocomplete="off">
-            <input id="chat-input" type="text" maxlength="300" placeholder="Message the room" aria-label="Message the room" enterkeyhint="send">
-            <button class="icon-btn" type="submit" aria-label="Send message"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button>
-          </form>
-        </div>
-      </div>
       <div class="seek-row">
         <span class="pc-time" id="pc-time">0:00</span>
         <div class="seek" id="seek" role="slider" tabindex="0" aria-label="Seek" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0">
@@ -196,7 +171,7 @@
           <input type="range" id="pc-vol" min="0" max="1" step="0.05" value="1" aria-label="Volume">
         </div>
         <span class="pc-spacer"></span>
-        <button class="watch-start" id="watch-btn" type="button" aria-controls="watch-bar" aria-expanded="false">Watch together</button>
+        <button class="watch-start" id="watch-btn" type="button" aria-controls="watch-bar" aria-expanded="false"><span class="watch-start-faces" id="watch-btn-faces"></span><span class="watch-start-label" id="watch-btn-label">Watch together</span><span class="watch-start-badge" id="watch-btn-badge" hidden></span></button>
         <button class="pc-btn cc-btn" id="night-btn" aria-label="Bedtime: night mode and sleep timer (N)" aria-haspopup="menu" aria-controls="night-menu" aria-expanded="false">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 14.6A7.5 7.5 0 0 1 9.4 4.5a7.5 7.5 0 1 0 10.1 10.1z"/></svg>
         </button>
@@ -217,6 +192,63 @@
         <button class="pc-btn" id="pc-fs" aria-label="Fullscreen (F)"></button>
       </div>
     </div>
+    <!-- Watch Together: the room panel. Docked on the right on wide screens (the picture moves over),
+         a sheet over the lower picture on phones. app.js renderParty() fills it in. -->
+    <aside class="room" id="watch-bar" role="region" aria-label="Watch Together room" hidden>
+      <header class="room-head">
+        <div class="room-sign"><span class="room-bulbs" aria-hidden="true"></span><span class="room-kicker">Watch together</span><span class="room-bulbs" aria-hidden="true"></span></div>
+        <button class="icon-btn room-close" id="watch-hide" type="button" aria-label="Hide the room (the room stays open)">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+        <p class="room-title" id="watch-title"></p>
+        <p class="room-status" id="watch-status" role="status" data-tone="wait"></p>
+      </header>
+      <div class="room-body">
+        <section class="room-section" aria-labelledby="watch-people-label">
+          <h3 class="room-label" id="watch-people-label">In the room <span id="watch-count"></span></h3>
+          <ul class="room-roster" id="watch-members"></ul>
+          <button class="room-ready" id="watch-ready" type="button" hidden>I’m ready: join playback</button>
+          <p class="room-hint" id="watch-hint"></p>
+        </section>
+        <section class="room-section" id="watch-host-tools" aria-labelledby="watch-start-label" hidden>
+          <h3 class="room-label" id="watch-start-label">Start together</h3>
+          <div class="room-later" id="watch-later" role="group" aria-label="Start with a countdown">
+            <button class="room-pill" type="button" data-min="2">2 min</button>
+            <button class="room-pill" type="button" data-min="5">5 min</button>
+            <button class="room-pill" type="button" data-min="10">10 min</button>
+            <button class="room-pill" type="button" data-min="15">15 min</button>
+            <button class="room-pill" type="button" data-min="30">30 min</button>
+          </div>
+          <div class="room-counting">
+            <button class="room-pill primary" id="watch-start-now" type="button" hidden>Start now</button>
+            <button class="room-pill" id="watch-clear-start" type="button" hidden>Cancel countdown</button>
+          </div>
+        </section>
+        <section class="room-section" aria-labelledby="watch-invite-label">
+          <h3 class="room-label" id="watch-invite-label">Invite</h3>
+          <div class="room-invite-actions">
+            <button class="room-pill" id="watch-invite" type="button" aria-expanded="false" aria-controls="watch-invite-list">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8.5a6 6 0 1 0-12 0c0 6.5-2.5 8-2.5 8h17S18 15 18 8.5zM10.3 20a2 2 0 0 0 3.4 0"/></svg>Notify someone</button>
+            <button class="room-pill" id="watch-copy" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1.2 1.2"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1.2-1.2"/></svg>Copy link</button>
+          </div>
+          <div class="room-invitees" id="watch-invite-list" hidden></div>
+        </section>
+      </div>
+      <section class="room-chat" aria-label="Room chat">
+        <ol class="chat-log" id="chat-log" aria-label="Messages" aria-live="polite"></ol>
+        <p class="chat-empty" id="chat-empty">No messages yet. Say hi: messages also pop up over the picture.</p>
+        <div class="reaction-bar" id="reaction-bar" role="group" aria-label="Send a reaction"></div>
+        <form class="chat-form" id="chat-form" autocomplete="off">
+          <input id="chat-input" type="text" maxlength="300" placeholder="Message the room" aria-label="Message the room" enterkeyhint="send">
+          <button class="chat-send" type="submit" aria-label="Send message"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button>
+        </form>
+      </section>
+      <footer class="room-foot">
+        <small>Subtitles and volume are just for you.</small>
+        <button class="room-leave" id="watch-leave" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h4.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H14"/><path d="M10 8l-4 4 4 4M6 12h9"/></svg>Leave room</button>
+      </footer>
+    </aside>
     <button class="skip-intro" id="skip-intro" type="button" aria-keyshortcuts="S" hidden>
       Skip intro
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5l8 7-8 7zM14 5l8 7-8 7z"/></svg>

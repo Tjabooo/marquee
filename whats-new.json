@@ -1,5 +1,6 @@
 [
   {
+<<<<<<< HEAD
     "id": "2026-11-05-invite-fix",
     "date": "2026-11-05",
     "title": "Invite links work again",
@@ -7,6 +8,23 @@
       {
         "title": "Invite links work again",
         "text": "Since the sign-in update, opening an invite link and pressing Get access showed “This request came from another website”. That's fixed: invites you already sent work as they are.",
+=======
+    "id": "2026-11-05-faces-room",
+    "date": "2026-11-05",
+    "title": "Faces, and a new Watch Together",
+    "items": [
+      {
+        "title": "Add your picture",
+        "text": "Settings: tap the circle next to your name to add a profile picture. Drag it into place, zoom, save. It shows wherever your name does: Liked by, Popular on Marquee, watch parties, room chat and Wrapped."
+      },
+      {
+        "title": "Watch Together, redone",
+        "text": "The room now opens as a panel beside the picture on bigger screens (a sheet on phones): everyone's face with a gold ring once they're ready, the host's crown, chat bubbles, one-tap invites with faces, and quick countdown buttons for the host. Invites look like a ticket and show who's already there."
+      },
+      {
+        "title": "Pictures for the family",
+        "text": "In Settings → People, tap someone's circle to give them a picture (right-click to remove it).",
+>>>>>>> f029483 (feat(social): profile pictures everywhere and a redesigned Watch Together room)
         "audience": "owner"
       }
     ]

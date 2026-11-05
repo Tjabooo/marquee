@@ -70,7 +70,9 @@ export const fmtHours = (seconds) => {
   return `${Math.max(1, Math.round(seconds / 60))} minutes`;
 };
 
-export function createSocial({ h, api, jsonPost, toast, icon }) {
+export function createSocial({ h, api, jsonPost, toast, icon, people }) {
+  const faces = (list, opts) => people?.faces(list, opts) || null;
+  const face = (p, opts) => people?.face(p, opts) || null;
   const thumbSvg = (down) => {
     const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('aria-hidden', 'true');
@@ -86,14 +88,18 @@ export function createSocial({ h, api, jsonPost, toast, icon }) {
     if (!key) return null;
     const up = h('button', { type: 'button', class: 'thumb', 'aria-pressed': 'false', 'aria-label': 'I like this' }, thumbSvg(false));
     const down = h('button', { type: 'button', class: 'thumb', 'aria-pressed': 'false', 'aria-label': 'Not for me' }, thumbSvg(true));
-    const who = h('span', { class: 'liked-by', 'aria-live': 'polite' });
+    const whoFaces = h('span', { class: 'liked-faces' });
+    const whoText = h('span', { class: 'liked-text', 'aria-live': 'polite' });
+    const who = h('span', { class: 'liked-by' }, whoFaces, whoText);
     const el = h('div', { class: 'rate-row', role: 'group', 'aria-label': 'Rate this title' }, up, down, who);
     let current = { key, mine: 0, likedBy: [] };
     const paint = (r) => {
       current = r; cache.set(key, r);
       up.setAttribute('aria-pressed', String(r.mine === 1));
       down.setAttribute('aria-pressed', String(r.mine === -1));
-      who.textContent = likedText(r);
+      whoText.textContent = likedText(r);
+      const list = [...(r.mine === 1 && people?.me?.() ? [people.me()] : []), ...(r.people || r.likedBy.map((name) => ({ name })))];
+      whoFaces.replaceChildren(...[faces(list, { size: 26, max: 4 })].filter(Boolean));
       down.title = r.mine === -1 ? 'Only you see this' : 'Not for me (only you see this)';
     };
     const send = async (value) => {
@@ -124,7 +130,7 @@ export function createSocial({ h, api, jsonPost, toast, icon }) {
       const li = titleCard(t);
       const note = t.likedBy?.length ? `♥ ${namesText(t.likedBy, t.likes - (t.youLiked ? 1 : 0))}`
         : t.viewers > 1 ? `${t.viewers} people watched` : t.youLiked ? '♥ You liked this' : t.viewers ? 'Watched here' : '';
-      if (note) li.querySelector('.sub')?.replaceChildren(h('span', { class: 'popular-why' }, note));
+      if (note) li.querySelector('.sub')?.replaceChildren(h('span', { class: 'popular-why' }, faces(t.people, { size: 18, max: 3 }), h('span', {}, note)));
       return li;
     });
     return carousel('Popular on Marquee', h('ul', { class: 'shelf-items', tabindex: '0', 'aria-label': 'Popular on Marquee' }, cards));
@@ -171,9 +177,12 @@ export function createSocial({ h, api, jsonPost, toast, icon }) {
       const tick = () => { when.textContent = p.started ? 'Started' : `${countdownText(p.startsAt - Date.now())} · ${startLabel(p.startsAt)}`; };
       tick();
       when.tick = tick;
+      const here = p.faces?.length ? `${namesText(p.faces.map((f) => f.name))} ${p.faces.length === 1 ? 'is' : 'are'} in the room` : '';
       return h('li', { class: 'party-card' },
+        face({ name: p.host, avatar: p.hostAvatar }, { size: 44, cls: 'party-host' }),
         h('div', { class: 'party-text' }, h('strong', {}, label(p.media)), when,
-          h('span', { class: 'muted' }, p.mine ? 'You planned this' : `Planned by ${p.host}`)),
+          h('span', { class: 'muted' }, p.mine ? 'You planned this' : `Planned by ${p.host}`),
+          here && h('span', { class: 'party-here' }, faces(p.faces, { size: 20, max: 5 }), h('span', {}, here))),
         h('div', { class: 'party-actions' },
           h('button', { type: 'button', class: 'chip primary', onclick: () => join(p) }, p.started ? 'Join' : 'Wait in room'),
           h('button', { type: 'button', class: 'chip', onclick: () => copy(p) }, 'Invite'),
@@ -190,9 +199,10 @@ export function createSocial({ h, api, jsonPost, toast, icon }) {
 
   // ---------- in-room chat and reactions ----------
   // Floating emoji over the video; several at once drift apart.
-  function burst(layer, emoji, name) {
+  function burst(layer, emoji, name, avatar = null) {
     if (!layer || layer.childElementCount > 40) return;
-    const el = h('span', { class: 'reaction-float', 'aria-hidden': 'true' }, emoji, name && h('small', {}, name));
+    const el = h('span', { class: 'reaction-float', 'aria-hidden': 'true' }, emoji,
+      name && h('small', {}, face({ name, avatar }, { size: 16 }), name));
     el.style.setProperty('--x', `${Math.round(Math.random() * 60 - 30)}px`);
     el.style.setProperty('--r', `${Math.round(Math.random() * 30 - 15)}deg`);
     layer.append(el);
@@ -202,16 +212,24 @@ export function createSocial({ h, api, jsonPost, toast, icon }) {
   // A message shown over the video for a few seconds, even with the controls hidden.
   function floatMessage(layer, msg) {
     if (!layer) return;
-    const el = h('div', { class: 'chat-float' }, h('strong', {}, msg.name), ' ', msg.text);
+    const el = h('div', { class: 'chat-float' }, face(msg, { size: 26 }),
+      h('span', { class: 'chat-float-text' }, h('strong', {}, msg.name), h('span', {}, msg.text)));
     layer.append(el);
     while (layer.childElementCount > 3) layer.firstElementChild.remove();
     setTimeout(() => el.classList.add('gone'), 6500);
     setTimeout(() => el.remove(), 7200);
   }
 
-  function chatLine(msg, mine) {
+  // One chat message. prev: the message before it; a run from the same person within a few minutes
+  // shows their face and name once.
+  function chatLine(msg, mine, prev = null) {
     const time = new Date(msg.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    return h('li', { class: `chat-line${mine ? ' mine' : ''}` }, h('strong', {}, mine ? 'You' : msg.name), h('time', {}, time), h('p', {}, msg.text));
+    const cont = prev && prev.from === msg.from && msg.at - prev.at < 3 * 60000;
+    return h('li', { class: `chat-line${mine ? ' mine' : ''}${cont ? ' cont' : ''}` },
+      !mine && (cont ? h('span', { class: 'chat-gap', 'aria-hidden': 'true' }) : face(msg, { size: 30, cls: 'chat-face' })),
+      h('div', { class: 'chat-bubble' },
+        !cont && h('div', { class: 'chat-meta' }, h('strong', {}, mine ? 'You' : msg.name), h('time', { datetime: new Date(msg.at).toISOString() }, time)),
+        h('p', {}, msg.text)));
   }
 
   // ---------- Marquee Wrapped ----------
@@ -242,7 +260,9 @@ export function createSocial({ h, api, jsonPost, toast, icon }) {
       h('div', { class: 'wr-months', 'aria-hidden': 'true' }, w.months.map((s) => h('i', { style: `--v:${(s / max).toFixed(3)}` }))),
       small(`${w.busiestWeekday}s were your night. Your biggest day was ${busy} (${fmtHours(w.busiestDay.seconds)}).`),
       w.streak.days > 1 && small(`Longest run: ${w.streak.days} days in a row.`));
-    if (w.company?.length) slide('wr-f', h('p', { class: 'wr-kicker' }, 'Watched together'), big(namesText(w.company.map((c) => c.name))),
+    if (w.company?.length) slide('wr-f', h('p', { class: 'wr-kicker' }, 'Watched together'),
+      h('div', { class: 'wr-faces' }, w.company.slice(0, 5).map((c) => face(c, { size: 72 }))),
+      big(namesText(w.company.map((c) => c.name))),
       small(`${fmtHours(w.together)} in Watch Together rooms${w.company[0] ? `, most of it with ${w.company[0].name}` : ''}.`));
     slide('wr-g', h('p', { class: 'wr-kicker' }, 'It all started with'), big(w.first.title),
       small(w.first.season != null ? `Season ${w.first.season}, episode ${w.first.episode}` : ''),

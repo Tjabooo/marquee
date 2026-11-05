@@ -14,6 +14,7 @@ const RULES = [
   [/^\/api\/travel(?:\/remove)?$/, 'travel', 'user'],
   [/^\/api\/push\/(subscribe|unsubscribe)$/, 'push', 'user'], // the devices list in Settings
   [/^\/api\/social\/rate$/, 'social', 'all'],
+  [/^\/api\/(me|admin\/users\/\d+)\/avatar$/, 'avatars', 'all'], // pictures show beside names everywhere
   [/^\/api\/watch\/(plan|[A-Za-z0-9_-]{24}\/(cancel|schedule|join))$/, 'parties', 'all'],
   [/^\/api\/(library|downloads)\/(?!.*-info$)/, 'library', 'all'], // not the read-only delete-info checks
   [/^\/api\/media\/\w+\/[\w-]+\/sync$/, 'library', 'all'],

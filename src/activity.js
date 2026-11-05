@@ -14,9 +14,11 @@ let events = [];
 const lastSeen = new Map();          // user -> { at, device }
 const recentKeys = new Map();        // dedup key -> time
 let resolveName = null;
+let resolveAvatar = null;
 
-export function initActivity({ dataDir, nameForUser = null }) {
+export function initActivity({ dataDir, nameForUser = null, avatarForUser = null }) {
   resolveName = nameForUser;
+  resolveAvatar = avatarForUser;
   file = path.join(dataDir, '.marquee-activity.jsonl');
   try {
     events = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).slice(-KEEP).map((l) => {
@@ -92,9 +94,14 @@ export function report(limit = 300) {
     if (!names.has(user)) names.set(user, resolveName?.(user) || String(user).split('@')[0]);
     return names.get(user);
   };
+  const avatars = new Map();
+  const avatarOf = (user) => {
+    if (!avatars.has(user)) avatars.set(user, resolveAvatar?.(user) || null);
+    return avatars.get(user);
+  };
   return {
-    people: [...lastSeen.entries()].map(([user, s]) => ({ user, name: nameOf(user), ...s })).sort((a, b) => b.at - a.at),
-    events: events.slice(-limit).reverse().map((e) => ({ ...e, name: nameOf(e.user),
+    people: [...lastSeen.entries()].map(([user, s]) => ({ user, name: nameOf(user), avatar: avatarOf(user), ...s })).sort((a, b) => b.at - a.at),
+    events: events.slice(-limit).reverse().map((e) => ({ ...e, name: nameOf(e.user), avatar: avatarOf(e.user),
       ...(e.action === 'revoke' ? { subjectName: nameOf(e.detail) } : {}) })),
   };
 }

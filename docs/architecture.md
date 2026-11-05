@@ -169,7 +169,7 @@ tests/               node --test suites
 State lives in `DATA_DIR` (the Marquee folder unless set): `.marquee.db` (SQLite: accounts, libraries,
 progress, Notes), `.marquee-*.json` (caches and small registries; `.marquee-push.json` holds the
 notification key), `.marquee-secret`,
-`.marquee-notes-files/` and `cache/` (rebuildable copies and previews).
+`.marquee-notes-files/`, `.marquee-avatars/` (profile pictures) and `cache/` (rebuildable copies and previews).
 
 # API
 

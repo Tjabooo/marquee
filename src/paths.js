@@ -18,7 +18,7 @@ export const STATE_FILES = [
   '.marquee-power.json', '.marquee-screentime.json', '.marquee-shares.json', '.marquee-shows.json',
   '.marquee-subfiles.json', '.marquee-subs.json', '.marquee-subsync.json',
 ];
-export const STATE_DIRS = ['.marquee-notes-files', '.marquee-notes-imports'];
+export const STATE_DIRS = ['.marquee-notes-files', '.marquee-notes-imports', '.marquee-avatars'];
 
 // Refuses to start with an empty DATA_DIR while the application folder still holds a database:
 // that would quietly start a second, empty installation and strand everyone's accounts.

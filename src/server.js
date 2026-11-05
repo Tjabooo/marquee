@@ -86,7 +86,7 @@ function lanAddress() {
   return '127.0.0.1';
 }
 const LAN_IP = lanAddress();
-const watchRooms = new WatchRooms();
+const watchRooms = new WatchRooms({ avatarOf: (id) => accounts.userById(id)?.avatar || null });
 // Artwork for a room's link preview, from the TMDB cache only (Discord's crawler doesn't wait long).
 function watchArtwork(media) {
   const art = media.season == null ? shows.knownFilm(media.mediaKey, media.title, media.year) : shows.knownShow(media.title, media.year);
@@ -96,7 +96,7 @@ function watchArtwork(media) {
   return image ? { image } : null;
 }
 setInterval(() => watchRooms.cleanup(), 3000).unref();
-activity.initActivity({ dataDir: DATA_DIR, nameForUser: accounts.displayNameFor });
+activity.initActivity({ dataDir: DATA_DIR, nameForUser: accounts.displayNameFor, avatarForUser: accounts.avatarForEmail });
 accounts.initAccounts({ dataDir: DATA_DIR, adminEmails: activity.adminEmails(), mediaDir: MEDIA_DIR });
 // Notifications (push.js): a download is ready, a new episode arrived, a Watch Together invite.
 const push = new PushStore(DATA_DIR);
@@ -110,6 +110,7 @@ function notify(userIds, kind, message) {
 const auth = createAuth({ dataDir: DATA_DIR });
 watchRooms.attachStore(social.partyStore); // planned watch parties survive restarts
 const personName = (id) => accounts.userById(id)?.name || 'Someone';
+const avatarOf = (id) => accounts.userById(id)?.avatar || null;
 const notes = new NotesStore(DATA_DIR, { fileDir: process.env.NOTES_FILES_DIR });
 const watchlist = new WatchlistStore(DATA_DIR);
 // Text in Notes images becomes search keywords. Uploads are read right away; older images catch up after startup.
@@ -1027,12 +1028,12 @@ async function episodeOrderRound() {
 }
 setInterval(() => episodeOrderRound(), 5000).unref();
 
-async function readRaw(req, limit) {
+async function readRaw(req, limit, tooLarge = 'That file is too large for a .torrent.') {
   const chunks = [];
   let size = 0;
   for await (const c of req) {
     size += c.length;
-    if (size > limit) throw new HttpError(413, 'That file is too large for a .torrent.');
+    if (size > limit) throw new HttpError(413, tooLarge);
     chunks.push(c);
   }
   return Buffer.concat(chunks);
@@ -1627,7 +1628,7 @@ async function handleApi(req, res, url) {
     watchRooms.member(room, user, String(body.clientId || url.searchParams.get('clientId') || ''));
     const inRoom = new Set([...room.members.values()].map((v) => v.userId));
     const invitees = accounts.listUsers().filter((u) => !inRoom.has(u.id) && push.hasDevice(u.id) && u.settings?.pushWatch !== false)
-      .map((u) => ({ id: u.id, name: u.name }));
+      .map((u) => ({ id: u.id, name: u.name, avatar: u.avatar }));
     if (action === 'invitees') return sendJson(res, 200, { people: invitees });
     if (req.method !== 'POST') throw new HttpError(405, 'Unsupported watch-room action.');
     const allowedIds = new Set(invitees.map((u) => u.id));
@@ -1721,6 +1722,22 @@ async function handleApi(req, res, url) {
     }
     return sendJson(res, 200, { me: { ...accounts.publicUser(user), via: req.auth.via } });
   }
+  // Profile pictures: anyone signed in sees everyone's (they show beside names all over Marquee).
+  if ((m = p.match(/^\/api\/avatar\/(\d{1,9})$/)) && req.method === 'GET') {
+    const found = accounts.avatarFile(Number(m[1]));
+    if (!found) throw new HttpError(404, 'No picture.');
+    res.writeHead(200, { 'Content-Type': found.type, 'X-Content-Type-Options': 'nosniff',
+      'Cache-Control': url.searchParams.has('v') ? 'private, max-age=31536000, immutable' : 'private, no-cache' });
+    return res.end(await fs.promises.readFile(found.file));
+  }
+  // POST an image to set your picture; an empty POST removes it.
+  if (p === '/api/me/avatar' && req.method === 'POST') {
+    const body = await readRaw(req, 700 * 1024, 'That picture is too large.');
+    const image = body.length ? body : null;
+    const next = accounts.setAvatar(user.id, image);
+    watchRooms.renameUser(next);
+    return sendJson(res, 200, { me: { ...accounts.publicUser(next), via: req.auth.via } });
+  }
   if (p === '/api/me/progress') {
     if (req.method === 'POST') {
       const { ref, time, duration, watched, about, room } = await readJson(req);
@@ -1737,15 +1754,15 @@ async function handleApi(req, res, url) {
   // Marquee Wrapped: one person's year (defaults to this one).
   if (p === '/api/me/wrapped') {
     const year = Number(url.searchParams.get('year')) || new Date().getFullYear();
-    return sendJson(res, 200, social.wrapped(user.id, year, personName));
+    return sendJson(res, 200, social.wrapped(user.id, year, personName, avatarOf));
   }
   // ---- social: thumbs up/down, who liked a title, Popular on Marquee ----
   if (p === '/api/social/rate' && req.method === 'POST') {
     const { key, value, title } = await readJson(req);
     social.rate(user.id, String(key || ''), value, title);
-    return sendJson(res, 200, social.ratingFor(user.id, String(key), personName));
+    return sendJson(res, 200, social.ratingFor(user.id, String(key), personName, avatarOf));
   }
-  if (p === '/api/social/title') return sendJson(res, 200, social.ratingFor(user.id, String(url.searchParams.get('key') || ''), personName));
+  if (p === '/api/social/title') return sendJson(res, 200, social.ratingFor(user.id, String(url.searchParams.get('key') || ''), personName, avatarOf));
   if (p === '/api/social/ratings') {
     const keys = String(url.searchParams.get('keys') || '').split(',').slice(0, 500);
     return sendJson(res, 200, { ratings: social.ratingsFor(user.id, keys) });
@@ -1758,7 +1775,9 @@ async function handleApi(req, res, url) {
       const [kind, id] = r.key.split(':');
       const card = mapTitle(await cachedTmdb(`/${kind}/${id}`, {}, 6 * 3600 * 1000), kind);
       return { ...card, likes: r.likes, viewers: r.viewers,
-        likedBy: r.likedBy.filter((u) => u !== user.id).map(personName).slice(0, 4), youLiked: r.likedBy.includes(user.id) };
+        likedBy: r.likedBy.filter((u) => u !== user.id).map(personName).slice(0, 4),
+        people: r.likedBy.filter((u) => u !== user.id).slice(0, 4).map((u) => ({ name: personName(u), avatar: avatarOf(u) })),
+        youLiked: r.likedBy.includes(user.id) };
     }));
     return sendJson(res, 200, { items: cards.filter((c) => c.status === 'fulfilled').map((c) => c.value) });
   }
@@ -1830,6 +1849,15 @@ async function handleApi(req, res, url) {
         return { ...u, items: held.length, size: held.reduce((n, k) => n + sizes.get(k), 0) };
       });
       return sendJson(res, 200, { users });
+    }
+    // The owner can give someone a picture (handy for family who never open Settings).
+    if ((m = p.match(/^\/api\/admin\/users\/(\d+)\/avatar$/)) && req.method === 'POST') {
+      const body = await readRaw(req, 700 * 1024, 'That picture is too large.');
+      const image = body.length ? body : null;
+      const u = accounts.setAvatar(Number(m[1]), image);
+      watchRooms.renameUser(u);
+      activity.record(req, 'permission', `${image ? 'set' : 'removed'} ${u.name}’s picture`);
+      return sendJson(res, 200, { avatar: u.avatar });
     }
     if ((m = p.match(/^\/api\/admin\/users\/(\d+)$/)) && req.method === 'POST') {
       const body = await readJson(req);
@@ -2616,7 +2644,7 @@ const server = http.createServer(async (req, res) => {
         || /^\/api\/(house\/(report|boot|power)|screentime)$/.test(url.pathname) || /^\/api\/clips\/[\w-]+\/(share|unshare|delete|trim|rename)$/.test(url.pathname)
         || /^\/api\/access\/(invite|remove|rename|invite\/\w+\/revoke)$/.test(url.pathname) || /^\/c\/i\/[\w-]+\/?$/.test(url.pathname)
         || /^\/api\/auth\/(login|logout|password)$/.test(url.pathname)
-        || /^\/api\/(me|me\/progress|library\/add|library\/extend|library\/identify|admin\/settings|admin\/users\/\d+|push\/subscribe|push\/unsubscribe|push\/test)$/.test(url.pathname)
+        || /^\/api\/(me|me\/progress|me\/avatar|library\/add|library\/extend|library\/identify|admin\/settings|admin\/users\/\d+|admin\/users\/\d+\/avatar|push\/subscribe|push\/unsubscribe|push\/test)$/.test(url.pathname)
         || /^\/api\/watchlist(?:\/seen)?$/.test(url.pathname) || /^\/api\/travel(?:\/remove)?$/.test(url.pathname)
         || /^\/api\/admin\/notes(?:\/import|\/\d+(?:\/(?:trash|restore|share|unshare))?)?$/.test(url.pathname)
         || /^\/api\/admin\/notes\/uploads(?:\/[a-f0-9]{32}(?:\/(?:finish|cancel))?)?$/.test(url.pathname)

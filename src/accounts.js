@@ -17,6 +17,7 @@
 // A video is one file on disk however many people have it: "Add to my library" adds a row, never a
 // copy. Its media key is its path inside MEDIA_DIR without the extension, lower case, so the MP4
 // copy the converter makes and the original count as the same video.
+import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 
@@ -63,6 +64,7 @@ const httpError = (status, message) => Object.assign(new Error(message), { statu
 export function initAccounts({ dataDir, adminEmails, mediaDir: dir }) {
   admins = adminEmails.map((e) => e.toLowerCase());
   mediaDir = dir;
+  avatarDir = path.join(dataDir, '.marquee-avatars');
   db = new DatabaseSync(path.join(dataDir, '.marquee.db'));
   db.exec(`
     PRAGMA journal_mode = WAL;
@@ -209,6 +211,59 @@ export const choices = () => ({ retention: RETENTION_CHOICES, extend: EXTEND_CHO
 const emailOf = (req) => String(req.headers['cf-access-authenticated-user-email'] || '').trim().toLowerCase() || HOME;
 const fallbackName = (identity) => identity === HOME || identity === 'Home network' ? 'Home network' : String(identity).split('@')[0];
 
+// ---------- profile pictures ----------
+// One small square image per person (the browser crops and shrinks it to 256 px before upload), kept
+// as .marquee-avatars/<id>.<ext>. settings.avatar holds the upload time, which versions the URL, so
+// browsers can cache a picture forever and still see a new one at once.
+let avatarDir = null;
+const AVATAR_MAX = 600 * 1024;
+const AVATAR_TYPES = { webp: 'image/webp', jpg: 'image/jpeg', png: 'image/png' };
+const avatarUrl = (id, version) => (Number.isSafeInteger(version) && version > 0 ? `/api/avatar/${id}?v=${version.toString(36)}` : null);
+export function imageKind(buf) {
+  if (!Buffer.isBuffer(buf) || buf.length < 12) return null;
+  if (buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') return 'webp';
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'jpg';
+  if (buf.readUInt32BE(0) === 0x89504e47 && buf.readUInt32BE(4) === 0x0d0a1a0a) return 'png';
+  return null;
+}
+export function avatarFile(id) {
+  if (!avatarDir || !Number.isSafeInteger(Number(id))) return null;
+  for (const [ext, type] of Object.entries(AVATAR_TYPES)) {
+    const file = path.join(avatarDir, `${Number(id)}.${ext}`);
+    if (fs.existsSync(file)) return { file, type };
+  }
+  return null;
+}
+// image: a Buffer to set, null to remove. Returns the updated person.
+export function setAvatar(id, image) {
+  const user = userById(id);
+  if (!user) throw httpError(404, 'No such person.');
+  const kind = image == null ? null : imageKind(image);
+  if (image != null && !kind) throw httpError(415, 'Use a JPEG, PNG or WebP picture.');
+  if (image != null && image.length > AVATAR_MAX) throw httpError(413, 'That picture is too large.');
+  fs.mkdirSync(avatarDir, { recursive: true });
+  for (const ext of Object.keys(AVATAR_TYPES)) fs.rmSync(path.join(avatarDir, `${user.id}.${ext}`), { force: true });
+  const row = db.prepare('SELECT settings FROM users WHERE id = ?').get(user.id);
+  let settings = {};
+  try { settings = JSON.parse(row?.settings || '{}'); } catch { /* start over */ }
+  if (kind) {
+    const file = path.join(avatarDir, `${user.id}.${kind}`);
+    fs.writeFileSync(`${file}.tmp`, image);
+    fs.renameSync(`${file}.tmp`, file);
+    settings.avatar = Math.max(Date.now(), (settings.avatar || 0) + 1);
+  } else delete settings.avatar;
+  db.prepare('UPDATE users SET settings = ? WHERE id = ?').run(JSON.stringify(settings), user.id);
+  return userById(user.id);
+}
+// The picture for the email an old log entry carries (Activity), without creating an account.
+export function avatarForEmail(identity) {
+  const raw = String(identity || '').trim();
+  const key = raw === 'Home network' ? HOME : raw.toLowerCase();
+  const r = db?.prepare('SELECT id, settings FROM users WHERE email = ?').get(key);
+  if (!r) return null;
+  try { return avatarUrl(r.id, JSON.parse(r.settings || '{}').avatar); } catch { return null; }
+}
+
 // One source for person labels. Looking up an old log entry must never create an account.
 export function displayNameFor(identity) {
   const raw = String(identity || '').trim();
@@ -224,6 +279,7 @@ function rowToUser(r) {
     id: r.id,
     email: r.email,
     name: r.name || fallbackName(r.email),
+    avatar: avatarUrl(r.id, settings.avatar),
     isOwner,
     // the owner can always download; others as the owner allows
     canDownload: isOwner || Boolean(r.can_download),
@@ -321,7 +377,7 @@ function cleanTheme(t) {
 
 // What the browser gets about the person signed in.
 export function publicUser(u) {
-  return { id: u.id, email: u.email === HOME ? null : u.email, name: u.name, isOwner: u.isOwner, canDownload: u.canDownload, keep: u.keep, settings: u.settings };
+  return { id: u.id, email: u.email === HOME ? null : u.email, name: u.name, avatar: u.avatar, isOwner: u.isOwner, canDownload: u.canDownload, keep: u.keep, settings: u.settings };
 }
 
 // The owner's list of people: everyone who has opened Marquee, with what's in their library.

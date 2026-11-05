@@ -11,7 +11,8 @@ import { SUB_SIZES, SUB_BACKGROUNDS, SUB_POSITIONS, subLook, subRaise, secondCho
 import { comingUp, newEpisodes, watchStatus, todayIso } from './watchlist.js';
 import { travelTitle, sizeWords, stateWords, travelSummary, travelOrder } from './travel.js';
 import { libraryUnion, libraryAvailability, filterLibrary, transferState, transferAttention, transferPaused } from './library-downloads.js';
-import { createSocial, titleKeyOf, REACTIONS, countdownText, startLabel } from './social.js';
+import { createSocial, titleKeyOf, REACTIONS, countdownText, startLabel, namesText } from './social.js';
+import { createPeople } from './people.js';
 
 const $ = (sel, el = document) => el.querySelector(sel);
 
@@ -56,6 +57,8 @@ const ICONS = {
   fullscreen: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>',
   fullscreenExit: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>',
   party: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9.5" r="2.3"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0M14.5 15.2A4.3 4.3 0 0 1 21 18.5"/></svg>',
+  camera: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1.5-2h6l1.5 2h2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z"/><circle cx="12" cy="12.5" r="3.2"/></svg>',
+  crown: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17.5 3 8l5 4 4-6 4 6 5-4-1 9.5z"/></svg>',
   pip: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><rect class="fill" x="12" y="11.5" width="6.5" height="5" rx="1"/></svg>',
 };
 const icon = (name) => { const s = h('span'); s.innerHTML = ICONS[name]; return s.firstChild; };
@@ -1646,9 +1649,10 @@ async function applyLive() {
   if (has('watchlist')) jobs.push(loadWatchlist());
   if (has('travel')) jobs.push(loadTravel());
   if (has('push')) { pushView.loaded = false; if (view === 'settings' && !editingIn('#settings-body')) jobs.push(loadPush().then(renderSettings)); }
-  if (has('social')) social.refreshRates();
+  if (has('social') || has('avatars')) social.refreshRates();
+  if (has('avatars') && view === 'library') jobs.push(loadParties());
   if (has('parties') && view === 'library') jobs.push(loadParties());
-  if (has('me') || has('people')) {
+  if (has('me') || has('people') || has('avatars')) {
     jobs.push((async () => {
       try {
         state.status = await api('/api/status');
@@ -2243,7 +2247,8 @@ function episodeDownload(t, seasonNo, episode) {
 
 // ---------- casting: device picker ----------
 const jsonPost = (body) => ({ method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
-const social = createSocial({ h, api, jsonPost, toast, icon }); // likes, Popular, watch parties, Wrapped (social.js)
+const people = createPeople({ h, api, toast, me: () => state.me }); // faces and profile pictures (people.js)
+const social = createSocial({ h, api, jsonPost, toast, icon, people }); // likes, Popular, watch parties, Wrapped (social.js)
 
 function openPicker(file, opener) {
   const restoreManager = pickerManagerSubview(opener);
@@ -2929,36 +2934,99 @@ let watchPanelOpen = false;
 let partyUnread = 0; // chat messages since the Room panel was last open
 const watchClient = globalThis.crypto?.randomUUID?.() || `${CLIENT_ID}-${Math.random().toString(36).slice(2, 10)}`;
 
+// Wide screens dock the room on the right and the picture moves over; phones get a sheet.
+const roomDocks = matchMedia('(min-width: 1100px)');
+const roomDocked = () => Boolean(party && watchPanelOpen && roomDocks.matches);
+roomDocks.addEventListener?.('change', () => { if (party) renderParty(); });
+
+// One line about the room, with a tone for its colour: live, count, wait or alert.
+function roomStatus(room, host) {
+  const counting = party.startsIn != null && party.startsIn > 0;
+  if (!party.connected || !party.online) return ['alert', 'Reconnecting… playback is paused'];
+  if (counting) return ['count', `Starts ${startLabel(room.startsAt)}${party.blocked ? ' · tap Ready so it can start for you' : ''}`];
+  if (party.blocked) return ['alert', 'Press Play to join playback'];
+  if (room.waitingFor.length) return ['wait', `Waiting for ${namesText(room.waitingFor)}`];
+  if (room.playing) return ['live', `Playing for ${room.members.length === 1 ? 'you' : `all ${room.members.length}`}`];
+  return ['wait', party.isHost ? 'Paused · press Play when everyone’s ready' : `Paused · ${host} has the remote`];
+}
+// Where one viewer is: ready, getting ready, needs a tap, or still connecting.
+function memberState(m) {
+  if (!m.connected) return ['away', 'Connecting…'];
+  if (m.blocked) return ['wait', 'Needs to press Play'];
+  if (m.buffering) return ['wait', 'Loading…'];
+  if (!m.ready) return ['wait', 'Getting ready'];
+  return ['ready', 'Ready'];
+}
+let roomDrawn = '';
+function renderRoster(room) {
+  const list = $('#watch-members');
+  const rows = room.members.map((m) => {
+    const [tone, text] = memberState(m);
+    return { m, tone, text, me: m.id === watchClient, host: m.id === room.host };
+  });
+  const key = JSON.stringify(rows.map((r) => [r.m.id, r.m.name, r.m.avatar, r.tone, r.host]));
+  if (key === roomDrawn) return;
+  roomDrawn = key;
+  list.replaceChildren(...rows.map(({ m, tone, text, me, host }) => h('li', { class: `room-member is-${tone}${host ? ' is-host' : ''}${me ? ' is-me' : ''}` },
+    h('span', { class: 'room-member-face' }, people.face(m, { size: 46 }),
+      host && h('span', { class: 'room-crown', title: 'Host', 'aria-hidden': 'true' }, icon('crown'))),
+    h('span', { class: 'room-member-name' }, me ? 'You' : personName(m)),
+    h('span', { class: 'room-member-state' }, host ? (tone === 'ready' ? 'Host' : `Host · ${text.toLowerCase()}`) : text))));
+  $('#watch-count').textContent = room.members.length > 1 ? `· ${room.members.length}` : '';
+}
+// The Room button in the control row: faces of who's in, plus unread messages.
+let roomButtonDrawn = '';
+function renderRoomButton(room) {
+  const btn = $('#watch-btn');
+  const seen = new Set();
+  const faces = (room?.members || []).filter((m) => { const k = `${m.name}|${m.avatar}`; if (seen.has(k)) return false; seen.add(k); return true; });
+  const key = JSON.stringify([Boolean(party), faces.map((m) => [m.name, m.avatar])]);
+  if (key !== roomButtonDrawn) {
+    roomButtonDrawn = key;
+    $('#watch-btn-faces').replaceChildren(...(party ? [people.faces(faces, { size: 22, max: 3 })] : [icon('party')]).filter(Boolean));
+  }
+  $('#watch-btn-label').textContent = party ? 'Room' : 'Watch together';
+  const badge = $('#watch-btn-badge');
+  badge.hidden = !(party && partyUnread && !watchPanelOpen);
+  badge.textContent = partyUnread > 9 ? '9+' : String(partyUnread);
+  btn.setAttribute('aria-label', party ? `Watch Together room${partyUnread && !watchPanelOpen ? `, ${partyUnread} new ${partyUnread === 1 ? 'message' : 'messages'}` : ''}` : 'Start Watch Together');
+}
+
 function renderParty() {
   const bar = $('#watch-bar');
   bar.hidden = !party || !watchPanelOpen;
   const roomButton = $('#watch-btn');
   roomButton.hidden = !party && (current?.kind !== 'lib' || !state.library.some((f) => f.id === mediaId(current)));
-  roomButton.textContent = party ? (partyUnread && !watchPanelOpen ? `Room · ${partyUnread}` : 'Room') : 'Watch together';
   roomButton.setAttribute('aria-expanded', String(Boolean(party && watchPanelOpen)));
-  roomButton.setAttribute('aria-label', party ? 'Watch Together room controls' : 'Start Watch Together');
+  roomButton.classList.toggle('is-on', Boolean(party));
+  renderRoomButton(party?.state);
   playerEl.classList.toggle('in-party', Boolean(party));
+  if (playerEl.classList.contains('room-docked') !== roomDocked()) {
+    playerEl.classList.toggle('room-docked', roomDocked());
+    requestAnimationFrame(layoutSubs);
+  }
   updateUpNext();
   if (party) cancelAudioIntent(current);
   renderAudioControls();
   updatePartyCountdown();
-  if (!party) return;
+  if (!party) { roomDrawn = ''; return; }
   updatePlayState();
   const room = party.state;
   const counting = party.startsIn != null && party.startsIn > 0;
+  $('#watch-host-tools').hidden = !party.isHost;
   $('#watch-later').hidden = !party.isHost || counting;
   $('#watch-start-now').hidden = $('#watch-clear-start').hidden = !party.isHost || !counting;
   const hostMember = room.members.find((m) => m.id === room.host);
-  const host = hostMember ? personName(hostMember) : 'Host';
-  const status = !party.connected || !party.online ? 'Reconnecting — playback paused'
-    : counting ? `Starts ${startLabel(room.startsAt)}${party.blocked ? ' · press Ready so it can start for you' : ''}`
-    : party.blocked ? 'Press Play to join playback'
-      : room.waitingFor.length ? `Waiting for ${room.waitingFor.join(', ')}`
-        : room.playing ? `Watching together · ${room.members.length} viewers` : party.isHost ? 'You’re hosting — press Play when everyone is ready' : `Paused · ${host} controls playback`;
-  if ($('#watch-status').textContent !== status) $('#watch-status').textContent = status;
-  const members = room.members.map((m) => `${personName(m)}${m.id === room.host ? ' (host)' : ''}${!m.ready || m.buffering || m.blocked ? ' · getting ready' : ''}`).join(' / ');
-  if ($('#watch-members').textContent !== members) $('#watch-members').textContent = members;
-  $('#watch-members').title = members;
+  const host = hostMember ? personName(hostMember) : 'The host';
+  const [tone, status] = roomStatus(room, host);
+  const statusEl = $('#watch-status');
+  if (statusEl.textContent !== status) statusEl.textContent = status;
+  statusEl.dataset.tone = tone;
+  const title = current ? [current.filmTitle || current.title, episodeLabel(current)].filter(Boolean).join(' · ') : '';
+  if ($('#watch-title').textContent !== title) $('#watch-title').textContent = title;
+  renderRoster(room);
+  $('#watch-hint').textContent = party.isHost ? 'You have the remote: everyone follows your play, pause and seeking.'
+    : `${host} has the remote: play, pause and seeking follow them.`;
   $('#watch-ready').hidden = !party.blocked;
   playerEl.classList.toggle('party-guest', !party.isHost);
   airplayBtn.hidden = true;
@@ -2980,6 +3048,7 @@ function leaveWatchRoom(notify = true) {
   partyUnread = 0;
   $('#chat-log').replaceChildren();
   $('#chat-layer').replaceChildren();
+  closeInviteList();
   old.close({ notify });
   for (const t of video.querySelectorAll('track')) offsetCues(t.track, 0);
   video.disableRemotePlayback = false;
@@ -3002,7 +3071,7 @@ function attachWatchRoom(room) {
   resetCasting();
   party = new WatchSession({ video, room, clientId: watchClient, request: api, onState: renderParty,
     onEnd: (message) => { leaveWatchRoom(false); video.pause(); toast(message); }, onError: toast,
-    onChat: partyChat, onReaction: (r) => { if (r.from !== watchClient) social.burst($('#reaction-layer'), r.emoji, r.name); } });
+    onChat: partyChat, onReaction: (r) => { if (r.from !== watchClient) social.burst($('#reaction-layer'), r.emoji, r.name, r.avatar); } });
   partyUnread = 0;
   renderChatLog();
   if (alreadyPlaying) party.blocked = false;
@@ -3022,7 +3091,8 @@ async function hostWatchRoom() {
     const session = attachWatchRoom(room);
     await session.start();
     showPlayerUi();
-    toast('Room ready. Copy the invite to your family.');
+    setWatchPanel(true); // straight to inviting people
+    toast('Room ready. Invite people from here.');
   } catch (err) { leaveWatchRoom(); toast(err.message); }
   finally { btn.disabled = false; }
 }
@@ -3034,7 +3104,7 @@ async function offerWatchRoom(token) {
     const preview = await api(`/api/watch/${token}/preview`, { signal: AbortSignal.timeout(10000) });
     let closed = false;
     const status = h('p', { class: 'muted', role: 'status' });
-    const join = h('button', { class: 'play-btn', onclick: async () => {
+    const join = h('button', { class: 'play-btn room-join', onclick: async () => {
       if (join.disabled) return;
       join.disabled = true;
       join.textContent = 'Joining…';
@@ -3057,12 +3127,22 @@ async function offerWatchRoom(token) {
         if (joined && party?.state.token !== token) api(`/api/watch/${token}/leave`, jsonPost({ clientId: watchClient })).catch(() => {});
       } finally { join.disabled = false; join.textContent = 'Join and watch'; join.removeAttribute('aria-busy'); }
     } }, 'Join and watch');
-    $('#picker-body').replaceChildren(h('h2', { id: 'picker-title' }, 'Watch together'),
-      h('p', { class: 'del-name' }, [preview.media.title, episodeLabel(preview.media)].filter(Boolean).join(' · ')),
-      ...(preview.startsAt ? [h('p', { class: 'party-invite-when' }, `Starts ${startLabel(preview.startsAt)} (${countdownText(preview.startsAt - Date.now())})`)] : []),
-      h('p', { class: 'muted' }, preview.startsAt
-        ? `${preview.host} planned this. Join any time before; there's a countdown, and playback starts by itself for everyone in the room.`
-        : `${preview.host} is hosting. Playback stays together; you choose your own subtitles and volume.`), join, status);
+    const here = (preview.faces || []).filter((f) => f.name !== preview.host);
+    const ticket = h('div', { class: 'room-ticket' },
+      h('div', { class: 'room-sign', 'aria-hidden': 'true' }, h('span', { class: 'room-bulbs' }), h('span', { class: 'room-kicker' }, 'You’re invited'), h('span', { class: 'room-bulbs' })),
+      h('div', { class: 'room-ticket-host' },
+        h('span', { class: 'room-member-face' }, people.face({ name: preview.host, avatar: preview.hostAvatar }, { size: 64 }),
+          h('span', { class: 'room-crown', 'aria-hidden': 'true' }, icon('crown'))),
+        h('div', {},
+          h('p', { class: 'room-ticket-title' }, [preview.media.title, episodeLabel(preview.media)].filter(Boolean).join(' · ')),
+          h('p', { class: 'room-ticket-by' }, `${preview.host} is hosting`))),
+      preview.startsAt && h('p', { class: 'room-ticket-when' }, `Starts ${startLabel(preview.startsAt)}`, h('small', {}, countdownText(preview.startsAt - Date.now()))),
+      here.length > 0 && h('p', { class: 'room-ticket-here' }, people.faces(here, { size: 26, max: 5 }),
+        h('span', {}, `${namesText(here.map((f) => f.name))} ${here.length === 1 ? 'is' : 'are'} already here`)));
+    $('#picker-body').replaceChildren(h('h2', { id: 'picker-title', class: 'sr-only' }, 'Watch together'), ticket,
+      h('p', { class: 'muted room-ticket-note' }, preview.startsAt
+        ? 'Join any time before it starts. There’s a countdown, and playback starts by itself for everyone in the room.'
+        : 'Playback stays in step with everyone. Subtitles and volume are just for you.'), join, status);
     pushOverlay(showSheet($('#picker'), $('#picker-backdrop'), () => { closed = true; }));
   } catch (err) { toast(err.message); }
 }
@@ -3077,18 +3157,27 @@ function setWatchPanel(open) {
 // ---- Watch Together: chat, reactions and the countdown to a planned start ----
 function renderChatLog() {
   const log = $('#chat-log');
-  log.replaceChildren(...(party?.chat || []).map((m) => social.chatLine(m, m.from === watchClient)));
+  const chat = party?.chat || [];
+  const nearBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 60;
+  log.replaceChildren(...chat.map((m, i) => social.chatLine(m, m.from === watchClient, chat[i - 1])));
   log.hidden = !log.childElementCount;
-  log.scrollTop = log.scrollHeight;
+  $('#chat-empty').hidden = Boolean(log.childElementCount);
+  if (nearBottom || chat.at(-1)?.from === watchClient) log.scrollTop = log.scrollHeight;
 }
 function partyChat(message) {
   renderChatLog();
   if (!message || message.from === watchClient) return;
-  if (!watchPanelOpen || !playerEl.classList.contains('ui-visible')) social.floatMessage($('#chat-layer'), message);
-  if (!watchPanelOpen) { partyUnread++; renderParty(); }
+  if (!watchPanelOpen) {
+    social.floatMessage($('#chat-layer'), message);
+    partyUnread++; renderParty();
+  }
 }
 $('#reaction-bar').append(...REACTIONS.map((emoji) => h('button', { type: 'button', class: 'reaction-btn', 'aria-label': `React ${emoji}`,
-  onclick: () => { if (!party) return; social.burst($('#reaction-layer'), emoji, ''); party.react(emoji); } }, emoji)));
+  onclick: (e) => {
+    if (!party) return;
+    const b = e.currentTarget; b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop');
+    social.burst($('#reaction-layer'), emoji, ''); party.react(emoji);
+  } }, emoji)));
 $('#chat-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const input = $('#chat-input');
@@ -3107,20 +3196,29 @@ function updatePartyCountdown() {
     return;
   }
   const text = countdownText(left).replace(/^in /, '');
-  const parts = [h('small', {}, 'Watch party starts in'), h('strong', {}, text),
-    h('span', {}, [current?.filmTitle || current?.title, current && episodeLabel(current)].filter(Boolean).join(' · '))];
-  if (party.blocked) parts.push(h('button', { type: 'button', class: 'chip primary', onclick: () => party?.unlock() }, 'I’m ready'));
-  else parts.push(h('span', { class: 'muted' }, party.isHost ? 'Playback starts by itself. You can start early from Room.' : 'You’re ready. Playback starts by itself.'));
-  if (el.dataset.text !== text || el.dataset.blocked !== String(party.blocked)) {
-    el.replaceChildren(...parts);
-    el.dataset.text = text; el.dataset.blocked = String(party.blocked);
+  const here = party.state.members.filter((m) => m.id !== watchClient);
+  const hereKey = here.map((m) => `${m.name}|${m.avatar}`).join(',');
+  if (el.dataset.blocked !== String(party.blocked) || el.dataset.here !== hereKey || !el.firstChild) {
+    const seen = new Set();
+    const faces = here.filter((m) => !seen.has(m.name) && seen.add(m.name));
+    el.replaceChildren(
+      h('div', { class: 'room-sign', 'aria-hidden': 'true' }, h('span', { class: 'room-bulbs' }), h('span', { class: 'room-kicker' }, 'Watch party starts in'), h('span', { class: 'room-bulbs' })),
+      h('strong', { class: 'party-countdown-time' }, text),
+      h('span', { class: 'party-countdown-title' }, [current?.filmTitle || current?.title, current && episodeLabel(current)].filter(Boolean).join(' · ')),
+      faces.length ? h('span', { class: 'party-countdown-here' }, people.faces(faces, { size: 28, max: 5 }),
+        h('span', {}, `${namesText(faces.map((m) => personName(m)))} ${faces.length === 1 ? 'is' : 'are'} here`))
+        : h('span', { class: 'party-countdown-here muted' }, 'Nobody else is here yet'),
+      party.blocked ? h('button', { type: 'button', class: 'play-btn', onclick: () => party?.unlock() }, 'I’m ready')
+        : h('span', { class: 'muted' }, party.isHost ? 'Playback starts by itself. You can start early from the room.' : 'You’re ready. Playback starts by itself.'));
+    el.dataset.blocked = String(party.blocked); el.dataset.here = hereKey;
   }
+  const time = el.querySelector('.party-countdown-time');
+  if (time && time.textContent !== text) time.textContent = text;
   el.hidden = false;
   countdownTimer ||= setInterval(() => { if (!party?.startsIn || party.startsIn <= 0) { party?.pulse(); } updatePartyCountdown(); }, 1000);
 }
-$('#watch-later').addEventListener('change', async (e) => {
-  const minutes = Number(e.target.value);
-  e.target.value = '';
+$('#watch-later').addEventListener('click', async (e) => {
+  const minutes = Number(e.target.closest?.('[data-min]')?.dataset.min);
   if (!party || !minutes) return;
   try { await party.schedule(party.serverNow + minutes * 60000); } catch (err) { toast(err.message); }
 });
@@ -3206,13 +3304,17 @@ async function loadParties() {
 }
 $('#watch-btn').addEventListener('click', () => { if (party) setWatchPanel(!watchPanelOpen); else hostWatchRoom(); });
 $('#watch-hide').addEventListener('click', () => { setWatchPanel(false); $('#watch-btn').focus(); });
-document.addEventListener('click', (event) => { if (watchPanelOpen && !event.target.closest?.('#watch-bar, #watch-btn')) setWatchPanel(false); });
+// The phone sheet covers the picture, so a tap outside closes it; the docked panel stays put.
+document.addEventListener('click', (event) => {
+  if (!watchPanelOpen || roomDocked() || !event.target.isConnected) return;
+  if (!event.target.closest?.('#watch-bar, #watch-btn')) setWatchPanel(false);
+});
 $('#watch-ready').addEventListener('click', () => party?.unlock());
 $('#watch-copy').addEventListener('click', () => {
   // /c/w/ shows a preview in Discord and other chats, then forwards to /?watch=
-  if (party) copyWithToast(`${location.origin}/c/w/${party.state.token}`, 'Watch-room invite copied. Everyone uses their usual Marquee sign-in.');
+  if (party) copyWithToast(`${location.origin}/c/w/${party.state.token}`, 'Room link copied. Everyone uses their usual Marquee sign-in.');
 });
-$('#watch-leave').addEventListener('click', () => { leaveWatchRoom(); video.pause(); toast('Left the watch room'); });
+$('#watch-leave').addEventListener('click', () => { leaveWatchRoom(); video.pause(); toast('You left the room'); });
 // Invite: people with Watch Together invites on get a notification that opens the room.
 const inviteList = $('#watch-invite-list');
 function closeInviteList() { inviteList.hidden = true; $('#watch-invite').setAttribute('aria-expanded', 'false'); }
@@ -3221,27 +3323,33 @@ $('#watch-invite').addEventListener('click', async () => {
   if (!party) return;
   const token = party.state.token;
   inviteList.hidden = false; $('#watch-invite').setAttribute('aria-expanded', 'true');
-  inviteList.replaceChildren(h('small', {}, 'Finding people…'));
+  inviteList.replaceChildren(h('p', { class: 'room-hint' }, 'Finding people…'));
   try {
-    const { people } = await api(`/api/watch/${token}/invitees?clientId=${encodeURIComponent(watchClient)}`);
+    const { people: invitees } = await api(`/api/watch/${token}/invitees?clientId=${encodeURIComponent(watchClient)}`);
     if (party?.state.token !== token) return;
-    if (!people.length) {
-      inviteList.replaceChildren(h('small', {}, 'Nobody else has notifications on yet. Copy the invite and send it instead.'));
+    if (!invitees.length) {
+      inviteList.replaceChildren(h('p', { class: 'room-hint' }, 'Nobody else has notifications on yet. Copy the link and send it instead.'));
       return;
     }
-    inviteList.replaceChildren(h('small', {}, 'Tap someone to send them a notification:'), ...people.map((u) => {
-      const chip = h('button', { class: 'chip', type: 'button' }, u.name);
-      chip.addEventListener('click', async () => {
-        chip.disabled = true;
-        try {
-          const r = await api(`/api/watch/${token}/invite`, jsonPost({ clientId: watchClient, userIds: [u.id] }));
-          chip.textContent = r.sent ? `${u.name} · invited` : `${u.name} · not reached`;
-          if (!r.sent) toast(`${u.name}’s devices didn’t accept the notification. Copy the invite instead.`);
-        } catch (err) { chip.disabled = false; toast(err.message); }
-      });
-      return chip;
-    }));
-  } catch (err) { inviteList.replaceChildren(h('small', {}, err.message)); }
+    inviteList.replaceChildren(h('p', { class: 'room-hint' }, 'Tap someone to send them a notification.'),
+      h('ul', { class: 'room-invitee-grid' }, invitees.map((u) => {
+        const state = h('span', { class: 'room-invitee-state' }, 'Invite');
+        const tile = h('button', { class: 'room-invitee', type: 'button', 'aria-label': `Invite ${u.name}` },
+          people.face(u, { size: 44 }), h('span', { class: 'room-invitee-name' }, u.name), state);
+        tile.addEventListener('click', async () => {
+          if (tile.dataset.state === 'sent' || tile.disabled) return;
+          tile.disabled = true; tile.dataset.state = 'sending'; state.textContent = 'Sending…';
+          try {
+            const r = await api(`/api/watch/${token}/invite`, jsonPost({ clientId: watchClient, userIds: [u.id] }));
+            tile.dataset.state = r.sent ? 'sent' : 'failed';
+            state.replaceChildren(...(r.sent ? [icon('check'), 'Invited'] : ['Not reached']));
+            tile.setAttribute('aria-label', r.sent ? `${u.name} invited` : `${u.name} wasn’t reached`);
+            if (!r.sent) { tile.disabled = false; toast(`${u.name}’s devices didn’t accept the notification. Copy the link instead.`); }
+          } catch (err) { tile.disabled = false; tile.dataset.state = ''; state.textContent = 'Invite'; toast(err.message); }
+        });
+        return h('li', {}, tile);
+      })));
+  } catch (err) { inviteList.replaceChildren(h('p', { class: 'room-hint' }, err.message)); }
 });
 document.addEventListener('visibilitychange', () => { if (!document.hidden && party) { party.clock().then(() => party?.pulse()).catch(() => {}); } });
 
@@ -4248,7 +4356,7 @@ const osdEl = $('#player-osd');
 const spinner = $('#player-spinner');
 const helpEl = $('#player-help');
 
-const menuOpen = () => !ccMenu.hidden || !audioMenu.hidden || !nightMenu.hidden || !helpEl.hidden || watchPanelOpen;
+const menuOpen = () => !ccMenu.hidden || !audioMenu.hidden || !nightMenu.hidden || !helpEl.hidden || (watchPanelOpen && !roomDocked());
 let lastPointer = 'mouse';
 let overControls = false;
 let uiTimer = null;
@@ -4269,7 +4377,7 @@ function hidePlayerUi() {
   setUi(false);
 }
 playerEl.addEventListener('pointerdown', (e) => { lastPointer = e.pointerType; }, true);
-playerEl.addEventListener('pointermove', (e) => { if (e.pointerType === 'mouse') showPlayerUi(); });
+playerEl.addEventListener('pointermove', (e) => { if (e.pointerType === 'mouse' && !(roomDocked() && e.target.closest?.('#watch-bar'))) showPlayerUi(); });
 controlsEl.addEventListener('pointerenter', (e) => { overControls = e.pointerType === 'mouse'; });
 controlsEl.addEventListener('pointerleave', () => { overControls = false; });
 video.addEventListener('play', showPlayerUi);
@@ -4671,7 +4779,7 @@ const PLAYER_KEYS = {
 };
 // Keys typed into a menu or a text field are left alone.
 const playerKeyTarget = (e) => !playerEl.hidden && !e.ctrlKey && !e.metaKey && !e.altKey
-  && !e.target.closest?.('.cc-menu, #up-next') && !e.target.matches?.('input:not([type="range"]), textarea, select');
+  && !e.target.closest?.('.cc-menu, #up-next, #watch-bar') && !e.target.matches?.('input:not([type="range"]), textarea, select');
 document.addEventListener('keydown', (e) => {
   if (!playerKeyTarget(e)) return;
   if (e.key === 'Tab') { showPlayerUi(); return; } // hidden controls can't take focus
@@ -5054,6 +5162,38 @@ function renderView() {
 // Everyone: name, colours (a preset or their own four), and how Marquee behaves for them. The owner
 // also gets the server's rules (auto-delete) and the people who use it. Changes save straight away.
 let saveMeTimer = null;
+// Profile pictures: yours (person = state.me) or, for the owner, anyone's in People (person.id).
+function editPicture({ person, opener }) {
+  const mine = person.id === state.me?.id;
+  people.choosePhoto(async (file) => {
+    let body;
+    try {
+      body = await people.editor({ file, title: mine ? 'Your picture' : `${person.name}’s picture`,
+        upload: async (blob) => {
+          if (mine) state.me = (await people.saveMine(blob)).me;
+          else await people.saveFor(person.id, blob);
+        },
+        done: () => closeTopOverlay(),
+      });
+    } catch (err) { toast(err.message); return; }
+    $('#picker-body').replaceChildren(...body);
+    pushOverlay(showSheet($('#picker'), $('#picker-backdrop'), async () => {
+      if (!mine && state.me?.isOwner) await loadPeople();
+      if (state.view === 'settings') renderSettings();
+      opener?.isConnected && opener.focus({ preventScroll: true });
+    }));
+  });
+}
+async function removePicture({ person }) {
+  const mine = person.id === state.me?.id;
+  try {
+    if (mine) state.me = (await people.saveMine(null)).me;
+    else { await people.saveFor(person.id, null); await loadPeople(); }
+    toast('Picture removed');
+    if (state.view === 'settings') renderSettings();
+  } catch (err) { toast(err.message); }
+}
+
 async function saveMe(patch, msg = 'Saved') {
   try {
     state.me = (await api('/api/me', jsonPost(patch))).me;
@@ -5277,8 +5417,12 @@ function renderSettings() {
   // ---- you ----
   const nameInput = h('input', { type: 'text', class: 'invite-note set-name', maxlength: '40', value: me.name, 'aria-label': 'Your name', autocomplete: 'nickname' });
   nameInput.addEventListener('change', () => saveMe({ name: nameInput.value }, 'Name saved'));
+  const pictureBtn = h('button', { type: 'button', class: 'profile-face', 'aria-label': me.avatar ? 'Change your picture' : 'Add a picture',
+    title: me.avatar ? 'Change your picture' : 'Add a picture', onclick: (e) => editPicture({ person: me, opener: e.currentTarget }) },
+    people.face(me, { size: 64 }), h('span', { class: 'profile-face-edit', 'aria-hidden': 'true' }, icon('camera')));
   out.push(h('div', { class: 'profile' },
-    h('span', { class: 'avatar', 'aria-hidden': 'true' }, (me.name || '?').slice(0, 1).toUpperCase()),
+    h('div', { class: 'profile-face-col' }, pictureBtn,
+      me.avatar && h('button', { type: 'button', class: 'profile-face-remove', onclick: () => removePicture({ person: me }) }, 'Remove')),
     h('div', { class: 'profile-text' },
       nameInput,
       h('div', { class: 'set-hint' }, !me.email ? 'Home network: everyone at home who opens the server’s local address shares this'
@@ -5490,7 +5634,11 @@ function ownerSettings() {
   else if (!state.people) out.push(h('p', { class: 'muted' }, 'Loading…'));
   else {
     out.push(h('ul', { class: 'rows people' }, state.people.map((u) => h('li', { class: 'row person' },
-      h('span', { class: 'avatar small', 'aria-hidden': 'true' }, (u.name || '?').slice(0, 1).toUpperCase()),
+      h('button', { type: 'button', class: 'profile-face small', 'aria-label': `${u.avatar ? 'Change' : 'Add'} ${u.name}’s picture`,
+        title: u.avatar ? 'Change picture (right-click to remove)' : 'Add a picture',
+        onclick: (e) => editPicture({ person: u, opener: e.currentTarget }),
+        oncontextmenu: (e) => { if (!u.avatar) return; e.preventDefault(); if (confirm(`Remove ${u.name}’s picture?`)) removePicture({ person: u }); } },
+        people.face(u, { size: 40 }), h('span', { class: 'profile-face-edit', 'aria-hidden': 'true' }, icon('camera'))),
       h('div', { class: 'row-text' },
         h('div', { class: 'row-title' }, u.name, u.isOwner && h('span', { class: 'tag' }, 'Owner')),
         h('div', { class: 'row-meta' },
@@ -5660,7 +5808,8 @@ function peopleSection(q) {
     const { email, name, p, owner, member } = r;
     const isEmail = String(email).includes('@');
     return h('li', { class: 'row' },
-      h('span', { class: `activity-dot${p && Date.now() - p.at < 3 * 60000 ? ' is-on' : ''}`, 'aria-hidden': 'true' }),
+      h('span', { class: 'activity-face' }, people.face({ name, avatar: p?.avatar }, { size: 34 }),
+        h('span', { class: `activity-dot${p && Date.now() - p.at < 3 * 60000 ? ' is-on' : ''}`, 'aria-hidden': 'true' })),
       h('div', { class: 'row-text' },
         member ? accessName(email, name) : h('span', { class: 'row-title', title: email }, name),
         h('span', { class: 'row-meta' },
@@ -5734,7 +5883,7 @@ function renderActivity() {
     d.list.append(h('li', { class: 'row activity-row' },
       h('span', { class: 'activity-time' }, clock(e.at)),
       h('span', { class: 'row-text' },
-        h('span', { class: 'activity-text' }, h('strong', { title: e.user }, personName(e)), ' ', (ACTIVITY_TEXT[e.action] || ((d) => `${e.action} ${d}`))(e.subjectName || e.detail)),
+        h('span', { class: 'activity-text' }, people.face(e, { size: 20, cls: 'inline' }), h('strong', { title: e.user }, personName(e)), ' ', (ACTIVITY_TEXT[e.action] || ((d) => `${e.action} ${d}`))(e.subjectName || e.detail)),
         h('span', { class: 'row-meta' }, h('span', {}, activityDevice(e))))));
   }
   for (const d of days) eventKids.push(...foldGroup(d.key, 'p', 'activity-day', d.label, d.n, [d.list], Boolean(q)));

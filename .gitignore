@@ -14,6 +14,7 @@
 .marquee-stopped
 .marquee-notes-files/
 .marquee-notes-imports/
+.marquee-avatars/
 data/
 logs/
 cache/

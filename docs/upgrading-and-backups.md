@@ -12,6 +12,7 @@ Everything Marquee needs to remember is in `DATA_DIR` (the Marquee folder unless
 | `.marquee-*.json`, `.marquee-activity.jsonl` | Show/episode caches, invites, shares, subtitle and conversion registries, activity log | Yes |
 | `.marquee-notes-files/` or `NOTES_FILES_DIR` | Notes attachments | Yes |
 | `.marquee-notes-imports/` | Files from Discord imports | Yes |
+| `.marquee-avatars/` | Profile pictures (256 px squares) | Yes |
 | `cache/` | Audio-fixed and browser copies, previews, clip shares | No: rebuilt on demand (it can be large) |
 | `logs/` | Windows launcher log | No |
 | `MEDIA_DIR`, `CLIPS_DIR` | Your media | Your usual media backup |

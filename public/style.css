@@ -1430,11 +1430,6 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .profile-tags .tag:first-child { margin-left: 0; }
 .profile-tags:empty { display: none; }
 .set-name { height: 42px; font-weight: 700; font-size: 17px; background: var(--seat); }
-.avatar {
-  flex: none; width: 52px; height: 52px; display: grid; place-items: center;
-  font: 800 22px/1 var(--display); color: var(--on-bulb); background: var(--bulb); border-radius: 50%;
-}
-.avatar.small { width: 36px; height: 36px; font-size: 15px; }
 
 .swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px; margin-top: 12px; }
 .swatch {
@@ -1580,40 +1575,9 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 }
 
 .wordmark a { color: inherit; text-decoration: none; }
-.watch-start {
-  flex: none; padding: 9px 12px; font-size: 13px; font-weight: 700;
-  color: var(--paper); background: var(--curtain); border: 1px solid var(--line); border-radius: 999px;
-}
-.watch-start:disabled { opacity: 0.5; }
-/* The only labelled pill among round icon buttons: clear space on both sides keeps it from crowding subtitles */
-.pc-row .watch-start { margin: 0 14px 0 8px; }
-.watch-bar {
-  position: relative; z-index: 4; margin: 0 0 12px;
-  display: flex; align-items: center; justify-content: space-between; gap: 10px 18px; flex-wrap: wrap;
-  padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px;
-  background: var(--curtain); color: var(--paper); transition: opacity 0.2s;
-}
-.watch-description { min-width: 0; flex: 1 1 220px; display: grid; gap: 3px; font-size: 13px; }
-.watch-description span { color: var(--dust); overflow-wrap: anywhere; }
-.watch-description small { color: var(--dust); font-size: 12px; }
-.watch-actions { display: flex; gap: 6px; flex-wrap: wrap; }
-.watch-actions .chip { color: var(--paper); font-size: 12px; height: 36px; padding: 0 11px; }
-.watch-actions #watch-ready { color: var(--on-bulb); background: var(--bulb); border-color: var(--bulb); }
-.player:not(.ui-visible) .watch-bar { opacity: 0; visibility: hidden; pointer-events: none; }
-.watch-invite-list { flex: 1 0 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding-top: 10px; border-top: 1px solid var(--line); }
-.watch-invite-list[hidden] { display: none; }
-.watch-invite-list small { flex: 1 0 100%; color: var(--dust); font-size: 12px; }
-.watch-invite-list .chip { color: var(--paper); font-size: 12px; height: 36px; padding: 0 12px; }
-.watch-invite-list .chip:disabled { color: var(--bulb); border-color: var(--bulb-dim); opacity: 1; }
-#watch-invite[aria-expanded="true"] { border-color: var(--bulb); color: var(--bulb); }
 .party-guest :is(.pc-play, .pc-skip, .pc-big-play):disabled { opacity: 0.35; cursor: default; }
 .party-guest .seek { opacity: 0.6; }
-@media (max-width: 420px) {
-  .watch-start { font-size: 12px; padding: 8px 10px; }
-  .pc-row .watch-start { margin: 0 8px 0 4px; }
-  .in-party .player-title { font-size: 14px; }
-}
-.watch-description #watch-members { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+@media (max-width: 420px) { .in-party .player-title { font-size: 14px; } }
 .activity-location-note { margin: 0 0 12px; font-size: 13px; }
 
 @media (max-width: 359px) { .quality-rail button { font-size: 12px; } }
@@ -1976,32 +1940,6 @@ button.st-col:hover .st-stack { filter: brightness(1.12); }
 }
 .party-invite-when { color: var(--bulb); font-weight: 600; }
 
-/* In the room */
-.watch-social { flex: 1 1 100%; display: grid; gap: 8px; min-width: 0; }
-.reaction-bar { display: flex; gap: 4px; flex-wrap: wrap; }
-.reaction-btn {
-  width: 38px; height: 38px; font-size: 20px; line-height: 1; display: grid; place-items: center;
-  background: rgba(246, 234, 223, 0.06); border: 1px solid var(--line); border-radius: 999px;
-  transition: transform 0.12s, background-color 0.12s;
-}
-.reaction-btn:hover { background: rgba(246, 234, 223, 0.14); }
-.reaction-btn:active { transform: scale(0.86); }
-.chat-log { list-style: none; margin: 0; padding: 0 4px 0 0; max-height: min(30vh, 190px); overflow-y: auto; display: grid; gap: 6px; overscroll-behavior: contain; }
-.chat-log[hidden] { display: none; }
-.chat-line { display: grid; grid-template-columns: auto 1fr; column-gap: 8px; font-size: 13px; }
-.chat-line strong { color: var(--bulb); }
-.chat-line.mine strong { color: var(--paper); }
-.chat-line time { color: var(--dust); font-size: 11px; justify-self: end; font-variant-numeric: tabular-nums; }
-.chat-line p { grid-column: 1 / -1; margin: 0; overflow-wrap: anywhere; }
-.chat-form { display: flex; gap: 6px; }
-.chat-form input {
-  flex: 1; min-width: 0; height: 38px; padding: 0 12px;
-  background: var(--seat); border: 1px solid var(--line); border-radius: 999px;
-}
-.chat-form input:focus-visible { outline: 2px solid var(--bulb); outline-offset: 1px; }
-.chat-form .icon-btn { width: 38px; height: 38px; flex: none; }
-.watch-later { appearance: none; padding: 0 14px; background: none; cursor: pointer; }
-
 /* Over the picture */
 .reaction-layer { position: absolute; z-index: 3; right: max(24px, 6vw); bottom: 120px; width: 80px; height: 60vh; pointer-events: none; }
 .reaction-float {
@@ -2009,7 +1947,7 @@ button.st-col:hover .st-stack { filter: brightness(1.12); }
   font-size: 34px; line-height: 1; filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.5));
   animation: reaction-rise 2.5s cubic-bezier(0.2, 0.6, 0.3, 1) forwards;
 }
-.reaction-float small { font: 600 11px/1.2 var(--body); color: var(--on-image); margin-top: 2px; white-space: nowrap; text-shadow: 0 1px 3px #000; }
+.reaction-float small { display: inline-flex; align-items: center; gap: 4px; font: 600 11px/1.2 var(--body); color: var(--on-image); margin-top: 3px; white-space: nowrap; text-shadow: 0 1px 3px #000; }
 @keyframes reaction-rise {
   0% { transform: translate(-50%, 0) scale(0.4) rotate(0); opacity: 0; }
   12% { transform: translate(-50%, -30px) scale(1.15) rotate(var(--r)); opacity: 1; }
@@ -2017,25 +1955,33 @@ button.st-col:hover .st-stack { filter: brightness(1.12); }
 }
 .chat-layer { position: absolute; z-index: 3; left: var(--pad-x, 16px); bottom: 110px; max-width: min(420px, 70vw); display: grid; gap: 6px; pointer-events: none; }
 .chat-float {
-  justify-self: start; padding: 7px 12px; border-radius: 14px; font-size: 14px; color: var(--on-image);
-  background: rgba(20, 10, 16, 0.72); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  justify-self: start; display: flex; align-items: flex-start; gap: 8px; padding: 6px 13px 7px 6px; border-radius: 19px;
+  font-size: 14px; line-height: 1.35; color: var(--on-image);
+  background: rgba(20, 10, 16, 0.78); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
   animation: chat-in 0.25s ease-out; transition: opacity 0.6s, transform 0.6s; overflow-wrap: anywhere;
 }
-.chat-float strong { color: var(--bulb); }
+.chat-float-text { display: grid; min-width: 0; padding-top: 1px; }
+.chat-float strong { color: var(--bulb); font-size: 12px; }
 .chat-float.gone { opacity: 0; transform: translateY(-6px); }
 @keyframes chat-in { from { opacity: 0; transform: translateY(8px); } }
 .player.ui-visible .chat-layer { bottom: 190px; }
 .party-countdown {
-  position: absolute; z-index: 3; left: 50%; top: 24%; transform: translateX(-50%);
-  display: grid; justify-items: center; gap: 4px; padding: 18px 26px; text-align: center;
-  border-radius: 20px; background: rgba(20, 10, 16, 0.78); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-  color: var(--on-image); max-width: calc(100vw - 32px);
+  position: absolute; z-index: 3; left: 50%; top: 22%; transform: translateX(-50%);
+  display: grid; justify-items: center; gap: 8px; padding: 18px 28px 22px; text-align: center;
+  width: max-content; min-width: min(380px, calc(100vw - 32px)); max-width: calc(100vw - 32px);
+  border: 1px solid var(--line); border-radius: 24px;
+  background: rgba(20, 10, 16, 0.84); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+  color: var(--on-image); --ring: #1d1017;
 }
 .party-countdown[hidden] { display: none; }
-.party-countdown small { color: var(--dust); font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; }
-.party-countdown strong { font: 800 clamp(40px, 9vw, 72px)/1 var(--display); color: var(--bulb); font-variant-numeric: tabular-nums; }
-.party-countdown span { font-size: 14px; }
-.party-countdown .chip { margin-top: 8px; height: 40px; }
+.party-countdown .room-sign { width: 100%; }
+.party-countdown-time { font: 800 clamp(48px, 9vw, 84px)/1 var(--display); color: var(--bulb); font-variant-numeric: tabular-nums; text-shadow: 0 0 28px var(--bulb-dim); margin-top: 4px; }
+.party-countdown-title { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+.party-countdown-here { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
+.party-countdown .muted { font-size: 13px; }
+.party-countdown .play-btn { margin-top: 4px; }
 @media (prefers-reduced-motion: reduce) {
   .reaction-float { animation-duration: 1.2s; }
   .chat-float { animation: none; }
@@ -2111,3 +2057,296 @@ html.wrapped-on { overflow: hidden; }
 .library-summary.travel-summary { display: flex; align-items: center; gap: 8px; padding-top: 0; }
 .library-summary.travel-summary svg { width: 18px; height: 18px; flex: none; }
 .library-summary.travel-summary[hidden] { display: none; }
+
+/* ---------- Faces: profile pictures, or an initial on the person's own colour (people.js) ---------- */
+.face {
+  position: relative; flex: none; width: var(--face, 32px); height: var(--face, 32px);
+  display: inline-grid; place-items: center; overflow: hidden; border-radius: 50%;
+  background: var(--tint, var(--bulb)); color: #1F1019;
+  font: 800 calc(var(--face, 32px) * 0.44)/1 var(--display); user-select: none; -webkit-user-select: none;
+}
+.face img { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; object-fit: cover; }
+.face.more { background: var(--seat); color: var(--paper); font: 700 calc(var(--face, 32px) * 0.38)/1 var(--body); }
+.face.inline { vertical-align: -5px; margin-right: 7px; }
+.faces { display: inline-flex; align-items: center; flex: none; }
+.faces > .face { box-shadow: 0 0 0 2px var(--ring, var(--velvet)); }
+.faces > .face + .face { margin-left: calc(var(--face, 24px) * -0.3); }
+#picker, .rate-row, .party-card, .row, .profile { --ring: var(--curtain); }
+.liked-by { display: inline-flex; align-items: center; gap: 8px; }
+.liked-faces:empty { display: none; }
+.popular-why { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.popular-why > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Settings → You, People: the picture is the button that changes it */
+.profile-face-col { display: grid; justify-items: center; gap: 4px; }
+.profile-face { position: relative; flex: none; padding: 0; border: 0; background: none; border-radius: 50%; }
+.profile-face .face { box-shadow: 0 0 0 2px var(--line); transition: box-shadow 0.15s; }
+.profile-face:hover .face, .profile-face:focus-visible .face { box-shadow: 0 0 0 2px var(--bulb); }
+.profile-face-edit {
+  position: absolute; right: -3px; bottom: -3px; width: 26px; height: 26px; display: grid; place-items: center;
+  border-radius: 50%; color: var(--on-bulb); background: var(--bulb); box-shadow: 0 0 0 3px var(--curtain);
+}
+.profile-face-edit svg { width: 15px; height: 15px; }
+.profile-face.small .profile-face-edit { width: 20px; height: 20px; right: -4px; bottom: -4px; opacity: 0; transition: opacity 0.15s; }
+.profile-face.small .profile-face-edit svg { width: 12px; height: 12px; }
+.profile-face.small:is(:hover, :focus-visible) .profile-face-edit { opacity: 1; }
+@media (hover: none) { .profile-face.small .profile-face-edit { opacity: 1; } }
+.profile-face-remove { padding: 2px 4px; border: 0; background: none; color: var(--dust); font-size: 12px; text-decoration: underline; text-underline-offset: 2px; }
+.profile-face-remove:hover { color: var(--paper); }
+.activity-face { position: relative; flex: none; display: inline-grid; align-self: center; }
+.activity-face .activity-dot { position: absolute; right: -2px; bottom: -2px; width: 12px; height: 12px; border: 2px solid var(--curtain); }
+.wr-faces { display: flex; justify-content: center; margin: 4px 0 18px; }
+.wr-faces .face { box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.35); }
+.wr-faces .face + .face { margin-left: -16px; }
+
+/* The picture editor: drag the photo into the circle, zoom, save */
+.face-edit { display: flex; flex-wrap: wrap; align-items: center; gap: 18px 22px; margin: 12px 0 16px; }
+.face-edit-view {
+  position: relative; flex: 1 1 240px; max-width: 320px; aspect-ratio: 1; overflow: hidden;
+  border-radius: 18px; background: #000; touch-action: none; cursor: grab;
+}
+.face-edit-view.dragging { cursor: grabbing; }
+.face-edit-view::after {
+  content: ''; position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
+  box-shadow: 0 0 0 999px rgba(15, 8, 12, 0.62), inset 0 0 0 2px var(--bulb);
+}
+.face-edit-canvas { display: block; width: 100%; height: 100%; }
+.face-edit-side { flex: 1 1 170px; display: grid; gap: 18px; justify-items: start; }
+.face-edit-sample { display: flex; align-items: center; gap: 12px; }
+.face-edit-sample canvas { width: 64px; height: 64px; border-radius: 50%; box-shadow: 0 0 0 2px var(--line); }
+.face-edit-sample small { max-width: 14ch; color: var(--dust); font-size: 12px; line-height: 1.35; }
+.face-edit-zoom-row { display: flex; align-items: center; gap: 10px; width: 100%; color: var(--dust); font-weight: 800; }
+.face-edit-zoom { flex: 1; min-width: 0; accent-color: var(--bulb); }
+.face-edit-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+/* ---------- Watch Together ---------- */
+/* The Room button in the control row */
+.watch-start {
+  position: relative; flex: none; display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 14px 0 9px;
+  font-size: 13px; font-weight: 700; color: var(--paper);
+  background: var(--curtain); border: 1px solid var(--line); border-radius: 999px;
+  transition: background-color 0.15s, border-color 0.15s, box-shadow 0.2s;
+}
+.watch-start:disabled { opacity: 0.5; }
+.watch-start:hover { border-color: var(--dust); }
+.watch-start-faces { display: inline-flex; align-items: center; --ring: var(--curtain); }
+.watch-start-faces > svg { width: 19px; height: 19px; }
+.watch-start.is-on { border-color: var(--bulb); box-shadow: 0 0 18px -6px var(--bulb); }
+.watch-start[aria-expanded="true"] { color: var(--on-bulb); background: var(--bulb); --ring: var(--bulb); }
+.watch-start[aria-expanded="true"] .watch-start-faces { --ring: var(--bulb); }
+.watch-start-badge {
+  position: absolute; top: -7px; right: -6px; min-width: 20px; height: 20px; padding: 0 5px;
+  display: grid; place-items: center; border-radius: 999px;
+  font: 800 11px/1 var(--body); color: #1F1019; background: var(--alert); box-shadow: 0 0 0 2px #000;
+}
+/* The only labelled pill among round icon buttons: clear space on both sides keeps it from crowding subtitles */
+.pc-row .watch-start { margin: 0 14px 0 8px; }
+@media (max-width: 420px) {
+  .watch-start { font-size: 12px; padding: 0 11px 0 7px; gap: 6px; }
+  .pc-row .watch-start { margin: 0 8px 0 4px; }
+}
+
+/* A strip of marquee bulbs either side of a small sign */
+.room-sign { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.room-bulbs {
+  flex: 1; min-width: 16px; height: 8px;
+  background: radial-gradient(circle at 4px 4px, var(--bulb) 0 2.2px, transparent 2.9px) 0 0 / 11px 8px repeat-x;
+  filter: drop-shadow(0 0 3px var(--bulb-dim)); opacity: 0.9;
+}
+.room-kicker { font: 800 11px/1 var(--display); letter-spacing: 0.2em; text-transform: uppercase; color: var(--bulb); white-space: nowrap; }
+
+/* The room panel: docked on the right on wide screens (the picture moves over), a sheet on phones */
+.player { --room-w: clamp(330px, 28vw, 400px); }
+.player.room-docked :is(.player-stage, .player-bar, .player-controls, .player-center) { right: var(--room-w); }
+.player.room-docked :is(.skip-intro, .up-next) { right: calc(var(--room-w) + var(--pad-x)); }
+.room {
+  position: absolute; z-index: 5; top: 0; right: 0; bottom: 0; width: var(--room-w);
+  display: flex; flex-direction: column; min-height: 0;
+  padding: var(--safe-top) 0 var(--safe-bottom);
+  color: var(--paper); cursor: auto; --ring: var(--curtain);
+  background: radial-gradient(130% 40% at 100% 0, var(--bulb-dim), transparent 70%), var(--curtain);
+  border-left: 1px solid var(--line);
+  animation: room-in 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes room-in { from { transform: translateX(28px); opacity: 0; } }
+@keyframes room-up { from { transform: translateY(36px); opacity: 0; } }
+.room-head { position: relative; display: grid; gap: 8px; padding: 16px 18px 14px; border-bottom: 1px solid var(--line); }
+.room-head .room-sign { padding-right: 40px; }
+.room-close { position: absolute; top: 7px; right: 8px; width: 38px; height: 38px; background: none; }
+.room-close svg { width: 18px; height: 18px; }
+.room-title {
+  margin: 2px 0 0; font: 700 18px/1.25 var(--display); overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.room-title:empty { display: none; }
+.room-status {
+  justify-self: start; display: inline-flex; align-items: center; gap: 8px; margin: 0; padding: 5px 12px 5px 10px;
+  border-radius: 999px; font-size: 13px; font-weight: 600; line-height: 1.3; background: var(--seat);
+}
+.room-status::before { content: ''; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--dust); }
+.room-status[data-tone="live"]::before { background: #6fcf8f; box-shadow: 0 0 0 3px rgba(111, 207, 143, 0.22); }
+.room-status[data-tone="count"] { color: var(--bulb); }
+.room-status[data-tone="count"]::before { background: var(--bulb); box-shadow: 0 0 0 3px var(--bulb-dim); }
+.room-status[data-tone="alert"] { color: var(--alert); }
+.room-status[data-tone="alert"]::before { background: var(--alert); }
+.room-body { flex: 0 1 auto; max-height: 54%; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.room-section { display: grid; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+.room-label { margin: 0; font: 700 11px/1 var(--body); letter-spacing: 0.12em; text-transform: uppercase; color: var(--dust); }
+.room-label span { color: var(--paper); }
+.room-hint { margin: 0; font-size: 12.5px; line-height: 1.4; color: var(--dust); }
+.room-hint:empty { display: none; }
+
+/* Who's here: faces ringed in gold once they're ready */
+.room-roster { list-style: none; margin: 0; padding: 2px 0 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 12px 6px; }
+.room-member { display: grid; justify-items: center; gap: 3px; min-width: 0; text-align: center; }
+.room-member-face { position: relative; display: inline-grid; padding: 3px; border-radius: 50%; box-shadow: 0 0 0 2px var(--line); transition: box-shadow 0.25s; }
+.room-member.is-ready .room-member-face { box-shadow: 0 0 0 2px var(--bulb), 0 0 16px -3px var(--bulb); }
+.room-member.is-wait .room-member-face { box-shadow: none; outline: 2px dashed var(--dust); outline-offset: -1px; }
+.room-member.is-away .face { opacity: 0.45; filter: grayscale(1); }
+.room-crown {
+  position: absolute; top: -5px; right: -5px; width: 22px; height: 22px; display: grid; place-items: center;
+  border-radius: 50%; color: var(--on-bulb); background: var(--bulb); box-shadow: 0 0 0 2px var(--ring, var(--curtain));
+}
+.room-crown svg { width: 13px; height: 13px; fill: currentColor; stroke: none; }
+.room-member-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 700; }
+.room-member-state { font-size: 11px; line-height: 1.2; color: var(--dust); }
+.room-member.is-ready .room-member-state { color: var(--bulb); }
+.room-ready { height: 44px; border: 0; border-radius: 12px; font-weight: 800; color: var(--on-bulb); background: var(--bulb); }
+
+.room-later, .room-counting, .room-invite-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.room-pill {
+  display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 14px;
+  font-size: 13px; font-weight: 600; color: var(--paper);
+  background: var(--seat); border: 1px solid var(--line); border-radius: 999px;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s, transform 0.1s;
+}
+.room-pill:hover { border-color: var(--dust); }
+.room-pill:active { transform: scale(0.96); }
+.room-pill svg { width: 16px; height: 16px; }
+.room-pill.primary { color: var(--on-bulb); background: var(--bulb); border-color: var(--bulb); }
+.room-pill[aria-expanded="true"] { color: var(--bulb); border-color: var(--bulb); }
+
+.room-invitees { display: grid; gap: 8px; }
+.room-invitee-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(86px, 1fr)); gap: 8px; }
+.room-invitee {
+  width: 100%; display: grid; justify-items: center; gap: 4px; padding: 11px 6px 9px;
+  color: var(--paper); background: var(--seat); border: 1px solid var(--line); border-radius: 14px;
+  transition: border-color 0.15s, background-color 0.15s, transform 0.1s;
+}
+.room-invitee:hover { border-color: var(--dust); }
+.room-invitee:active { transform: scale(0.97); }
+.room-invitee-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 700; }
+.room-invitee-state { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: var(--dust); }
+.room-invitee-state svg { width: 12px; height: 12px; stroke-width: 3; }
+.room-invitee[data-state="sending"] { opacity: 0.7; }
+.room-invitee[data-state="sent"] { background: var(--bulb-dim); border-color: var(--bulb); cursor: default; }
+.room-invitee[data-state="sent"] .room-invitee-state { color: var(--bulb); font-weight: 700; }
+.room-invitee[data-state="failed"] .room-invitee-state { color: var(--alert); }
+
+/* Chat: bubbles, your own on the right in bulb gold; a run from one person shows their face once */
+.room-chat { flex: 1 1 0; min-height: 190px; display: flex; flex-direction: column; gap: 8px; padding: 10px 14px 10px; }
+.chat-log {
+  flex: 1; min-height: 0; list-style: none; margin: 0; padding: 0 4px 0 0;
+  display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin;
+}
+.chat-log[hidden] { display: none; }
+.chat-log > :first-child { margin-top: auto; }
+.chat-empty { flex: 1; display: grid; place-items: center; margin: 0; padding: 0 18px; text-align: center; font-size: 13px; color: var(--dust); }
+.chat-line { display: flex; align-items: flex-end; gap: 8px; margin-top: 10px; }
+.chat-line.cont { margin-top: 3px; }
+.chat-line:last-child { animation: chat-in 0.22s ease-out; }
+.chat-gap { flex: none; width: 30px; }
+.chat-bubble { min-width: 0; max-width: 82%; padding: 6px 12px 8px; border-radius: 17px 17px 17px 6px; background: var(--seat); }
+.chat-line.cont:not(.mine) .chat-bubble { border-top-left-radius: 6px; }
+.chat-line.mine { justify-content: flex-end; }
+.chat-line.mine .chat-bubble { color: var(--on-bulb); background: var(--bulb); border-radius: 17px 17px 6px 17px; }
+.chat-line.mine.cont .chat-bubble { border-top-right-radius: 6px; }
+.chat-meta { display: flex; align-items: baseline; gap: 8px; margin-bottom: 1px; }
+.chat-meta strong { font-size: 12px; color: var(--bulb); }
+.chat-line.mine .chat-meta strong { color: inherit; opacity: 0.75; }
+.chat-meta time { font-size: 10.5px; opacity: 0.6; font-variant-numeric: tabular-nums; }
+.chat-bubble p { margin: 0; font-size: 14px; line-height: 1.4; overflow-wrap: anywhere; }
+.reaction-bar { display: flex; justify-content: space-between; gap: 2px; }
+.reaction-btn {
+  flex: 1 1 0; max-width: 44px; aspect-ratio: 1; display: grid; place-items: center;
+  font-size: 21px; line-height: 1; background: none; border: 0; border-radius: 12px;
+  transition: transform 0.12s, background-color 0.12s;
+}
+.reaction-btn:hover { background: var(--seat); transform: translateY(-2px) scale(1.12); }
+.reaction-btn.pop { animation: reaction-pop 0.35s ease-out; }
+@keyframes reaction-pop { 40% { transform: scale(1.4) rotate(-10deg); } }
+.chat-form {
+  display: flex; align-items: center; gap: 6px; padding: 4px 4px 4px 15px;
+  background: var(--seat); border: 1px solid var(--line); border-radius: 999px; transition: border-color 0.15s;
+}
+.chat-form:focus-within { border-color: var(--bulb); }
+.chat-form input { flex: 1; min-width: 0; height: 36px; padding: 0; background: none; border: 0; }
+.chat-form input:focus-visible { outline: none; }
+.chat-send { flex: none; width: 36px; height: 36px; display: grid; place-items: center; color: var(--on-bulb); background: var(--bulb); border: 0; border-radius: 50%; }
+.chat-send svg { width: 18px; height: 18px; stroke-width: 2.5; }
+.room-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px 10px 18px; border-top: 1px solid var(--line); }
+.room-foot small { font-size: 11.5px; line-height: 1.3; color: var(--dust); }
+.room-leave {
+  flex: none; display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px;
+  font-size: 13px; font-weight: 700; color: var(--alert); background: none; border: 1px solid transparent; border-radius: 999px;
+}
+.room-leave:hover { border-color: var(--alert); }
+.room-leave svg { width: 16px; height: 16px; }
+
+/* Tablets: a floating card; phones: a sheet over the lower picture */
+@media (max-width: 1099.98px) {
+  .room {
+    top: auto; left: 0; width: auto; height: min(76dvh, 640px);
+    border-left: 0; border-top: 1px solid var(--line); border-radius: 22px 22px 0 0;
+    box-shadow: 0 -24px 60px rgba(0, 0, 0, 0.55); animation-name: room-up;
+  }
+  .room-body { max-height: 46%; }
+  .room-chat { min-height: 150px; }
+}
+/* Phones: one swipeable row of faces and tighter sections, so the chat keeps most of the sheet */
+@media (max-width: 699.98px) {
+  .room { height: min(82dvh, 700px); }
+  .room-head { gap: 6px; padding: 14px 16px 12px; }
+  .room-body { max-height: 42%; }
+  .room-section { gap: 8px; padding: 10px 16px; }
+  .room-roster { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 66px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+  .room-roster .face { --face: 40px !important; width: 40px; height: 40px; font-size: 17px; }
+  #watch-hint { display: none; }
+  .room-chat { padding: 8px 12px; }
+}
+@media (max-width: 1099.98px) and (min-width: 700px) {
+  .room { left: auto; right: 16px; bottom: 16px; width: 420px; padding-bottom: 0; border: 1px solid var(--line); border-radius: 22px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .room, .chat-line:last-child, .reaction-btn.pop { animation: none; }
+}
+
+/* The invite: a ticket with the host's face */
+.room-ticket {
+  position: relative; display: grid; gap: 14px; margin: 4px 0 14px; padding: 16px 18px 18px;
+  border: 1px solid var(--line); border-radius: 18px; --ring: var(--seat);
+  background: radial-gradient(120% 90% at 0 0, var(--bulb-dim), transparent 62%), var(--seat);
+}
+.room-ticket::before, .room-ticket::after {
+  content: ''; position: absolute; top: 50%; width: 18px; height: 18px; margin-top: -9px;
+  border-radius: 50%; background: var(--curtain); border: 1px solid var(--line);
+}
+.room-ticket::before { left: -10px; clip-path: inset(0 0 0 50%); }
+.room-ticket::after { right: -10px; clip-path: inset(0 50% 0 0); }
+.room-ticket-host { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.room-ticket-host .room-member-face { box-shadow: 0 0 0 2px var(--bulb), 0 0 18px -4px var(--bulb); }
+.room-ticket-host .room-crown { --ring: var(--seat); }
+.room-ticket-title { margin: 0; font: 800 20px/1.2 var(--display); overflow-wrap: anywhere; }
+.room-ticket-by { margin: 3px 0 0; font-size: 14px; color: var(--dust); }
+.room-ticket-when, .room-ticket-here { margin: 0; padding-top: 12px; border-top: 1px dashed var(--line); }
+.room-ticket-when { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; font-weight: 700; color: var(--bulb); }
+.room-ticket-when small { font-weight: 600; color: var(--dust); font-variant-numeric: tabular-nums; }
+.room-ticket-here { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.room-ticket-when + .room-ticket-here { padding-top: 0; border-top: 0; }
+.room-ticket-note { margin: 0 0 14px; }
+.room-join { width: 100%; }
+
+/* Library → Watch parties */
+.party-host { align-self: flex-start; }
+.party-card .party-text { flex: 1 1 180px; }
+.party-here { display: inline-flex; align-items: center; gap: 7px; margin-top: 3px; font-size: 13px; }

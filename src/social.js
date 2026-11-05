@@ -32,13 +32,16 @@ export function rate(userId, key, value, title = '') {
     .run(userId, key, value, cleanText(title, 200) || null, Date.now());
 }
 
-// What one person sees on a title: their own thumb and who else liked it.
-export function ratingFor(userId, key, nameOf) {
+// What one person sees on a title: their own thumb and who else liked it (likedBy: names; people:
+// { name, avatar } for the faces beside them, when avatarOf is given).
+export function ratingFor(userId, key, nameOf, avatarOf = () => null) {
   if (!validTitleKey(key)) throw fail(400, 'Which film or show?');
   const rows = db().prepare('SELECT user_id, value FROM ratings WHERE title_key = ? ORDER BY updated_at DESC').all(key);
   const mine = rows.find((r) => r.user_id === userId)?.value || 0;
-  const likedBy = rows.filter((r) => r.value === 1 && r.user_id !== userId).map((r) => nameOf(r.user_id));
-  return { key, mine, likedBy, likes: rows.filter((r) => r.value === 1).length };
+  const others = rows.filter((r) => r.value === 1 && r.user_id !== userId);
+  const likedBy = others.map((r) => nameOf(r.user_id));
+  const people = others.slice(0, 5).map((r, i) => ({ name: likedBy[i], avatar: avatarOf(r.user_id) }));
+  return { key, mine, likedBy, people, likes: rows.filter((r) => r.value === 1).length };
 }
 
 // Thumbs for many titles at once (Popular shelf cards, library cards): { key: { mine, likes } }.
@@ -138,7 +141,7 @@ export function wrappedYears(userId) {
 }
 
 // One person's year on Marquee. nameOf(userId) -> display name.
-export function wrapped(userId, year, nameOf) {
+export function wrapped(userId, year, nameOf, avatarOf = () => null) {
   year = Number(year);
   if (!Number.isSafeInteger(year) || year < 2000 || year > 3000) throw fail(400, 'Which year?');
   const from = `${year}-01-01`, to = `${year}-12-31`;
@@ -183,7 +186,7 @@ export function wrapped(userId, year, nameOf) {
 
   const company = db().prepare(`SELECT other_id, SUM(seconds) AS s FROM watch_company WHERE user_id = ? AND day BETWEEN ? AND ?
     GROUP BY other_id ORDER BY s DESC LIMIT 5`).all(userId, from, to)
-    .filter((r) => r.s >= 60).map((r) => ({ name: nameOf(r.other_id), seconds: Math.round(r.s) }));
+    .filter((r) => r.s >= 60).map((r) => ({ name: nameOf(r.other_id), avatar: avatarOf(r.other_id), seconds: Math.round(r.s) }));
   const together = rows.reduce((s, r) => s + r.together, 0);
 
   // Where this person ranks among everyone who watched that year (1 = watched the most).

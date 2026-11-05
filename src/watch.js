@@ -12,9 +12,10 @@ export const REACTIONS = ['😂', '😮', '😍', '😢', '😱', '👏', '🔥'
 const CHAT_KEEP = 50;
 
 // store (optional): { save(room), remove(token), load() } keeps planned parties across restarts.
+// avatarOf (optional): account id -> picture URL, for a planned party's host before they arrive.
 export class WatchRooms {
-  constructor({ now = Date.now, store = null } = {}) {
-    this.now = now; this.rooms = new Map(); this.store = null;
+  constructor({ now = Date.now, store = null, avatarOf = () => null } = {}) {
+    this.now = now; this.rooms = new Map(); this.store = null; this.avatarOf = avatarOf;
     if (store) this.attachStore(store);
   }
 
@@ -106,8 +107,17 @@ export class WatchRooms {
       .filter((r) => r.startsAt != null && (r.creator === user.id || r.people.has(user.id)) && this.now() < r.startsAt + 3 * 3600000)
       .sort((a, b) => a.startsAt - b.startsAt)
       .map((r) => ({ token: r.token, startsAt: r.startsAt, started: r.started, mine: r.creator === user.id,
-        host: r.members.get(r.host)?.name || r.creatorName || 'Family', viewers: r.members.size,
+        host: r.members.get(r.host)?.name || r.creatorName || 'Family', hostAvatar: this.hostAvatar(r), viewers: r.members.size,
+        faces: this.faces(r),
         media: { kind: r.media.kind, id: r.media.id, title: r.media.title, season: r.media.season ?? null, episode: r.media.episode ?? null } }));
+  }
+
+  hostAvatar(room) { return room.members.get(room.host)?.avatar ?? this.avatarOf(room.creator) ?? null; }
+  // Who's in the room, one face per account (a person on two devices shows once).
+  faces(room) {
+    const seen = new Map();
+    for (const m of room.members.values()) if (!seen.has(m.userId)) seen.set(m.userId, { name: m.name, avatar: m.avatar || null });
+    return [...seen.values()].slice(0, 8);
   }
 
   cancel(token, user) {
@@ -135,10 +145,11 @@ export class WatchRooms {
     const existing = room.members.get(client);
     if (existing && existing.userId !== user.id) throw fail(403, 'This viewer belongs to a different account.');
     if (!existing && room.members.size >= 12) throw fail(409, 'This room is full (12 viewers).');
-    if (!existing) room.members.set(client, { id: client, userId: user.id, name: String(user.name || 'Viewer').slice(0, 80),
+    if (!existing) room.members.set(client, { id: client, userId: user.id, name: String(user.name || 'Viewer').slice(0, 80), avatar: user.avatar || null,
       ready: false, buffering: false, blocked: false, rtt: 0, seen: this.now(), streams: new Set() });
     room.members.get(client).seen = this.now();
     room.members.get(client).name = String(user.name || 'Viewer').slice(0, 80);
+    room.members.get(client).avatar = user.avatar || null;
     // Whoever planned a party hosts it once they arrive, unless it's already under way.
     if (!room.members.has(room.host) || (user.id === room.creator && !room.started && room.members.get(room.host)?.userId !== user.id)) room.host = client;
     if (!room.people.has(user.id)) { room.people.add(user.id); this.persist(room); }
@@ -171,14 +182,14 @@ export class WatchRooms {
       position: room.position, at: room.at, playing: room.playing, intentPlaying: room.wantPlay,
       startsAt: room.started ? null : room.startsAt,
       waitingFor: room.wantPlay ? this.blockers(room).map((m) => m.name) : [],
-      members: [...room.members.values()].map((m) => ({ id: m.id, name: m.name, ready: m.ready,
+      members: [...room.members.values()].map((m) => ({ id: m.id, name: m.name, avatar: m.avatar || null, ready: m.ready,
         connected: m.streams.size > 0, buffering: m.buffering, blocked: m.blocked })) };
   }
 
   preview(token) {
     const room = this.room(token);
-    return { media: room.media, host: room.members.get(room.host)?.name || room.creatorName || 'Family', viewers: room.members.size,
-      startsAt: room.started ? null : room.startsAt };
+    return { media: room.media, host: room.members.get(room.host)?.name || room.creatorName || 'Family', hostAvatar: this.hostAvatar(room),
+      viewers: room.members.size, faces: this.faces(room), startsAt: room.started ? null : room.startsAt };
   }
 
   subscribe(token, user, client, send) {
@@ -197,7 +208,7 @@ export class WatchRooms {
     const room = this.room(token);
     const member = this.member(room, user, client);
     member.seen = this.now(); room.touched = this.now();
-    const next = { name: String(user.name || 'Viewer').slice(0, 80), ready: status.ready === true, buffering: status.buffering === true, blocked: status.blocked === true };
+    const next = { name: String(user.name || 'Viewer').slice(0, 80), avatar: user.avatar || null, ready: status.ready === true, buffering: status.buffering === true, blocked: status.blocked === true };
     const changed = Object.keys(next).some((k) => member[k] !== next[k]);
     Object.assign(member, next);
     if (Number.isFinite(status.rtt)) member.rtt = Math.max(0, Math.min(2000, status.rtt));
@@ -236,7 +247,7 @@ export class WatchRooms {
     const body = String(text ?? '').replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim().slice(0, 300);
     if (!body) throw fail(400, 'Write a message first.');
     if (!this.allow(member, 'chatTimes', 6, 10000)) throw fail(429, 'Slow down a little: too many messages.');
-    const message = { id: ++room.chatSeq, from: client, name: member.name, text: body, at: this.now() };
+    const message = { id: ++room.chatSeq, from: client, name: member.name, avatar: member.avatar || null, text: body, at: this.now() };
     room.chat.push(message);
     if (room.chat.length > CHAT_KEEP) room.chat.splice(0, room.chat.length - CHAT_KEEP);
     room.touched = this.now();
@@ -249,7 +260,7 @@ export class WatchRooms {
     const member = this.member(room, user, client);
     if (!REACTIONS.includes(emoji)) throw fail(400, 'Unknown reaction.');
     if (!this.allow(member, 'reactTimes', 12, 5000)) return false; // dropped quietly: it's only confetti
-    this.broadcast(room, { reaction: { emoji, from: client, name: member.name, at: this.now() } });
+    this.broadcast(room, { reaction: { emoji, from: client, name: member.name, avatar: member.avatar || null, at: this.now() } });
     return true;
   }
 
@@ -295,8 +306,8 @@ export class WatchRooms {
   renameUser(user) {
     for (const room of this.rooms.values()) {
       let changed = false;
-      for (const member of room.members.values()) if (member.userId === user.id && member.name !== user.name) {
-        member.name = user.name; changed = true;
+      for (const member of room.members.values()) if (member.userId === user.id && (member.name !== user.name || member.avatar !== (user.avatar || null))) {
+        member.name = user.name; member.avatar = user.avatar || null; changed = true;
       }
       if (changed) this.changed(room);
     }
