@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-05-download-seeders",
+    "date": "2026-11-05",
+    "title": "Seeders in download details",
+    "items": [
+      {
+        "title": "See who's sharing",
+        "text": "Download details now show how many seeders a download is connected to, out of how many exist, like \"12 of 340 seeders\". The dot is lit when plenty are sharing and empty when nobody is, so you can tell a slow download from a stuck one."
+      }
+    ]
+  },
+  {
     "id": "2026-11-05-continue-arrows",
     "date": "2026-11-05",
     "title": "Arrows on Continue watching",

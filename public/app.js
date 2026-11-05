@@ -1473,6 +1473,15 @@ function openDeleteDownload(d, opener) {
   cancel.focus();
 }
 
+// "12 of 340 seeders": connected now, of the whole swarm. The bulb is lit when plenty feed it, dim with a few, out with none.
+function seedersChip(d) {
+  if (!Number.isFinite(d.seeds)) return null;
+  const swarm = Number.isFinite(d.swarmSeeds) && d.swarmSeeds > d.seeds ? d.swarmSeeds : null;
+  const health = d.seeds >= 10 ? 'good' : d.seeds >= 1 ? 'ok' : 'poor';
+  const text = swarm != null ? `${d.seeds.toLocaleString()} of ${swarm.toLocaleString()} seeders` : `${d.seeds.toLocaleString()} ${d.seeds === 1 ? 'seeder' : 'seeders'}`;
+  return h('span', { class: `seeds seeds-${health}`, title: swarm != null ? `Connected to ${d.seeds.toLocaleString()} of the ${swarm.toLocaleString()} seeders the trackers report` : 'Seeders connected right now' }, text);
+}
+
 function updateDlCard(el, d) {
   if (!el) return;
   const r = el._refs;
@@ -1500,7 +1509,7 @@ function updateDlCard(el, d) {
   const subs = (d.subs || []).map((x) => h('span', { class: `sub-state sub-${x.state}` }, `${x.name} ${SUB_STATE[x.state] || ''}`));
   const stats = d.done
     ? [fmtBytes(d.size), ...subs]
-    : [h('strong', {}, Number.isFinite(d.progress) && d.size > 0 ? `${pct}%` : label), d.size > 0 && `${fmtBytes(Math.round(d.size * (Number(d.progress) || 0)))} / ${fmtBytes(d.size)}`, !isPaused(d) && !transferAttention(d) && !/checking/.test(d.state || '') && d.speed > 0 && `${fmtBytes(d.speed)}/s`, !isPaused(d) && !transferAttention(d) && !/checking/.test(d.state || '') && Number.isFinite(d.eta) && d.eta >= 0 && d.eta < 8640000 && fmtEta(d.eta), ...subs];
+    : [h('strong', {}, Number.isFinite(d.progress) && d.size > 0 ? `${pct}%` : label), d.size > 0 && `${fmtBytes(Math.round(d.size * (Number(d.progress) || 0)))} / ${fmtBytes(d.size)}`, !isPaused(d) && !transferAttention(d) && !/checking/.test(d.state || '') && d.speed > 0 && `${fmtBytes(d.speed)}/s`, !isPaused(d) && !transferAttention(d) && !/checking/.test(d.state || '') && Number.isFinite(d.eta) && d.eta >= 0 && d.eta < 8640000 && fmtEta(d.eta), !isPaused(d) && !/checking/.test(d.state || '') && seedersChip(d), ...subs];
   r.stats.replaceChildren(...stats.filter(Boolean).map((s) => (s instanceof Node ? s : h('span', {}, s))));
   r.pause.hidden = d.done;
   r.del.hidden = d.canManage === false;

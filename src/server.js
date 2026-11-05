@@ -1113,6 +1113,9 @@ async function listDownloads(user, all = false) {
     progress: t.progress,
     speed: t.dlspeed,
     eta: t.eta >= 8640000 ? null : t.eta,
+    // Seeders this transfer is connected to, and how many the trackers report in the whole swarm (null when unknown).
+    seeds: Number.isFinite(t.num_seeds) ? t.num_seeds : null,
+    swarmSeeds: Number.isFinite(t.num_complete) && t.num_complete >= 0 ? t.num_complete : null,
     size: t.size,
     // Stopped by Marquee so an earlier episode downloads first: waiting its turn, not paused.
     state: episodeOrder.get(t.hash.toLowerCase())?.held && /^(paused|stopped)/.test(t.state || '') ? 'queuedDL' : t.state,
