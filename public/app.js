@@ -4618,7 +4618,7 @@ function accessName(email, name) {
   });
 }
 
-// One People list: everyone on the access list plus anyone else Activity has seen, with their last visit.
+// One People list: everyone on the access list with their last visit (everyone seen, if the list can't be read).
 function peopleSection(q) {
   const a = state.access || {};
   const out = [];
@@ -4655,7 +4655,8 @@ function peopleSection(q) {
     seen.delete(key(email));
     rows.push({ email, member: true, owner: (a.owners || []).includes(email), name: a.names?.[email] || p?.name || personName(email), p });
   }
-  for (const p of seen.values()) rows.push({ email: p.user, member: false, owner: false, name: personName(p), p });
+  // Once the access list is known, only people on it are listed: removing someone there drops them here too.
+  if (!members) for (const p of seen.values()) rows.push({ email: p.user, member: false, owner: false, name: personName(p), p });
   rows.sort((x, y) => (y.p?.at || 0) - (x.p?.at || 0));
   const list = rows.filter((r) => !q || norm(`${r.email} ${r.name} ${r.p ? activityDevice(r.p) : ''}`).includes(q));
 
@@ -4669,7 +4670,6 @@ function peopleSection(q) {
         h('span', { class: 'row-meta' },
           isEmail && h('span', {}, email),
           owner && h('span', {}, 'owner'),
-          members && !member && isEmail && h('span', {}, 'not on the access list'),
           h('span', {}, p ? lastSeenText(p.at) : 'Hasn’t signed in yet'),
           p && h('span', {}, activityDevice(p)))),
       member && !owner && h('span', { class: 'row-actions' }, h('button', {
