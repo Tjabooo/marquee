@@ -99,6 +99,8 @@ that is a hard disk shared with downloads and conversions.
 | `MARQUEE_PRIORITY` | `above_normal` | CPU priority of the Marquee process: `above_normal`, `normal` or `high`. On Windows its I/O and memory priority are always set to normal, also when it runs as a scheduled task (whose default is low I/O priority, which made streams stall behind downloads). |
 | `BACKGROUND_PRIORITY` | `below_normal` | CPU priority of background jobs (conversions, browser copies, timeline previews, credits, subtitle sync, clip and note copies, OCR): `below_normal`, `idle` or `normal`. |
 | `BACKGROUND_IO` | `normal` | Windows: I/O and memory priority of those jobs: `normal`, `low` or `very_low`. `low` makes their disk reads wait for a stream's and their cached pages leave RAM first, but slows a conversion 3–4x while anyone watches; try it only if streams still stall during background work. |
+| `QBIT_PLAYBACK_LIMITS` | `on` | While anyone is streaming, switch qBittorrent to its alternative speed limits (set them in qBittorrent: Options → Speed). Marquee turns them off again afterwards, unless they were already on. |
+| `PLAYBACK_IDLE_SECONDS` | `60` | How long after the last stream downloads go back to full speed. |
 
 ## Conversion
 

@@ -47,6 +47,7 @@ import { createTrust } from './trust.js';
 import { createAuth, signInPage, safeNext } from './auth.js';
 import { checkConfig } from './config-check.js';
 import { raiseServer } from './priority.js';
+import { startPlaybackGuard } from './playback-guard.js';
 
 import { APP_DIR, DATA_DIR, CACHE_DIR, PUBLIC_DIR, dataDirProblem, ensureDataDir } from './paths.js';
 
@@ -152,8 +153,14 @@ load.initLoad({
     return { up: t.up_info_speed || 0, down: t.dl_info_speed || 0, upLimit: t.up_rate_limit || null };
   } : null,
 });
-// Playback first: this process a step above normal, background jobs below it (priority.js).
+// Playback first: this process a step above normal, background jobs below it (priority.js), and
+// downloads on qBittorrent's alternative speed limits while anyone is watching (playback-guard.js).
 raiseServer();
+startPlaybackGuard({
+  watching: load.watching,
+  qbit: QBIT_URL ? (endpoint, init) => qbitRequest(endpoint, init) : null,
+  stateFile: path.join(DATA_DIR, '.marquee-playback.json'),
+});
 shows.initShows({ dataDir: DATA_DIR });
 initCredits({ dataDir: DATA_DIR });
 // What's new (whats-new.js): update notes everyone sees once, and an id for the web app being served.

@@ -188,6 +188,9 @@ function streamView(s, now) {
   };
 }
 
+// Is anyone watching right now? (A stream counts until it has been quiet for STREAM_IDLE_MS.)
+export const watching = () => streams.size > 0;
+
 // ---------- jobs (ffmpeg and friends) ----------
 const base = (p) => (p ? path.basename(String(p)) : null);
 // What a job is, from its command line. `area` is the module that started it.
