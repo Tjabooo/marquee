@@ -178,8 +178,11 @@ function defaultMediaDir() {
 
 function serviceManager() { return detect.serviceManagers()[0] || null; }
 
+// The scope of a systemd unit that's already installed wins, so status/restart/uninstall act on it.
+// For a new install, a desktop session suggests a personal machine (user service); otherwise system.
 function defaultScope(info) {
-  // A desktop session usually means a personal machine where a user service fits; servers get a system one.
+  if (fs.existsSync('/etc/systemd/system/marquee.service')) return 'system';
+  if (fs.existsSync(path.join(os.homedir(), '.config', 'systemd', 'user', 'marquee.service'))) return 'user';
   return info.os.platform === 'linux' && process.env.XDG_SESSION_TYPE && !isRoot() ? 'user' : 'system';
 }
 
@@ -321,7 +324,7 @@ async function setup(opts) {
   else {
     const scope = opts.scope || answers.serviceScope || defaultScope(info);
     const plan = servicePlan('install', { manager: mgr, appDir: APP_DIR, scope, mediaDir: env.MEDIA_DIR || null, dataDir: env.DATA_DIR || null });
-    const wants = 'autostart' in answers ? Boolean(answers.autostart) : !opts.yes;
+    const wants = 'autostart' in answers ? Boolean(answers.autostart) : !opts.yes || opts.allow.has('service');
     const ok = wants && await ask.confirm(`Start Marquee automatically at boot (${mgr}${mgr === 'systemd' ? `, ${scope} service` : ''})?`, { dflt: true, allow: 'service', allowed: opts.allow });
     const needsSudo = plan.some((s) => s.privileged) && process.platform !== 'win32' && !isRoot();
     if (ok && needsSudo && opts.yes && !opts.allow.has('sudo')) {

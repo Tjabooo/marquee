@@ -2,7 +2,7 @@
 #
 #   powershell -ExecutionPolicy Bypass -File install.ps1                    install or update to the latest release
 #   powershell -ExecutionPolicy Bypass -File install.ps1 -Version v1.1.0    a specific release
-#   powershell -ExecutionPolicy Bypass -File install.ps1 -Dir D:\Marquee     somewhere other than %USERPROFILE%\marquee
+#   powershell -ExecutionPolicy Bypass -File install.ps1 -Dir D:\Apps\Marquee somewhere other than %USERPROFILE%\marquee
 #   powershell -ExecutionPolicy Bypass -File install.ps1 -DryRun
 #   powershell -ExecutionPolicy Bypass -File install.ps1 -Uninstall          remove the scheduled tasks and application files
 #                                                                            (.env, database and media stay)

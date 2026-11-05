@@ -112,8 +112,19 @@ test('removing the mic track rebuilds the mix and copies the rest', { skip: !has
 });
 
 const hasSvt = hasFfmpeg && /libsvtav1/.test(spawnSync(ffmpeg, ['-hide_banner', '-encoders']).stdout) && /libdav1d/.test(spawnSync(ffmpeg, ['-hide_banner', '-decoders']).stdout)
-  // Lossless SVT-AV1 (lossless=1) needs SVT-AV1 2.0 or later; older builds (e.g. Ubuntu 24.04) reject it.
-  && spawnSync(ffmpeg, ['-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=64x64:rate=30:duration=0.2', '-c:v', 'libsvtav1', '-svtav1-params', 'lossless=1', '-f', 'null', '-']).status === 0;
+  && svtIsBitExact();
+// Exact cuts need SVT-AV1's lossless mode to reproduce frames bit for bit (recent SVT-AV1). Older
+// builds, such as Ubuntu 24.04's, accept lossless=1 but don't round-trip; Marquee then refuses the cut.
+function svtIsBitExact() {
+  const tmp = path.join(os.tmpdir(), `marquee-svt-probe-${process.pid}.mkv`);
+  const src = ['-f', 'lavfi', '-i', 'testsrc2=size=320x180:rate=30:duration=0.3', '-pix_fmt', 'yuv420p'];
+  try {
+    if (spawnSync(ffmpeg, ['-v', 'error', '-y', ...src, '-c:v', 'libsvtav1', '-preset', '8', '-svtav1-params', 'lossless=1', tmp]).status !== 0) return false;
+    const hashes = (args) => String(spawnSync(ffmpeg, ['-v', 'error', ...args, '-f', 'framemd5', '-']).stdout).split('\n').filter((l) => /^\d/.test(l)).map((l) => l.split(',').pop().trim());
+    const want = hashes(src), got = hashes(['-i', tmp]);
+    return want.length > 0 && want.join() === got.join();
+  } finally { fs.rm(tmp, { force: true }).catch(() => {}); }
+}
 test('AV1 clips are cut on the exact frame and every frame matches the original', { skip: !hasSvt && 'ffmpeg without SVT-AV1 2.0+ (lossless) and dav1d', timeout: 120000 }, async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-clip-exact-'));
   const data = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-clip-data-'));
