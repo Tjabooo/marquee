@@ -27,6 +27,8 @@ const TPB_CATS = {
   tv: new Set(['205', '208', '212']),
 };
 
+import { adultReason, X1337_ADULT_SUBS, tpbAdultCategory } from './content-filter.js';
+
 const searchCache = new Map(); // key -> { at, data }
 const magnetCache = new Map(); // 1337x path -> magnet
 
@@ -93,6 +95,7 @@ export function parseTpb(json, type) {
   return list
     .filter((t) => t && /^[a-f0-9]{40}$/i.test(t.info_hash) && !/^0+$/.test(t.info_hash)) // skip "no results" row
     .filter((t) => String(t.category || '').startsWith('2'))                               // video only
+    .filter((t) => !tpbAdultCategory(t.category))
     .filter((t) => !TPB_CATS[type] || TPB_CATS[type].has(String(t.category)))
     .map((t) => ({
       source: 'tpb',
@@ -185,6 +188,7 @@ export function parse1337x(html) {
     if (!link || !X_PATH.test(link[1])) continue;
     const cell = (cls) => new RegExp(`class="${cls}[^"]*"[^>]*>(?:<a[^>]*>)?([^<]*)`, 'i').exec(row)?.[1] ?? '';
     const name = decode(link[2]);
+    const sub = /href="\/sub\/(\d+)\//i.exec(row)?.[1] || null;
     const sizeText = cell('coll-4');
     out.push({
       source: '1337x',
@@ -198,6 +202,7 @@ export function parse1337x(html) {
       uploader: decode(cell('coll-5')) || null,
       trusted: /class="coll-5 vip/i.test(row),
       ref: link[1],            // detail page; the magnet is fetched on demand
+      adult: Boolean(sub && X1337_ADULT_SUBS.has(sub)),
       ...describe(name),
     });
   }
@@ -233,7 +238,15 @@ export async function magnetFor1337x(ref) {
 }
 
 // ---------- combined search ----------
-export async function searchTorrents(rawQuery, rawType) {
+// Adult releases (by category or by name, see content-filter.js) are left out unless `adult` is true.
+const withoutAdult = (data) => ({ ...data, results: data.results.filter((r) => !r.adult && !adultReason(r.name)) });
+
+export async function searchTorrents(rawQuery, rawType, { adult = false } = {}) {
+  const data = await searchAll(rawQuery, rawType);
+  return adult ? data : withoutAdult(data);
+}
+
+async function searchAll(rawQuery, rawType) {
   if (!ENABLED) throw new TorrentError(503, 'Torrent search is turned off (TORRENTS=off in .env).');
   const q = String(rawQuery || '').replace(/\s+/g, ' ').trim().slice(0, 100);
   const type = ['movie', 'tv'].includes(rawType) ? rawType : 'all';

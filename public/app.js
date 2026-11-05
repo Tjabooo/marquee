@@ -5710,6 +5710,7 @@ const ACTIVITY_TEXT = {
   remove: (d) => `removed ${d} from their library`,
   extend: (d) => `kept ${d} longer`,
   expire: (d) => `auto-deleted ${d}`,
+  blocked: (d) => `tried to download ${d}, which was blocked`,
   settings: (d) => `changed the server rules (${d})`,
   permission: (d) => `changed a permission: ${d}`,
 };

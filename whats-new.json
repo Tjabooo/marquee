@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-05-content-filter",
+    "date": "2026-11-05",
+    "title": "No adult downloads",
+    "items": [
+      {
+        "title": "Adult content is blocked",
+        "text": "Marquee no longer downloads porn. It's left out of torrent search, and links or .torrent files for it are refused. If a download turns out to contain it once it starts, it's removed straight away."
+      }
+    ]
+  },
+  {
     "id": "2026-11-05-download-seeders",
     "date": "2026-11-05",
     "title": "Seeders in download details",

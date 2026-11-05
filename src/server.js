@@ -24,6 +24,7 @@ import * as season from './season.js';
 import { matchesRelease } from './release-match.js';
 import { downloadDestination, downloadFilePath } from './download-paths.js';
 import { fetchTorrentFile, TorrentFetchError } from './torrent-fetch.js';
+import { filterMode, filterApplies, firstAdult, torrentFileNames, BLOCKED_MESSAGE } from './content-filter.js';
 import * as smart from './smart-download.js';
 import { planEpisodeOrder } from './episode-order.js';
 import { PROFILES } from './recommend.js';
@@ -679,6 +680,19 @@ async function addDownloadNow({ link, file, user = null, name = '', film = null,
     if (got.magnet) return addDownload({ link: got.magnet, user, name, film, show, mediaType });
     file = got.file;
   }
+  // Adult content never reaches qBittorrent: the name, the magnet's dn, the .torrent's own file names
+  // and the chosen TMDB identity are checked first. Magnets without names are checked again by
+  // contentGuardRound() once their file list arrives.
+  if (filterApplies(user)) {
+    let dn = /[?&]dn=([^&]+)/.exec(String(link || ''))?.[1] || '';
+    try { dn = decodeURIComponent(dn.replace(/\+/g, ' ')); } catch { /* keep it encoded */ }
+    const found = (film?.adult || show?.adult) ? { name: name || film?.title || show?.name, reason: 'an adult TMDB title' }
+      : firstAdult([name, dn, ...(file ? torrentFileNames(file) : [])]);
+    if (found) {
+      contentBlocked(user, name || found.name, found);
+      throw new HttpError(403, BLOCKED_MESSAGE);
+    }
+  }
   const hash = accounts.magnetHash(link);
   assertDownloadNotDeleting(hash);
   if (hash && user) {
@@ -729,6 +743,7 @@ async function addDownloadNow({ link, file, user = null, name = '', film = null,
   }
   if (film && hash) shows.rememberFilmDownload(hash, film);
   if (show && hash) shows.rememberShowDownload(hash, show, torrentIdentity(name));
+  setTimeout(() => contentGuardRound(), 1000);
   return { existing: false, hash };
 }
 
@@ -790,6 +805,10 @@ async function startSmartFor(user, body) {
   const details = await tmdb(`/${type}/${tmdbId}`);
   const title = String((type === 'tv' ? details.name : details.title) || '').trim();
   if (!title) throw new HttpError(404, 'That title couldn’t be found.');
+  if (details.adult && filterApplies(user)) {
+    contentBlocked(user, title, { name: title, reason: 'an adult TMDB title' });
+    throw new HttpError(403, BLOCKED_MESSAGE);
+  }
   const date = type === 'tv' ? details.first_air_date : details.release_date;
   const year = date ? Number(date.slice(0, 4)) : null;
   const original = String((type === 'tv' ? details.original_name : details.original_title) || '').trim();
@@ -1027,6 +1046,71 @@ async function episodeOrderRound() {
   } finally { orderBusy = false; }
 }
 setInterval(() => episodeOrderRound(), 5000).unref();
+
+// ---- content filter (content-filter.js) ----
+// Logged in the activity feed (the owner sees it under What happened) and the server log.
+function contentBlocked(user, title, found) {
+  console.warn(`[content-filter] blocked ${user?.email || 'a download'}: ${title} (${found.reason}${found.name && found.name !== title ? ` in ${found.name}` : ''})`);
+  activity.record(SYSTEM, 'blocked', `${String(title || 'a torrent').slice(0, 200)} (adult content)`, { user: user?.email || 'Marquee' });
+}
+// Marquee's downloads are checked once their name and file list are known (a magnet's files arrive
+// with its metadata, a few seconds after it's added). Adult ones are removed with their files.
+// Downloads that finished before this server started are only reported, never deleted.
+const contentChecked = new Set();
+const contentGuardSince = Math.floor(Date.now() / 1000);
+let contentGuardBusy = false;
+async function contentGuardRound() {
+  if (!QBIT_URL || filterMode() === 'off' || contentGuardBusy) return;
+  contentGuardBusy = true;
+  try {
+    const list = await qbit('/api/v2/torrents/info');
+    const present = new Set();
+    for (const t of list) {
+      const hash = t.hash.toLowerCase();
+      present.add(hash);
+      if (contentChecked.has(hash) || deletingDownloads.has(hash)) continue;
+      const ownerId = accounts.torrentRow(hash)?.user_id ?? accounts.userFromTags(t.tags);
+      // Not added through Marquee, or its owner isn't filtered: left alone.
+      if (ownerId == null || !filterApplies(accounts.userById(ownerId))) { contentChecked.add(hash); continue; }
+      let found = firstAdult([t.name]);
+      if (!found) {
+        const files = await torrentFileMetadata(t, { fresh: true }).catch(() => null);
+        if (!files?.length) continue; // no metadata yet: next round
+        found = firstAdult(files.map((f) => f.name));
+      }
+      contentChecked.add(hash);
+      if (!found) continue;
+      const who = accounts.userById(ownerId);
+      if (Number(t.added_on) < contentGuardSince && t.progress >= 1) {
+        console.warn(`[content-filter] ${t.name} looks like adult content (${found.reason}) but finished before this check started: left alone`);
+        continue;
+      }
+      await removeBlockedDownload(t, who, found).catch((e) => {
+        contentChecked.delete(hash); // try again next round
+        console.warn(`[content-filter] couldn’t remove ${t.name}: ${e.message}`);
+      });
+    }
+    for (const hash of contentChecked) if (!present.has(hash)) contentChecked.delete(hash);
+  } catch { /* qBittorrent down: next round */ }
+  finally { contentGuardBusy = false; }
+}
+async function removeBlockedDownload(t, user, found) {
+  const hash = t.hash.toLowerCase();
+  deletingDownloads.add(hash);
+  try {
+    releaseEpisodeOrder(t.hash);
+    await qbitRequest('/api/v2/torrents/delete', {
+      method: 'POST', body: new URLSearchParams({ hashes: t.hash, deleteFiles: 'true' }),
+    });
+  } finally { deletingDownloads.delete(hash); }
+  torrentFilesCache.delete(t.hash);
+  recentlyAddedDownloads.delete(hash);
+  torrentInventory.at = 0;
+  invalidateLibrary();
+  if (t.content_path) setTimeout(() => { removeEmptyFolders(path.dirname(t.content_path)); invalidateLibrary(); }, 4000);
+  contentBlocked(user, t.name, found);
+}
+setInterval(() => contentGuardRound(), 3000).unref();
 
 async function readRaw(req, limit, tooLarge = 'That file is too large for a .torrent.') {
   const chunks = [];
@@ -2197,7 +2281,7 @@ async function handleApi(req, res, url) {
   // ---- torrent search ----
   if (p === '/api/torrents/search') {
     const query = url.searchParams.get('q');
-    const found = await torrents.searchTorrents(query, url.searchParams.get('type'));
+    const found = await torrents.searchTorrents(query, url.searchParams.get('type'), { adult: !filterApplies(user) });
     return sendJson(res, 200, url.searchParams.get('strict') === '1'
       ? { ...found, results: found.results.filter((r) => matchesRelease(query, r.name, parseName)) } : found);
   }

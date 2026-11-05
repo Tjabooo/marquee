@@ -64,6 +64,8 @@ See [remote-access.md](remote-access.md) for how accounts work and how to publis
 | Setting | Default | Purpose |
 | --- | --- | --- |
 | `TORRENTS` | `on` | `off` hides torrent search. |
+| `CONTENT_FILTER` | `on` | Keeps adult content off the server: porn is left out of torrent search, adult release names, `.torrent` files and TMDB titles are refused before they reach qBittorrent, and a download whose files turn out to be adult is removed with its files (logged under What happened). `members` exempts the owner, `off` turns it off. |
+| `CONTENT_FILTER_WORDS` | | Extra words or phrases the filter blocks, comma-separated. |
 | `TPB_API` | `https://apibay.org` | The Pirate Bay API base. |
 | `X1337_URL` | built-in list | 1337x mirrors, comma-separated, tried in order. |
 | `FLARESOLVERR_URL` | | FlareSolverr address, e.g. `http://localhost:8191`, for when every 1337x mirror is behind a Cloudflare check. |
