@@ -511,8 +511,9 @@ function securityChecks({ env, dataDir, report }) {
   }
   if (mode === 'signin' && !logins.length && !env.CF_ACCESS_TEAM_DOMAIN) report('error', 'HOME_NETWORK_ACCESS=signin but nobody can sign in', 'node setup.js user add you@example.com --owner');
   if (process.platform === 'win32') {
-    const legacy = spawnSync('schtasks.exe', ['/query', '/tn', 'Marquee Watchdog'], { windowsHide: true, timeout: 10000 });
-    if (legacy.status === 0) report('error', 'The old "Marquee Watchdog" task runs a script from the Marquee folder as SYSTEM', 'In an elevated PowerShell: node setup.js service install (it replaces it), or Unregister-ScheduledTask "Marquee Watchdog".');
+    const legacy = spawnSync('schtasks.exe', ['/query', '/tn', 'Marquee Watchdog', '/xml'], { encoding: 'utf8', windowsHide: true, timeout: 10000 });
+    if (legacy.status === 0 && /-File\b|\.ps1|\.cmd|\.bat/i.test(legacy.stdout || '')) report('error', 'The old "Marquee Watchdog" task runs a script from the Marquee folder as SYSTEM', 'In an elevated PowerShell: node setup.js service install (it replaces it), or Unregister-ScheduledTask "Marquee Watchdog".');
+    else if (legacy.status === 0) report('info', 'An old "Marquee Watchdog" task is still registered (it runs no script file)', 'node setup.js service install in an elevated PowerShell replaces it with the Marquee task\'s own restart trigger.');
     const ps = `$b='S-1-1-0','S-1-5-11','S-1-5-32-545','S-1-5-4';$w=[int][Security.AccessControl.FileSystemRights]'WriteData,AppendData,Delete,ChangePermissions,TakeOwnership';@((Get-Acl -LiteralPath $env:MQ_DIR).Access|?{$_.AccessControlType -eq 'Allow' -and ([int]$_.FileSystemRights -band $w) -and $(try{$b -contains $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value}catch{$false})}).Count`;
     const r = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { encoding: 'utf8', windowsHide: true, timeout: 20000, env: { ...process.env, MQ_DIR: APP_DIR } });
     if (r.status === 0 && Number(r.stdout.trim()) > 0) report('warn', `Every user of this PC can change files in ${APP_DIR}`, 'In an elevated PowerShell: node setup.js service install (it limits write access to you), so no one else can change what Marquee runs.');
