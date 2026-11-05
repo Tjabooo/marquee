@@ -745,7 +745,8 @@ export function convertSoon() {
   scanSoonTimer = setTimeout(() => { scanSoonTimer = null; scanNow(); }, 3000);
 }
 
-// listCandidates(): Promise<[{ file, deleteOriginal }]>
+// listCandidates(): Promise<[{ file, deleteOriginal }] | null>
+// null means the inventory is temporarily unavailable; skip the whole scan, including destructive cache cleanup.
 export async function startConverter({ dataDir, listCandidates, onConverted, onSidecar }) {
   onSidecarHook = onSidecar || null;
   const audioRoot = process.env.AUDIO_FIX_DIR ? path.resolve(process.env.AUDIO_FIX_DIR) : path.join(dataDir, 'cache', 'audio');
@@ -790,6 +791,7 @@ export async function startConverter({ dataDir, listCandidates, onConverted, onS
     retryDeletes();
     try {
       const candidates = await listCandidates();
+      if (candidates == null) return; // unknown inventory: preserve cached browser copies and retry next scan
       cleanTemps(candidates);
       for (const c of candidates) {
         if (!needsConversion(c.file) || isTempFile(c.file)) continue;
