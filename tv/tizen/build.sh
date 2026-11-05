@@ -39,7 +39,7 @@ build="$(mktemp -d)"
 trap 'rm -rf "$build"' EXIT
 sed -e "s#@VERSION@#${version:-1.0.0}#" "$here/config.xml.in" > "$build/config.xml"
 cp "$here/index.html" "$here/shell.js" "$build/"
-cp "$here/../../public/icon-512.png" "$build/icon.png"
+cp "$here/../../public/maskable-512.png" "$build/icon.png" # full-bleed: Samsung shows app tiles square
 printf 'window.MARQUEE_SERVER = %s;\n' "\"${server//\"/}\"" > "$build/config.js"
 
 "$tizen" package -t wgt -s "$profile" -- "$build" >/dev/null
