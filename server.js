@@ -2139,8 +2139,9 @@ async function conversionCandidates() {
       qbitReachable = true;
     } catch {
       // An incomplete inventory cannot distinguish hand-copied videos from partial torrent files.
-      // Wait for qBittorrent rather than converting (or deleting) an unknown source.
-      return [];
+      // null means "inventory unavailable", not "there are no candidates": the converter must skip
+      // this scan entirely so cache cleanup cannot delete valid browser copies and trigger re-encodes.
+      return null;
     }
   }
   const isTorrentFile = (file) => torrentFiles.some((t) => samePath(t, file));
