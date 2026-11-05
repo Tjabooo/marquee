@@ -1392,6 +1392,7 @@ async function applyLive() {
         state.me = state.status.me; state.rules = state.status.rules;
         applyTheme(prefs().theme);
       } catch { return; }
+      maybeShowWhatsNew(); // e.g. the server came back from an update
       if (state.view === 'settings' && state.me?.isOwner) await loadPeople();
       if (state.view === 'settings' && !editingIn('#settings-body')) renderSettings();
     })());
@@ -4313,6 +4314,74 @@ async function loadPeople() {
   try { state.people = (await api('/api/admin/users')).users; state.peopleError = null; } catch (err) { state.peopleError = err.message; }
 }
 
+// ---------- what's new ----------
+// After an update, everyone sees its notes once (whats-new.json on the server, via /api/status). The
+// popup waits while a video plays or another sheet is open, and closing it marks the update as seen.
+// A page left open across an update offers a reload, since it still runs the old app.
+const whatsNewView = { open: false, retry: null, build: null, staleNoted: false };
+const updateDate = (d) => new Date(`${d}T12:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: new Date().getFullYear() === Number(d.slice(0, 4)) ? undefined : 'numeric' });
+function maybeShowWhatsNew() {
+  const wn = state.status?.whatsNew;
+  if (!wn) return;
+  whatsNewView.build ??= wn.build;
+  const stale = Boolean(wn.build && whatsNewView.build !== wn.build);
+  if (!wn.unseen?.length) {
+    if (stale && !whatsNewView.staleNoted) { whatsNewView.staleNoted = true; toast('Marquee was updated. Reload the page to get the new version.'); }
+    return;
+  }
+  if (whatsNewView.open) return;
+  clearTimeout(whatsNewView.retry);
+  if (overlayStack.length || !$('#player').hidden || document.hidden) {
+    whatsNewView.retry = setTimeout(maybeShowWhatsNew, 15000);
+    return;
+  }
+  openWhatsNew(wn.unseen, { latest: wn.latest, stale });
+}
+function markUpdatesSeen(latest) {
+  if (!latest || state.me?.settings?.seenUpdate === latest) return;
+  if (state.status?.whatsNew) state.status.whatsNew.unseen = [];
+  saveMe({ seenUpdate: latest }, null);
+}
+function updateEntry(e, heading = true) {
+  return h('section', { class: 'update' },
+    heading && h('div', { class: 'update-head' },
+      h('h3', {}, e.title || 'Update'),
+      h('time', { datetime: e.date }, updateDate(e.date))),
+    h('ul', { class: 'update-items' }, e.items.map((i) => h('li', {},
+      h('span', { class: 'update-bulb', 'aria-hidden': 'true' }),
+      h('div', {}, i.title && h('strong', {}, i.title), i.text && h('p', {}, i.text))))));
+}
+// updates: newest first. latest: the id to mark seen when the sheet closes (none for the history view).
+function openWhatsNew(updates, { latest = null, stale = false, history = false } = {}) {
+  const opener = document.activeElement;
+  whatsNewView.open = true;
+  const single = updates.length === 1 && !history;
+  const done = h('button', { class: 'play-btn whats-new-done', type: 'button' }, stale ? 'Reload to update' : history ? 'Close' : 'Got it');
+  done.addEventListener('click', () => {
+    if (stale) { markUpdatesSeen(latest); setTimeout(() => location.reload(), 150); return; }
+    closeTopOverlay();
+  });
+  $('#picker-body').replaceChildren(h('div', { class: 'whats-new' },
+    h('p', { class: 'whats-new-eyebrow' }, history ? 'Updates' : 'New in Marquee'),
+    h('h2', { id: 'picker-title' }, history ? 'What’s new' : single ? updates[0].title || 'What’s new' : 'What’s new'),
+    single && h('p', { class: 'picker-sub muted' }, updateDate(updates[0].date)),
+    updates.length ? updates.map((e) => updateEntry(e, !single)) : h('p', { class: 'muted' }, 'No updates yet.'),
+    stale && h('p', { class: 'set-hint whats-new-stale' }, 'This page is from before the update. Reload it to use what’s new.'),
+    h('div', { class: 'whats-new-actions' }, done)));
+  pushOverlay(showSheet($('#picker'), $('#picker-backdrop'), () => {
+    whatsNewView.open = false;
+    markUpdatesSeen(latest);
+    opener?.focus?.({ preventScroll: true });
+  }));
+  if (!history) done.focus({ preventScroll: true });
+}
+async function showUpdateHistory() {
+  try {
+    const { updates } = await api('/api/whats-new');
+    openWhatsNew(updates, { history: true, latest: updates[0]?.id || null });
+  } catch (err) { toast(err.message); }
+}
+
 const settingsRow = (label, hint, control) => h('div', { class: 'set-row' },
   h('div', { class: 'set-text' }, h('div', { class: 'set-label' }, label), hint && h('div', { class: 'set-hint' }, hint)),
   h('div', { class: 'set-control' }, control));
@@ -4428,6 +4497,13 @@ function renderSettings() {
       nameInput,
       h('div', { class: 'set-hint' }, me.email ? `Signed in as ${me.email} through Cloudflare` : 'Home network: everyone at home who opens the server’s local address shares this'),
       h('div', { class: 'profile-tags' }, me.isOwner && h('span', { class: 'tag' }, 'Owner'), !me.canDownload && h('span', { class: 'tag' }, 'Can’t download')))));
+
+  {
+    const unseen = state.status?.whatsNew?.unseen?.length || 0;
+    const open = h('button', { class: `chip whats-new-open${unseen ? ' has-new' : ''}`, type: 'button' }, unseen ? `${unseen} new` : 'See updates');
+    open.addEventListener('click', showUpdateHistory);
+    out.push(settingsRow('What’s new', 'Everything that changed in Marquee lately.', open));
+  }
 
   out.push(...appearanceSection());
 
@@ -5958,4 +6034,5 @@ $('#find-torrents').addEventListener('click', (e) => openTorrents({ query: state
   }
   schedulePoll();
   connectLive();
+  setTimeout(maybeShowWhatsNew, 1200); // let the first screen settle before showing update notes
 })();

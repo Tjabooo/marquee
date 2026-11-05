@@ -6,6 +6,9 @@ All notable changes to Marquee. Versions follow [Semantic Versioning](https://se
 
 ### Added
 
+- **What's new**: after an update, everyone sees its notes once in a sheet (written in `whats-new.json`,
+  newest first; items can be marked `"audience": "owner"`). Settings → What's new lists past updates,
+  and a page left open through an update offers a reload.
 - `node setup.js clipper`: sets up game clips in one go. It creates `CLIPS_DIR` (next to
   `MEDIA_DIR` by default) and either downloads and installs [Clipper](https://github.com/Tjabooo/clipper),
   the replay-buffer recorder, on this computer, or prints what to run on your gaming PC (Windows

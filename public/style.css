@@ -1713,3 +1713,37 @@ button.st-col:hover .st-stack { filter: brightness(1.12); }
   .st-plot { padding-right: 34px; }
   .st-axis { padding-right: 34px; }
 }
+
+/* ---------- What's new (app.js: openWhatsNew) ---------- */
+.whats-new { padding-bottom: 18px; }
+.whats-new-eyebrow {
+  margin: 0 0 6px;
+  font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--bulb);
+}
+.whats-new .picker-sub { margin-bottom: 8px; }
+.update + .update { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); }
+.update-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 18px 0 4px; }
+.update-head h3 { margin: 0; font: 700 17px/1.3 var(--display); }
+.update-head time { flex: none; font-size: 13px; color: var(--dust); }
+.update + .update .update-head { margin-top: 0; }
+.update-items { list-style: none; margin: 0; padding: 0; }
+.update-items li { display: grid; grid-template-columns: 10px 1fr; gap: 12px; padding: 12px 0; }
+.update-items li + li { border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent); }
+.update-items strong { display: block; font-size: 15px; line-height: 1.35; }
+.update-items p { margin: 3px 0 0; font-size: 14px; line-height: 1.5; color: var(--dust); }
+/* a small marquee bulb beside each change */
+.update-bulb {
+  width: 8px; height: 8px; margin-top: 6px; border-radius: 50%;
+  background: var(--bulb); box-shadow: 0 0 0 3px var(--bulb-dim), 0 0 10px var(--bulb-dim);
+}
+.whats-new-stale { margin-top: 14px; }
+.whats-new-actions {
+  position: sticky; bottom: 0;
+  display: flex; padding: 16px 0 calc(4px + var(--safe-bottom));
+  background: linear-gradient(to bottom, transparent, var(--curtain) 35%);
+}
+.whats-new-done { flex: 1; }
+.whats-new-open { min-height: 40px; white-space: nowrap; }
+.whats-new-open.has-new { color: var(--on-bulb); background: var(--bulb); border-color: var(--bulb); }
+@media (min-width: 700px) { .whats-new-done { flex: 0 0 auto; min-width: 160px; margin-left: auto; } }

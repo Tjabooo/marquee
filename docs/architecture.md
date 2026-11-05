@@ -88,6 +88,18 @@ The **Activity** tab shows who has been using Marquee and what they did: downloa
 
 Deleting a video that belongs to a torrent removes it through qBittorrent, so the torrent stops seeding and no "missing files" errors appear. For multi-file torrents you can delete a single episode (qBittorrent is told not to download it again) or the whole torrent. The MP4 copy, subtitles and audio-fixed copy are deleted too, as are any empty folders left behind.
 
+## What's new
+
+After an update, everyone sees a short **What's new** sheet once, the next time they open Marquee or come back to an open page. The notes are written by hand in `whats-new.json` at the app root, newest first, in plain language for the people who use Marquee (CHANGELOG.md stays the technical record for whoever runs the server):
+
+```json
+[{ "id": "2026-11-05", "date": "2026-11-05", "title": "Fresh this week",
+   "items": [{ "title": "Skip intro", "text": "A button skips the opening titles." },
+             { "title": "Server tool", "text": "Only the owner sees this one.", "audience": "owner" }] }]
+```
+
+Each person's settings remember the newest update they've closed (`seenUpdate`). Someone who has never closed one sees only the updates dated on or after the day they joined, so newcomers aren't shown the whole history. At most the three newest unseen updates are shown. The sheet waits while a video is playing or another sheet is open. A page that was left open through an update (the web app's files changed since it loaded) offers **Reload to update**. Settings → What's new lists every update. The file is re-read when it changes, so a note can be fixed without a restart.
+
 ## Watch Together
 
 Rooms work in the browser player, including fullscreen. Invite URLs are `/?watch=<random token>` and stay behind the existing Cloudflare sign-in. The room grants access to that title without adding it to each guest's library. Up to 12 viewers can join. Casting is outside synchronized playback: leave the room before using a TV receiver.
@@ -150,7 +162,8 @@ The web client uses a JSON API that can also be scripted. `<kind>` is `lib` for 
 | `GET`, `POST` | `/api/library/identify` | Owner only: search film candidates (`?id=&q=`) or assign a TMDB identity to one file (`{ id, tmdbId }`) |
 | `GET` | `/api/library/delete-info?id=` | What deleting an item would remove, and how many others have it |
 | `POST` | `/api/library/delete` | Remove from your library; deletes the file or torrent when nobody else has it (`{ id, scope: "file" \| "torrent", everyone? }`) |
-| `GET`, `POST` | `/api/me` | You and your settings (`{ name?, theme?, subLang?, quality?, startView?, librarySort? }`) |
+| `GET`, `POST` | `/api/me` | You and your settings (`{ name?, theme?, subLang?, quality?, startView?, librarySort?, seenUpdate? }`) |
+| `GET` | `/api/whats-new` | Every update's notes (`updates`, newest first) and the newest one you've seen (`seen`); `/api/status` carries `whatsNew: { latest, unseen, build }` |
 | `GET`, `POST` | `/api/me/progress` | Where you stopped watching (`{ ref, time, duration }`; `time: null` = finished) |
 | `GET`, `POST` | `/api/admin/settings` | Auto-delete rules and defaults (`ADMIN_EMAILS` only) |
 | `GET` | `/api/admin/users` | Everyone who has used Marquee, with their library size (`ADMIN_EMAILS` only) |

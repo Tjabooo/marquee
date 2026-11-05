@@ -7,7 +7,7 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY package.json server.js setup.js ./
+COPY package.json server.js setup.js whats-new.json ./
 COPY src ./src
 COPY public ./public
 COPY agents ./agents

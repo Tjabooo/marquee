@@ -36,12 +36,13 @@ import * as noteShare from './note-share.js';
 import { WatchRooms } from './watch.js';
 import { handleWatchPage } from './watch-page.js';
 import { creditsFor, initCredits } from './credits.js';
+import * as whatsNew from './whats-new.js';
 import { Previews } from './previews.js';
 import { isHomeRequest, describeRequest } from './network.js';
 import { createTrust } from './trust.js';
 import { checkConfig } from './config-check.js';
 
-import { DATA_DIR, CACHE_DIR, PUBLIC_DIR, dataDirProblem, ensureDataDir } from './paths.js';
+import { APP_DIR, DATA_DIR, CACHE_DIR, PUBLIC_DIR, dataDirProblem, ensureDataDir } from './paths.js';
 
 {
   const problem = dataDirProblem();
@@ -121,6 +122,9 @@ load.initLoad({
 });
 shows.initShows({ dataDir: DATA_DIR });
 initCredits({ dataDir: DATA_DIR });
+// What's new (whats-new.js): update notes everyone sees once, and an id for the web app being served.
+whatsNew.initWhatsNew(path.join(APP_DIR, 'whats-new.json'));
+const WEB_BUILD = whatsNew.buildId(['index.html', 'app.js', 'style.css'].map((f) => path.join(PUBLIC_DIR, f)));
 screenTime.initScreenTime({ dataDir: DATA_DIR });
 clips.initClips({ dataDir: DATA_DIR, getEncoder: () => converter.converterStatus().encoder });
 invites.initInvites({ dataDir: DATA_DIR, onEvent: activity.record });
@@ -1602,8 +1606,11 @@ async function handleApi(req, res, url) {
       me: accounts.publicUser(user),
       rules: accounts.serverSettings(),
       subLangs: subtitles.subtitleLanguages(),
+      whatsNew: whatsNew.statusFor(user, WEB_BUILD),
     });
   }
+  // Every update's notes, for Settings → What's new.
+  if (p === '/api/whats-new') return sendJson(res, 200, { updates: whatsNew.allFor(user), seen: user.settings.seenUpdate || null });
   if (p === '/api/convert') return sendJson(res, 200, converter.converterStatus());
   if (p === '/api/discover/home') {
     return sendJson(res, 200, await discoverHome(url.searchParams.get('type') || 'all'));

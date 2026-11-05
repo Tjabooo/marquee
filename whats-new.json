@@ -1,0 +1,38 @@
+[
+  {
+    "id": "2026-11-05",
+    "date": "2026-11-05",
+    "title": "Fresh this week",
+    "items": [
+      {
+        "title": "What's new, right here",
+        "text": "From now on, Marquee shows you what changed after each update, just like this. You can read past updates any time in Settings → What's new."
+      },
+      {
+        "title": "Next episode starts with the credits",
+        "text": "When the credits roll, an Up next card counts down and plays the next episode. Pause or tap Keep watching to stay where you are."
+      },
+      {
+        "title": "Previews while you seek",
+        "text": "Drag along the timeline to see a small picture of that moment before you let go."
+      },
+      {
+        "title": "Subtitles that line up",
+        "text": "Subtitles are checked against the audio and fixed when they drift, even when they were made for a different cut of the film."
+      },
+      {
+        "title": "Always up to date",
+        "text": "Finished downloads, deletions and where you stopped watching on another device now show up straight away, without reloading."
+      },
+      {
+        "title": "Add to library",
+        "text": "If someone else already has a title on the server, Download becomes Add to library: it's yours instantly, with nothing to wait for."
+      },
+      {
+        "title": "Exact clip cuts",
+        "text": "Game clips can now be cut on any frame, not just the nearest keyframe, with no loss in quality.",
+        "audience": "owner"
+      }
+    ]
+  }
+]
