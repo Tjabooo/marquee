@@ -34,6 +34,7 @@ import { NotesUploads, mediaType } from './notes-media.js';
 import { NotesOcr } from './notes-ocr.js';
 import * as noteShare from './note-share.js';
 import { WatchRooms } from './watch.js';
+import * as social from './social.js';
 import { handleWatchPage } from './watch-page.js';
 import { creditsFor, introFor, initCredits } from './credits.js';
 import * as whatsNew from './whats-new.js';
@@ -104,6 +105,8 @@ function notify(userIds, kind, message) {
   return push.send(ids, kind, message).catch((err) => { console.warn(`[push] ${err.message}`); return 0; });
 }
 const auth = createAuth({ dataDir: DATA_DIR });
+watchRooms.attachStore(social.partyStore); // planned watch parties survive restarts
+const personName = (id) => accounts.userById(id)?.name || 'Someone';
 const notes = new NotesStore(DATA_DIR, { fileDir: process.env.NOTES_FILES_DIR });
 const watchlist = new WatchlistStore(DATA_DIR);
 // Text in Notes images becomes search keywords. Uploads are read right away; older images catch up after startup.
@@ -1552,19 +1555,21 @@ async function handleApi(req, res, url) {
   // Watch-room links still require the normal Cloudflare sign-in. A room grants access to this
   // one title, without adding it to every participant's library or changing anyone's subtitles.
   if (p === '/api/watch/clock') return sendJson(res, 200, { serverNow: Date.now() });
-  if (p === '/api/watch' && req.method === 'POST') {
-    const body = await readJson(req);
-    const id = String(body.id || '');
+  const watchMedia = (id) => {
     const full = librarySource(id);
     const key = accounts.mediaKey(full);
     if (!key || !accounts.holders(key).includes(user.id)) throw new HttpError(403, 'Add this title to your library before hosting a room.');
     if (!isVideo(full) || !fs.existsSync(full)) throw new HttpError(404, 'That video is no longer available.');
     const info = parseFile(full);
     const film = info.season == null ? shows.knownFilm(key, info.title, info.year) : null;
-    const room = watchRooms.create(user, { kind: 'lib', id, mediaKey: key, ...info,
-      title: film?.title || info.title, size: fs.statSync(full).size, format: path.extname(full).slice(1) },
-    String(body.clientId || ''), Number(body.position || 0));
-    activity.record(req, 'watch', `started a room for ${info.title}`);
+    return { kind: 'lib', id, mediaKey: key, ...info,
+      title: film?.title || info.title, size: fs.statSync(full).size, format: path.extname(full).slice(1) };
+  };
+  if (p === '/api/watch' && req.method === 'POST') {
+    const body = await readJson(req);
+    const media = watchMedia(String(body.id || ''));
+    const room = watchRooms.create(user, media, String(body.clientId || ''), Number(body.position || 0));
+    activity.record(req, 'watch', `started a room for ${media.title}`);
     return sendJson(res, 200, room);
   }
   // Invite people to a room with a notification: anyone else who has Watch Together invites on.
@@ -1592,12 +1597,25 @@ async function handleApi(req, res, url) {
     activity.record(req, 'watch', `invited ${ids.length === 1 ? accounts.userById(ids[0])?.name : `${ids.length} people`} to ${room.media.title}`);
     return sendJson(res, 200, { invited: ids.length, sent });
   }
-  if ((m = p.match(/^\/api\/watch\/([A-Za-z0-9_-]{24})\/(preview|join|events|heartbeat|control|leave|play-link)$/))) {
+  // A party planned for later: the invite works right away and shows a countdown until it starts.
+  if (p === '/api/watch/plan' && req.method === 'POST') {
+    const body = await readJson(req);
+    const media = watchMedia(String(body.id || ''));
+    const room = watchRooms.plan(user, media, Number(body.startsAt));
+    activity.record(req, 'watch', `planned a watch party for ${media.title}`);
+    return sendJson(res, 200, room);
+  }
+  if (p === '/api/watch/parties') return sendJson(res, 200, { parties: watchRooms.parties(user) });
+  if ((m = p.match(/^\/api\/watch\/([A-Za-z0-9_-]{24})\/(preview|join|events|heartbeat|control|leave|play-link|chat|react|schedule|cancel)$/))) {
     const [, token, action] = m;
     if (action === 'preview') return sendJson(res, 200, watchRooms.preview(token));
     if (req.method === 'POST') {
       const body = await readJson(req);
       const client = String(body.clientId || '');
+      if (action === 'cancel') { watchRooms.cancel(token, user); return sendJson(res, 200, { ok: true }); }
+      if (action === 'chat') return sendJson(res, 200, watchRooms.chat(token, user, client, body.text));
+      if (action === 'react') return sendJson(res, 200, { ok: watchRooms.react(token, user, client, String(body.emoji || '')) });
+      if (action === 'schedule') return sendJson(res, 200, watchRooms.schedule(token, user, client, body.startsAt ?? null));
       if (action === 'join') return sendJson(res, 200, watchRooms.join(token, user, client));
       if (action === 'heartbeat') return sendJson(res, 200, watchRooms.heartbeat(token, user, client, body));
       if (action === 'control') return sendJson(res, 200, watchRooms.control(token, user, client, body.action, body.position));
@@ -1658,11 +1676,44 @@ async function handleApi(req, res, url) {
   }
   if (p === '/api/me/progress') {
     if (req.method === 'POST') {
-      const { ref, time, duration } = await readJson(req);
+      const { ref, time, duration, watched, about, room } = await readJson(req);
       accounts.saveProgress(user.id, ref, time, duration);
+      // Watch time for Wrapped and Popular on Marquee (see social.js), with who was in the same room.
+      if (about && typeof about === 'object') {
+        const companions = /^[A-Za-z0-9_-]{24}$/.test(String(room || '')) ? watchRooms.companions(room, user.id) : [];
+        social.logWatch(user.id, { ref, about, watched, finished: time == null, companions });
+      }
       return sendJson(res, 200, { ok: true });
     }
     return sendJson(res, 200, { progress: accounts.progressOf(user.id) });
+  }
+  // Marquee Wrapped: one person's year (defaults to this one).
+  if (p === '/api/me/wrapped') {
+    const year = Number(url.searchParams.get('year')) || new Date().getFullYear();
+    return sendJson(res, 200, social.wrapped(user.id, year, personName));
+  }
+  // ---- social: thumbs up/down, who liked a title, Popular on Marquee ----
+  if (p === '/api/social/rate' && req.method === 'POST') {
+    const { key, value, title } = await readJson(req);
+    social.rate(user.id, String(key || ''), value, title);
+    return sendJson(res, 200, social.ratingFor(user.id, String(key), personName));
+  }
+  if (p === '/api/social/title') return sendJson(res, 200, social.ratingFor(user.id, String(url.searchParams.get('key') || ''), personName));
+  if (p === '/api/social/ratings') {
+    const keys = String(url.searchParams.get('keys') || '').split(',').slice(0, 500);
+    return sendJson(res, 200, { ratings: social.ratingsFor(user.id, keys) });
+  }
+  if (p === '/api/social/popular') {
+    const type = ['movie', 'tv'].includes(url.searchParams.get('type')) ? url.searchParams.get('type') : 'all';
+    if (!TMDB_TOKEN && !TMDB_KEY) return sendJson(res, 200, { items: [] });
+    const ranked = social.popular({ type, limit: 20 });
+    const cards = await Promise.allSettled(ranked.map(async (r) => {
+      const [kind, id] = r.key.split(':');
+      const card = mapTitle(await cachedTmdb(`/${kind}/${id}`, {}, 6 * 3600 * 1000), kind);
+      return { ...card, likes: r.likes, viewers: r.viewers,
+        likedBy: r.likedBy.filter((u) => u !== user.id).map(personName).slice(0, 4), youLiked: r.likedBy.includes(user.id) };
+    }));
+    return sendJson(res, 200, { items: cards.filter((c) => c.status === 'fulfilled').map((c) => c.value) });
   }
   // ---- the owner's settings: server rules and people ----
   if (p.startsWith('/api/admin/')) {
@@ -2473,7 +2524,8 @@ const server = http.createServer(async (req, res) => {
         || /^\/api\/watchlist(?:\/seen)?$/.test(url.pathname)
         || /^\/api\/admin\/notes(?:\/import|\/\d+(?:\/(?:trash|restore|share|unshare))?)?$/.test(url.pathname)
         || /^\/api\/admin\/notes\/uploads(?:\/[a-f0-9]{32}(?:\/(?:finish|cancel))?)?$/.test(url.pathname)
-        || /^\/api\/watch(?:\/[A-Za-z0-9_-]{24}\/(join|heartbeat|control|leave|invite))?$/.test(url.pathname)));
+        || /^\/api\/watch(?:\/plan|\/[A-Za-z0-9_-]{24}\/(join|heartbeat|control|leave|invite|chat|react|schedule|cancel))?$/.test(url.pathname)
+        || url.pathname === '/api/social/rate'));
     if (!allowed) throw new HttpError(405, 'Method not allowed.');
     if (url.pathname.startsWith('/api/')) await handleApi(req, res, url);
     else if (url.pathname.startsWith('/play/')) await handlePlay(req, res, url);

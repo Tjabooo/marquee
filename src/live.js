@@ -12,6 +12,8 @@ const RULES = [
   [/^\/api\/me$/, 'me', 'user'],
   [/^\/api\/watchlist(?:\/seen)?$/, 'watchlist', 'user'],
   [/^\/api\/push\/(subscribe|unsubscribe)$/, 'push', 'user'], // the devices list in Settings
+  [/^\/api\/social\/rate$/, 'social', 'all'],
+  [/^\/api\/watch\/(plan|[A-Za-z0-9_-]{24}\/(cancel|schedule|join))$/, 'parties', 'all'],
   [/^\/api\/(library|downloads)\/(?!.*-info$)/, 'library', 'all'], // not the read-only delete-info checks
   [/^\/api\/media\/\w+\/[\w-]+\/sync$/, 'library', 'all'],
   [/^\/api\/admin\/notes(?:\/import|\/\d+(?:\/\w+)?|\/uploads\/[a-f0-9]{32}\/finish)?$/, 'notes', 'admin'],

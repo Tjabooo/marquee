@@ -10,6 +10,7 @@ import { SUB_SIZES, SUB_BACKGROUNDS, SUB_POSITIONS, subLook, subRaise, secondCho
   SLEEP_MINUTES, sleepTimer, sleepSecondsLeft, sleepFade, sleepLabel } from './player-comfort.js';
 import { comingUp, newEpisodes, watchStatus, todayIso } from './watchlist.js';
 import { libraryUnion, libraryAvailability, filterLibrary, transferState, transferAttention, transferPaused } from './library-downloads.js';
+import { createSocial, titleKeyOf, REACTIONS, countdownText, startLabel } from './social.js';
 
 const $ = (sel, el = document) => el.querySelector(sel);
 
@@ -52,6 +53,7 @@ const ICONS = {
   fwd10: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M17.5 3v3.9h-3.9"/><text x="11.8" y="15.2" text-anchor="middle">10</text></svg>',
   fullscreen: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>',
   fullscreenExit: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>',
+  party: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9.5" r="2.3"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0M14.5 15.2A4.3 4.3 0 0 1 21 18.5"/></svg>',
   pip: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><rect class="fill" x="12" y="11.5" width="6.5" height="5" rx="1"/></svg>',
 };
 const icon = (name) => { const s = h('span'); s.innerHTML = ICONS[name]; return s.firstChild; };
@@ -449,6 +451,7 @@ function fileRow(f) {
     f.done && h('div', { class: 'row-actions' },
       f.kind === 'lib' && h('button', { class: 'cast-btn del-btn', 'aria-label': `Delete ${title}`, title: 'Delete', onclick: (e) => openDelete(f, e.currentTarget) }, icon('trash')),
       h('button', { class: 'cast-btn', 'aria-label': `Play ${title} on a TV`, title: 'Play on TV', onclick: (e) => openPicker(f, e.currentTarget) }, icon('tv')),
+      f.kind === 'lib' && h('button', { class: 'cast-btn', 'aria-label': `Plan a watch party for ${title}`, title: 'Plan a watch party', onclick: (e) => openPlanParty(f, e.currentTarget) }, icon('party')),
       f.converting
         ? h('button', { class: 'play-btn round is-disabled', 'aria-disabled': 'true', title: 'Cannot play while converting', 'aria-label': `${title}: cannot play while converting`, onclick: () => toast('Cannot play while converting') }, icon('play'))
         : h('button', { class: 'play-btn round', 'aria-label': `Play ${title} here`, onclick: () => openPlayer(f) }, icon('play'))));
@@ -645,11 +648,15 @@ async function renderDiscover() {
   content.replaceChildren(skeletonGrid());
   try {
     const data = await cachedApi(`/api/discover/home?type=${disc.type}`, signal);
+    // Popular on Marquee arrives separately (it's quick, but shouldn't hold up TMDB's rows).
+    const popularSlot = h('div', { class: 'popular-slot' });
     content.replaceChildren(...[
       data.featured.length && carousel('Trending this week', h('ul', { class: 'hero', tabindex: '0', 'aria-label': 'Trending this week' }, data.featured.map(heroSlide))),
       savedShelf(),
+      popularSlot,
       ...data.rows.map(row),
     ].filter(Boolean));
+    social.popularShelf(disc.type, { carousel, titleCard, signal }).then((shelf) => { if (shelf && !signal.aborted) popularSlot.replaceWith(shelf); });
   } catch (err) {
     if (err.name !== 'AbortError') content.replaceChildren(notice('Couldn’t load Discover', err.message, renderDiscover));
   }
@@ -763,10 +770,11 @@ function renderLibrary() {
       return [type, { list, section: h('section', { class: 'lib-group' }, h('h3', { class: 'lib-subhead' }, { movie: 'Films', tv: 'Shows', unknown: 'Unidentified' }[type]), list) }];
     }));
     const root = h('div', { class: 'unified-library' });
-    libraryUI = { root, groups, filters, availability, notices: h('div'), shelves: h('div'), summary: h('button', { class: 'library-summary', onclick: () => { state.libAvailability = 'downloading'; renderLibrary(); } }), empty: h('div') };
+    libraryUI = { root, groups, filters, availability, notices: h('div'), parties: h('div', { class: 'parties-slot' }), shelves: h('div'), summary: h('button', { class: 'library-summary', onclick: () => { state.libAvailability = 'downloading'; renderLibrary(); } }), empty: h('div') };
     root.append(h('div', { class: 'dl convert-banner', id: 'convert-banner', hidden: true }),
-      h('div', { class: 'library-toolbar' }, filters, h('label', { class: 'library-availability' }, 'Availability', availability)), libraryUI.summary, libraryUI.notices, libraryUI.shelves, ...[...groups.values()].map(g => g.section), libraryUI.empty);
+      h('div', { class: 'library-toolbar' }, filters, h('label', { class: 'library-availability' }, 'Availability', availability)), libraryUI.summary, libraryUI.notices, libraryUI.parties, libraryUI.shelves, ...[...groups.values()].map(g => g.section), libraryUI.empty);
     body.replaceChildren(root);
+    loadParties();
     libraryCards.clear();
   }
   const ui = libraryUI;
@@ -1046,6 +1054,7 @@ function renderFilm() {
       h('h2', { id: 'sheet-title' }, f.filmTitle || f.title),
       h('ul', { class: 'facts' }, [f.year, f.season != null ? episodeLabel(f) : 'Film', f.rating && `★ ${f.rating}`, f.format?.toUpperCase(), fmtBytes(f.size)]
         .filter(Boolean).map((text) => h('li', {}, text))),
+      social.rateRow(f.season == null && f.tmdbId ? `movie:${f.tmdbId}` : titleKeyOf(f), f.filmTitle || f.title),
       transferPanel(unifiedLibrary().find(e => e.files.some(file => file.id === f.id))),
       keepBar([f], renderFilm),
       f.movieAmbiguous && h('p', { class: 'identity-note' }, state.me?.isOwner
@@ -1055,6 +1064,7 @@ function renderFilm() {
         h('button', { class: 'play-btn', disabled: f.converting, onclick: () => openPlayer(file) }, icon('play'),
           f.converting ? 'Preparing playback…' : partlyWatched(progress) ? `Resume at ${fmtTime(progress.time)}` : 'Play'),
         h('button', { class: 'chip', onclick: (e) => openPicker(file, e.currentTarget) }, icon('tv'), 'Play on TV'),
+        !f.converting && h('button', { class: 'chip', onclick: (e) => openPlanParty(file, e.currentTarget) }, icon('party'), 'Watch party'),
         h('button', { class: 'chip', onclick: (e) => openDelete(file, e.currentTarget) }, icon('trash'), 'Delete'),
         state.me?.isOwner && h('button', { class: 'chip', onclick: (e) => openFilmIdentity(f, e.currentTarget) }, 'Identify film')),
       f.overview && h('p', { class: 'overview' }, f.overview)));
@@ -1170,6 +1180,7 @@ function renderShow() {
   const tv = canGet() && show.tmdbId ? showDownload({ id: show.tmdbId, title: show.title, type: 'tv' }, { season: open?.number ?? null }) : null;
   $('#sheet-body').replaceChildren(h('div', { class: `sheet-hero${show.backdrop ? '' : ' no-image'}`, style: show.backdrop ? `background-image:url("${show.backdrop}")` : null }),
     h('div', { class: 'sheet-content' }, h('h2', { id: 'sheet-title' }, show.title), h('ul', { class: 'facts' }, [show.year, 'Series', libraryAvailability(entry)].filter(Boolean).map(text => h('li', {}, text))),
+      show.tmdbId && social.rateRow(`tv:${show.tmdbId}`, show.title),
       h('div', { class: 'title-actions' }, (tv || deleteShow) && h('div', { class: 'action-row' }, tv?.toggle, deleteShow), tv?.panel, transferPanel(entry)),
       state.status.search && show.tmdbId && watchBox({ id: show.tmdbId, type: 'tv', title: show.title }),
       files.length > 0 && keepBar(files, renderShow), show.overview && h('p', { class: 'overview' }, show.overview), ...content));
@@ -1505,6 +1516,8 @@ async function applyLive() {
   if (has('sessions')) jobs.push(loadSessions());
   if (has('watchlist')) jobs.push(loadWatchlist());
   if (has('push')) { pushView.loaded = false; if (view === 'settings' && !editingIn('#settings-body')) jobs.push(loadPush().then(renderSettings)); }
+  if (has('social')) social.refreshRates();
+  if (has('parties') && view === 'library') jobs.push(loadParties());
   if (has('me') || has('people')) {
     jobs.push((async () => {
       try {
@@ -1614,6 +1627,7 @@ function renderDetails(t) {
         t.year && h('li', {}, t.year),
         h('li', {}, t.type === 'tv' ? 'Series' : 'Film'),
         t.rating && h('li', {}, `★ ${t.rating}`)),
+      social.rateRow(titleKeyOf(t), t.title),
       actions,
       state.status.search && t.id && watchBox(t),
       t.overview && h('p', { class: 'overview' }, t.overview),
@@ -2099,6 +2113,7 @@ function episodeDownload(t, seasonNo, episode) {
 
 // ---------- casting: device picker ----------
 const jsonPost = (body) => ({ method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+const social = createSocial({ h, api, jsonPost, toast, icon }); // likes, Popular, watch parties, Wrapped (social.js)
 
 function openPicker(file, opener) {
   const restoreManager = pickerManagerSubview(opener);
@@ -2781,6 +2796,7 @@ let current = null;
 let lastSave = 0;
 let party = null;
 let watchPanelOpen = false;
+let partyUnread = 0; // chat messages since the Room panel was last open
 const watchClient = globalThis.crypto?.randomUUID?.() || `${CLIENT_ID}-${Math.random().toString(36).slice(2, 10)}`;
 
 function renderParty() {
@@ -2788,19 +2804,24 @@ function renderParty() {
   bar.hidden = !party || !watchPanelOpen;
   const roomButton = $('#watch-btn');
   roomButton.hidden = !party && (current?.kind !== 'lib' || !state.library.some((f) => f.id === mediaId(current)));
-  roomButton.textContent = party ? 'Room' : 'Watch together';
+  roomButton.textContent = party ? (partyUnread && !watchPanelOpen ? `Room · ${partyUnread}` : 'Room') : 'Watch together';
   roomButton.setAttribute('aria-expanded', String(Boolean(party && watchPanelOpen)));
   roomButton.setAttribute('aria-label', party ? 'Watch Together room controls' : 'Start Watch Together');
   playerEl.classList.toggle('in-party', Boolean(party));
   updateUpNext();
   if (party) cancelAudioIntent(current);
   renderAudioControls();
+  updatePartyCountdown();
   if (!party) return;
   updatePlayState();
   const room = party.state;
+  const counting = party.startsIn != null && party.startsIn > 0;
+  $('#watch-later').hidden = !party.isHost || counting;
+  $('#watch-start-now').hidden = $('#watch-clear-start').hidden = !party.isHost || !counting;
   const hostMember = room.members.find((m) => m.id === room.host);
   const host = hostMember ? personName(hostMember) : 'Host';
   const status = !party.connected || !party.online ? 'Reconnecting — playback paused'
+    : counting ? `Starts ${startLabel(room.startsAt)}${party.blocked ? ' · press Ready so it can start for you' : ''}`
     : party.blocked ? 'Press Play to join playback'
       : room.waitingFor.length ? `Waiting for ${room.waitingFor.join(', ')}`
         : room.playing ? `Watching together · ${room.members.length} viewers` : party.isHost ? 'You’re hosting — press Play when everyone is ready' : `Paused · ${host} controls playback`;
@@ -2826,6 +2847,9 @@ function leaveWatchRoom(notify = true) {
   if (!old) return;
   party = null;
   watchPanelOpen = false;
+  partyUnread = 0;
+  $('#chat-log').replaceChildren();
+  $('#chat-layer').replaceChildren();
   old.close({ notify });
   for (const t of video.querySelectorAll('track')) offsetCues(t.track, 0);
   video.disableRemotePlayback = false;
@@ -2847,7 +2871,10 @@ function attachWatchRoom(room) {
   video.disableRemotePlayback = true;
   resetCasting();
   party = new WatchSession({ video, room, clientId: watchClient, request: api, onState: renderParty,
-    onEnd: (message) => { leaveWatchRoom(false); video.pause(); toast(message); }, onError: toast });
+    onEnd: (message) => { leaveWatchRoom(false); video.pause(); toast(message); }, onError: toast,
+    onChat: partyChat, onReaction: (r) => { if (r.from !== watchClient) social.burst($('#reaction-layer'), r.emoji, r.name); } });
+  partyUnread = 0;
+  renderChatLog();
   if (alreadyPlaying) party.blocked = false;
   watchPanelOpen = false;
   renderParty();
@@ -2902,12 +2929,151 @@ async function offerWatchRoom(token) {
     } }, 'Join and watch');
     $('#picker-body').replaceChildren(h('h2', { id: 'picker-title' }, 'Watch together'),
       h('p', { class: 'del-name' }, [preview.media.title, episodeLabel(preview.media)].filter(Boolean).join(' · ')),
-      h('p', { class: 'muted' }, `${preview.host} is hosting. Playback stays together; you choose your own subtitles and volume.`), join, status);
+      ...(preview.startsAt ? [h('p', { class: 'party-invite-when' }, `Starts ${startLabel(preview.startsAt)} (${countdownText(preview.startsAt - Date.now())})`)] : []),
+      h('p', { class: 'muted' }, preview.startsAt
+        ? `${preview.host} planned this. Join any time before; there's a countdown, and playback starts by itself for everyone in the room.`
+        : `${preview.host} is hosting. Playback stays together; you choose your own subtitles and volume.`), join, status);
     pushOverlay(showSheet($('#picker'), $('#picker-backdrop'), () => { closed = true; }));
   } catch (err) { toast(err.message); }
 }
 
-function setWatchPanel(open) { watchPanelOpen = Boolean(open && party); if (!watchPanelOpen) closeInviteList(); renderParty(); showPlayerUi(); }
+function setWatchPanel(open) {
+  watchPanelOpen = Boolean(open && party);
+  if (!watchPanelOpen) closeInviteList();
+  if (watchPanelOpen) { partyUnread = 0; requestAnimationFrame(() => { const log = $('#chat-log'); log.scrollTop = log.scrollHeight; }); }
+  renderParty(); showPlayerUi();
+}
+
+// ---- Watch Together: chat, reactions and the countdown to a planned start ----
+function renderChatLog() {
+  const log = $('#chat-log');
+  log.replaceChildren(...(party?.chat || []).map((m) => social.chatLine(m, m.from === watchClient)));
+  log.hidden = !log.childElementCount;
+  log.scrollTop = log.scrollHeight;
+}
+function partyChat(message) {
+  renderChatLog();
+  if (!message || message.from === watchClient) return;
+  if (!watchPanelOpen || !playerEl.classList.contains('ui-visible')) social.floatMessage($('#chat-layer'), message);
+  if (!watchPanelOpen) { partyUnread++; renderParty(); }
+}
+$('#reaction-bar').append(...REACTIONS.map((emoji) => h('button', { type: 'button', class: 'reaction-btn', 'aria-label': `React ${emoji}`,
+  onclick: () => { if (!party) return; social.burst($('#reaction-layer'), emoji, ''); party.react(emoji); } }, emoji)));
+$('#chat-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const input = $('#chat-input');
+  const text = input.value.trim();
+  if (!text || !party) return;
+  input.value = '';
+  try { await party.say(text); } catch (err) { input.value = text; toast(err.message); }
+});
+let countdownTimer = null;
+function updatePartyCountdown() {
+  const el = $('#party-countdown');
+  const left = party?.startsIn;
+  playerEl.classList.toggle('party-waiting', left != null && left > 0);
+  if (left == null || left <= 0) {
+    el.hidden = true; clearInterval(countdownTimer); countdownTimer = null;
+    return;
+  }
+  const text = countdownText(left).replace(/^in /, '');
+  const parts = [h('small', {}, 'Watch party starts in'), h('strong', {}, text),
+    h('span', {}, [current?.filmTitle || current?.title, current && episodeLabel(current)].filter(Boolean).join(' · '))];
+  if (party.blocked) parts.push(h('button', { type: 'button', class: 'chip primary', onclick: () => party?.unlock() }, 'I’m ready'));
+  else parts.push(h('span', { class: 'muted' }, party.isHost ? 'Playback starts by itself. You can start early from Room.' : 'You’re ready. Playback starts by itself.'));
+  if (el.dataset.text !== text || el.dataset.blocked !== String(party.blocked)) {
+    el.replaceChildren(...parts);
+    el.dataset.text = text; el.dataset.blocked = String(party.blocked);
+  }
+  el.hidden = false;
+  countdownTimer ||= setInterval(() => { if (!party?.startsIn || party.startsIn <= 0) { party?.pulse(); } updatePartyCountdown(); }, 1000);
+}
+$('#watch-later').addEventListener('change', async (e) => {
+  const minutes = Number(e.target.value);
+  e.target.value = '';
+  if (!party || !minutes) return;
+  try { await party.schedule(party.serverNow + minutes * 60000); } catch (err) { toast(err.message); }
+});
+$('#watch-start-now').addEventListener('click', () => party?.control('play'));
+$('#watch-clear-start').addEventListener('click', async () => { try { await party?.schedule(null); } catch (err) { toast(err.message); } });
+
+// ---- Marquee Wrapped: a story of slides over everything; tap or arrow keys to move ----
+async function openWrapped(year, opener) {
+  let data;
+  try { data = await api(`/api/me/wrapped?year=${year}`); } catch (err) { toast(err.message); return; }
+  const slides = social.wrappedSlides(data, { name: state.me?.name });
+  let at = 0;
+  const bars = h('div', { class: 'wr-bars', 'aria-hidden': 'true' }, slides.map(() => h('i')));
+  const stage = h('div', { class: 'wr-stage', 'aria-live': 'polite' });
+  const years = data.years?.filter((y) => y !== year) || [];
+  const close = h('button', { type: 'button', class: 'icon-btn wr-close', 'aria-label': 'Close Wrapped', onclick: closeTopOverlay }, icon('back'));
+  const prev = h('button', { type: 'button', class: 'wr-tap wr-prev', 'aria-label': 'Previous' });
+  const next = h('button', { type: 'button', class: 'wr-tap wr-next', 'aria-label': 'Next' });
+  const el = h('div', { class: 'wrapped', role: 'dialog', 'aria-modal': 'true', 'aria-label': `Marquee Wrapped ${year}`, tabindex: '-1' },
+    bars, close, stage, prev, next,
+    years.length > 0 && h('div', { class: 'wr-years' }, years.map((y) => h('button', { type: 'button', class: 'chip', onclick: async () => {
+      await dismissTopOverlay(); openWrapped(y, opener);
+    } }, String(y)))));
+  const show = (i) => {
+    at = Math.max(0, Math.min(slides.length - 1, i));
+    stage.replaceChildren(slides[at]);
+    [...bars.children].forEach((b, n) => b.classList.toggle('done', n <= at));
+    el.dataset.slide = slides[at].className.split(' ').find((c) => /^wr-[a-g]$/.test(c)) || '';
+  };
+  prev.onclick = () => show(at - 1);
+  next.onclick = () => (at === slides.length - 1 ? closeTopOverlay() : show(at + 1));
+  el.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); next.onclick(); }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); show(at - 1); }
+  });
+  let startX = null;
+  el.addEventListener('touchstart', (e) => { startX = e.touches[0].clientX; }, { passive: true });
+  el.addEventListener('touchend', (e) => {
+    if (startX == null) return;
+    const dx = e.changedTouches[0].clientX - startX; startX = null;
+    if (Math.abs(dx) > 50) { if (dx < 0) next.onclick(); else show(at - 1); }
+  });
+  document.body.append(el);
+  document.documentElement.classList.add('wrapped-on');
+  show(0);
+  requestAnimationFrame(() => { el.classList.add('open'); el.focus(); });
+  pushOverlay(() => {
+    el.classList.remove('open'); document.documentElement.classList.remove('wrapped-on');
+    setTimeout(() => el.remove(), 250); opener?.focus({ preventScroll: true });
+  });
+}
+
+// ---- planned watch parties ----
+const partyLink = (token) => `${location.origin}/c/w/${token}`;
+const partyTitle = (m) => [m.filmTitle || m.title, episodeLabel(m)].filter(Boolean).join(' · ');
+function openPlanParty(f, opener) {
+  const title = partyTitle(f);
+  const copy = (link) => copyWithToast(link, 'Invite copied. Everyone uses their usual Marquee sign-in.');
+  $('#picker-body').replaceChildren(...social.planPartyBody({ file: f, title, onPlanned: (room) => {
+    $('#picker-body').replaceChildren(...social.plannedBody({ room, title, link: partyLink(room.token), copy }));
+    loadParties();
+  } }));
+  pushOverlay(showSheet($('#picker'), $('#picker-backdrop'), () => opener?.focus({ preventScroll: true })));
+}
+let partiesRequest = null;
+async function loadParties() {
+  if (!libraryUI?.parties) return;
+  partiesRequest ||= api('/api/watch/parties').finally(() => { partiesRequest = null; });
+  let parties = [];
+  try { parties = (await partiesRequest).parties; } catch { return; }
+  const shelf = social.partiesShelf(parties, {
+    label: partyTitle,
+    join: (p) => offerWatchRoom(p.token),
+    copy: (p) => copyWithToast(partyLink(p.token), 'Invite copied. Everyone uses their usual Marquee sign-in.'),
+    cancel: async (p, btn) => {
+      if (!confirm(`Cancel the watch party for ${partyTitle(p.media)}? The invite stops working.`)) return;
+      btn.disabled = true;
+      try { await api(`/api/watch/${p.token}/cancel`, jsonPost({})); toast('Watch party cancelled'); loadParties(); }
+      catch (err) { btn.disabled = false; toast(err.message); }
+    },
+  });
+  libraryUI.parties.replaceChildren(...(shelf ? [shelf] : []));
+}
 $('#watch-btn').addEventListener('click', () => { if (party) setWatchPanel(!watchPanelOpen); else hostWatchRoom(); });
 $('#watch-hide').addEventListener('click', () => { setWatchPanel(false); $('#watch-btn').focus(); });
 document.addEventListener('click', (event) => { if (watchPanelOpen && !event.target.closest?.('#watch-bar, #watch-btn')) setWatchPanel(false); });
@@ -2950,6 +3116,7 @@ $('#watch-invite').addEventListener('click', async () => {
 document.addEventListener('visibilitychange', () => { if (!document.hidden && party) { party.clock().then(() => party?.pulse()).catch(() => {}); } });
 
 function saveProgress(force = false) {
+  countPlayed();
   if (plainMedia(current)) return; // clips and note videos have no resume point
   if (!current?.ready || video.currentSrc !== current.sourceUrl || !video.duration || !isFinite(video.duration)) return;
   const now = Date.now();
@@ -2967,9 +3134,26 @@ function saveProgress(force = false) {
   if (done) delete state.progress[ref];
   else state.progress[ref] = { time: video.currentTime, duration: video.duration, at: now };
   invalidateLibraryProgress();
-  api('/api/me/progress', { ...jsonPost({ ref, time: done ? null : video.currentTime, duration: video.duration }), keepalive: true }).catch(() => {});
+  const watched = Math.round(playedSince * 10) / 10;
+  playedSince = 0;
+  api('/api/me/progress', { ...jsonPost({ ref, time: done ? null : video.currentTime, duration: video.duration,
+    watched, about: watchAbout(current), room: party?.state.token || undefined }), keepalive: true }).catch(() => {});
 }
 let lastPush = 0;
+
+// Watch time for Wrapped and Popular on Marquee: seconds the video really played (not seeking,
+// not paused, not a tab asleep in the background), sent with each progress save.
+let playedSince = 0, playTick = null;
+function countPlayed() {
+  const now = Date.now();
+  if (playTick != null && !video.paused && !video.seeking) {
+    const dt = (now - playTick) / 1000;
+    if (dt > 0 && dt < 3) playedSince += dt;
+  }
+  playTick = video.paused ? null : now;
+}
+const watchAbout = (f) => ({ titleKey: titleKeyOf(f.season == null && f.tmdbId ? { tmdbId: f.tmdbId } : f) || undefined,
+  title: f.filmTitle || f.canonicalTitle || f.title || f.name || '', season: f.season ?? null, episode: f.episode ?? null });
 
 const mediaId = (f) => (f.kind === 'lib' ? f.id || f.key : f.hash || f.key);
 // Clips and note videos play in the player's plain mode: no subtitles, audio choices, casting,
@@ -4375,6 +4559,7 @@ document.addEventListener('keyup', (e) => { if (e.key === ' ' && playerKeyTarget
 // closes and Next episode, which keeps the same overlay, fullscreen element and history entry.
 function resetPlayerMedia() {
   saveProgress(true);
+  playedSince = 0; playTick = null;
   seekPreview.load(null);
   const old = current;
   resetAudioSelection(old);
@@ -4696,6 +4881,7 @@ for (const event of ['timeupdate', 'ended', 'seeking', 'seeked', 'durationchange
 if (hasRemotePlayback) for (const event of ['connect', 'disconnect']) video.remote.addEventListener(event, updateUpNext);
 
 video.addEventListener('timeupdate', () => saveProgress());
+for (const event of ['seeking', 'waiting']) video.addEventListener(event, () => { countPlayed(); playTick = null; });
 // Someone is still there: the countdown may chain another AUTOPLAY_CHAIN episodes.
 for (const event of ['keydown', 'pointerdown']) document.addEventListener(event, () => { autoChain = 0; }, true);
 video.addEventListener('pause', () => saveProgress(true));
@@ -4975,6 +5161,12 @@ function renderSettings() {
     const open = h('button', { class: `chip whats-new-open${unseen ? ' has-new' : ''}`, type: 'button' }, unseen ? `${unseen} new` : 'See updates');
     open.addEventListener('click', showUpdateHistory);
     out.push(settingsRow('What’s new', 'Everything that changed in Marquee lately.', open));
+  }
+  {
+    const year = new Date().getFullYear();
+    const open = h('button', { class: 'wrapped-open', type: 'button', onclick: (e) => openWrapped(year, e.currentTarget) },
+      h('span', { class: 'wrapped-open-kicker' }, `Marquee Wrapped ${year}`), h('span', {}, 'Your year in watching so far'));
+    out.push(open);
   }
 
   if (me.via === 'session') out.push(accountSection());

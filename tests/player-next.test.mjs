@@ -70,7 +70,7 @@ function playbackHarness({ prepare, autoplayRejected = false, clock = null } = {
   const $ = (key) => { if (!nodes.has(key)) nodes.set(key, new Element()); return nodes.get(key); };
   const logs = [];
   const video = new Element();
-  const context = vm.createContext({ $, video, URL, AbortController, setTimeout: clock?.setTimeout || setTimeout, clearTimeout: clock?.clearTimeout || clearTimeout,
+  const context = vm.createContext({ $, video, URL, titleKeyOf: () => null, AbortController, setTimeout: clock?.setTimeout || setTimeout, clearTimeout: clock?.clearTimeout || clearTimeout,
     Date: clock?.Date || Date, location: { href: 'https://example.test/' },
     nextLibraryEpisode, isNextEpisodeTime, AUTOPLAY_SECONDS, AUTOPLAY_CHAIN, invalidateLibraryProgress() {}, state: { library: [episode('one', 1), episode('two', 2, { still: 'https://image.test/two.jpg' })], libraryShows: [{ id: 'tv-123', backdrop: 'https://image.test/show.jpg' }], progress: {}, view: 'library' },
     current: { ...playing, ready: true, sourceUrl: 'https://example.test/one.mp4', abort: new AbortController(), creditsAt: 800, upNextDismissed: false },

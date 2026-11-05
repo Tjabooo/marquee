@@ -1,5 +1,32 @@
 [
   {
+    "id": "2026-11-05-social",
+    "date": "2026-11-05",
+    "title": "Likes, watch parties and Wrapped",
+    "items": [
+      {
+        "title": "Thumbs up, thumbs down",
+        "text": "Rate any film or show from its page. Everyone sees who liked something (\"Liked by Anna and Ben\"); a thumbs down stays private."
+      },
+      {
+        "title": "Popular on Marquee",
+        "text": "A new row near the top of Discover shows what people here liked and watched lately."
+      },
+      {
+        "title": "Chat and reactions in Watch Together",
+        "text": "Open Room while watching together to send emoji that float over the picture, or chat. Messages pop up over the video, even with the controls hidden."
+      },
+      {
+        "title": "Plan a watch party",
+        "text": "Pick a time from a film's or episode's page (the people icon) and send the invite. Everyone gets a countdown, and playback starts by itself for whoever's in the room. Your parties wait in Library. The host can also start a running room with a short countdown."
+      },
+      {
+        "title": "Marquee Wrapped",
+        "text": "Settings → Marquee Wrapped tells the story of your year: hours watched, top titles, your show of the year, your busiest days and who you watched with. It counts from today on."
+      }
+    ]
+  },
+  {
     "id": "2026-11-05-signin",
     "date": "2026-11-05",
     "title": "Sign in to Marquee",

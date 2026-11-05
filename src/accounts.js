@@ -11,6 +11,8 @@
 //   media     videos Marquee tracks; one that nobody has in their library any more is deleted
 //   progress  where each person stopped watching, so it resumes on any of their devices
 //   meta      server-wide settings (the owner's part of the Settings tab) and migration flags
+//   ratings, watch_log, watch_company, watch_parties  thumbs, watch time and planned watch parties
+//             (see social.js; watch_log keeps watch time after progress rows are deleted)
 //
 // A video is one file on disk however many people have it: "Add to my library" adds a row, never a
 // copy. Its media key is its path inside MEDIA_DIR without the extension, lower case, so the MP4
@@ -113,8 +115,50 @@ export function initAccounts({ dataDir, adminEmails, mediaDir: dir }) {
       PRIMARY KEY (user_id, ref)
     );
     CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS ratings (
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      title_key TEXT NOT NULL,
+      value INTEGER NOT NULL CHECK (value IN (-1, 1)),
+      title TEXT,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, title_key)
+    );
+    CREATE INDEX IF NOT EXISTS ratings_title ON ratings(title_key);
+    CREATE TABLE IF NOT EXISTS watch_log (
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      day TEXT NOT NULL,
+      ref TEXT NOT NULL,
+      title_key TEXT,
+      title TEXT NOT NULL,
+      season INTEGER,
+      episode INTEGER,
+      seconds REAL NOT NULL DEFAULT 0,
+      together REAL NOT NULL DEFAULT 0,
+      finished INTEGER NOT NULL DEFAULT 0,
+      first_at INTEGER NOT NULL,
+      last_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, day, ref)
+    );
+    CREATE INDEX IF NOT EXISTS watch_log_title ON watch_log(title_key, day);
+    CREATE TABLE IF NOT EXISTS watch_company (
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      other_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      day TEXT NOT NULL,
+      seconds REAL NOT NULL DEFAULT 0,
+      PRIMARY KEY (user_id, other_id, day)
+    );
+    CREATE TABLE IF NOT EXISTS watch_parties (
+      token TEXT PRIMARY KEY,
+      creator INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      media TEXT NOT NULL,
+      starts_at INTEGER NOT NULL,
+      people TEXT NOT NULL DEFAULT '[]',
+      created_at INTEGER NOT NULL
+    );
   `);
 }
+// The open database, for modules that keep their own tables here (social.js).
+export const database = () => db;
 
 // ---------- meta ----------
 const metaGet = (key) => db.prepare('SELECT value FROM meta WHERE key = ?').get(key)?.value ?? null;

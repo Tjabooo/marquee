@@ -184,6 +184,11 @@ The web client uses a JSON API that can also be scripted. `<kind>` is `lib` for 
 | `POST` | `/api/push/subscribe` | Turn notifications on for a device (`{ subscription, label?, replaces? }`, the browser's `PushSubscription.toJSON()`) |
 | `POST` | `/api/push/unsubscribe` | Turn them off (`{ endpoint }` for this device or `{ id }` from the list) |
 | `POST` | `/api/push/test` | Send a test notification to your devices |
+| `POST` | `/api/watch/<token>/chat`, `/react` | Room chat (`{ text }`, last 50 kept for late joiners) and emoji reactions (`{ emoji }`); both arrive on the room's event stream |
+| `POST` | `/api/watch/<token>/schedule` | Host only: `{ startsAt }` (ms) starts playback by itself at that time, `null` clears it |
+| `POST` | `/api/watch/plan` | Plan a party for later (`{ id, startsAt }`, up to two weeks ahead); saved in `watch_parties` so it survives a restart |
+| `GET` | `/api/watch/parties` | Planned parties you made or joined |
+| `POST` | `/api/watch/<token>/cancel` | Whoever planned a party ends it |
 | `GET` | `/api/trending`, `/api/search?q=` | TMDB titles |
 | `GET` | `/api/library` | Your library (`items`, with `expiresAt`), and what else is on the server (`server`) |
 | `POST` | `/api/library/add` | Add videos already on the server to your library (`{ ids }`) |
@@ -200,7 +205,11 @@ The web client uses a JSON API that can also be scripted. `<kind>` is `lib` for 
 | `GET` | `/api/media/<lib\|dl>/<id>/credits` | When the closing credits start (`{ creditsAt }`, seconds or `null`) |
 | `GET` | `/api/media/<lib\|dl>/<id>/intro` | The opening titles to skip (`{ intro: { start, end } }` in seconds, or `intro: null`) |
 | `GET` | `/api/whats-new` | Every update's notes (`updates`, newest first) and the newest one you've seen (`seen`); `/api/status` carries `whatsNew: { latest, unseen, build }` |
-| `GET`, `POST` | `/api/me/progress` | Where you stopped watching (`{ ref, time, duration }`; `time: null` = finished) |
+| `GET`, `POST` | `/api/me/progress` | Where you stopped watching (`{ ref, time, duration }`; `time: null` = finished). The player adds `{ watched, about: { titleKey, title, season, episode }, room }`: seconds really played since the last save, logged per day in `watch_log` (capped at ~2x the time that passed) |
+| `GET` | `/api/me/wrapped?year=` | Marquee Wrapped: your year from `watch_log`, `watch_company` and `ratings` |
+| `POST` | `/api/social/rate` | Thumbs `{ key: "movie:<tmdb id>" \| "tv:<tmdb id>", value: 1 \| -1 \| 0, title }` |
+| `GET` | `/api/social/title?key=`, `/api/social/ratings?keys=` | Your thumb and who else liked a title (dislikes are never shown to others); bulk `{ mine, likes }` |
+| `GET` | `/api/social/popular?type=` | Popular on Marquee: last 60 days of likes, viewers and hours, as TMDB cards |
 | `GET`, `POST` | `/api/admin/settings` | Auto-delete rules and defaults (`ADMIN_EMAILS` only) |
 | `GET` | `/api/admin/users` | Everyone who has used Marquee, with their library size (`ADMIN_EMAILS` only) |
 | `POST` | `/api/admin/users/<id>` | `{ canDownload?, keep? }` (`ADMIN_EMAILS` only) |

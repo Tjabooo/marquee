@@ -33,10 +33,14 @@ export function handleWatchPage(req, res, url, { rooms, artwork }) {
   const episode = media.season != null && media.episode != null ? `S${pad2(media.season)} E${pad2(media.episode)}` : null;
   const what = [media.title, episode].filter(Boolean).join(' · ');
   const art = artwork(media) || {};
-  const desc = `${host} is hosting a Watch Together room on Marquee${viewers > 1 ? ` · ${viewers} watching` : ''}. Open the link and sign in to join; playback stays in sync for everyone.`;
+  const starts = preview.startsAt ? new Date(preview.startsAt) : null;
+  const when = starts && `${starts.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })} at ${pad2(starts.getHours())}:${pad2(starts.getMinutes())}`;
+  const desc = when
+    ? `${host} planned a watch party on Marquee: it starts ${when}. Open the link and sign in to join; there's a countdown until then.`
+    : `${host} is hosting a Watch Together room on Marquee${viewers > 1 ? ` · ${viewers} watching` : ''}. Open the link and sign in to join; playback stays in sync for everyone.`;
   return send(200, page({
     title: `Watch ${what} together`, desc, url: link, image: art.image || `${base}/c/marquee.png`,
-    body: `<div class="card"><h1>Watch ${esc(what)} together</h1><p>${esc(host)} invited you. Taking you to the room…</p>
+    body: `<div class="card"><h1>Watch ${esc(what)} together</h1><p>${esc(host)} invited you${when ? ` (starts ${esc(when)})` : ''}. Taking you to the room…</p>
       <form method="get" action="/"><input type="hidden" name="watch" value="${esc(token)}"><button type="submit">Join the room</button></form>
       <p class="foot">You'll sign in to Marquee as usual first.</p></div>
       <script>location.replace(${JSON.stringify(join)})</script>`,

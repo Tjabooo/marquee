@@ -131,6 +131,10 @@
       </div>
       <div class="player-spinner" id="player-spinner" hidden></div>
       <div class="player-osd" id="player-osd" aria-hidden="true"></div>
+      <!-- Watch Together: the countdown to a planned start, floating reactions and chat -->
+      <div class="party-countdown" id="party-countdown" role="status" hidden></div>
+      <div class="reaction-layer" id="reaction-layer" aria-hidden="true"></div>
+      <div class="chat-layer" id="chat-layer" aria-hidden="true"></div>
     </div>
     <div class="player-bar">
       <button class="icon-btn" id="player-close" aria-label="Close player">
@@ -152,10 +156,24 @@
           <button class="chip" id="watch-ready" type="button" hidden>Ready to watch</button>
           <button class="chip" id="watch-invite" type="button" aria-expanded="false" aria-controls="watch-invite-list">Invite</button>
           <button class="chip" id="watch-copy" type="button">Copy invite</button>
+          <select class="chip watch-later" id="watch-later" aria-label="Start with a countdown" hidden>
+            <option value="">Start later…</option><option value="2">In 2 minutes</option><option value="5">In 5 minutes</option>
+            <option value="10">In 10 minutes</option><option value="15">In 15 minutes</option><option value="30">In 30 minutes</option>
+          </select>
+          <button class="chip" id="watch-start-now" type="button" hidden>Start now</button>
+          <button class="chip" id="watch-clear-start" type="button" hidden>No countdown</button>
           <button class="chip" id="watch-leave" type="button">Leave room</button>
           <button class="chip" id="watch-hide" type="button">Hide</button>
         </div>
         <div class="watch-invite-list" id="watch-invite-list" hidden></div>
+        <div class="watch-social">
+          <div class="reaction-bar" id="reaction-bar" role="group" aria-label="Send a reaction"></div>
+          <ol class="chat-log" id="chat-log" aria-label="Room chat"></ol>
+          <form class="chat-form" id="chat-form" autocomplete="off">
+            <input id="chat-input" type="text" maxlength="300" placeholder="Message the room" aria-label="Message the room" enterkeyhint="send">
+            <button class="icon-btn" type="submit" aria-label="Send message"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button>
+          </form>
+        </div>
       </div>
       <div class="seek-row">
         <span class="pc-time" id="pc-time">0:00</span>

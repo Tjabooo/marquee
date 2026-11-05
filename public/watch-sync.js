@@ -20,9 +20,10 @@ export function offsetCues(track, seconds) {
 }
 
 export class WatchSession {
-  constructor({ video, room, clientId, request, onState, onEnd, onError,
+  constructor({ video, room, clientId, request, onState, onEnd, onError, onChat = () => {}, onReaction = () => {},
     now = () => performance.now(), makeEvents = (url) => new EventSource(url) }) {
-    Object.assign(this, { video, state: room, clientId, request, onState, onEnd, onError, now, makeEvents });
+    Object.assign(this, { video, state: room, clientId, request, onState, onEnd, onError, onChat, onReaction, now, makeEvents });
+    this.chat = [];
     this.base = `/api/watch/${room.token}`;
     this.offsets = {}; this.samples = []; this.clockOffset = room.serverNow - now(); this.rtt = 0;
     this.connected = false; this.online = true; this.closed = false; this.blocked = true; this.waiting = false;
@@ -52,6 +53,13 @@ export class WatchSession {
 
   receive(state) {
     if (this.closed) return;
+    // Chat and reactions share the stream but aren't room state.
+    if (state.chatLog) { this.chat = state.chatLog.slice(-50); this.onChat(null, this); return; }
+    if (state.chat) {
+      if (!this.chat.some((m) => m.id === state.chat.id)) { this.chat.push(state.chat); this.chat = this.chat.slice(-50); this.onChat(state.chat, this); }
+      return;
+    }
+    if (state.reaction) { this.onReaction(state.reaction, this); return; }
     if (state.ended || state.left) { this.onEnd('This watch room has ended or you were disconnected.'); return; }
     if (state.revision < this.state.revision) return;
     this.state = state;
@@ -168,6 +176,20 @@ export class WatchSession {
       finally { this.controlling = false; this.sync(); }
     });
   }
+
+  async say(text) {
+    const message = await this.post('chat', { text });
+    if (!this.chat.some((m) => m.id === message.id)) { this.chat.push(message); this.chat = this.chat.slice(-50); this.onChat(message, this); }
+    return message;
+  }
+
+  react(emoji) { return this.post('react', { emoji }).catch((err) => this.onError(err.message)); }
+
+  // Host only: start at `startsAt` (ms, server clock), or null to clear the countdown.
+  async schedule(startsAt) { this.receive(await this.post('schedule', { startsAt })); }
+
+  // Milliseconds until a planned start, on the server's clock (null when there's none).
+  get startsIn() { return this.state.startsAt ? this.state.startsAt - this.serverNow : null; }
 
   pauseVideo() {
     if (!this.video.paused) { this.quietUntil = this.now() + 500; this.video.pause(); }
