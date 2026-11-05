@@ -6,7 +6,7 @@ import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { NotesStore } from '../src/notes.js';
-import { NotesOcr, windowsOcr } from '../src/notes-ocr.js';
+import { NotesOcr, windowsOcr, tesseractOcr, tesseractAvailable } from '../src/notes-ocr.js';
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite');
 
 const temp = () => fs.mkdtemp(path.join(os.tmpdir(), 'marquee-notes-ocr-'));
@@ -93,4 +93,15 @@ test('Windows OCR reads text from a real image', { skip: process.platform !== 'w
     assert.match(good.text, /MARQUEE GATE 4711/i);
     assert.ok(broken.error);
   } finally { await fs.rm(dir, { recursive: true, force: true }); }
+});
+
+test('Tesseract reads text from an image when it is installed', async (t) => {
+  if (!tesseractAvailable()) return t.skip('tesseract not installed');
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-tess-'));
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  const img = path.join(dir, 'text.png');
+  const made = spawnSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', "color=white:s=640x160,drawtext=text='INVOICE 4721':fontsize=64:fontcolor=black:x=20:y=40", '-frames:v', '1', img]);
+  if (made.status !== 0) return t.skip('ffmpeg drawtext unavailable');
+  const [result] = await tesseractOcr([img]);
+  assert.match(result.text, /INVOICE\s*4721/);
 });
