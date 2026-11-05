@@ -88,6 +88,15 @@ See [remote-access.md](remote-access.md) for how accounts work and how to publis
 | `ATV_HOSTS` | | Apple TV addresses to query directly if discovery fails, comma-separated. |
 | `CAST_WHEN_AWAY` | `off` | Offer TVs to visitors who aren't on the home network. |
 
+## Playback first
+
+Streams always come before background work. These are the knobs; the defaults suit a media drive
+that is a hard disk shared with downloads and conversions.
+
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| `STREAM_READ_KB` | `4096` | How much of a file a stream reads at a time (64–65536). Large reads keep a busy hard drive from making a player wait in its queue once per 64 KB. |
+
 ## Conversion
 
 | Setting | Default | Purpose |

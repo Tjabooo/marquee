@@ -1285,6 +1285,10 @@ const infoFor = (file) => {
 };
 
 // ---------- streaming (HTTP range requests) ----------
+// Media is read in large pieces (STREAM_READ_KB, 4 MB by default). With Node's default 64 KB, a stream
+// on a hard drive that is also busy with a download or a conversion waits in the drive's queue for
+// every 64 KB; measured on a busy HDD, a 4 MB range took 0.6-2.9 s that way and 11-45 ms in one read.
+const STREAM_READ_BYTES = Math.min(64 * 1024, Math.max(64, Number(process.env.STREAM_READ_KB) || 4096)) * 1024;
 // What House → Sharing calls a stream: "House S02 E06", "Clip · dust2 ace".
 const CLIPS_ROOT = process.env.CLIPS_DIR ? path.resolve(process.env.CLIPS_DIR) : null;
 function streamLabel(file) {
@@ -1351,7 +1355,7 @@ async function sendVideo(req, res, file, { captionUrl, headers = {}, label = nul
   res.writeHead(status, { ...base, 'Content-Length': end - start + 1 });
   if (req.method === 'HEAD') return res.end();
   const meter = trackStream(req, file, size, label);
-  const read = fs.createReadStream(file, { start, end });
+  const read = fs.createReadStream(file, { start, end, highWaterMark: STREAM_READ_BYTES });
   read.on('data', (chunk) => meter.add(chunk.length));
   pipeline(read, res, () => meter.done()); // aborted by seeks; safe to ignore
 }
