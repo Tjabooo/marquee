@@ -600,6 +600,54 @@ main {
 .player-help dt { font-weight: 700; color: var(--bulb); white-space: nowrap; }
 .player-help dd { margin: 0; color: var(--dust); text-align: right; }
 
+/* Stats for nerds (player-stats.js): stays up while the controls hide, scrolls on its own */
+.stats-panel {
+  position: absolute; z-index: 3;
+  top: calc(var(--safe-top) + 64px); left: var(--gutter);
+  width: min(460px, calc(100% - 2 * var(--gutter)));
+  max-height: calc(100% - var(--safe-top) - 64px - 132px); overflow-y: auto; overscroll-behavior: contain;
+  padding: 10px 12px 12px;
+  font: 12px/1.45 var(--body); font-variant-numeric: tabular-nums;
+  color: var(--paper);
+  background: color-mix(in srgb, var(--velvet) 88%, transparent);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  scrollbar-width: thin;
+}
+.stats-panel[hidden] { display: none; }
+.stats-head { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.stats-title { flex: 1; margin: 0; font: 700 14px/1.3 var(--display); }
+.stats-btn {
+  min-width: 28px; height: 26px; padding: 0 9px;
+  font-size: 12px; font-weight: 600; color: var(--dust);
+  background: var(--seat); border: 1px solid var(--line); border-radius: 8px;
+}
+.stats-btn:hover, .stats-btn:focus-visible { color: var(--paper); border-color: var(--bulb); }
+.stats-close { padding: 0; font-size: 17px; line-height: 1; }
+.stats-graphs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 6px; }
+.stats-graph { margin: 0; padding: 6px 8px 4px; background: rgba(0, 0, 0, 0.25); border-radius: 8px; }
+.stats-graph figcaption { display: flex; justify-content: space-between; gap: 6px; color: var(--dust); font-size: 11px; }
+.stats-graph-value { color: var(--paper); font-weight: 600; }
+.stats-graph canvas { display: block; width: 100%; height: 34px; }
+.stats-section { padding-top: 6px; }
+.stats-section[hidden] { display: none; }
+.stats-section-title {
+  margin: 0 0 2px; color: var(--bulb);
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+}
+.stats-panel dl { display: grid; margin: 0; }
+.stats-panel dl div { display: grid; grid-template-columns: 112px 1fr; gap: 10px; padding: 1px 0; }
+.stats-panel dl div[hidden] { display: none; }
+.stats-panel dt { color: var(--dust); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stats-panel dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.stats-panel dd.mono { font-family: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace; font-size: 11px; }
+.stats-panel dd.warn { color: var(--alert); }
+@media (max-width: 560px) {
+  .stats-panel { max-height: 46%; font-size: 11px; }
+  .stats-panel dl div { grid-template-columns: 92px 1fr; gap: 8px; }
+}
+
 /* Toasts go to the top while the player is open, away from the controls */
 body.in-player .toast { top: calc(var(--safe-top) + 72px); bottom: auto !important; }
 

@@ -4,6 +4,7 @@ import { createNotesView } from './notes-view.js';
 import { nextLibraryEpisode, isNextEpisodeTime, AUTOPLAY_SECONDS, AUTOPLAY_CHAIN } from './player-next.js';
 import { audioChoices, nativeAudioMapping } from './player-audio.js';
 import { createSeekPreview } from './seek-preview.js';
+import { createStreamStats } from './player-stats.js';
 import { libraryUnion, libraryAvailability, filterLibrary, transferState, transferAttention, transferPaused } from './library-downloads.js';
 
 const $ = (sel, el = document) => el.querySelector(sel);
@@ -3937,6 +3938,7 @@ const SHORTCUTS = [
   ['F', 'Fullscreen'],
   ['C', 'Subtitles on or off'],
   ['P', 'Picture in picture'],
+  ['I or right-click', 'Stats for nerds'],
   ['0 – 9', 'Jump to 0% – 90%'],
   ['?', 'These shortcuts'],
 ];
@@ -3949,6 +3951,29 @@ function toggleHelp() {
   helpEl.hidden = !helpEl.hidden;
 }
 document.addEventListener('click', (e) => { if (!helpEl.hidden && !helpEl.contains(e.target)) helpEl.hidden = true; });
+
+// Stats for nerds (I, or right-click / long-press on the picture): see player-stats.js.
+const signed = (n) => `${n > 0 ? '+' : ''}${Number(n.toFixed(3))} s`;
+const streamStats = createStreamStats({
+  video, host: playerEl, api,
+  context: () => {
+    const session = current;
+    const lang = ccLangs.find((l) => l.code === ccActive);
+    const timing = ccSync && [ccSync.state, ccSync.offset ? `fixed ${signed(ccSync.offset)}` : '', ccSync.manual ? `nudged ${signed(ccSync.manual)}` : '',
+      party?.offsets?.[ccActive] ? `room ${signed(party.offsets[ccActive])}` : ''].filter(Boolean).join(', ');
+    return {
+      title: $('#player-title').textContent,
+      delivery: session?.kind === 'clip' ? 'Clip · direct play' : session?.kind === 'note' ? 'Note video · direct play' : '',
+      audio: session?.audio?.activeLabel || '',
+      subtitles: lang ? `${lang.name || lang.code}${lang.saved ? ' · saved on the server' : ''}${nativeSubs ? ' · drawn by the browser' : ''}${timing ? ` · timing ${timing}` : ''}` : '',
+      party: party ? [party.isHost ? 'host' : 'guest', party.connected ? 'connected' : 'reconnecting', `clock ${Math.round(party.clockOffset)} ms off`,
+        `rtt ${Math.round(party.rtt)} ms`, $('#watch-members').textContent].filter(Boolean).join(' · ') : '',
+      casting: onTvVersion ? 'AirPlay · TV version' : video.webkitCurrentPlaybackTargetIsWireless ? 'AirPlay'
+        : video.remote?.state === 'connected' ? 'Remote playback' : document.pictureInPictureElement === video ? 'Picture in picture' : '',
+    };
+  },
+});
+stage.addEventListener('contextmenu', (e) => { e.preventDefault(); streamStats.toggle(); });
 
 const seekToFraction = (f) => {
   if (!isFinite(video.duration)) return;
@@ -3964,7 +3989,7 @@ const PLAYER_KEYS = {
   ' ': () => togglePlay(true), k: () => togglePlay(true),
   ArrowLeft: () => skip(-5), ArrowRight: () => skip(5), j: () => skip(-10), l: () => skip(10),
   ArrowUp: () => nudgeVolume(0.05), ArrowDown: () => nudgeVolume(-0.05),
-  m: toggleMute, f: toggleFullscreen, c: toggleSubs, p: togglePip, '?': toggleHelp,
+  m: toggleMute, f: toggleFullscreen, c: toggleSubs, p: togglePip, '?': toggleHelp, i: () => streamStats.toggle(),
   Home: () => seekToFraction(0), End: () => seekToFraction(0.999),
 };
 // Keys typed into a menu or a text field are left alone.
@@ -4113,6 +4138,7 @@ async function openPlayer(f, opts = {}) {
     if (fsElement()) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
     if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {});
     playerEl.hidden = true;
+    streamStats.close();
     document.body.style.overflow = '';
     document.body.classList.remove('in-player');
     opener?.focus?.({ preventScroll: true });

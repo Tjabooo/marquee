@@ -9,6 +9,16 @@ All notable changes to Marquee. Versions follow [Semantic Versioning](https://se
 - **What's new**: after an update, everyone sees its notes once in a sheet (written in `whats-new.json`,
   newest first; items can be marked `"audience": "owner"`). Settings → What's new lists past updates,
   and a page left open through an update offers a reload.
+- Stats for nerds in the player: press `I` (or right-click / long-press the picture) for a live
+  panel with everything about the stream. From the server's ffprobe of the exact file being
+  played: container, size, overall and per-stream bitrate, codec with profile and level, frame
+  rate, pixel format, colour primaries/transfer/matrix/range, HDR10/HLG/Dolby Vision with mastering
+  and light levels, every audio and subtitle stream, and the original release when a browser copy
+  is playing (`GET /api/stream-info?src=`). From the browser: codec string and whether it decodes
+  in hardware and smoothly, decoded and drawn size, presented frame rate and jitter, dropped
+  frames, startup and seek times, stalls, buffer ahead and download rate with one-minute graphs,
+  the active audio and subtitle choice, Watch Together clock and casting state. **Copy** puts the
+  whole report on the clipboard.
 - `node setup.js clipper`: sets up game clips in one go. It creates `CLIPS_DIR` (next to
   `MEDIA_DIR` by default) and either downloads and installs [Clipper](https://github.com/Tjabooo/clipper),
   the replay-buffer recorder, on this computer, or prints what to run on your gaming PC (Windows

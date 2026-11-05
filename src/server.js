@@ -1091,16 +1091,57 @@ async function playLink(kind, id, variant, audio = null, audioSource = null, ret
   };
 }
 
-async function handlePlay(req, res, url) {
-  const m = url.pathname.match(/^\/play\/(lib|dl)\/([A-Za-z0-9_-]+)\/(browser(?:-a\d+-[a-f0-9]{24})?|tv)\/(\d+)\/([A-Za-z0-9_-]+)(?:\/[^/]*)?$/);
+// The file a signed /play/ path names, once its signature checks out (expiry is the caller's business).
+function verifiedPlayPath(pathname) {
+  const m = pathname.match(/^\/play\/(lib|dl)\/([A-Za-z0-9_-]+)\/(browser(?:-a\d+-[a-f0-9]{24})?|tv)\/(\d+)\/([A-Za-z0-9_-]+)(?:\/[^/]*)?$/);
   if (!m) throw new HttpError(404, 'Not found.');
   const [, kind, id, variant, exp, sig] = m;
   const expected = signPlay(kind, id, variant, exp);
   if (sig.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
     throw new HttpError(403, 'Invalid link.');
   }
-  if (Number(exp) < Date.now() / 1000) throw new HttpError(410, 'This link has expired. Start playback again.');
+  return { kind, id, variant, exp: Number(exp) };
+}
+
+async function handlePlay(req, res, url) {
+  const { kind, id, variant, exp } = verifiedPlayPath(url.pathname);
+  if (exp < Date.now() / 1000) throw new HttpError(410, 'This link has expired. Start playback again.');
   return sendVideo(req, res, await streamFile(kind, id, variant));
+}
+
+// Stats for nerds: what ffprobe says about the exact file the player streams (its src path), and
+// about the original release when the player gets a browser copy of it.
+async function streamInfo(req, src) {
+  let file;
+  let served = 'Original file';
+  let original = null;
+  let expires = null;
+  let m;
+  if (src.startsWith('/play/')) {
+    const link = verifiedPlayPath(src);
+    expires = link.exp * 1000;
+    file = await streamFile(link.kind, link.id, link.variant);
+    const source = await sourceFile(link.kind, link.id);
+    const first = converter.originalFor(source) || source;
+    const selected = link.variant.match(/^browser-a(\d+)-/);
+    served = link.variant === 'tv' ? 'TV version (original audio)'
+      : selected ? `Single-audio copy (audio track ${Number(selected[1])})`
+        : file === first ? 'Original file' : 'Browser copy';
+    if (first !== file && fs.existsSync(first)) original = first;
+  } else if ((m = src.match(/^\/api\/clips\/([\w-]{16})\/video$/))) {
+    if (!activity.isAdmin(req)) throw new HttpError(403, 'Only the server’s owner can see clips.');
+    file = await clips.clipFile(m[1]);
+    served = 'Clip file';
+  } else return { known: false, reason: 'No file details for this kind of video.' };
+  if (!fs.existsSync(file)) throw new HttpError(404, 'That file is no longer on the server.');
+  const describe = async (f) => {
+    const started = Date.now();
+    const info = await converter.probeDetails(f).catch(() => null);
+    return info && { name: path.basename(f), modified: fs.statSync(f).mtimeMs, probeMs: Date.now() - started, ...info };
+  };
+  const [playing, originalInfo] = await Promise.all([describe(file), original ? describe(original).catch(() => null) : null]);
+  if (!playing) return { known: false, reason: 'ffprobe couldn’t read this file on the server.' };
+  return { known: true, served, expires, file: playing, original: originalInfo };
 }
 
 // Title, year and episode used for subtitle searches.
@@ -1973,6 +2014,12 @@ async function handleApi(req, res, url) {
   // Timeline previews of the copy the browser plays (its timeline is the one the seek bar shows).
   if ((m = p.match(/^\/api\/media\/(lib|dl)\/([A-Za-z0-9_-]+)\/preview(?:\/(\d{1,4})\.jpg)?$/))) {
     return sendPreview(res, await streamFile(m[1], m[2], 'browser'), m[3]);
+  }
+
+  if (p === '/api/stream-info') {
+    const src = String(url.searchParams.get('src') || '');
+    if (src.length > 1000) throw new HttpError(400, 'Invalid stream.');
+    return sendJson(res, 200, await streamInfo(req, src));
   }
 
   // ---- browser audio compatibility ----

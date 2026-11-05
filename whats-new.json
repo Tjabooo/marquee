@@ -13,6 +13,10 @@
         "text": "When the credits roll, an Up next card counts down and plays the next episode. Pause or tap Keep watching to stay where you are."
       },
       {
+        "title": "Stats for nerds",
+        "text": "Press I while watching, or right-click the picture, to see everything about the stream: resolution, codecs, HDR, bitrate, dropped frames, buffer and download speed. Copy puts it all on your clipboard."
+      },
+      {
         "title": "Previews while you seek",
         "text": "Drag along the timeline to see a small picture of that moment before you let go."
       },

@@ -276,6 +276,78 @@ export async function probeVideo(file) {
   videoCache.set(key, out);
   return out;
 }
+// Stats for nerds: everything worth showing about a file's streams, from one ffprobe (cached per
+// file version). describeProbe is pure, so tests can feed it ffprobe JSON.
+const detailCache = new Map();
+export async function probeDetails(file) {
+  const key = failureKey(file);
+  if (detailCache.has(key)) return detailCache.get(key);
+  const out = describeProbe(JSON.parse(await run(FFPROBE, ['-v', 'error', '-print_format', 'json', '-show_streams', '-show_format', '-show_chapters', file])));
+  if (detailCache.size >= 200) detailCache.clear();
+  detailCache.set(key, out);
+  return out;
+}
+const numberOr = (v) => (v == null || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
+const frameRate = (r) => { const [n, d] = String(r || '').split('/').map(Number); return n > 0 && d > 0 ? Math.round((n / d) * 1000) / 1000 : null; };
+const ratio = (r) => { const [n, d] = String(r || '').split('/').map(Number); return n > 0 && d > 0 ? n / d : null; };
+// Matroska keeps per-stream statistics in tags (BPS, NUMBER_OF_FRAMES), sometimes with a language suffix.
+const statTag = (s, name) => {
+  const tags = s.tags || {};
+  const k = Object.keys(tags).find((t) => t.toUpperCase() === name || t.toUpperCase().startsWith(`${name}-`));
+  return k ? numberOr(tags[k]) : null;
+};
+const bitDepthOf = (s) => numberOr(s.bits_per_raw_sample) || Number((String(s.pix_fmt || '').match(/p(9|10|12|14|16)(?:le|be)?$/) || [])[1]) || (s.pix_fmt ? 8 : null);
+function hdrOf(v) {
+  const side = v.side_data_list || [];
+  const dv = side.find((d) => /dovi|dolby vision/i.test(d.side_data_type || ''));
+  const transfer = v.color_transfer;
+  const base = transfer === 'smpte2084' ? 'HDR10' : transfer === 'arib-std-b67' ? 'HLG' : 'SDR';
+  if (dv) return `Dolby Vision${dv.dv_profile != null ? ` ${dv.dv_profile}${dv.dv_bl_signal_compatibility_id ? `.${String(dv.dv_bl_signal_compatibility_id).padStart(2, '0')}` : ''}` : ''}${base !== 'SDR' ? ` (${base} base)` : ''}`;
+  return base;
+}
+export function describeProbe(info) {
+  const f = info.format || {};
+  const streams = info.streams || [];
+  const flags = (s) => ({ default: Boolean(s.disposition?.default), forced: Boolean(s.disposition?.forced) });
+  const v = streams.find((s) => s.codec_type === 'video' && !s.disposition?.attached_pic);
+  let video = null;
+  if (v) {
+    const side = v.side_data_list || [];
+    const mastering = side.find((d) => /mastering display/i.test(d.side_data_type || ''));
+    const light = side.find((d) => /content light level/i.test(d.side_data_type || ''));
+    const rotation = side.find((d) => d.rotation != null)?.rotation ?? numberOr(v.tags?.rotate);
+    video = {
+      index: v.index, codec: v.codec_name, codecLong: v.codec_long_name || null, profile: v.profile || null,
+      level: numberOr(v.level), tag: v.codec_tag_string && !/^\[0\]/.test(v.codec_tag_string) ? v.codec_tag_string : null,
+      width: v.width || null, height: v.height || null, sar: v.sample_aspect_ratio && v.sample_aspect_ratio !== '1:1' && v.sample_aspect_ratio !== '0:1' ? v.sample_aspect_ratio : null,
+      dar: v.display_aspect_ratio && v.display_aspect_ratio !== '0:1' ? v.display_aspect_ratio : null,
+      pixFmt: v.pix_fmt || null, bitDepth: bitDepthOf(v), chroma: v.chroma_location && v.chroma_location !== 'unspecified' ? v.chroma_location : null,
+      fps: frameRate(v.avg_frame_rate) || frameRate(v.r_frame_rate), fieldOrder: v.field_order && v.field_order !== 'unknown' ? v.field_order : null,
+      bitrate: numberOr(v.bit_rate) || statTag(v, 'BPS'), frames: numberOr(v.nb_frames) || statTag(v, 'NUMBER_OF_FRAMES'),
+      range: v.color_range || null, space: v.color_space || null, transfer: v.color_transfer || null, primaries: v.color_primaries || null,
+      hdr: hdrOf(v), refs: numberOr(v.refs), bFrames: numberOr(v.has_b_frames), rotation: rotation || null,
+      mastering: mastering ? { maxLum: ratio(mastering.max_luminance), minLum: ratio(mastering.min_luminance) } : null,
+      light: light ? { maxCll: numberOr(light.max_content), maxFall: numberOr(light.max_average) } : null,
+    };
+  }
+  const audio = streams.filter((s) => s.codec_type === 'audio').map((a) => ({
+    index: a.index, codec: a.codec_name, codecLong: a.codec_long_name || null, profile: a.profile || null,
+    channels: a.channels || null, layout: a.channel_layout || null, sampleRate: numberOr(a.sample_rate), sampleFmt: a.sample_fmt || null,
+    bitDepth: numberOr(a.bits_per_raw_sample) || null, bitrate: numberOr(a.bit_rate) || statTag(a, 'BPS'),
+    language: a.tags?.language || null, title: a.tags?.title || null, ...flags(a),
+  }));
+  const subtitles = streams.filter((s) => s.codec_type === 'subtitle').map((s) => ({
+    index: s.index, codec: s.codec_name, language: s.tags?.language || null, title: s.tags?.title || null, ...flags(s),
+    hearingImpaired: Boolean(s.disposition?.hearing_impaired),
+  }));
+  return {
+    container: f.format_long_name || f.format_name || null, format: f.format_name || null,
+    size: numberOr(f.size), duration: numberOr(f.duration), bitrate: numberOr(f.bit_rate), start: numberOr(f.start_time),
+    title: f.tags?.title || null, encoder: f.tags?.encoder || f.tags?.ENCODER || null, brand: f.tags?.major_brand || null,
+    chapters: (info.chapters || []).length, video, audio, subtitles,
+    attachments: streams.filter((s) => s.codec_type === 'attachment' || s.disposition?.attached_pic).length,
+  };
+}
 // hevc: whether the browser asking can decode HEVC at all (Firefox usually can't).
 export const videoBrowserSafe = (v, { hevc = true } = {}) => !v || (v.codec === 'h264' && !v.tenBit) || (hevc && v.codec === 'hevc' && v.tag === 'hvc1');
 export const convertingFile = () => currentFile;
