@@ -1,0 +1,95 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+  attestations: write
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/tjabooo/marquee
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ghcr.io/tjabooo/marquee
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the tag matches package.json
+        run: test "v$(node -p 'require("./package.json").version')" = "$GITHUB_REF_NAME"
+      - name: Build the source archive and checksums
+        run: |
+          git archive --format=tar.gz --prefix="marquee-$GITHUB_REF_NAME/" -o "marquee-$GITHUB_REF_NAME.tar.gz" "$GITHUB_REF_NAME"
+          sha256sum "marquee-$GITHUB_REF_NAME.tar.gz" > SHA256SUMS
+          cat SHA256SUMS
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: marquee-${{ github.ref_name }}.tar.gz
+      - name: Release notes from CHANGELOG.md
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          awk -v v="$v" '$0 ~ "^## \\[" v "\\]" {on=1; next} on && /^## \[/ {exit} on' CHANGELOG.md > notes.md
+          test -s notes.md
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "Marquee $GITHUB_REF_NAME" --notes-file notes.md \
+            "marquee-$GITHUB_REF_NAME.tar.gz" SHA256SUMS
+
+  verify:
+    needs: [image, release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pull the published image anonymously and start it
+        run: |
+          docker logout ghcr.io || true
+          v="${GITHUB_REF_NAME#v}"
+          for arch in amd64 arm64; do docker manifest inspect "ghcr.io/tjabooo/marquee:$v" | grep -q "\"architecture\": \"$arch\""; done
+          docker run -d --name m -p 8080:8080 "ghcr.io/tjabooo/marquee:$v"
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8080/api/health && break; sleep 2; done
+          curl -fsS http://127.0.0.1:8080/api/health | grep -q "\"version\":\"$v\""
+      - name: Install from the release with install.sh
+        run: |
+          curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/$GITHUB_REF_NAME/install.sh" -o install.sh
+          sh install.sh --version "$GITHUB_REF_NAME" --dir "$RUNNER_TEMP/marquee" --no-setup
+          node "$RUNNER_TEMP/marquee/setup.js" doctor --offline || true
+          test -f "$RUNNER_TEMP/marquee/src/server.js"

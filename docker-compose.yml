@@ -1,0 +1,96 @@
+# Marquee with Docker Compose. Quick start:
+#   cp .env.example marquee.env      # then set TMDB_TOKEN and friends (not MEDIA_DIR/DATA_DIR/HOST/PORT)
+#   MEDIA_PATH=/path/to/media docker compose up -d
+# Optional services are profiles:  docker compose --profile qbittorrent up -d
+#   qbittorrent  qBittorrent next to Marquee (Web UI on port 8081)
+#   vpn          qBittorrent whose traffic can only leave through a VPN (Gluetun); see docs/install/docker.md
+#   flaresolverr FlareSolverr for 1337x behind Cloudflare checks
+# NVIDIA GPU encoding: docker compose -f docker-compose.yml -f docker/compose.nvidia.yml up -d
+name: marquee
+
+x-media: &media ${MEDIA_PATH:-./media}:/media
+
+services:
+  marquee:
+    image: ghcr.io/tjabooo/marquee:${MARQUEE_VERSION:-1.1.0}
+    restart: unless-stopped
+    # Runs as this user and group; the data and media folders must be writable by them.
+    user: "${PUID:-1000}:${PGID:-1000}"
+    ports:
+      - "${MARQUEE_PORT:-8080}:8080"
+    env_file:
+      - path: marquee.env
+        required: false
+    # These always win over marquee.env: they describe the container, not your preferences.
+    environment:
+      DATA_DIR: /data
+      MEDIA_DIR: /media
+      HOST: 0.0.0.0
+      PORT: "8080"
+      TZ: ${TZ:-UTC}
+      # Requests from other containers (the compose network) carry no trusted identity by default.
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-127.0.0.1,::1}
+    volumes:
+      - ${MARQUEE_DATA:-./data}:/data
+      - *media
+    stop_grace_period: 20s
+
+  qbittorrent:
+    profiles: [qbittorrent]
+    image: lscr.io/linuxserver/qbittorrent:5.1.2
+    restart: unless-stopped
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-UTC}
+      WEBUI_PORT: "8081"
+    ports:
+      - "8081:8081"
+      - "6881:6881"
+      - "6881:6881/udp"
+    volumes:
+      - ./qbittorrent:/config
+      # Same path as in the marquee container, so the save paths qBittorrent reports exist for Marquee.
+      - *media
+
+  # Torrent traffic through a VPN. qBittorrent has no network of its own: it shares Gluetun's, and
+  # Gluetun's firewall drops everything that isn't going through the tunnel. If the VPN is down,
+  # qBittorrent has no connectivity at all rather than falling back to your normal connection.
+  gluetun:
+    profiles: [vpn]
+    image: qmcgaw/gluetun:v3.40.0
+    restart: unless-stopped
+    cap_add: [NET_ADMIN]
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    env_file:
+      - path: vpn.env
+        required: false
+    environment:
+      FIREWALL_INPUT_PORTS: "8081"
+    ports:
+      - "8081:8081"
+
+  qbittorrent-vpn:
+    profiles: [vpn]
+    image: lscr.io/linuxserver/qbittorrent:5.1.2
+    restart: unless-stopped
+    network_mode: service:gluetun
+    depends_on:
+      gluetun:
+        condition: service_healthy
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-UTC}
+      WEBUI_PORT: "8081"
+    volumes:
+      - ./qbittorrent:/config
+      - *media
+
+  flaresolverr:
+    profiles: [flaresolverr]
+    image: ghcr.io/flaresolverr/flaresolverr:v3.3.25
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-UTC}
