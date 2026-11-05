@@ -4618,56 +4618,72 @@ function accessName(email, name) {
   });
 }
 
-function accessSection() {
-  const a = state.access;
-  if (!a) return [];
+// One People list: everyone on the access list plus anyone else Activity has seen, with their last visit.
+function peopleSection(q) {
+  const a = state.access || {};
   const out = [];
-  const group = () => foldGroup('access', 'h3', 'activity-head', 'Access', a.members?.length, out);
-  if (!a.configured) {
+  if (state.access && !a.configured) {
     out.push(h('p', { class: 'muted' }, 'Set CF_API_TOKEN, CF_ACCOUNT_ID and CF_ACCESS_LIST_ID in .env to invite people from here (see the README).'));
-    return group();
+  } else if (state.access) {
+    const noteInput = h('input', { id: 'invite-note', class: 'invite-note', type: 'text', maxlength: '60', placeholder: 'Who’s it for?' });
+    out.push(h('div', { class: 'invite-new' }, noteInput,
+      h('button', { class: 'retry', onclick: (e) => makeInvite(e.currentTarget) }, 'Invite someone')));
+    out.push(h('p', { class: 'muted invite-hint' }, 'Makes a one-time link (valid 7 days). They enter their email and can sign in from then on.'));
+    const open = (a.invites || []).filter((i) => i.state === 'open');
+    if (open.length) {
+      out.push(h('ul', { class: 'rows' }, open.map((i) => {
+        const url = `${location.origin}/c/i/${i.token}`;
+        return h('li', { class: 'row' },
+          h('span', { class: 'row-text' },
+            h('span', { class: 'row-title' }, i.note || 'Invite'),
+            h('span', { class: 'row-meta' }, h('span', {}, `open · expires ${new Date(i.expires).toLocaleDateString([], { day: 'numeric', month: 'short' })}`))),
+          h('span', { class: 'row-actions' },
+            h('button', { class: 'retry', onclick: () => copyWithToast(url, 'Invite link copied') }, 'Copy link'),
+            h('button', { class: 'retry', onclick: () => accessAction(`/api/access/invite/${i.id}/revoke`, null, 'Invite cancelled') }, 'Cancel')));
+      })));
+    }
+    if (a.error) out.push(h('p', { class: 'muted' }, `Couldn’t read the access list: ${a.error}`));
   }
-  const noteInput = h('input', { id: 'invite-note', class: 'invite-note', type: 'text', maxlength: '60', placeholder: 'Who’s it for?' });
-  out.push(h('div', { class: 'invite-new' }, noteInput,
-    h('button', { class: 'retry', onclick: (e) => makeInvite(e.currentTarget) }, 'Invite someone')));
-  out.push(h('p', { class: 'muted invite-hint' }, 'Makes a one-time link (valid 7 days). They enter their email and can sign in from then on.'));
-  const open = (a.invites || []).filter((i) => i.state === 'open');
-  if (open.length) {
-    out.push(h('ul', { class: 'rows' }, open.map((i) => {
-      const url = `${location.origin}/c/i/${i.token}`;
-      return h('li', { class: 'row' },
-        h('span', { class: 'row-text' },
-          h('span', { class: 'row-title' }, i.note || 'Invite'),
-          h('span', { class: 'row-meta' }, h('span', {}, `open · expires ${new Date(i.expires).toLocaleDateString([], { day: 'numeric', month: 'short' })}`))),
-        h('span', { class: 'row-actions' },
-          h('button', { class: 'retry', onclick: () => copyWithToast(url, 'Invite link copied') }, 'Copy link'),
-          h('button', { class: 'retry', onclick: () => accessAction(`/api/access/invite/${i.id}/revoke`, null, 'Invite cancelled') }, 'Cancel')));
-    })));
+  out.push(h('p', { class: 'muted activity-location-note' }, 'Locations are approximate. City names require Cloudflare’s “Add visitor location headers” Managed Transform.'));
+
+  const members = a.members || null;
+  const key = (u) => String(u).toLowerCase();
+  const seen = new Map((state.activity?.people || []).map((p) => [key(p.user), p]));
+  const rows = [];
+  for (const email of members || []) {
+    const p = seen.get(key(email));
+    seen.delete(key(email));
+    rows.push({ email, member: true, owner: (a.owners || []).includes(email), name: a.names?.[email] || p?.name || personName(email), p });
   }
-  if (a.error) out.push(h('p', { class: 'muted' }, `Couldn’t read the access list: ${a.error}`));
-  else if (a.members) {
-    const q = norm(state.query);
-    const list = a.members.filter((e) => !q || norm(`${e} ${a.names?.[e] || ''}`).includes(q));
-    out.push(h('p', { class: 'activity-day' }, `${a.members.length} ${a.members.length === 1 ? 'person' : 'people'} can sign in`));
-    out.push(h('ul', { class: 'rows' }, list.map((email) => {
-      const owner = (a.owners || []).includes(email);
-      const name = a.names?.[email] || personName(email);
-      return h('li', { class: 'row' },
-        h('div', { class: 'row-text' }, accessName(email, name),
-          h('span', { class: 'row-meta' }, h('span', {}, email), owner && h('span', {}, 'owner'))),
-        !owner && h('span', { class: 'row-actions' }, h('button', {
-          class: 'retry',
-          onclick: (e) => {
-            const b = e.currentTarget;
-            if (b.dataset.sure) return accessAction('/api/access/remove', { email }, `${name} can’t sign in any more`);
-            b.dataset.sure = '1';
-            b.textContent = 'Sure?';
-            setTimeout(() => { b.textContent = 'Remove'; delete b.dataset.sure; }, 4000);
-          },
-        }, 'Remove')));
-    })));
-  }
-  return group();
+  for (const p of seen.values()) rows.push({ email: p.user, member: false, owner: false, name: personName(p), p });
+  rows.sort((x, y) => (y.p?.at || 0) - (x.p?.at || 0));
+  const list = rows.filter((r) => !q || norm(`${r.email} ${r.name} ${r.p ? activityDevice(r.p) : ''}`).includes(q));
+
+  out.push(list.length ? h('ul', { class: 'rows' }, list.map((r) => {
+    const { email, name, p, owner, member } = r;
+    const isEmail = String(email).includes('@');
+    return h('li', { class: 'row' },
+      h('span', { class: `activity-dot${p && Date.now() - p.at < 3 * 60000 ? ' is-on' : ''}`, 'aria-hidden': 'true' }),
+      h('div', { class: 'row-text' },
+        member ? accessName(email, name) : h('span', { class: 'row-title', title: email }, name),
+        h('span', { class: 'row-meta' },
+          isEmail && h('span', {}, email),
+          owner && h('span', {}, 'owner'),
+          members && !member && isEmail && h('span', {}, 'not on the access list'),
+          h('span', {}, p ? lastSeenText(p.at) : 'Hasn’t signed in yet'),
+          p && h('span', {}, activityDevice(p)))),
+      member && !owner && h('span', { class: 'row-actions' }, h('button', {
+        class: 'retry',
+        onclick: (e) => {
+          const b = e.currentTarget;
+          if (b.dataset.sure) return accessAction('/api/access/remove', { email }, `${name} can’t sign in any more`);
+          b.dataset.sure = '1';
+          b.textContent = 'Sure?';
+          setTimeout(() => { b.textContent = 'Remove'; delete b.dataset.sure; }, 4000);
+        },
+      }, 'Remove')));
+  })) : h('p', { class: 'muted' }, q ? 'Nobody matches.' : 'Nobody yet.'));
+  return foldGroup('people', 'h3', 'activity-head', 'People', rows.length, out, Boolean(q));
 }
 
 // Activity sections and days fold open/closed; the folded ones are remembered per browser.
@@ -4709,17 +4725,8 @@ function renderActivity() {
   if (state.activityError) { body.replaceChildren(notice('Couldn’t get activity', state.activityError)); return; }
   if (!state.activity) return;
   const q = norm(state.query);
-  const people = state.activity.people.filter((p) => !q || norm(`${p.user} ${personName(p)} ${activityDevice(p)}`).includes(q));
   const events = state.activity.events.filter((e) => !q || norm(`${e.user} ${personName(e)} ${e.subjectName || ''} ${e.detail} ${e.action} ${activityDevice(e)}`).includes(q));
-  const out = [...accessSection()];
-  const peopleKids = [h('p', { class: 'muted activity-location-note' }, 'Locations are approximate. City names require Cloudflare’s “Add visitor location headers” Managed Transform.')];
-  peopleKids.push(people.length ? h('ul', { class: 'rows' }, people.map((p) => h('li', { class: 'row' },
-    h('span', { class: `activity-dot${Date.now() - p.at < 3 * 60000 ? ' is-on' : ''}`, 'aria-hidden': 'true' }),
-    h('span', { class: 'row-text' },
-      h('span', { class: 'row-title', title: p.user }, personName(p)),
-      h('span', { class: 'row-meta' }, p.user.includes('@') && h('span', {}, p.user), h('span', {}, lastSeenText(p.at)), h('span', {}, activityDevice(p)))))))
-    : h('p', { class: 'muted' }, 'Nobody yet.'));
-  out.push(...foldGroup('people', 'h3', 'activity-head', 'People', people.length, peopleKids, Boolean(q)));
+  const out = [...peopleSection(q)];
   const eventKids = [];
   if (!events.length) eventKids.push(h('p', { class: 'muted' }, q ? 'Nothing matches.' : 'Nothing has happened yet.'));
   const days = [];
