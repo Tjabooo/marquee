@@ -1425,7 +1425,7 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
   font: 700 11px/18px var(--body); letter-spacing: 0.02em; vertical-align: 2px;
   color: var(--bulb); background: var(--bulb-dim); border-radius: 999px;
 }
-.profile { display: flex; align-items: center; gap: 14px; padding: 14px; background: var(--curtain); border-radius: 16px; }
+.profile { display: flex; align-items: center; gap: 14px; padding: 14px; margin-bottom: 12px; background: var(--curtain); border-radius: 16px; }
 .profile-text { flex: 1; min-width: 0; display: grid; gap: 6px; }
 .profile-tags .tag:first-child { margin-left: 0; }
 .profile-tags:empty { display: none; }
