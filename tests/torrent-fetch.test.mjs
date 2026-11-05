@@ -12,7 +12,7 @@ const reply = (status, body = '', headers = {}) => ({
 
 test('public and private addresses are told apart', () => {
   for (const ip of ['93.184.216.34', '1.1.1.1', '2606:4700::1111']) assert.equal(isPublicAddress(ip), true, ip);
-  for (const ip of ['127.0.0.1', '10.1.2.3', '192.168.50.67', '172.20.0.1', '169.254.1.1', '100.64.0.1', '::1', 'fe80::1', 'fd00::1', '::ffff:127.0.0.1', 'nope'])
+  for (const ip of ['127.0.0.1', '10.1.2.3', '192.168.1.67', '172.20.0.1', '169.254.1.1', '100.64.0.1', '::1', 'fe80::1', 'fd00::1', '::ffff:127.0.0.1', 'nope'])
     assert.equal(isPublicAddress(ip), false, ip);
 });
 
@@ -26,8 +26,8 @@ test('a .torrent file is downloaded and checked', async () => {
 test('links into the local network are refused, also through redirects', async () => {
   let fetched = 0;
   const fetchImpl = async () => { fetched++; return reply(200, torrent); };
-  await assert.rejects(fetchTorrentFile('http://192.168.50.1/x.torrent', { fetchImpl }), /private network/);
-  await assert.rejects(fetchTorrentFile('http://router.lan/x.torrent', { lookup: async () => [{ address: '192.168.50.1' }], fetchImpl }), /private network/);
+  await assert.rejects(fetchTorrentFile('http://192.168.1.1/x.torrent', { fetchImpl }), /private network/);
+  await assert.rejects(fetchTorrentFile('http://router.lan/x.torrent', { lookup: async () => [{ address: '192.168.1.1' }], fetchImpl }), /private network/);
   await assert.rejects(fetchTorrentFile('http://[::1]:8081/', { fetchImpl }), /private network/);
   await assert.rejects(fetchTorrentFile('http://[::ffff:127.0.0.1]:8081/', { fetchImpl }), /private network/);
   await assert.rejects(fetchTorrentFile('http://2130706433:8081/', { fetchImpl }), /private network/);

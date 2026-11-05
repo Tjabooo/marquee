@@ -252,7 +252,7 @@ async function keyframeTimes(file) {
   return keys.sort((a, b) => a - b);
 }
 // ---------- audio tracks ----------
-// clip-replay (magi) records four tracks: 1 everything mixed (what browsers, Discord and phones
+// A typical replay recorder writes four tracks: 1 everything mixed (what browsers, Discord and phones
 // play), 2 game, 3 friends (Discord), 4 you (mic). Older clips have three tracks and no mix.
 // Copies Marquee makes name their tracks, so the mix is still found when there are fewer than four.
 const RECORDER_TRACKS = ['Mix', 'Game', 'Friends', 'You'];

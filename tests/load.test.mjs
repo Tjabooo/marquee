@@ -5,7 +5,7 @@ import { EventEmitter } from 'node:events';
 process.env.UPLOAD_MBPS = '100';
 const load = await import('../src/load.js');
 
-const req = (headers = {}, ip = '192.168.50.26') => ({ headers, socket: { remoteAddress: `::ffff:${ip}` } });
+const req = (headers = {}, ip = '192.168.1.26') => ({ headers, socket: { remoteAddress: `::ffff:${ip}` } });
 const later = (ms, fn) => { const real = Date.now; Date.now = () => real() + ms; try { return fn(); } finally { Date.now = real; } };
 
 test('a rate is bytes per second over the last ten whole seconds', () => {
@@ -34,7 +34,7 @@ test('streams are grouped per viewer and file, split by route, and remembered on
   away.add(4 * 2 ** 20); away.done();
   const again = load.trackStream(req({ 'cf-ray': 'y', 'cf-connecting-ip': '81.2.3.4' }, '127.0.0.1'), { file: 'E:/Media/House/S02E06.mkv', size: 1e9, label: 'House S02 E06', who: 'Anna' });
   again.add(2 ** 20); // a seek: a new range request, the same stream
-  const tv = load.trackStream(req({}, '192.168.50.40'), { file: 'E:/Media/Dune.mp4', size: 1e9, label: 'Dune (2021)', tv: 'Living room' });
+  const tv = load.trackStream(req({}, '192.168.1.40'), { file: 'E:/Media/Dune.mp4', size: 1e9, label: 'Dune (2021)', tv: 'Living room' });
   tv.add(1000);
   const r = load.loadReport();
   assert.equal(r.streams.length, 2);
