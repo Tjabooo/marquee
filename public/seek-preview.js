@@ -36,6 +36,15 @@ export function frameSize(w, h, narrow) {
   return { scale, width: Math.round(w * scale), height: Math.round(h * scale) };
 }
 
+// Where the tip's middle goes (left) for a point x along a bar, and how far its caret sits from
+// that middle. The caret stays 10 px inside the card's rounded corners.
+export function tipPlacement(x, barWidth, tipWidth) {
+  const half = tipWidth / 2;
+  const left = Math.min(Math.max(x, half), Math.max(half, barWidth - half));
+  const room = Math.max(0, half - 10);
+  return { left, caret: Math.min(Math.max(x - left, -room), room) };
+}
+
 // tip: the seek tip element. onResize: called when the tip changed size after a sheet loaded,
 // so the caller can re-place it.
 export function createSeekPreview(tip, onResize) {
@@ -142,9 +151,20 @@ export function createSeekPreview(tip, onResize) {
     if (i < 0) { frame.hidden = true; tip.classList.remove('has-frame'); return; }
     const per = index.cols * index.rows;
     const s = sheet(Math.floor(i / per));
-    if (!s.ready) return; // keep the frame that is showing until this sheet arrives
     const narrow = window.matchMedia?.('(max-width: 600px)').matches;
     const { scale, width, height } = frameSize(index.w, index.h, narrow);
+    if (!s.ready) {
+      // Keep the frame that is showing until this sheet arrives; with none yet, hold its place.
+      if (!shownKey) {
+        frame.classList.add('is-loading');
+        frame.style.width = `${width}px`;
+        frame.style.height = `${height}px`;
+        frame.hidden = false;
+        tip.classList.add('has-frame');
+      }
+      return;
+    }
+    frame.classList.remove('is-loading');
     const key = `${s.url}|${i}|${width}`;
     if (key !== shownKey) {
       shownKey = key;
@@ -171,6 +191,7 @@ export function createSeekPreview(tip, onResize) {
       shownKey = '';
       sheets.clear();
       frame.hidden = true;
+      frame.classList.remove('is-loading');
       frame.style.backgroundImage = '';
       tip.classList.remove('has-frame');
       if (next) fetchIndex(gen);
@@ -180,6 +201,13 @@ export function createSeekPreview(tip, onResize) {
       lastT = t;
       time.textContent = label;
       render(t);
+    },
+    // Put the (visible) tip over x px along a bar `width` px wide: kept inside the bar, with its
+    // caret still pointing at x when it's held at an edge.
+    place(x, width) {
+      const { left, caret } = tipPlacement(x, width, tip.offsetWidth);
+      tip.style.left = `${left}px`;
+      tip.style.setProperty('--caret', `${caret}px`);
     },
   };
 }

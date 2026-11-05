@@ -4254,8 +4254,7 @@ function showSeekTip(x) {
   const t = seekTimeAt(x);
   seekPreview.show(t, fmtTime(t));
   seekTip.hidden = false;
-  const half = seekTip.offsetWidth / 2;
-  seekTip.style.left = `${Math.min(Math.max(x - r.left, half), r.width - half)}px`;
+  seekPreview.place(x - r.left, r.width);
 }
 seekEl.addEventListener('pointerdown', (e) => {
   if (party && !party.isHost) { toast('The host controls seeking'); return; }

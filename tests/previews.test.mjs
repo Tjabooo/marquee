@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { Previews, stepFor, parseShowinfo, ffmpegArgs } from '../src/previews.js';
-import { frameAt, frameSize, warmOrder } from '../public/seek-preview.js';
+import { frameAt, frameSize, tipPlacement, warmOrder } from '../public/seek-preview.js';
 
 const FFMPEG = process.env.FFMPEG || 'ffmpeg';
 const hasFfmpeg = spawnSync(FFMPEG, ['-version'], { windowsHide: true }).status === 0;
@@ -43,6 +43,14 @@ test('frames are shown at most 200 x 150, keeping their shape', () => {
   assert.deepEqual(frameSize(240, 136, false), { scale: 200 / 240, width: 200, height: 113 });
   assert.equal(frameSize(240, 426, false).height, 150);
   assert.equal(frameSize(240, 136, true).width, 160);
+});
+
+test('the seek tip stays on the bar and its caret points at the hovered spot', () => {
+  assert.deepEqual(tipPlacement(500, 1000, 208), { left: 500, caret: 0 });
+  assert.deepEqual(tipPlacement(30, 1000, 208), { left: 104, caret: -74 });
+  assert.deepEqual(tipPlacement(0, 1000, 208), { left: 104, caret: -94 }); // inside the rounded corner
+  assert.deepEqual(tipPlacement(995, 1000, 208), { left: 896, caret: 94 });
+  assert.equal(tipPlacement(50, 100, 208).left, 104); // bar narrower than the tip
 });
 
 test('a storyboard is made in the background, sheet by sheet', { skip: !hasFfmpeg && 'ffmpeg not installed', timeout: 60000 }, async () => {

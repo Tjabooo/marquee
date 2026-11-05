@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-05-seek-look",
+    "date": "2026-11-05",
+    "title": "A nicer timeline preview",
+    "items": [
+      {
+        "title": "Scrubbing looks the part",
+        "text": "The picture you see while hovering or dragging along the timeline now sits in a small velvet card with the time in marquee gold, and a little pointer shows exactly where you'll land. While a preview is still loading, the card keeps its size instead of jumping."
+      }
+    ]
+  },
+  {
     "id": "2026-11-05-social",
     "date": "2026-11-05",
     "title": "Likes, watch parties and Wrapped",
