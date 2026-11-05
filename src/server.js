@@ -327,6 +327,19 @@ const HOME_ROWS = {
     ['on-air', 'New episodes this week'], ['top-tv', 'Top rated']],
 };
 
+// Trailers first, then teasers; official ones in your language, then English; the biggest and newest wins.
+function pickTrailer(videos, lang) {
+  const kinds = ['Trailer', 'Teaser'];
+  const score = (v) => (kinds.length - kinds.indexOf(v.type)) * 1000
+    + (v.official ? 200 : 0)
+    + (v.iso_639_1 === lang ? 100 : v.iso_639_1 === 'en' ? 50 : 0)
+    + Math.min(Number(v.size) || 0, 2160) / 100;
+  const best = videos
+    .filter((v) => v.site === 'YouTube' && kinds.includes(v.type) && /^[\w-]{6,20}$/.test(v.key || ''))
+    .sort((a, b) => score(b) - score(a) || String(b.published_at || '').localeCompare(String(a.published_at || '')))[0];
+  return best ? { key: best.key, name: best.name || best.type, type: best.type } : null;
+}
+
 async function discoverList(key, page = 1) {
   const [endpoint, type] = LISTS[key] || [];
   if (!endpoint) throw new HttpError(400, 'Unknown list.');
@@ -2084,6 +2097,13 @@ async function handleApi(req, res, url) {
   if (p === '/api/discover/list') {
     const page = Math.max(1, Math.min(500, Number(url.searchParams.get('page')) || 1));
     return sendJson(res, 200, await discoverList(url.searchParams.get('key'), page));
+  }
+  // The best trailer TMDB knows for a film or show (YouTube only: that's what the title sheet can embed).
+  if ((m = p.match(/^\/api\/title\/(movie|tv)\/(\d+)\/trailer$/))) {
+    if (!tmdbOn()) return sendJson(res, 200, { trailer: null });
+    const lang = TMDB_LANG.split('-')[0];
+    const d = await cachedTmdb(`/${m[1]}/${m[2]}/videos`, { include_video_language: [...new Set([lang, 'en', 'null'])].join(',') }, 12 * 3600 * 1000);
+    return sendJson(res, 200, { trailer: pickTrailer(d.results || [], lang) });
   }
   // A show's seasons (TMDB), for the season chips in the details and show sheets.
   if ((m = p.match(/^\/api\/tv\/(\d+)\/seasons$/))) {

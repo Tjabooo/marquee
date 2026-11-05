@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-05-trailers",
+    "date": "2026-11-05",
+    "title": "Watch the trailer",
+    "items": [
+      {
+        "title": "Trailers on title pages",
+        "text": "Open a film or show in Discover and press Trailer on the picture at the top. The trailer plays right there, and stops when you close the page."
+      }
+    ]
+  },
+  {
     "id": "2026-11-05-content-filter",
     "date": "2026-11-05",
     "title": "No adult downloads",

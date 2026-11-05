@@ -1758,7 +1758,34 @@ for (const [sheetSel, backdropSel] of [['#sheet', '#sheet-backdrop'], ['#picker'
 
 function openDetails(t, opener) {
   renderDetails(t);
-  pushOverlay(showSheet($('#sheet'), $('#sheet-backdrop'), () => opener?.focus({ preventScroll: true })));
+  pushOverlay(showSheet($('#sheet'), $('#sheet-backdrop'), () => {
+    $('#sheet-body .trailer-frame')?.remove(); // closing the sheet stops the trailer
+    opener?.focus({ preventScroll: true });
+  }));
+}
+
+// The backdrop at the top of a title sheet. When TMDB has a trailer, a Trailer button sits on it and
+// the trailer plays right there, in the backdrop's place (YouTube's no-cookie player, loaded on click).
+function detailsHero(t) {
+  const hero = h('div', { class: `sheet-hero${t.backdrop ? '' : ' no-image'}`, style: t.backdrop ? `background-image:url("${t.backdrop}")` : null });
+  if (!t.id || !['movie', 'tv'].includes(t.type)) return hero;
+  cachedFor(`/api/title/${t.type}/${t.id}/trailer`, 60 * 60 * 1000).then(({ trailer }) => {
+    if (!trailer || !hero.isConnected) return;
+    const label = trailer.type === 'Teaser' ? 'Teaser' : 'Trailer';
+    const play = h('button', { type: 'button', class: 'trailer-btn', 'aria-label': `Play ${label.toLowerCase()}: ${t.title}` },
+      icon('play'), h('span', {}, label));
+    play.addEventListener('click', () => {
+      const src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(trailer.key)}?autoplay=1&rel=0&playsinline=1`;
+      hero.classList.add('is-playing');
+      hero.replaceChildren(h('iframe', {
+        class: 'trailer-frame', src, title: `${t.title}: ${trailer.name}`,
+        allow: 'autoplay; encrypted-media; picture-in-picture; fullscreen', allowfullscreen: true,
+        referrerpolicy: 'strict-origin-when-cross-origin',
+      }));
+    });
+    hero.append(play);
+  }).catch(() => {});
+  return hero;
 }
 
 function renderDetails(t) {
@@ -1773,7 +1800,7 @@ function renderDetails(t) {
     : filmActions(t);
   const versions = !isTv && files.filter((f) => f.kind === 'lib').length > 1;
   $('#sheet-body').replaceChildren(
-    h('div', { class: `sheet-hero${t.backdrop ? '' : ' no-image'}`, style: t.backdrop ? `background-image:url("${t.backdrop}")` : null }),
+    detailsHero(t),
     h('div', { class: 'sheet-content' },
       h('h2', { id: 'sheet-title' }, t.title),
       h('ul', { class: 'facts' },
