@@ -33,8 +33,8 @@ let scanned = { at: 0, list: [] };
 const jobs = new Map();   // clip id -> Promise (share copy being made)
 const failed = new Map(); // clip id -> error message
 
-export function initClips({ dataDir }) {
-  cacheDir = path.join(dataDir, 'cache', 'clips');
+export function initClips({ dataDir, cacheDir: cacheRoot = path.join(dataDir, 'cache') }) {
+  cacheDir = path.join(cacheRoot, 'clips');
   sharesFile = path.join(dataDir, '.marquee-shares.json');
   try { shares = JSON.parse(fs.readFileSync(sharesFile, 'utf8')); } catch { shares = {}; }
   titlesFile = path.join(dataDir, '.marquee-clip-titles.json');

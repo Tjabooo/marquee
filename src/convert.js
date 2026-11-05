@@ -6,6 +6,7 @@ import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { trackChild } from './load.js';
 import { background } from './priority.js';
+import { GB, freeBytes, pickEvictions, sameDrive } from './disk-space.js';
 
 const FFMPEG = process.env.FFMPEG || 'ffmpeg';
 const FFPROBE = process.env.FFPROBE || 'ffprobe';
@@ -23,6 +24,13 @@ const INTERVAL_MS = 2 * 60 * 1000;
 // HEVC files added within this many days get their H.264 browser copy in the background, right after
 // they download, instead of when someone presses Play in a browser without HEVC. 0 turns it off.
 const BROWSER_H264_DAYS = Number(process.env.BROWSER_H264_DAYS ?? 14);
+// Browser copies are a cache: BROWSER_COPIES_MAX_GB caps their folder (0 = no cap) and MIN_FREE_GB is
+// left free on every drive a conversion writes to. Copies watched longest ago are deleted to make room;
+// one watched in the last RECENT_USE_MS never is. A job that still doesn't fit waits for a later scan.
+const gbSetting = (value, fallback) => { const n = Number(value ?? fallback); return Number.isFinite(n) && n >= 0 ? n * GB : fallback * GB; };
+const COPIES_MAX_BYTES = gbSetting(process.env.BROWSER_COPIES_MAX_GB, 150);
+const MIN_FREE_BYTES = gbSetting(process.env.MIN_FREE_GB, 20);
+const RECENT_USE_MS = 3 * 3600 * 1000;
 
 const status = {
   enabled: false,
@@ -32,6 +40,7 @@ const status = {
   queued: 0,
   recentFailures: [],  // [{ name, error }]
   done: 0,
+  lowSpace: null,      // why conversions are waiting for disk space, or null
 };
 
 let stateFile = null;
@@ -39,6 +48,7 @@ let failures = {};     // key -> { error, at }
 let audioChecked = {}; // file key -> true once its audio is known to be browser-compatible and in sync
 let syncShift = {};    // source key -> manual audio correction in seconds (negative = earlier)
 let syncApplied = {};  // source key -> correction baked into the current copy
+let copyUsed = {};     // cached copy file name -> last time it was streamed (ms)
 const CHECK_VERSION = 'v3|'; // bump to re-check files after the audio checks change
 const SYNC_TOLERANCE = 0.04; // seconds; below one video frame
 let onConvertedHook = null;
@@ -426,7 +436,7 @@ export function queueBrowserVideo(file) {
   const copy = h264Path(target);
   if (!copy || fs.existsSync(copy) || failures[failureKey(target)]) return false;
   if (hasJob(target, 'h264')) return false;
-  queue.push({ file: target, fix: true, h264: true });
+  queue.push({ file: target, fix: true, h264: true, prepare: true }); // someone is watching: may make room
   drain(onConvertedHook);
   return true;
 }
@@ -827,7 +837,7 @@ const failureKey = (file) => {
 };
 
 function saveFailures() {
-  try { fs.writeFileSync(stateFile, JSON.stringify({ failures, audioChecked, syncShift, syncApplied, pendingDeletes }, null, 2)); } catch { /* best effort */ }
+  try { fs.writeFileSync(stateFile, JSON.stringify({ failures, audioChecked, syncShift, syncApplied, pendingDeletes, copyUsed }, null, 2)); } catch { /* best effort */ }
 }
 
 // Removes cached copies whose source file no longer exists or has changed.
@@ -843,6 +853,74 @@ function cleanFixDir(keep) {
     } catch { /* gone already */ }
   }
 }
+// Records that a cached copy was streamed, so making room deletes copies nobody watches first.
+// Saved at most every ten minutes per copy (a film streams as hundreds of range requests).
+export function noteServed(file) {
+  if (!fixDir || !file || !samePathCI(path.dirname(file), fixDir)) return;
+  const name = path.basename(file);
+  const now = Date.now();
+  if (now - (copyUsed[name] || 0) < 10 * 60 * 1000) return;
+  copyUsed[name] = now;
+  saveFailures();
+}
+
+function cachedCopies() {
+  let names = [];
+  try { names = fs.readdirSync(fixDir); } catch { return []; }
+  const out = [];
+  for (const name of names) {
+    if (!name.endsWith('.mp4') || isTempFile(name)) continue;
+    try {
+      const st = fs.statSync(path.join(fixDir, name));
+      if (st.isFile()) out.push({ name, size: st.size, used: Math.max(copyUsed[name] || 0, st.mtimeMs) });
+    } catch { /* deleted meanwhile */ }
+  }
+  return out;
+}
+
+// Rough size of a job's output: an H.264 re-encode of HEVC can be about twice the source.
+function outputEstimate(job) {
+  try { return fs.statSync(job.file).size * (job.h264 ? 2 : 1.1); } catch { return 0; }
+}
+
+// Deletes the least recently watched cached copies until `job`'s output fits (job null: until the folder
+// is under its cap; background browser copies only check, see mayEvict). Throws { lowSpace } when it still doesn't fit; the job is tried again on a later scan.
+async function makeRoom(job) {
+  if (!fixDir) return;
+  const output = job && (job.h264 ? h264Path(job.file) : job.fix ? fixPath(job.file) : twinPath(job.file));
+  const outDir = output ? path.dirname(output) : fixDir;
+  if (job?.fix) fs.mkdirSync(outDir, { recursive: true });
+  const busy = new Set(activeJobs().flatMap((j) => [fixPath(j.file), h264Path(j.file)]).filter(Boolean).map((f) => path.basename(f)));
+  // Background browser copies never push others out: the next scan would queue the evicted ones again.
+  const mayEvict = !job || !job.fix || job.force || job.prepare;
+  const copies = mayEvict ? cachedCopies().filter((c) => !busy.has(c.name)) : [];
+  const free = job ? await freeBytes(outDir) : null;
+  const { names, fits } = pickEvictions(copies, {
+    need: job ? outputEstimate(job) : 0,
+    inFolder: Boolean(job?.fix),
+    maxBytes: COPIES_MAX_BYTES,
+    free,
+    minFree: MIN_FREE_BYTES,
+    sameDrive: !job || job.fix || sameDrive(fixDir, outDir),
+    keepSince: Date.now() - RECENT_USE_MS,
+  });
+  for (const name of names) {
+    try {
+      fs.rmSync(path.join(fixDir, name), { force: true });
+      delete copyUsed[name];
+      console.log(`[convert] removed browser copy ${name} to make room`);
+    } catch { /* in use; next time */ }
+  }
+  if (names.length) { videoCache.clear(); audioCache.clear(); saveFailures(); }
+  if (!job || fits) { if (job) status.lowSpace = null; return; }
+  const why = free != null && free - outputEstimate(job) < MIN_FREE_BYTES
+    ? `${outDir} is nearly full (${(free / GB).toFixed(1)} GB free, MIN_FREE_GB=${MIN_FREE_BYTES / GB})`
+    : `browser copies are at their cap (BROWSER_COPIES_MAX_GB=${COPIES_MAX_BYTES / GB})`;
+  if (status.lowSpace !== why) console.warn(`[convert] waiting for disk space: ${why}`);
+  status.lowSpace = why;
+  throw Object.assign(new Error(`Not enough disk space: ${why}.`), { lowSpace: true });
+}
+
 // True if the default audio track isn't browser-compatible or doesn't start with the video,
 // or the video itself won't play in Safari (see videoBrowserSafe). Cached per file version.
 async function audioNeedsFix(file) {
@@ -958,12 +1036,14 @@ async function runJob(lane, job) {
       catch (e) { console.warn(`[convert] couldn’t delete ${path.basename(job.file)}: ${e.message}`); }
       return;
     }
+    await makeRoom(job);
     await convert(job, slot);
     status.done += 1;
     console.log(`[convert] done: ${path.basename(job.file)}${job.h264 ? ' (H.264 browser copy)' : job.fix ? ' (browser copy)' : ''}`);
     onConvertedHook?.();
     if (!job.fix) convertSoon(); // a new MP4 copy may still need its H.264 browser copy (browserH264Job)
   } catch (e) {
+    if (e.lowSpace) return; // logged once by makeRoom; the next scan queues it again
     if (e.retryLater) { console.warn(`[convert] ${path.basename(job.file)}: ${e.message?.includes('earlier') ? e.message : 'copy is in use'}, will retry.`); return; }
     const msg = e.message || String(e);
     console.warn(`[convert] failed: ${path.basename(job.file)}: ${msg}`);
@@ -987,9 +1067,9 @@ export function convertSoon() {
 
 // listCandidates(): Promise<[{ file, deleteOriginal }] | null>
 // null means the inventory is temporarily unavailable; skip the whole scan, including destructive cache cleanup.
-export async function startConverter({ dataDir, listCandidates, onConverted, onSidecar }) {
+export async function startConverter({ dataDir, cacheDir = path.join(dataDir, 'cache'), listCandidates, onConverted, onSidecar }) {
   onSidecarHook = onSidecar || null;
-  const audioRoot = process.env.AUDIO_FIX_DIR ? path.resolve(process.env.AUDIO_FIX_DIR) : path.join(dataDir, 'cache', 'audio');
+  const audioRoot = process.env.AUDIO_FIX_DIR ? path.resolve(process.env.AUDIO_FIX_DIR) : path.join(cacheDir, 'audio');
   audioTrackDir = path.join(audioRoot, 'tracks');
   if ((process.env.CONVERT || 'on').toLowerCase() === 'off') {
     status.reason = 'Turned off (CONVERT=off in .env).';
@@ -1005,7 +1085,7 @@ export async function startConverter({ dataDir, listCandidates, onConverted, onS
     return;
   }
   stateFile = path.join(dataDir, '.marquee-convert.json');
-  fixDir = process.env.AUDIO_FIX_DIR ? path.resolve(process.env.AUDIO_FIX_DIR) : path.join(dataDir, 'cache', 'audio');
+  fixDir = audioRoot;
   try {
     const saved = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
     if (saved.failures) {
@@ -1014,6 +1094,7 @@ export async function startConverter({ dataDir, listCandidates, onConverted, onS
       syncShift = saved.syncShift || {};
       syncApplied = saved.syncApplied || {};
       pendingDeletes = saved.pendingDeletes || [];
+      copyUsed = saved.copyUsed || {};
       // Earlier versions recorded a locked original as a failed conversion although its copy was made.
       for (const [key, f] of Object.entries(failures)) {
         const file = key.split('|')[0];
@@ -1072,6 +1153,7 @@ export async function startConverter({ dataDir, listCandidates, onConverted, onS
         if (await audioNeedsFix(c.file)) queue.push({ file: c.file, fix: true });
       }
       cleanFixDir(keep);
+      await makeRoom(null).catch(() => {}); // a lowered BROWSER_COPIES_MAX_GB takes effect without new copies
       drain(onConverted);
     } catch (e) {
       console.warn(`[convert] scan failed: ${e.message}`);

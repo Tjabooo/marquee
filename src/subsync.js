@@ -47,9 +47,9 @@ export function ensureSync(srt, video) {
   return stateOf(srt);
 }
 
-export function initSubsync({ dataDir, audioShift } = {}) {
+export function initSubsync({ dataDir, cacheDir = path.join(dataDir, 'cache'), audioShift } = {}) {
   registryFile = path.join(dataDir, '.marquee-subsync.json');
-  backupDir = path.join(dataDir, 'cache', 'subsync');
+  backupDir = path.join(cacheDir, 'subsync');
   if (audioShift) manualShift = audioShift;
   try { registry = JSON.parse(fs.readFileSync(registryFile, 'utf8')); } catch { registry = {}; }
   // Jobs interrupted by a restart run again.

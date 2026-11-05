@@ -36,7 +36,7 @@ export function checkConfig(env = process.env, { tools = true } = {}) {
     if (s === 'read-only') add('warn', 'MEDIA_DIR', `MEDIA_DIR (${env.MEDIA_DIR}) is read-only`, 'Playback works; conversion, subtitles, downloads and deleting need write access.');
     else if (s) add('error', 'MEDIA_DIR', `MEDIA_DIR (${env.MEDIA_DIR}) ${s}`, 'Create the folder, mount the drive, or fix its permissions for the account Marquee runs as.');
   }
-  for (const key of ['NOTES_FILES_DIR', 'CLIPS_DIR', 'AUDIO_FIX_DIR']) {
+  for (const key of ['NOTES_FILES_DIR', 'CLIPS_DIR', 'CACHE_DIR', 'AUDIO_FIX_DIR']) {
     if (!env[key]) continue;
     const s = dirState(path.resolve(env[key]));
     if (s && !(key === 'CLIPS_DIR' && s === 'read-only')) add('warn', key, `${key} (${env[key]}) ${s}`, `Create it or clear ${key} to use the default.`);

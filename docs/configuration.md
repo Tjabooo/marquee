@@ -19,6 +19,7 @@ Settings marked 🔒 are secrets: keep `.env` readable only by the account that 
 | `SERVER_IP` | detected | LAN address TVs stream from. Set it if the address printed at startup is wrong (several network cards, VPN). |
 | `PUBLIC_URL` | from the request | Public address used in share links and link previews, e.g. `https://marquee.example.com`. |
 | `DATA_DIR` | the Marquee folder | Where the database, state files, Notes attachments and `cache/` live. Marquee refuses to start if `DATA_DIR` points at an empty folder while the Marquee folder still has a database; move it with `node setup.js migrate-data --to <folder>`. |
+| `CACHE_DIR` | `cache` in `DATA_DIR` | Where copies Marquee can always make again are kept: browser copies, timeline previews, share copies. They can take hundreds of GB, so put this on a big drive rather than a small system disk. To move it, stop Marquee and move the folder's contents. |
 | `STREAM_SECRET` 🔒 | generated | Key that signs stream links. Blank: generated once and stored in `.marquee-secret`. Changing it invalidates links that are already open on TVs. |
 | `MARQUEE_ENV_FILE` | `.env` in the Marquee folder | Environment only (not read from `.env`): load settings from another file. |
 
@@ -113,7 +114,9 @@ that is a hard disk shared with downloads and conversions.
 | `BROWSER_H264_DAYS` | `14` | HEVC files added within this many days get an H.264 copy for browsers without HEVC right away; older ones when first played. `0` = off. |
 | `PREPARE_NEXT_EPISODES` | `2` | Browser copies prepared ahead for the next episodes. `0` = off. |
 | `FFMPEG`, `FFPROBE` | on PATH | Full paths to ffmpeg and ffprobe. |
-| `AUDIO_FIX_DIR` | `cache/audio` in `DATA_DIR` | Where audio-fixed copies are kept. |
+| `AUDIO_FIX_DIR` | `audio` in `CACHE_DIR` | Where browser copies (audio-fixed and H.264) are kept. |
+| `BROWSER_COPIES_MAX_GB` | `150` | Size cap for browser copies. When a new one needs room, the ones watched longest ago are deleted (none watched in the last 3 hours). Copies made in the background never push others out; they wait. `0` = no cap. |
+| `MIN_FREE_GB` | `20` | Free space conversions leave on every drive they write to. Browser copies on that drive are deleted first if that helps; otherwise the conversion waits. `0` = off. |
 
 Video is encoded with NVIDIA NVENC when ffmpeg has a working `h264_nvenc`, otherwise with libx264 on
 the CPU. See [hardware-acceleration.md](hardware-acceleration.md).
@@ -122,7 +125,7 @@ the CPU. See [hardware-acceleration.md](hardware-acceleration.md).
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
-| `TRAVEL_DIR` | `cache/travel` in `DATA_DIR` | Where phone copies (Small 480p and Standard 720p MP4s) are kept. |
+| `TRAVEL_DIR` | `travel` in `CACHE_DIR` | Where phone copies (Small 480p and Standard 720p MP4s) are kept. |
 | `TRAVEL_KEEP_DAYS` | `7` | A phone copy is deleted this many days after anyone last asked for or downloaded it. |
 | `TRAVEL_MAX_GB` | `50` | Size cap for phone copies. When a new one doesn't fit, copies everyone has already downloaded go first, oldest first. |
 

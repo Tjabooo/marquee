@@ -1,5 +1,22 @@
 [
   {
+    "id": "2026-11-05-cache-space",
+    "date": "2026-11-05",
+    "title": "Browser copies can't fill a drive",
+    "items": [
+      {
+        "audience": "owner",
+        "title": "Cache on any drive",
+        "text": "The new CACHE_DIR setting in .env puts browser copies, timeline previews and share copies on a bigger drive than Marquee's own folder."
+      },
+      {
+        "audience": "owner",
+        "title": "A cap and a safety margin",
+        "text": "Browser copies stay under 150 GB (BROWSER_COPIES_MAX_GB); the ones nobody has watched for longest make room first. Conversions also leave 20 GB free on every drive (MIN_FREE_GB) and wait instead of filling it."
+      }
+    ]
+  },
+  {
     "id": "2026-11-05-shared-libraries",
     "date": "2026-11-05",
     "title": "Shared libraries",

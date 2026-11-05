@@ -23,6 +23,7 @@ test('a freshly downloaded HEVC file gets an H.264 browser copy before anyone pl
       '-tag:v', 'hvc1', '-c:a', 'aac', '-y', file]);
   } catch { t.skip('FFmpeg without libx265'); return; }
 
+  process.env.MIN_FREE_GB = '0'; // the test machine's free space isn't what this test is about
   const convert = await import('../src/convert.js?browser-h264-test');
   await convert.startConverter({ dataDir: dir, listCandidates: async () => [{ file, deleteOriginal: false }] });
   // hvc1 HEVC counts as playable for Safari/Chrome, so the old audio/video check never made a copy.

@@ -7,7 +7,9 @@ import { APP_DIR } from './env.js';
 export { APP_DIR };
 export const PUBLIC_DIR = path.join(APP_DIR, 'public');
 export const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : APP_DIR;
-export const CACHE_DIR = path.join(DATA_DIR, 'cache');
+// Copies Marquee can always make again (browser copies, previews, share copies). CACHE_DIR puts them on
+// another drive than the state, e.g. a big media drive instead of a small system SSD.
+export const CACHE_DIR = process.env.CACHE_DIR ? path.resolve(process.env.CACHE_DIR) : path.join(DATA_DIR, 'cache');
 
 // State files and folders that belong to an installation. Used by the data-dir guard, backups,
 // `setup.js migrate-data` and `setup.js doctor`. cache/ is rebuilt automatically and isn't listed.

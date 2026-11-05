@@ -171,10 +171,10 @@ initCredits({ dataDir: DATA_DIR });
 whatsNew.initWhatsNew(path.join(APP_DIR, 'whats-new.json'));
 const WEB_BUILD = whatsNew.buildId(['index.html', 'app.js', 'style.css'].map((f) => path.join(PUBLIC_DIR, f)));
 screenTime.initScreenTime({ dataDir: DATA_DIR });
-clips.initClips({ dataDir: DATA_DIR, getEncoder: () => converter.converterStatus().encoder });
+clips.initClips({ dataDir: DATA_DIR, cacheDir: CACHE_DIR, getEncoder: () => converter.converterStatus().encoder });
 invites.initInvites({ dataDir: DATA_DIR, onEvent: activity.record });
 cast.initCasting({ lanIp: LAN_IP });
-subsync.initSubsync({ dataDir: DATA_DIR, audioShift: (video) => converter.syncState(video).shift });
+subsync.initSubsync({ dataDir: DATA_DIR, cacheDir: CACHE_DIR, audioShift: (video) => converter.syncState(video).shift });
 subtitles.initSubtitles({
   dataDir: DATA_DIR,
   // Downloaded subtitles get their timing checked in the background. Even a file-hash match is checked:
@@ -1370,7 +1370,7 @@ async function convertStatusFor(user, plays) {
   let queued = 0;
   for (const job of jobs.queued.slice(0, CONVERT_QUEUE_CHECK)) if (await waiting(job)) queued += 1;
   return {
-    enabled: all.enabled, reason: all.reason, encoder: all.encoder, done: all.done,
+    enabled: all.enabled, reason: all.reason, encoder: all.encoder, done: all.done, lowSpace: all.lowSpace,
     active, current: active[0] || null, queued,
     recentFailures: jobs.failures.filter((f) => inLibrary(f.file)).map(({ name, error }) => ({ name, error })),
   };
@@ -1471,6 +1471,7 @@ function trackStream(req, file, size, label) {
 async function sendVideo(req, res, file, { captionUrl, headers = {}, label = null } = {}) {
   let stat;
   try { stat = await fs.promises.stat(file); } catch { throw new HttpError(404, 'That file is no longer on the server.'); }
+  converter.noteServed(file); // cached browser copies watched recently are kept when room is needed
   const size = stat.size;
   const type = MIME[path.extname(file).toLowerCase()] || 'application/octet-stream';
   const range = req.headers.range;
@@ -3381,6 +3382,7 @@ setInterval(libraryRound, 60 * 1000);
 
 converter.startConverter({
   dataDir: DATA_DIR,
+  cacheDir: CACHE_DIR,
   onSidecar: (srt) => subsync.markTrusted(srt), // extracted from the video: already in sync
   listCandidates: conversionCandidates,
   onConverted: () => { invalidateLibrary(); },
@@ -3393,6 +3395,7 @@ server.on('error', (err) => {
 server.listen(PORT, HOST, () => {
   console.log(`Marquee is running: http://localhost:${PORT} (version ${VERSION})`);
   console.log(`  Data:      ${DATA_DIR}`);
+  console.log(`  Cache:     ${CACHE_DIR}`);
   console.log(`  Accounts:  ${trust.mode === 'access-jwt' ? 'Cloudflare Access tokens verified' : `identity headers trusted from ${process.env.TRUSTED_PROXIES || '127.0.0.1, ::1'}`}; ${auth.store.count()} Marquee sign-in${auth.store.count() === 1 ? '' : 's'}`);
   console.log(`  Sign-in:   ${auth.mode === 'signin' ? 'required for everyone' : 'home network shares one account; visitors from the internet must sign in'}`);
   console.log(`  Search:    ${TMDB_TOKEN || TMDB_KEY ? 'ready' : 'off (add TMDB_TOKEN to .env)'}`);
