@@ -25,16 +25,34 @@ export function creditsStart(info) {
   return matches.length ? Math.min(...matches) : null;
 }
 
+// The opening titles (Skip intro) are found the same two ways: an opening chapter, or the theme song
+// an episode shares with its season neighbours in the first minutes. Uncertain gives null: no button.
+export const INTRO_MIN = 10; // seconds: shorter openings are a title card, not worth a button
+export const INTRO_MAX = 180;
+const chapterTitle = (chapter) => String(chapter.tags?.title || '').trim().replace(/[_–—-]+/g, ' ').replace(/\s+/g, ' ');
+
+// { start, end } of an opening-titles chapter in the first third, or null.
+export function introChapter(info) {
+  const duration = Number(info?.format?.duration);
+  if (!Number.isFinite(duration) || duration <= 0 || !Array.isArray(info?.chapters)) return null;
+  const found = info.chapters.filter((chapter) =>
+    /^(?:intro|opening(?:\s+(?:credits?|titles?|theme|song|sequence))?|op|title\s+sequence|main\s+titles?|theme\s+song)(?:\s*\(?\d+\)?)?$/i.test(chapterTitle(chapter)))
+    .map((chapter) => ({ start: Number(chapter.start_time), end: Number(chapter.end_time) }))
+    .filter(({ start, end }) => Number.isFinite(start) && Number.isFinite(end) && start >= 0 && start < duration / 3
+      && end - start >= INTRO_MIN && end - start <= INTRO_MAX && end < duration);
+  return found.length ? found.sort((a, b) => a.start - b.start)[0] : null;
+}
+
 function probe(file) {
   return new Promise((resolve) => {
     execFile(FFPROBE, ['-v', 'error', '-show_chapters', '-show_entries',
-      'format=duration:chapter=start_time:chapter_tags=title', '-of', 'json', file],
+      'format=duration:chapter=start_time,end_time:chapter_tags=title', '-of', 'json', file],
     { timeout: 6000, maxBuffer: 512 * 1024, windowsHide: true }, (error, stdout) => {
       if (error) { resolve(null); return; }
       try {
         const info = JSON.parse(stdout);
         const duration = Number(info?.format?.duration);
-        resolve({ duration: Number.isFinite(duration) && duration > 0 ? duration : null, chapter: creditsStart(info) });
+        resolve({ duration: Number.isFinite(duration) && duration > 0 ? duration : null, chapter: creditsStart(info), intro: introChapter(info) });
       } catch { resolve(null); }
     });
   });
@@ -114,14 +132,18 @@ const popcount = (x) => {
   return (((x + (x >>> 4)) & 0x0f0f0f0f) * 0x01010101) >>> 24;
 };
 
-const MIN_MATCH = FRAMES(20); // shorter shared stretches are logos and stings, not credits
-const MIN_SOUND = FRAMES(15); // of which this much must be actual sound, not shared silence
+// Shortest shared stretch that counts, and how much of it must be actual sound rather than shared silence.
+const ENDING = { minMatch: FRAMES(20), minSound: FRAMES(15) }; // shorter ones are logos and stings, not credits
+const OPENING = { minMatch: FRAMES(INTRO_MIN), minSound: FRAMES(8) };
 const SMOOTH = FRAMES(1); // judge one second at a time
 const GAP = FRAMES(2); // a brief dropout doesn't split the credits in two
 const MATCH_BITS = 10; // average differing bits per code below this = same audio (unrelated ≈ 16)
 
 // The longest stretch of the same audio in a and b, as frame indexes { a, b, frames }, or null.
-export function matchEndings(a, b) {
+export function matchEndings(a, b) { return matchAudio(a, b, ENDING); }
+export function matchOpenings(a, b) { return matchAudio(a, b, OPENING); }
+
+function matchAudio(a, b, limits) {
   const index = new Map();
   for (let j = 0; j < b.codes.length; j++) {
     if (b.quiet[j]) continue;
@@ -144,16 +166,16 @@ export function matchEndings(a, b) {
   let best = null;
   for (const centre of offsets) {
     for (const d of [centre - 1, centre, centre + 1]) {
-      const run = longestRun(a, b, d);
+      const run = longestRun(a, b, d, limits);
       if (run && (!best || run.sound > best.sound)) best = run;
     }
   }
   return best && { a: best.start, b: best.start + best.d, frames: best.frames };
 }
 
-function longestRun(a, b, d) {
+function longestRun(a, b, d, { minMatch, minSound }) {
   const from = Math.max(0, -d), to = Math.min(a.codes.length, b.codes.length - d);
-  if (to - from < MIN_MATCH) return null;
+  if (to - from < minMatch) return null;
   const len = to - from;
   // Per frame: differing bits, or -1 when both are silent (no evidence). One-sided silence is a mismatch.
   const bits = new Int8Array(len);
@@ -174,7 +196,7 @@ function longestRun(a, b, d) {
   const close = () => {
     if (start < 0) return;
     const frames = lastMatch - start + 1;
-    if (frames >= MIN_MATCH && sound >= MIN_SOUND && (!best || sound > best.sound)) best = { start: from + start, frames, sound, d };
+    if (frames >= minMatch && sound >= minSound && (!best || sound > best.sound)) best = { start: from + start, frames, sound, d };
     start = -1; sound = 0;
   };
   for (let k = 0; k < len; k++) {
@@ -189,9 +211,10 @@ function longestRun(a, b, d) {
 
 // ---- decoding ----
 const WINDOW = 360; // seconds of each ending to compare
+const INTRO_WINDOW = 480; // seconds from the start where the opening titles are looked for, past long cold opens
 let busy = Promise.resolve(); // one decode at a time: it reads hundreds of MB from the media drive
 
-function decodeEnding(file, start, seconds) {
+function decodeAudio(file, start, seconds) {
   const task = busy.then(() => new Promise((resolve) => {
     const args = ['-v', 'error', '-nostdin', '-ss', start.toFixed(3), '-i', file, '-t', seconds.toFixed(3),
       '-map', '0:a:0', '-vn', '-sn', '-dn', '-ac', '1', '-ar', String(RATE), '-f', 's16le', 'pipe:1'];
@@ -219,7 +242,8 @@ function decodeEnding(file, start, seconds) {
 }
 
 // ---- per-file facts, cached on disk ----
-// files[path] = { key, duration, chapter, vs: { siblingKey: creditsStart | null } }
+// files[path] = { key, duration, chapter, intro, vs: { siblingKey: creditsStart | null },
+//   ivs: { siblingKey: { start, end } | null } }  (v: what the probe recorded; older entries are probed again)
 let stateFile = null;
 let state = { files: {} };
 let saveTimer = null;
@@ -250,17 +274,20 @@ function save() {
   saveTimer.unref?.();
 }
 
+const FACTS = 2; // 2: opening chapters
 const probing = new Map();
 async function facts(file) {
   const stat = await fsp.stat(file).catch(() => null);
   if (!stat?.isFile()) return null;
   const key = `${stat.size}|${Math.round(stat.mtimeMs)}`;
   const hit = state.files[file];
-  if (hit?.key === key && hit.probed) { hit.at = Date.now(); return hit; }
+  if (hit?.key === key && hit.probed && hit.v === FACTS) { hit.at = Date.now(); return hit; }
   if (probing.has(file)) return probing.get(file);
   const task = probe(file).then((info) => {
-    if (!info) return { key, duration: null, chapter: null, vs: {} }; // not cached: retried next time
-    const entry = { key, duration: info.duration, chapter: info.chapter, vs: {}, probed: true, at: Date.now() };
+    if (!info) return { key, duration: null, chapter: null, intro: null, vs: {}, ivs: {} }; // not cached: retried next time
+    const same = hit?.key === key; // only the probe got older: keep the comparisons already made
+    const entry = { key, duration: info.duration, chapter: info.chapter, intro: info.intro, vs: same && hit.vs || {},
+      ivs: same && hit.ivs || {}, probed: true, v: FACTS, at: Date.now() };
     state.files[file] = entry;
     save();
     return entry;
@@ -271,11 +298,12 @@ async function facts(file) {
 
 // Fingerprints of recently compared endings, so neighbouring episodes reuse each other's.
 const prints = new Map();
-async function endingPrint(file, entry) {
-  const id = `${file}|${entry.key}`;
+async function audioPrint(file, entry, part) {
+  const id = `${file}|${entry.key}|${part}`;
   if (prints.has(id)) { const p = prints.get(id); prints.delete(id); prints.set(id, p); return p; }
-  const start = Math.max(entry.duration / 2, entry.duration - WINDOW);
-  const task = decodeEnding(file, start, entry.duration - start)
+  const start = part === 'ending' ? Math.max(entry.duration / 2, entry.duration - WINDOW) : 0;
+  const end = part === 'ending' ? entry.duration : Math.min(INTRO_WINDOW, entry.duration / 3);
+  const task = decodeAudio(file, start, end - start)
     .then(async (samples) => (samples ? { start, ...(await fingerprint(samples)) } : null));
   prints.set(id, task);
   while (prints.size > 6) prints.delete(prints.keys().next().value);
@@ -286,11 +314,11 @@ async function endingPrint(file, entry) {
 
 const comparing = new Map();
 async function compare(fileA, a, fileB, b) {
-  const pair = [fileA, fileB].sort().join('\n');
+  const pair = [fileA, fileB].sort().join('\n') + '\nending';
   if (comparing.has(pair)) return comparing.get(pair);
   const task = (async () => {
-    const pa = await endingPrint(fileA, a);
-    const pb = pa && await endingPrint(fileB, b);
+    const pa = await audioPrint(fileA, a, 'ending');
+    const pb = pa && await audioPrint(fileB, b, 'ending');
     if (!pa || !pb) return false; // couldn't decode: try again another time
     const m = matchEndings(pa, pb);
     // Rounded up: the countdown may start a moment late, never early.
@@ -323,4 +351,54 @@ export async function creditsFor(file, siblings = []) {
   }
   // Two siblings that disagree: the later start is the safe one.
   return found.length ? Math.max(...found) : null;
+}
+
+// The theme song both episodes open with, in each one's own time. Rounded inwards: the button may
+// appear a moment late and skip a moment short, never past the start of the episode itself.
+async function compareOpenings(fileA, a, fileB, b) {
+  const pair = [fileA, fileB].sort().join('\n') + '\nopening';
+  if (comparing.has(pair)) return comparing.get(pair);
+  const task = (async () => {
+    const pa = await audioPrint(fileA, a, 'opening');
+    const pb = pa && await audioPrint(fileB, b, 'opening');
+    if (!pa || !pb) return false;
+    const m = matchOpenings(pa, pb);
+    const span = (frame, entry) => {
+      if (!m) return null;
+      const start = Math.ceil(SECONDS(frame) * 10) / 10, end = Math.floor((SECONDS(frame + m.frames) - 0.5) * 10) / 10;
+      return end - start >= INTRO_MIN && end - start <= INTRO_MAX && end < entry.duration / 2 ? { start, end } : null;
+    };
+    a.ivs[b.key + '|' + fileB] = span(m?.a, a);
+    b.ivs[a.key + '|' + fileA] = span(m?.b, b);
+    save();
+    return true;
+  })().finally(() => comparing.delete(pair));
+  comparing.set(pair, task);
+  return task;
+}
+
+// Where two siblings put the opening differently, only the part they agree on is skipped;
+// if they don't overlap at all one of them matched something else, so nothing is offered.
+export function agreeIntro(found) {
+  if (!found.length) return null;
+  const start = Math.max(...found.map((f) => f.start)), end = Math.min(...found.map((f) => f.end));
+  return end - start >= INTRO_MIN ? { start, end } : null;
+}
+
+// { start, end } in seconds of the episode's opening titles, or null. Same siblings as creditsFor.
+export async function introFor(file, siblings = []) {
+  const entry = await facts(file);
+  if (!entry) return null;
+  if (entry.intro) return entry.intro;
+  if (!entry.duration || entry.duration < 300) return null;
+  const found = [];
+  for (const other of siblings.slice(0, 2)) {
+    if (path.resolve(other) === path.resolve(file)) continue;
+    const peer = await facts(other);
+    if (!peer?.duration || peer.duration < 300) continue;
+    const id = peer.key + '|' + other;
+    if (!(id in entry.ivs)) await compareOpenings(file, entry, other, peer);
+    if (entry.ivs[id]) found.push(entry.ivs[id]);
+  }
+  return agreeIntro(found);
 }

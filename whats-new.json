@@ -1,5 +1,20 @@
 [
   {
+    "id": "2026-11-05-skip-intro",
+    "date": "2026-11-05",
+    "title": "Skip intro",
+    "items": [
+      {
+        "title": "Skip the opening titles",
+        "text": "A Skip intro button now appears while a show's opening titles play (or press S). Marquee finds the theme song by comparing an episode with its neighbours, so it works even after a long cold open."
+      },
+      {
+        "title": "Or skip them automatically",
+        "text": "Settings → Watching → Intros can skip openings on their own. Rewind into one and it plays as normal."
+      }
+    ]
+  },
+  {
     "id": "2026-11-05-bedtime",
     "date": "2026-11-05",
     "title": "Bedtime and better subtitles",

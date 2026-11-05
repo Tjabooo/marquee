@@ -4052,10 +4052,11 @@ function layoutSubs() {
   if (playerEl.hidden) return;
   const box = stage.getBoundingClientRect();
   const seekTop = seekRow.getBoundingClientRect().top;
-  if (!upNextEl.hidden) {
+  if (!upNextEl.hidden || !skipIntroEl.hidden) {
     playerEl.style.setProperty('--up-next-bottom', `${Math.max(16, playerEl.getBoundingClientRect().bottom - seekTop + 12)}px`);
   }
-  const subtitleBottom = upNextEl.hidden ? seekTop - 10 : Math.min(seekTop - 10, upNextEl.getBoundingClientRect().top - 10);
+  const overlay = !upNextEl.hidden ? upNextEl : !skipIntroEl.hidden ? skipIntroEl : null;
+  const subtitleBottom = overlay ? Math.min(seekTop - 10, overlay.getBoundingClientRect().top - 10) : seekTop - 10;
   const vr = video.getBoundingClientRect();
   let { left, top, width, height } = vr;
   if (video.videoWidth && video.videoHeight) {
@@ -4150,6 +4151,7 @@ const SHORTCUTS = [
   ['F', 'Fullscreen'],
   ['C', 'Subtitles on or off'],
   ['N', 'Night mode'],
+  ['S', 'Skip intro (while it shows)'],
   ['P', 'Picture in picture'],
   ['I or right-click', 'Stats for nerds'],
   ['0 – 9', 'Jump to 0% – 90%'],
@@ -4203,7 +4205,7 @@ const PLAYER_KEYS = {
   ArrowLeft: () => skip(-5), ArrowRight: () => skip(5), j: () => skip(-10), l: () => skip(10),
   ArrowUp: () => nudgeVolume(0.05), ArrowDown: () => nudgeVolume(-0.05),
   m: toggleMute, f: toggleFullscreen, c: toggleSubs, p: togglePip, '?': toggleHelp, i: () => streamStats.toggle(),
-  n: () => setNight(!night.on, true),
+  n: () => setNight(!night.on, true), s: () => { if (!skipIntroEl.hidden) skipIntro(); },
   Home: () => seekToFraction(0), End: () => seekToFraction(0.999),
 };
 // Keys typed into a menu or a text field are left alone.
@@ -4274,7 +4276,7 @@ async function preparePlayerSource(f, watchSession, signal) {
 
 async function loadPlayerMedia(f, opts = {}) {
   resetPlayerMedia();
-  const session = current = { ...f, ready: false, abort: new AbortController(), creditsAt: null,
+  const session = current = { ...f, ready: false, abort: new AbortController(), creditsAt: null, intro: null, introDone: false,
     upNextDismissed: false, upNextBusy: false, upNextError: '', upNextAnnounced: null, autoLeft: null, autoTimer: null };
   const err = $('#player-error');
   $('#player-title').textContent = [f.title, episodeLabel(f)].filter(Boolean).join(' ');
@@ -4304,8 +4306,9 @@ async function loadPlayerMedia(f, opts = {}) {
   }
   const watchSession = opts.watchRoom ? attachWatchRoom(opts.watchRoom) : null;
   renderParty();
-  // Chapter lookup is optional and never delays playback.
-  loadPlayerCredits(session);
+  // Intro and credits lookups are optional and never delay playback. The intro is needed first, and
+  // both share the server's one-at-a-time audio decoding, so the credits are asked for after it.
+  loadPlayerIntro(session).finally(() => loadPlayerCredits(session));
   // Asking for the timeline previews early lets the server make them while the video plays.
   const previewBase = `/api/media/${session.kind}/${encodeURIComponent(mediaId(session))}/preview`;
   seekPreview.load({ indexUrl: previewBase, sheetUrl: (n, key) => `${previewBase}/${n}.jpg?k=${key}` });
@@ -4380,6 +4383,51 @@ const upNextError = $('#up-next-error');
 const upNextStatus = $('#up-next-status');
 let upNextLayoutSignature = '';
 let autoChain = 0; // episodes started by the countdown since the last key press, click or tap
+
+// ---- skip intro ----
+// The opening titles come from the server (credits.js): a chapter, or the theme song shared with the
+// season's other episodes. The button shows while they play; Settings → Intros can skip them on its own,
+// once per playback, so seeking back to watch the intro is left alone. In Watch Together only the
+// host can seek, so only the host gets the button, and nothing skips on its own.
+const skipIntroEl = $('#skip-intro');
+async function loadPlayerIntro(session) {
+  try {
+    const data = await api(`/api/media/${session.kind}/${encodeURIComponent(mediaId(session))}/intro`, { signal: session.abort.signal });
+    if (current !== session) return;
+    const start = Number(data.intro?.start), end = Number(data.intro?.end);
+    session.intro = Number.isFinite(start) && Number.isFinite(end) && end - start >= 5 ? { start, end } : null;
+    updateSkipIntro();
+  } catch { /* No known intro: no button. */ }
+}
+function introShowing(session = current) {
+  const intro = session?.intro;
+  if (!intro || !session.ready || (party && !party.isHost) || seeking != null || video.ended) return false;
+  const t = video.currentTime;
+  return t >= intro.start - 0.25 && t < intro.end - 1;
+}
+function updateSkipIntro() {
+  const session = current;
+  const show = introShowing(session);
+  if (show && prefs().skipIntro === 'auto' && !party && !session.introDone && !video.paused && !video.seeking) {
+    skipIntro(true);
+    return;
+  }
+  if (skipIntroEl.hidden === !show) return;
+  skipIntroEl.hidden = !show;
+  playerEl.classList.toggle('has-skip-intro', show);
+  layoutSubs();
+}
+function skipIntro(auto = false) {
+  const session = current;
+  if (!introShowing(session)) return;
+  session.introDone = true;
+  if (party) party.control('seek', session.intro.end);
+  else { video.currentTime = session.intro.end; updateTime(); }
+  osd(auto ? 'Intro skipped' : 'Skipped the intro');
+  updateSkipIntro();
+}
+skipIntroEl.addEventListener('click', (e) => { e.stopPropagation(); skipIntro(); });
+for (const event of ['timeupdate', 'seeking', 'seeked', 'play', 'ended', 'emptied']) video.addEventListener(event, updateSkipIntro);
 
 async function loadPlayerCredits(session) {
   try {
@@ -4758,6 +4806,8 @@ function renderSettings() {
   out.push(h('h3', { class: 'set-head' }, 'Watching'));
   out.push(settingsRow('Subtitles', 'Turned on automatically when a video has them in this language.',
     select([['', 'Off'], ...(state.status.subLangs || []).map((l) => [l.code, l.name])], p.subLang || '', (v) => saveMe({ subLang: v }), 'Default subtitles')));
+  out.push(settingsRow('Intros', p.skipIntro === 'auto' ? 'Opening titles are skipped as they start (not in Watch Together).' : 'A Skip intro button shows during opening titles.',
+    segmented([['button', 'Show a button'], ['auto', 'Skip automatically']], p.skipIntro || 'button', (v) => saveMe({ skipIntro: v }).then(renderSettings), 'Intros')));
   out.push(settingsRow('Open Marquee on', null,
     segmented([['discover', 'Discover'], ['library', 'Library']], p.startView === 'downloads' ? 'library' : p.startView || 'discover', (v) => saveMe({ startView: v }).then(renderSettings), 'Open Marquee on')));
   out.push(settingsRow('Library order', null,

@@ -35,7 +35,7 @@ import { NotesOcr } from './notes-ocr.js';
 import * as noteShare from './note-share.js';
 import { WatchRooms } from './watch.js';
 import { handleWatchPage } from './watch-page.js';
-import { creditsFor, initCredits } from './credits.js';
+import { creditsFor, introFor, initCredits } from './credits.js';
 import * as whatsNew from './whats-new.js';
 import { Previews } from './previews.js';
 import { isHomeRequest, describeRequest } from './network.js';
@@ -2009,6 +2009,16 @@ async function handleApi(req, res, url) {
     const creditsAt = await creditsFor(file, peers.siblings);
     if (peers.next) creditPeers(peers.next).then((n) => creditsFor(peers.next, n.siblings)).catch(() => {});
     return sendJson(res, 200, { creditsAt });
+  }
+  // The opening titles to offer Skip intro for: an opening chapter, or the theme song this episode
+  // shares with its season neighbours (credits.js). The next episode's is found meanwhile.
+  if ((m = p.match(/^\/api\/media\/(lib|dl)\/([A-Za-z0-9_-]+)\/intro$/))) {
+    const listed = await sourceFile(m[1], m[2]);
+    const file = converter.originalFor(listed) || listed;
+    const peers = m[1] === 'lib' ? await creditPeers(file) : { siblings: [] };
+    const intro = await introFor(file, peers.siblings);
+    if (peers.next) creditPeers(peers.next).then((n) => introFor(peers.next, n.siblings)).catch(() => {});
+    return sendJson(res, 200, { intro });
   }
 
   // Timeline previews of the copy the browser plays (its timeline is the one the seek bar shows).

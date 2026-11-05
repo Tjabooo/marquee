@@ -39,13 +39,14 @@ const RETENTION_CHOICES = [0, 1, 3, 7, 14, 30];
 const EXTEND_CHOICES = [1, 3, 7, 14, 30];
 
 // Per-person preferences (Settings tab).
-const USER_DEFAULTS = { theme: null, subLang: '', quality: 'all', downloadProfile: '', maxSize: 0, audioLang: '', startView: 'discover', librarySort: 'newest', seenUpdate: '' };
+const USER_DEFAULTS = { theme: null, subLang: '', quality: 'all', downloadProfile: '', maxSize: 0, audioLang: '', startView: 'discover', librarySort: 'newest', seenUpdate: '', skipIntro: 'button' };
 // Settings → Downloads. quality is the resolution chosen before profiles existed: it maps to a profile until one is chosen.
 const DOWNLOAD_PROFILES = ['save', 'balanced', 'best'];
 const MAX_SIZES = [0, 1, 2, 4, 8, 15, 30, 60]; // GB per film or episode; 0 = no limit
 const QUALITIES = ['all', '2160p', '1440p', '1080p', '720p'];
 const START_VIEWS = ['discover', 'library', 'downloads'];
 const LIBRARY_SORTS = ['newest', 'expiring', 'title'];
+const SKIP_INTRO = ['button', 'auto']; // Skip intro: offer a button, or skip on its own
 const HEX = /^#[0-9a-f]{6}$/i;
 const THEME_KEYS = ['bg', 'surface', 'text', 'accent'];
 
@@ -249,6 +250,7 @@ export function updateMe(user, patch) {
   if ('audioLang' in patch) s.audioLang = /^[a-z]{2,3}$/.test(String(patch.audioLang)) ? String(patch.audioLang) : '';
   if ('startView' in patch && START_VIEWS.includes(patch.startView)) s.startView = patch.startView;
   if ('librarySort' in patch && LIBRARY_SORTS.includes(patch.librarySort)) s.librarySort = patch.librarySort;
+  if ('skipIntro' in patch && SKIP_INTRO.includes(patch.skipIntro)) s.skipIntro = patch.skipIntro;
   // the newest What's new update this person has seen (whats-new.js)
   if ('seenUpdate' in patch && /^[A-Za-z0-9._-]{1,40}$/.test(String(patch.seenUpdate))) s.seenUpdate = String(patch.seenUpdate);
   const stored = Object.fromEntries(Object.entries(s).filter(([k, v]) => v !== USER_DEFAULTS[k]));

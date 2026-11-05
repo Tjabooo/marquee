@@ -162,7 +162,9 @@ The web client uses a JSON API that can also be scripted. `<kind>` is `lib` for 
 | `GET`, `POST` | `/api/library/identify` | Owner only: search film candidates (`?id=&q=`) or assign a TMDB identity to one file (`{ id, tmdbId }`) |
 | `GET` | `/api/library/delete-info?id=` | What deleting an item would remove, and how many others have it |
 | `POST` | `/api/library/delete` | Remove from your library; deletes the file or torrent when nobody else has it (`{ id, scope: "file" \| "torrent", everyone? }`) |
-| `GET`, `POST` | `/api/me` | You and your settings (`{ name?, theme?, subLang?, quality?, startView?, librarySort?, seenUpdate? }`) |
+| `GET`, `POST` | `/api/me` | You and your settings (`{ name?, theme?, subLang?, quality?, startView?, librarySort?, seenUpdate?, skipIntro? }`); `skipIntro`: `button` or `auto` |
+| `GET` | `/api/media/<lib\|dl>/<id>/credits` | When the closing credits start (`{ creditsAt }`, seconds or `null`) |
+| `GET` | `/api/media/<lib\|dl>/<id>/intro` | The opening titles to skip (`{ intro: { start, end } }` in seconds, or `intro: null`) |
 | `GET` | `/api/whats-new` | Every update's notes (`updates`, newest first) and the newest one you've seen (`seen`); `/api/status` carries `whatsNew: { latest, unseen, build }` |
 | `GET`, `POST` | `/api/me/progress` | Where you stopped watching (`{ ref, time, duration }`; `time: null` = finished) |
 | `GET`, `POST` | `/api/admin/settings` | Auto-delete rules and defaults (`ADMIN_EMAILS` only) |

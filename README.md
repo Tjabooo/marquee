@@ -21,6 +21,8 @@ Docker, and installs as a web app on your phone's home screen.
   H.264 copies of HEVC for Firefox, timeline previews, Up next with credits detection.
 - **Subtitles** from OpenSubtitles, with their timing checked and fixed against the audio. Two
   languages at once, with size, style and height choices.
+- **Skip intro**: a button during opening titles, found from chapters or the theme song episodes share;
+  optionally skipped automatically.
 - **Bedtime**: night mode evens out loud scenes and lifts voices; a sleep timer pauses after a set
   time or at the end of the episode.
 - **Casting** to DLNA smart TVs and Apple TV, with a full-screen remote.

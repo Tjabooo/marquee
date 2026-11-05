@@ -269,3 +269,24 @@ test('late optional credits responses cannot attach a marker after that playback
   assert.equal(h.context.current, null);
   assert.equal(old.creditsAt, 800);
 });
+
+test('Skip intro shows during the opening, jumps past it, stays away from guests and auto-skips once', () => {
+  const h = playbackHarness();
+  Object.assign(h.context, { prefs: () => ({}), osd: message => h.logs.push({ osd: message }) });
+  const button = h.$('#skip-intro');
+  h.context.current.intro = { start: 60, end: 110 };
+  h.video.currentTime = 30; h.run('updateSkipIntro()'); assert.equal(button.hidden, true, 'not before the intro');
+  h.video.currentTime = 61; h.run('updateSkipIntro()'); assert.equal(button.hidden, false);
+  h.run('skipIntro()'); assert.equal(h.video.currentTime, 110); assert.equal(button.hidden, true);
+  h.video.currentTime = 61; h.context.party = { isHost: false, control() {} }; h.run('updateSkipIntro()');
+  assert.equal(button.hidden, true, 'a Watch Together guest cannot seek');
+  const seeks = []; h.context.party = { isHost: true, control: (kind, at) => seeks.push([kind, at]) };
+  h.context.current.introDone = false; h.context.prefs = () => ({ skipIntro: 'auto' }); h.run('updateSkipIntro()');
+  assert.equal(button.hidden, false, 'the host gets the button, but nothing skips on its own in a room');
+  h.run('skipIntro()'); assert.deepEqual(seeks, [['seek', 110]]);
+  h.context.party = null; h.context.current.introDone = false; h.video.currentTime = 61; h.run('updateSkipIntro()');
+  assert.equal(h.video.currentTime, 110, 'auto mode skips');
+  h.video.currentTime = 70; h.run('updateSkipIntro()');
+  assert.equal(h.video.currentTime, 70, 'seeking back to watch the intro is left alone');
+  assert.equal(button.hidden, false);
+});

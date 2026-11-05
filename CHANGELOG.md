@@ -6,6 +6,10 @@ All notable changes to Marquee. Versions follow [Semantic Versioning](https://se
 
 ### Added
 
+- **Skip intro**: a button (or **S**) during an episode's opening titles, found from an
+  Intro/Opening chapter or the theme song shared with neighbouring episodes of the season (audio
+  fingerprint of the first eight minutes, cached with the credits). Settings → Watching → **Intros**
+  can skip them automatically. `GET /api/media/<lib|dl>/<id>/intro`.
 - **Bedtime menu** in the player (moon button). **Night mode** (also **N**) evens out loud and
   quiet scenes and lifts voices through Web Audio; the **sleep timer** pauses after 15–90 minutes
   with a short fade, or at the end of the episode without starting the next one.

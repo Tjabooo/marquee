@@ -412,6 +412,20 @@ main {
   border: 1px solid rgba(246, 234, 223, 0.2); border-radius: 14px;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
 }
+/* Skip intro sits where Up next does and, like it, stays while the other controls fade. */
+.skip-intro {
+  position: absolute; z-index: 3; right: var(--pad-x); bottom: var(--up-next-bottom, 120px);
+  display: inline-flex; align-items: center; gap: 10px; min-height: 44px; padding: 10px 16px 10px 18px;
+  color: #f6eadf; background: rgba(28, 25, 27, 0.86); border: 1px solid rgba(246, 234, 223, 0.32); border-radius: 9px;
+  font-size: 15px; font-weight: 700; letter-spacing: .01em; box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(6px); cursor: pointer; transition: background .15s, color .15s, border-color .15s;
+  animation: skip-intro-in .25s ease-out;
+}
+.skip-intro[hidden] { display: none; }
+.skip-intro svg { width: 16px; height: 16px; fill: currentColor; }
+.skip-intro:hover, .skip-intro:focus-visible { color: var(--on-bulb); background: var(--bulb); border-color: transparent; }
+@keyframes skip-intro-in { from { opacity: 0; transform: translateY(6px); } }
+@media (prefers-reduced-motion: reduce) { .skip-intro { animation: none; transition: none; } }
 .up-next-label { margin: 0 0 5px; color: #c1b6ae; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
 .up-next h2 { margin: 0; font: 700 16px/1.35 var(--display); overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .up-next-actions { display: flex; gap: 8px; margin-top: 14px; }

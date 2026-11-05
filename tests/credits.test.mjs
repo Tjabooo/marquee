@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { execFile } from 'node:child_process';
-import { creditsStart, creditsFor, initCredits, fingerprint, matchEndings, RATE, HOP } from '../src/credits.js';
+import { creditsStart, creditsFor, introFor, introChapter, agreeIntro, initCredits, fingerprint, matchEndings, matchOpenings, RATE, HOP } from '../src/credits.js';
 
 const info = (title, start = '1900') => ({ format: { duration: '2100' }, chapters: [{ start_time: start, tags: { title } }] });
 
@@ -103,4 +103,63 @@ test('creditsFor compares real encoded episodes, prefers chapters and caches on 
   assert.ok(Object.values(saved.files[e1].vs).includes(at));
   initCredits({ dataDir: dir });
   assert.equal(await creditsFor(e1, [e2]), at, 'the comparison survives a restart');
+});
+
+test('opening chapters give the intro; other labels and odd lengths do not', () => {
+  const at = (title, start, end) => introChapter({ format: { duration: '2400' }, chapters: [
+    { start_time: '0', end_time: String(start), tags: { title: 'Prologue' } },
+    { start_time: String(start), end_time: String(end), tags: { title } }] });
+  for (const name of ['Intro', 'Opening', 'OP', 'Opening Credits', 'Opening titles', 'Title sequence', 'Main titles', 'Theme song', 'OP 2']) {
+    assert.deepEqual(at(name, 95, 185), { start: 95, end: 185 }, name);
+  }
+  for (const name of ['Credits', 'Ending', 'Episode', 'Introduction to chemistry', '']) assert.equal(at(name, 95, 185), null, name);
+  assert.equal(at('Intro', 95, 100), null, 'a 5 s card is not an intro');
+  assert.equal(at('Intro', 95, 400), null, 'five minutes is not an intro');
+  assert.equal(at('Intro', 1200, 1290), null, 'not in the first third');
+});
+
+test('siblings that disagree about the intro only skip what they agree on', () => {
+  assert.equal(agreeIntro([]), null);
+  assert.deepEqual(agreeIntro([{ start: 30, end: 90 }]), { start: 30, end: 90 });
+  assert.deepEqual(agreeIntro([{ start: 30, end: 90 }, { start: 31, end: 88 }]), { start: 31, end: 88 });
+  assert.equal(agreeIntro([{ start: 30, end: 90 }, { start: 200, end: 260 }]), null);
+});
+
+test('the shared theme song is found after a cold open of any length', async () => {
+  const one = synth(7), two = synth(99), three = synth(5);
+  const a = await fingerprint(one.pcm(one.scene(37.5), one.music(55), one.scene(200)));
+  const b = await fingerprint(two.pcm(two.scene(4.2), two.music(55), two.scene(230)));
+  const m = matchOpenings(a, b);
+  const s = (f) => (f * HOP) / RATE;
+  assert.ok(Math.abs(s(m.a) - 37.5) < 0.6 && Math.abs(s(m.b) - 4.2) < 0.6, `starts ${s(m.a)} ${s(m.b)}`);
+  assert.ok(Math.abs(s(m.frames) - 55) < 1.2, `length ${s(m.frames)}`);
+  assert.equal(matchOpenings(a, await fingerprint(three.pcm(three.scene(300)))), null);
+});
+
+test('introFor compares real encoded openings and caches them', async (t) => {
+  const run = promisify(execFile);
+  try { await run(process.env.FFMPEG || 'ffmpeg', ['-version']); } catch { t.skip('FFmpeg unavailable'); return; }
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-intro-'));
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  initCredits({ dataDir: dir });
+  const encode = async (name, samples) => {
+    const raw = path.join(dir, `${name}.raw`), out = path.join(dir, `${name}.m4a`);
+    await fs.writeFile(raw, Buffer.from(samples.buffer));
+    await run(process.env.FFMPEG || 'ffmpeg', ['-v', 'error', '-f', 's16le', '-ar', String(RATE), '-ac', '1', '-i', raw,
+      '-ar', name === 'e1' ? '48000' : '44100', '-c:a', 'aac', '-b:a', name === 'e1' ? '128k' : '96k', '-y', out]);
+    return out;
+  };
+  const one = synth(7), two = synth(99), three = synth(5);
+  const e1 = await encode('e1', one.pcm(one.scene(62), one.music(48), one.scene(240)));
+  const e2 = await encode('e2', two.pcm(two.music(48), two.scene(300)));
+  const e3 = await encode('e3', three.pcm(three.scene(330)));
+  const i1 = await introFor(e1, [e2]);
+  assert.ok(i1 && i1.start >= 62 && i1.start < 63 && i1.end <= 110 && i1.end > 108.5, `E1 intro ${JSON.stringify(i1)}`);
+  const i2 = await introFor(e2, [e1]);
+  assert.ok(i2 && i2.start < 1 && i2.end <= 48 && i2.end > 46.5, `E2 intro ${JSON.stringify(i2)}`);
+  assert.equal(await introFor(e3, [e1]), null);
+  assert.deepEqual(await introFor(e1, [e3, e2]), i1, 'one sibling without the theme does not hide the other');
+  await new Promise((r) => setTimeout(r, 1300));
+  initCredits({ dataDir: dir });
+  assert.deepEqual(await introFor(e1, [e2]), i1, 'the comparison survives a restart');
 });
