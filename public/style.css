@@ -765,6 +765,7 @@ body.in-player .toast { top: calc(var(--safe-top) + 72px); bottom: auto !importa
 
 .convert-banner { margin-bottom: 12px; border: 1px solid var(--line); }
 .convert-banner .row-title { white-space: normal; overflow-wrap: anywhere; }
+.convert-banner .convert-job + .convert-job { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
 .convert-failures { margin-top: 8px; font-size: 13px; color: var(--dust); }
 .convert-failures summary { cursor: pointer; }
 .convert-failures ul { margin: 6px 0 0; padding-left: 18px; }

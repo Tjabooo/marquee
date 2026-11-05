@@ -28,7 +28,7 @@ const status = {
   enabled: false,
   reason: 'Starting…',
   encoder: null,       // 'nvenc' | 'x264'
-  current: null,       // { name, mode, percent, speed, eta }
+  active: [],          // [{ lane, name, mode, purpose, percent, speed, eta }], one per running lane
   queued: 0,
   recentFailures: [],  // [{ name, error }]
   done: 0,
@@ -48,10 +48,19 @@ let audioTrackDir = null;
 let audioTrackBusy = false;
 const audioTrackJobs = new Map();
 let nvencBroken = false;
-let running = false;
-let currentFile = null;
-let retiringFile = null; // original whose subtitles are being saved before it's deleted (see retireOriginal)
+// Jobs run in two lanes side by side. 'copy' takes stream copies (Apple MP4s, audio fixes, saving an
+// original's subtitles): disk-bound, a few minutes. 'encode' takes video re-encodes (H.264 browser
+// copies, codecs Apple can't play): bound by the GPU's encoder (or the CPU without NVENC). They use
+// different hardware, so a 20-minute H.264 copy no longer holds up the next film's MP4, and a
+// downloaded HEVC MP4 gets its audio fix and its H.264 copy at the same time.
+const LANES = ['copy', 'encode'];
+const active = new Map(); // lane -> { job, slot }
 const queue = [];
+const activeJobs = () => [...active.values()].map((a) => a.job);
+const kindOf = (job) => (job.retire ? 'retire' : job.h264 ? 'h264' : job.fix ? 'fix' : 'mp4');
+// A job of this kind for this file is running or waiting.
+const hasJob = (file, kind) => [...activeJobs(), ...queue].some((j) => j.file === file && kindOf(j) === kind);
+const isActive = (file) => activeJobs().some((j) => j.file === file);
 
 export const isTempFile = (name) => name.includes(TMP_TAG);
 
@@ -125,21 +134,29 @@ export function fixPath(file) {
     return path.join(fixDir, `${id}.mp4`);
   } catch { return null; }
 }
+// Cache path for a file's H.264 browser copy (for browsers without HEVC), beside its audio-fixed copy.
+export function h264Path(file) {
+  const fixed = fixPath(file);
+  return fixed && fixed.replace(/\.mp4$/, '-h264.mp4');
+}
 const canFix = (file) => FIX_EXT.has(path.extname(file).toLowerCase()) && !isTempFile(file);
 
 // Returns the best file to stream: the MP4 copy if one exists, and for browsers the audio-fixed copy.
 // TVs receive the original so surround audio is preserved.
-export function preferConverted(file, { browser = false } = {}) {
+// hevc: the browser plays HEVC itself, so it gets the HEVC file (full quality), never the H.264 copy.
+export function preferConverted(file, { browser = false, hevc = false } = {}) {
+  const h264 = (f) => {
+    const copy = browser && !hevc && h264Path(f);
+    return copy && fs.existsSync(copy) ? copy : null;
+  };
   if (needsConversion(file)) {
     const twin = twinPath(file);
     if (!fs.existsSync(twin)) return file;
-    if (browser) { // an H.264 browser copy of the MP4 copy, made for browsers without HEVC
-      const fixed = fixPath(twin);
-      if (fixed && fs.existsSync(fixed)) return fixed;
-    }
-    return twin;
+    return h264(twin) || twin; // the MP4 copy already has browser audio
   }
   if (canFix(file) && (browser || syncShift[failureKey(file)])) { // TVs too when a manual correction exists
+    const copy = h264(file);
+    if (copy) return copy;
     const fixed = fixPath(file);
     if (fixed && fs.existsSync(fixed)) return fixed;
   }
@@ -151,8 +168,10 @@ export function forget(file) {
   const i = queue.findIndex((q) => q.file === file);
   if (i >= 0) queue.splice(i, 1);
   const fixed = fixPath(file);
+  const h264 = h264Path(file);
   if (audioTrackDir) {
-    const sources = new Set([audioSourceKey(file), audioSourceKey(preferConverted(file, { browser: true }))]);
+    const sources = new Set([audioSourceKey(file), audioSourceKey(preferConverted(file, { browser: true })),
+      audioSourceKey(preferConverted(file, { browser: true, hevc: true }))]);
     try {
       for (const name of fs.readdirSync(audioTrackDir)) if ([...sources].some((key) => name.startsWith(`${key}-`))) {
         try { fs.rmSync(path.join(audioTrackDir, name), { force: true }); } catch { /* in use; stale cleanup retries */ }
@@ -160,8 +179,10 @@ export function forget(file) {
     } catch { /* no selections cached */ }
   }
   if (fixed) fs.rmSync(fixed, { force: true });
+  if (h264) fs.rmSync(h264, { force: true });
 }
-export const isBusy = (file) => file === currentFile;
+// A conversion is reading or writing this file (or its MP4 copy).
+export const isBusy = (file) => isActive(file) || (needsConversion(file) && isActive(twinPath(file)));
 
 // Audio tracks of a file, default track first. Returns null when ffprobe is unavailable.
 export const isAligned = (tracks) => !tracks?.length || Math.abs(tracks[0].offset || 0) <= SYNC_TOLERANCE;
@@ -350,7 +371,8 @@ export function describeProbe(info) {
 }
 // hevc: whether the browser asking can decode HEVC at all (Firefox usually can't).
 export const videoBrowserSafe = (v, { hevc = true } = {}) => !v || (v.codec === 'h264' && !v.tenBit) || (hevc && v.codec === 'hevc' && v.tag === 'hvc1');
-export const convertingFile = () => currentFile;
+// The original whose MP4 copy is being made right now (library items can't play until it's done).
+export const convertingFile = () => activeJobs().find((j) => kindOf(j) === 'mp4')?.file || null;
 export const VIDEO_NAMES = { hevc: 'HEVC (H.265)', h264: 'H.264', av1: 'AV1', vp9: 'VP9', mpeg4: 'MPEG-4' };
 
 // The job that rebuilds a file's browser copy: a redo for converted files, a fix copy for downloaded MP4s.
@@ -364,15 +386,21 @@ function browserJob(file) {
 function runFirst(job) {
   const failed = failures[failureKey(job.file)];
   if (failed) return { fixable: false, error: failed.error };
-  if (job.file !== currentFile) {
-    const i = queue.findIndex((q) => q.file === job.file);
-    const queued = i >= 0 ? queue.splice(i, 1)[0] : null;
-    // A queued deletion of the original is dropped; the next scan queues it again once the copy is redone.
-    queue.unshift({ ...(queued && !queued.retire ? queued : job), redo: job.redo, fix: job.fix, force: true });
-    drain(onConvertedHook);
+  const kind = kindOf(job);
+  const running = [...active.values()].find((a) => a.job.file === job.file && kindOf(a.job) === kind);
+  if (running) return { fixable: true, state: 'converting', percent: running.slot.percent ?? 0 };
+  const i = queue.findIndex((q) => q.file === job.file && kindOf(q) === kind);
+  const queued = i >= 0 ? queue.splice(i, 1)[0] : null;
+  // A queued deletion of the original is dropped; the next scan queues it again once the copy is redone.
+  if (kind === 'mp4') {
+    const r = queue.findIndex((q) => q.file === job.file && q.retire);
+    if (r >= 0) queue.splice(r, 1);
   }
-  return job.file === currentFile
-    ? { fixable: true, state: 'converting', percent: status.current?.percent ?? 0 }
+  queue.unshift({ ...(queued || job), redo: job.redo, fix: job.fix, h264: job.h264, force: true });
+  drain(onConvertedHook);
+  const started = [...active.values()].find((a) => a.job.file === job.file && kindOf(a.job) === kind);
+  return started
+    ? { fixable: true, state: 'converting', percent: started.slot.percent ?? 0 }
     : { fixable: true, state: 'queued', percent: null };
 }
 
@@ -395,9 +423,9 @@ export function queueBrowserVideo(file) {
   if (!status.enabled) return false;
   const target = needsConversion(file) ? twinPath(file) : file;
   if (!canFix(target) || !fs.existsSync(target)) return false; // not converted yet: that comes first
-  const fixed = fixPath(target);
-  if (!fixed || fs.existsSync(fixed) || failures[failureKey(target)]) return false;
-  if (target === currentFile || queue.some((q) => q.file === target)) return false;
+  const copy = h264Path(target);
+  if (!copy || fs.existsSync(copy) || failures[failureKey(target)]) return false;
+  if (hasJob(target, 'h264')) return false;
   queue.push({ file: target, fix: true, h264: true });
   drain(onConvertedHook);
   return true;
@@ -416,7 +444,11 @@ export function setSync(file, shift) {
   if (!job) return { fixable: false, error: 'This file type can’t be corrected.' };
   syncShift[failureKey(job.file)] = Math.round(shift * 1000) / 1000;
   saveFailures();
-  return runFirst(job);
+  const result = runFirst(job);
+  // A downloaded MP4's H.264 copy carries the old timing: rebuild it too, after the audio fix.
+  const copy = job.fix && h264Path(job.file);
+  if (copy && fs.existsSync(copy) && !hasJob(job.file, 'h264')) { queue.push({ file: job.file, fix: true, h264: true, force: true }); drain(); }
+  return result;
 }
 
 // { shift, applied, state } for the file a library entry was made from.
@@ -427,9 +459,13 @@ export function syncState(file) {
   return { shift: syncShift[key] || 0, applied: syncApplied[key] || 0, state: jobState(job.file) };
 }
 
-export const jobState = (file) => (file === currentFile ? 'converting' : queue.some((q) => q.file === file && !q.retire) ? 'queued' : null);
+export const jobState = (file) => (isActive(file) ? 'converting' : queue.some((q) => q.file === file && !q.retire) ? 'queued' : null);
 
-export function converterStatus() { return { ...status, queued: queue.length }; }
+// `current` (the first running job) is kept for older callers; `active` lists every running lane.
+export function converterStatus() {
+  const running = status.active.map((s) => ({ ...s }));
+  return { ...status, active: running, current: running[0] || null, queued: queue.length };
+}
 
 // ffmpeg processes stop with the server, so none keeps writing a half-finished copy after a restart.
 // (The copy is written under a temporary name and only renamed once complete, so an interrupted
@@ -562,10 +598,10 @@ function plan(input, output, info, encoder, shift = 0, safeAudio = false, sideca
   return { args, reencode, surroundEac3, duration: Number(info.format?.duration) || Number(video.duration) || null };
 }
 
-async function convert(job) {
+async function convert(job, slot) {
   const { file } = job;
   const name = path.basename(file);
-  const output = job.fix ? fixPath(file) : twinPath(file);
+  const output = job.h264 ? h264Path(file) : job.fix ? fixPath(file) : twinPath(file);
   if (!output) throw new Error('No place to save the fixed copy.');
   if (job.fix) fs.mkdirSync(path.dirname(output), { recursive: true });
   const tmp = job.fix
@@ -590,7 +626,7 @@ async function convert(job) {
   const attempt = async (encoder) => {
     const p = lastPlan = plan(file, tmp, info, encoder, shift, safeAudio, sidecars, Boolean(job.h264), fallbacks);
     const started = Date.now();
-    status.current = { name, mode: p.reencode ? 'Re-encoding' : job.fix ? 'Making a browser copy' : 'Repackaging', purpose: job.h264 ? 'browser-h264' : job.fix ? 'browser-audio' : 'apple', percent: 0, speed: null, eta: null };
+    Object.assign(slot, { name, mode: p.reencode ? 'Re-encoding' : job.fix ? 'Making a browser copy' : 'Repackaging', purpose: job.h264 ? 'browser-h264' : job.fix ? 'browser-audio' : 'apple', percent: 0, speed: null, eta: null });
     let buf = '';
     await run(FFMPEG, p.args, {
       priorityLow: true,
@@ -604,10 +640,10 @@ async function convert(job) {
             const done = Number(v) / 1e6;
             const percent = Math.min(99.9, (done / p.duration) * 100);
             const elapsed = (Date.now() - started) / 1000;
-            status.current.percent = Math.round(percent * 10) / 10;
-            status.current.eta = percent > 1 ? Math.round((elapsed / percent) * (100 - percent)) : null;
+            slot.percent = Math.round(percent * 10) / 10;
+            slot.eta = percent > 1 ? Math.round((elapsed / percent) * (100 - percent)) : null;
           } else if (k === 'speed') {
-            status.current.speed = v.trim();
+            slot.speed = v.trim();
           }
         }
       },
@@ -664,7 +700,7 @@ async function convert(job) {
   } catch (e) {
     fs.rmSync(tmp, { force: true });
     // Previous copy is in use; retry on the next scan instead of recording a failure.
-    if (job.redo && /EBUSY|EPERM|EACCES/.test(e.code || '')) { e.retryLater = true; }
+    if ((job.redo || job.force) && /EBUSY|EPERM|EACCES/.test(e.code || '')) { e.retryLater = true; }
     throw e;
   }
   audioCache.clear();
@@ -672,7 +708,7 @@ async function convert(job) {
   delete failures[key]; // an earlier failure no longer applies
   syncApplied[key] = shift;
   saveFailures();
-  if (job.deleteOriginal && !job.fix) await retireOriginal(file);
+  if (job.deleteOriginal && !job.fix) await retireOriginal(file, slot);
 }
 
 // ---------- deleting originals ----------
@@ -685,7 +721,7 @@ async function convert(job) {
 export const subtitleArchivePath = (file) => path.join(path.dirname(file), `${path.basename(file, path.extname(file))}.subtitles.mks`);
 const retireSkipped = new Map(); // file key -> reason; checked again only after a restart or a change to the file
 
-async function retireOriginal(file) {
+async function retireOriginal(file, slot = {}) {
   const name = path.basename(file);
   const keep = (reason) => {
     retireSkipped.set(failureKey(file), reason);
@@ -705,7 +741,7 @@ async function retireOriginal(file) {
   const archive = subtitleArchivePath(file);
   if (subs.length && !fs.existsSync(archive)) {
     const tmp = archive.replace(/\.mks$/, `${TMP_TAG}.mks`);
-    status.current = { name, mode: 'Saving subtitles', percent: 0, speed: null, eta: null };
+    Object.assign(slot, { name, mode: 'Saving subtitles', purpose: 'subtitles', percent: 0, speed: null, eta: null });
     const save = async (fonts) => {
       fs.rmSync(tmp, { force: true });
       await run(FFMPEG, ['-v', 'error', '-y', '-i', file, '-map', '0:s', ...(fonts ? ['-map', '0:t?'] : []),
@@ -753,15 +789,12 @@ function cleanTemps(candidates) {
     for (const e of entries) {
       if (!isTempFile(e)) continue;
       const full = path.join(dir, e);
-      if (currentFile) { // the conversion running now
-        const stem = path.join(path.dirname(currentFile), path.basename(currentFile, path.extname(currentFile)));
-        const fixTmp = fixPath(currentFile)?.replace(/\.mp4$/, `${TMP_TAG}.mp4`);
-        if (full.startsWith(`${stem}.`) || full === fixTmp) continue;
-      }
-      if (retiringFile) {
-        const stem = path.join(path.dirname(retiringFile), path.basename(retiringFile, path.extname(retiringFile)));
-        if (full.startsWith(`${stem}.`)) continue;
-      }
+      const running = activeJobs().some(({ file }) => { // conversions running now
+        const stem = path.join(path.dirname(file), path.basename(file, path.extname(file)));
+        return full.startsWith(`${stem}.`)
+          || [fixPath(file), h264Path(file)].some((o) => o && full === o.replace(/\.mp4$/, `${TMP_TAG}.mp4`));
+      });
+      if (running) continue;
       try {
         if (Date.now() - fs.statSync(full).mtimeMs < 10 * 60 * 1000) continue; // possibly being written right now
         fs.rmSync(full, { force: true });
@@ -774,7 +807,7 @@ function cleanTemps(candidates) {
 function retryDeletes() {
   for (const file of [...pendingDeletes]) {
     if (!fs.existsSync(file) || !fs.existsSync(twinPath(file))) pendingDeletes = pendingDeletes.filter((f) => f !== file);
-    else if (file !== currentFile && file !== retiringFile) removeOriginal(file);
+    else if (!isActive(file)) removeOriginal(file);
   }
 }
 
@@ -821,57 +854,116 @@ async function audioNeedsFix(file) {
 // Firefox can't play HEVC, so without this its first Play starts a long re-encode.
 async function browserH264Job(target, added) {
   if (!(BROWSER_H264_DAYS > 0) || !canFix(target)) return null;
-  if (target === currentFile || queue.some((q) => q.file === target) || failures[failureKey(target)]) return null;
-  const fixed = fixPath(target);
-  if (!fixed) return null;
+  if (hasJob(target, 'h264') || failures[failureKey(target)]) return null;
+  const copy = h264Path(target);
+  if (!copy || fs.existsSync(copy)) return null;
   try {
     const st = fs.statSync(added);
     if (Date.now() - Math.max(st.birthtimeMs || 0, st.mtimeMs) > BROWSER_H264_DAYS * 864e5) return null;
   } catch { return null; }
   const v = await probeVideo(target).catch(() => null);
   if (v?.codec !== 'hevc') return null;
-  const exists = fs.existsSync(fixed);
-  if (exists && (await probeVideo(fixed).catch(() => null))?.codec !== 'hevc') return null; // already H.264
-  // An existing copy that is still HEVC (an audio fix or hev1 relabel) is replaced by the H.264 one,
-  // which plays in every browser.
-  return { file: target, fix: true, h264: true, force: exists };
+  return { file: target, fix: true, h264: true };
 }
 
-async function drain(onConverted) {
-  if (running) return;
-  running = true;
-  while (queue.length) {
-    const job = queue.shift();
-    if (!fs.existsSync(job.file)) continue;
+// Before H.264 copies had their own file they replaced the audio-fixed copy, so browsers that play
+// HEVC got the re-encode too. Such a copy moves to its own place; the audio fix is made again.
+async function moveOldH264Copy(file) {
+  const fixed = fixPath(file);
+  const copy = h264Path(file);
+  if (!fixed || !copy || isActive(file) || fs.existsSync(copy) || !fs.existsSync(fixed)) return;
+  const [src, old] = await Promise.all([probeVideo(file).catch(() => null), probeVideo(fixed).catch(() => null)]);
+  if (src?.codec !== 'hevc' || old?.codec !== 'h264') return;
+  try { fs.renameSync(fixed, copy); videoCache.clear(); audioCache.clear(); console.log(`[convert] ${path.basename(file)}: H.264 browser copy moved to its own file.`); }
+  catch { /* in use; next scan */ }
+}
+
+// Which lane a job runs in: video re-encodes go to 'encode', everything else to 'copy'.
+async function laneOf(job) {
+  if (job.retire) return 'copy';
+  if (job.h264) return 'encode';
+  const v = await probeVideo(job.file).catch(() => null);
+  return !v || (v.codec === 'h264' && !v.tenBit) || v.codec === 'hevc' ? 'copy' : 'encode';
+}
+
+// Files a job reads and writes (or deletes); two jobs may run together unless one writes what the other uses.
+function touches(job) {
+  if (job.retire) return { reads: [job.file, twinPath(job.file)], writes: [job.file, subtitleArchivePath(job.file)] };
+  if (job.h264) return { reads: [job.file], writes: [h264Path(job.file)] };
+  if (job.fix) return { reads: [job.file], writes: [fixPath(job.file)] };
+  return { reads: [job.file], writes: [twinPath(job.file), ...(job.deleteOriginal ? [job.file, subtitleArchivePath(job.file)] : [])] };
+}
+const samePathCI = (a, b) => Boolean(a && b) && path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
+function clashes(job) {
+  const mine = touches(job);
+  return activeJobs().some((other) => {
+    const theirs = touches(other);
+    const hit = (writes, used) => writes.some((w) => used.some((u) => samePathCI(w, u)));
+    return hit(mine.writes, [...theirs.reads, ...theirs.writes]) || hit(theirs.writes, mine.reads);
+  });
+}
+
+// True when a queued job no longer needs doing.
+function stale(job) {
+  if (!fs.existsSync(job.file)) return true;
+  if (job.retire) return !fs.existsSync(twinPath(job.file));
+  if (job.force) return false;
+  if (job.h264) return fs.existsSync(h264Path(job.file) || '');
+  if (job.fix) return fs.existsSync(fixPath(job.file) || '');
+  return !job.redo && fs.existsSync(twinPath(job.file));
+}
+
+// Starts the next job for every idle lane (queue order, skipping jobs that would clash with a running one).
+let scheduling = false, scheduleAgain = false;
+async function drain() {
+  if (scheduling) { scheduleAgain = true; return; }
+  scheduling = true;
+  try {
+    do {
+      scheduleAgain = false;
+      for (const job of [...queue]) if (!job.lane) job.lane = await laneOf(job);
+      for (const lane of LANES) {
+        if (active.has(lane)) continue;
+        for (let i = 0; i < queue.length; i++) {
+          const job = queue[i];
+          if (stale(job)) { queue.splice(i--, 1); continue; }
+          if (job.lane !== lane || clashes(job)) continue;
+          queue.splice(i, 1);
+          runJob(lane, job);
+          break;
+        }
+      }
+    } while (scheduleAgain);
+  } finally { scheduling = false; }
+}
+
+async function runJob(lane, job) {
+  const slot = { lane, name: path.basename(job.file), mode: 'Starting', purpose: null, percent: 0, speed: null, eta: null };
+  active.set(lane, { job, slot });
+  status.active.push(slot);
+  try {
     if (job.retire) {
-      if (!fs.existsSync(twinPath(job.file))) continue;
-      retiringFile = job.file;
-      try { await retireOriginal(job.file); }
+      try { await retireOriginal(job.file, slot); }
       catch (e) { console.warn(`[convert] couldn’t delete ${path.basename(job.file)}: ${e.message}`); }
-      finally { status.current = null; retiringFile = null; }
-      continue;
+      return;
     }
-    if (!job.force && (job.fix ? fs.existsSync(fixPath(job.file) || '') : (!job.redo && fs.existsSync(twinPath(job.file))))) continue;
-    currentFile = job.file;
-    try {
-      await convert(job);
-      status.done += 1;
-      console.log(`[convert] done: ${path.basename(job.file)}`);
-      onConverted?.();
-      if (!job.fix) convertSoon(); // a new MP4 copy may still need its H.264 browser copy (browserH264Job)
-    } catch (e) {
-      if (e.retryLater) { console.warn(`[convert] ${path.basename(job.file)}: ${e.message?.includes('earlier') ? e.message : 'copy is in use'}, will retry.`); continue; }
-      const msg = e.message || String(e);
-      console.warn(`[convert] failed: ${path.basename(job.file)}: ${msg}`);
-      failures[failureKey(job.file)] = { error: msg, at: Date.now() };
-      saveFailures();
-      status.recentFailures = [{ name: path.basename(job.file), error: msg }, ...status.recentFailures].slice(0, 5);
-    } finally {
-      status.current = null;
-      currentFile = null;
-    }
+    await convert(job, slot);
+    status.done += 1;
+    console.log(`[convert] done: ${path.basename(job.file)}${job.h264 ? ' (H.264 browser copy)' : job.fix ? ' (browser copy)' : ''}`);
+    onConvertedHook?.();
+    if (!job.fix) convertSoon(); // a new MP4 copy may still need its H.264 browser copy (browserH264Job)
+  } catch (e) {
+    if (e.retryLater) { console.warn(`[convert] ${path.basename(job.file)}: ${e.message?.includes('earlier') ? e.message : 'copy is in use'}, will retry.`); return; }
+    const msg = e.message || String(e);
+    console.warn(`[convert] failed: ${path.basename(job.file)}: ${msg}`);
+    failures[failureKey(job.file)] = { error: msg, at: Date.now() };
+    saveFailures();
+    status.recentFailures = [{ name: path.basename(job.file), error: msg }, ...status.recentFailures].slice(0, 5);
+  } finally {
+    active.delete(lane);
+    status.active = status.active.filter((x) => x !== slot);
+    drain();
   }
-  running = false;
 }
 
 // Look for new files soon instead of at the next two-minute round (a downloaded episode just finished).
@@ -932,7 +1024,7 @@ export async function startConverter({ dataDir, listCandidates, onConverted, onS
       for (const c of candidates) {
         if (!needsConversion(c.file) || isTempFile(c.file)) continue;
         if (failures[failureKey(c.file)]) continue; // failed before; retried only if the file changes
-        if (c.file === currentFile || c.file === retiringFile || queue.some((q) => q.file === c.file)) continue;
+        if (isActive(c.file) || queue.some((q) => q.file === c.file)) continue;
         if (fs.existsSync(twinPath(c.file))) {
           if (await audioNeedsFix(twinPath(c.file))) queue.push({ ...c, deleteOriginal: false, redo: true });
           // A copy made while qBittorrent still had the download: delete the original now that it's gone.
@@ -949,8 +1041,9 @@ export async function startConverter({ dataDir, listCandidates, onConverted, onS
         const twin = needsConversion(c.file) && twinPath(c.file);
         const fixed = twin && fixPath(twin);
         if (!fixed) continue;
-        keep.add(path.basename(fixed));
+        keep.add(path.basename(fixed)).add(path.basename(h264Path(twin)));
         if (!fs.existsSync(twin)) continue;
+        await moveOldH264Copy(twin); // a twin's fix copy was only ever its H.264 copy
         const job = await browserH264Job(twin, c.file);
         if (job) queue.push(job);
       }
@@ -958,11 +1051,12 @@ export async function startConverter({ dataDir, listCandidates, onConverted, onS
         if (!canFix(c.file) || originalFor(c.file)) continue;
         const fixed = fixPath(c.file);
         if (!fixed) continue;
-        keep.add(path.basename(fixed));
-        const h264 = await browserH264Job(c.file, c.file); // also covers its audio fix
-        if (h264) { queue.push(h264); continue; }
+        keep.add(path.basename(fixed)).add(path.basename(h264Path(c.file)));
+        await moveOldH264Copy(c.file);
+        const h264 = await browserH264Job(c.file, c.file); // runs beside the audio fix below (another lane)
+        if (h264) queue.push(h264);
         if (fs.existsSync(fixed) || failures[failureKey(c.file)]) continue;
-        if (c.file === currentFile || queue.some((q) => q.file === c.file)) continue;
+        if (hasJob(c.file, 'fix')) continue;
         if (await audioNeedsFix(c.file)) queue.push({ file: c.file, fix: true });
       }
       cleanFixDir(keep);

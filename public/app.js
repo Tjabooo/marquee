@@ -863,6 +863,7 @@ const CONVERT_PURPOSE = {
   apple: 'Making an MP4 copy that plays on iPhone and Apple TV',
   'browser-h264': 'Making a one-time H.264 copy for browsers that can\u2019t play HEVC. You can already watch it.',
   'browser-audio': 'Making a browser copy with audio every browser can play. You can already watch it.',
+  subtitles: 'Saving the original\u2019s subtitles before it\u2019s removed',
 };
 
 // Conversion progress banner shown at the top of the library.
@@ -871,20 +872,22 @@ function renderConvertBanner() {
   if (!el) return;
   const c = state.convert;
   const parts = [];
-  if (c?.current) {
-    const cur = c.current;
-    const bits = [h('strong', {}, `${cur.percent || 0}%`),
-      cur.mode === 'Re-encoding' ? 're-encoding' : 'quick repackage',
-      cur.speed && `${cur.speed} speed`,
-      cur.eta != null && fmtEta(cur.eta),
-      c.queued > 0 && `${c.queued} more waiting`];
-    parts.push(
-      h('div', { class: 'row-title' }, `Preparing playback: ${cur.name}`),
-      h('div', { class: 'dl-state' }, CONVERT_PURPOSE[cur.purpose] || CONVERT_PURPOSE.apple),
-      h('div', { class: 'bulbs', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100',
-        'aria-valuenow': String(Math.floor(cur.percent || 0)), 'aria-label': 'Conversion progress',
-        style: `--p:${cur.percent || 0}%` }, h('i')),
-      h('div', { class: 'dl-stats' }, bits.filter(Boolean).map((b) => (b instanceof Node ? b : h('span', {}, b)))));
+  const running = c?.active || (c?.current ? [c.current] : []);
+  if (running.length) {
+    running.forEach((cur, i) => {
+      const bits = [h('strong', {}, `${cur.percent || 0}%`),
+        cur.mode === 'Re-encoding' ? 're-encoding' : cur.mode === 'Saving subtitles' ? 'saving subtitles' : 'quick repackage',
+        cur.speed && `${cur.speed} speed`,
+        cur.eta != null && fmtEta(cur.eta),
+        i === running.length - 1 && c.queued > 0 && `${c.queued} more waiting`];
+      parts.push(h('div', { class: 'convert-job' },
+        h('div', { class: 'row-title' }, `Preparing playback: ${cur.name}`),
+        h('div', { class: 'dl-state' }, CONVERT_PURPOSE[cur.purpose] || CONVERT_PURPOSE.apple),
+        h('div', { class: 'bulbs', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100',
+          'aria-valuenow': String(Math.floor(cur.percent || 0)), 'aria-label': 'Conversion progress',
+          style: `--p:${cur.percent || 0}%` }, h('i')),
+        h('div', { class: 'dl-stats' }, bits.filter(Boolean).map((b) => (b instanceof Node ? b : h('span', {}, b))))));
+    });
   } else if (c && !c.enabled && c.reason && !/turned off/i.test(c.reason)) {
     parts.push(h('div', { class: 'dl-state' }, `Automatic MP4 conversion is off. ${c.reason}`));
   }
@@ -3706,7 +3709,7 @@ async function onWireless(on) {
   // (Chromecast keeps the current version: changing the source would end the cast.)
   if (!hasAirPlay || on === onTvVersion) return;
   try {
-    const link = await api(`/api/play-link?kind=${session.kind}&id=${encodeURIComponent(mediaId(session))}&variant=${on ? 'tv' : 'browser'}`);
+    const link = await api(`/api/play-link?kind=${session.kind}&id=${encodeURIComponent(mediaId(session))}&variant=${on ? 'tv' : browserVariant()}`);
     if (current !== session || generation !== castGeneration) return;
     const tvCanPlay = ['mp4', 'm4v', 'mov'].includes(link.ext);
     if (on && (!tvCanPlay || link.name === session.browserName)) return; // nothing better to send
@@ -4074,6 +4077,8 @@ const browserPlays = (codec) => Boolean(CODEC_MIME[codec] && video.canPlayType(`
 
 // Extra codecs this browser can decode, reported to the server.
 const playsHevc = () => Boolean(video.canPlayType('video/mp4; codecs="hvc1.1.6.L93.B0"'));
+// Browsers that play HEVC get the original HEVC video; the rest get the H.264 browser copy when there is one.
+function browserVariant() { return playsHevc() ? 'browser-hevc' : 'browser'; }
 const extraPlayable = () => [...Object.keys(CODEC_MIME).filter(browserPlays), playsHevc() && 'hevc'].filter(Boolean).join(',');
 
 // ---- audio selection ----
@@ -4309,7 +4314,7 @@ async function selectAudioTrack(index) {
   let retry = true;
   try {
     while (valid()) {
-      const link = await api(`/api/play-link?kind=${session.kind}&id=${encodeURIComponent(mediaId(session))}&variant=browser&audio=${index}&audioSource=${encodeURIComponent(a.source)}${retry ? '&audioRetry=1' : ''}`, { signal: controller.signal });
+      const link = await api(`/api/play-link?kind=${session.kind}&id=${encodeURIComponent(mediaId(session))}&variant=${browserVariant()}&audio=${index}&audioSource=${encodeURIComponent(a.source)}${retry ? '&audioRetry=1' : ''}`, { signal: controller.signal });
       if (!valid()) return;
       retry = false;
       if (!link.ready) { await audioPrepareDelay(controller.signal); continue; }
@@ -5022,8 +5027,8 @@ function resetPlayerMedia() {
 }
 
 async function preparePlayerSource(f, watchSession, signal) {
-  const link = await api(watchSession ? `${watchSession.base}/play-link?clientId=${encodeURIComponent(watchClient)}`
-    : `/api/play-link?kind=${f.kind}&id=${encodeURIComponent(mediaId(f))}&variant=browser`, { signal });
+  const link = await api(watchSession ? `${watchSession.base}/play-link?clientId=${encodeURIComponent(watchClient)}&variant=${browserVariant()}`
+    : `/api/play-link?kind=${f.kind}&id=${encodeURIComponent(mediaId(f))}&variant=${browserVariant()}`, { signal });
   const response = await fetch(link.url, { headers: { Range: 'bytes=0-0' }, signal });
   if (!response.ok) {
     let message = `The server responded with ${response.status}.`;

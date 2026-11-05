@@ -1,5 +1,20 @@
 [
   {
+    "id": "2026-11-05-convert-lanes",
+    "date": "2026-11-05",
+    "title": "Ready to play sooner",
+    "items": [
+      {
+        "title": "Two conversions at once",
+        "text": "Marquee now makes the quick copy for iPhone and Apple TV and the slower copy for older browsers at the same time, instead of one after the other. A new film no longer waits behind another film's long conversion."
+      },
+      {
+        "title": "Full quality in more browsers",
+        "text": "If your browser plays HEVC (most do now, including Firefox on many PCs), you always get the original picture. The re-encoded copy is only used by browsers that can't play it."
+      }
+    ]
+  },
+  {
     "id": "2026-11-05-tv-skip-next",
     "date": "2026-11-05",
     "title": "Skip intro and Next episode on the TV",

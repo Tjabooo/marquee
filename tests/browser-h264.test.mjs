@@ -28,14 +28,16 @@ test('a freshly downloaded HEVC file gets an H.264 browser copy before anyone pl
   // hvc1 HEVC counts as playable for Safari/Chrome, so the old audio/video check never made a copy.
   assert.equal(convert.videoBrowserSafe(await convert.probeVideo(file)), true);
 
-  const fixed = convert.fixPath(file);
+  const copy = convert.h264Path(file);
+  assert.notEqual(copy, convert.fixPath(file), 'the H.264 copy never replaces the audio-fixed copy');
   const deadline = Date.now() + 60000;
-  while (!existsSync(fixed) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 200));
-  assert.ok(existsSync(fixed), 'the browser copy was made by the background scan');
-  const v = await convert.probeVideo(fixed);
+  while (!existsSync(copy) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 200));
+  assert.ok(existsSync(copy), 'the browser copy was made by the background scan');
+  const v = await convert.probeVideo(copy);
   assert.equal(v.codec, 'h264');
   assert.equal(v.tenBit, false);
-  assert.equal(convert.preferConverted(file, { browser: true }), fixed);
+  assert.equal(convert.preferConverted(file, { browser: true }), copy);
+  assert.equal(convert.preferConverted(file, { browser: true, hevc: true }), file, 'browsers that play HEVC keep the original');
   assert.equal(convert.preferConverted(file), file, 'TVs keep the original');
   assert.equal((await fs.stat(file)).size > 0, true);
 });

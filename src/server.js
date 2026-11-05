@@ -1289,39 +1289,43 @@ const streamSecret = (() => {
 const signPlay = (kind, id, variant, exp) => crypto.createHmac('sha256', streamSecret)
   .update(`${kind}|${id}|${variant}|${exp}`).digest('base64url').slice(0, 32);
 
-// variant "browser" = the copy with browser-friendly audio; "tv" = original audio for TVs.
+// variant "browser" = the copy with browser-friendly audio (H.264 video if the file is HEVC and an H.264
+// copy exists); "browser-hevc" = the same for a browser that plays HEVC, which keeps the HEVC file;
+// "tv" = original audio for TVs.
+const BROWSER_VARIANTS = ['browser', 'browser-hevc'];
 async function streamFile(kind, id, variant) {
-  const selected = variant.match(/^browser-a(\d+)-([a-f0-9]{24})$/);
+  const selected = variant.match(/^(browser(?:-hevc)?)-a(\d+)-([a-f0-9]{24})$/);
   if (selected) {
-    const base = await streamFile(kind, id, 'browser');
-    const file = converter.selectedAudioPath(base, Number(selected[1]), selected[2]);
+    const base = await streamFile(kind, id, selected[1]);
+    const file = converter.selectedAudioPath(base, Number(selected[2]), selected[3]);
     if (!file) throw new HttpError(410, 'This audio selection has expired. Choose the language again.');
     // Keep actively streamed selections out of the cache's stale-file cleanup.
     fs.promises.utimes(file, new Date(), new Date()).catch(() => {});
     return file;
   }
-  const browser = variant === 'browser';
-  if (kind === 'lib') return browser ? converter.preferConverted(librarySource(id), { browser: true }) : libraryPath(id);
+  const browser = BROWSER_VARIANTS.includes(variant);
+  const hevc = variant === 'browser-hevc';
+  if (kind === 'lib') return browser ? converter.preferConverted(librarySource(id), { browser: true, hevc }) : libraryPath(id);
   if (kind === 'dl') {
     if (!validHash(id)) throw new HttpError(400, 'Invalid download.');
-    return browser ? converter.preferConverted(await downloadSource(id), { browser: true }) : downloadPath(id);
+    return browser ? converter.preferConverted(await downloadSource(id), { browser: true, hevc }) : downloadPath(id);
   }
   throw new HttpError(400, 'Unknown media type.');
 }
 
 async function playLink(kind, id, variant, audio = null, audioSource = null, retry = false) {
-  if (!['browser', 'tv'].includes(variant)) throw new HttpError(400, 'Unknown variant.');
+  if (![...BROWSER_VARIANTS, 'tv'].includes(variant)) throw new HttpError(400, 'Unknown variant.');
   if (!/^[A-Za-z0-9_-]+$/.test(id)) throw new HttpError(400, 'Invalid file.');
   let file = await streamFile(kind, id, variant);
   let selection = {};
   if (audio !== null) {
-    if (variant !== 'browser' || !/^\d{1,5}$/.test(String(audio))) throw new HttpError(400, 'Invalid audio selection.');
+    if (!BROWSER_VARIANTS.includes(variant) || !/^\d{1,5}$/.test(String(audio))) throw new HttpError(400, 'Invalid audio selection.');
     const track = Number(audio);
     const result = await converter.requestAudioTrack(file, track, audioSource, { retry });
     selection = { ready: result.ready, track, audioSource };
     if (!result.ready) return { ...selection, state: result.state };
     file = result.file;
-    variant = `browser-a${track}-${audioSource}`;
+    variant = `${variant}-a${track}-${audioSource}`;
   }
   if (!fs.existsSync(file)) throw new HttpError(404, 'That file is no longer on the server.');
   const exp = Math.floor(Date.now() / 1000) + PLAY_LINK_HOURS * 3600;
@@ -1336,7 +1340,7 @@ async function playLink(kind, id, variant, audio = null, audioSource = null, ret
 
 // The file a signed /play/ path names, once its signature checks out (expiry is the caller's business).
 function verifiedPlayPath(pathname) {
-  const m = pathname.match(/^\/play\/(lib|dl)\/([A-Za-z0-9_-]+)\/(browser(?:-a\d+-[a-f0-9]{24})?|tv)\/(\d+)\/([A-Za-z0-9_-]+)(?:\/[^/]*)?$/);
+  const m = pathname.match(/^\/play\/(lib|dl)\/([A-Za-z0-9_-]+)\/(browser(?:-hevc)?(?:-a\d+-[a-f0-9]{24})?|tv)\/(\d+)\/([A-Za-z0-9_-]+)(?:\/[^/]*)?$/);
   if (!m) throw new HttpError(404, 'Not found.');
   const [, kind, id, variant, exp, sig] = m;
   const expected = signPlay(kind, id, variant, exp);
@@ -1772,7 +1776,7 @@ async function handleApi(req, res, url) {
     const client = String(url.searchParams.get('clientId') || '');
     const room = watchRooms.room(token);
     watchRooms.member(room, user, client);
-    if (action === 'play-link') return sendJson(res, 200, await playLink(room.media.kind, room.media.id, 'browser'));
+    if (action === 'play-link') return sendJson(res, 200, await playLink(room.media.kind, room.media.id, url.searchParams.get('variant') === 'browser-hevc' ? 'browser-hevc' : 'browser'));
     if (action === 'events' && req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store, no-transform',
         'CDN-Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
@@ -2485,13 +2489,13 @@ async function handleApi(req, res, url) {
   // ---- browser audio compatibility ----
   if ((m = p.match(/^\/api\/media\/(lib|dl)\/([A-Za-z0-9_-]+)\/audio$/))) {
     const source = await sourceFile(m[1], m[2]);
-    const served = converter.preferConverted(source, { browser: true });
+    // Extra codecs the client reports it can decode (e.g. Edge with Dolby, Chrome with HEVC).
+    const plays = new Set((url.searchParams.get('plays') || '').split(',').filter(Boolean));
+    const served = converter.preferConverted(source, { browser: true, hevc: plays.has('hevc') });
     let tracks = null;
     let vid = null;
     try { [tracks, vid] = await Promise.all([converter.probeAudio(served), converter.probeVideo(served)]); } catch { /* unreadable: say nothing */ }
     if (!tracks) return sendJson(res, 200, { known: false });
-    // Extra codecs the client reports it can decode (e.g. Edge with Dolby, Chrome with HEVC).
-    const plays = new Set((url.searchParams.get('plays') || '').split(',').filter(Boolean));
     const videoSafe = converter.videoBrowserSafe(vid, { hevc: plays.has('hevc') });
     const main = tracks[0]?.codec || null;
     const browserSafe = !main || converter.BROWSER_AUDIO.has(main) || plays.has(main);
@@ -2624,11 +2628,11 @@ async function handleApi(req, res, url) {
   // A /sub-<lang>/ segment means the TV was sent subtitles; advertise them via CaptionInfo.sec.
   const caption = (kind, id, lang) => (lang ? { captionUrl: `http://${LAN_IP}:${PORT}/api/subs/file/${kind}/${id}/${lang}.srt` } : {});
   if ((m = p.match(/^\/api\/stream\/lib\/([A-Za-z0-9_-]+)(?:\/sub-([a-z-]+))?(?:\/[^/]*)?$/))) {
-    const file = url.searchParams.has('browser') ? converter.preferConverted(librarySource(m[1]), { browser: true }) : castFile('lib', m[1]) || libraryPath(m[1]);
+    const file = url.searchParams.has('browser') ? converter.preferConverted(librarySource(m[1]), { browser: true, hevc: url.searchParams.has('hevc') }) : castFile('lib', m[1]) || libraryPath(m[1]);
     return sendVideo(req, res, file, caption('lib', m[1], m[2]));
   }
   if ((m = p.match(/^\/api\/stream\/dl\/([A-Fa-f0-9]+)(?:\/sub-([a-z-]+))?(?:\/[^/]*)?$/))) {
-    const file = url.searchParams.has('browser') ? converter.preferConverted(await downloadSource(m[1]), { browser: true }) : castFile('dl', m[1]) || await downloadPath(m[1]);
+    const file = url.searchParams.has('browser') ? converter.preferConverted(await downloadSource(m[1]), { browser: true, hevc: url.searchParams.has('hevc') }) : castFile('dl', m[1]) || await downloadPath(m[1]);
     return sendVideo(req, res, file, caption('dl', m[1], m[2]));
   }
   throw new HttpError(404, 'Unknown API route.');

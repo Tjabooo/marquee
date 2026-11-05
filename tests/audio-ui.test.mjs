@@ -60,7 +60,7 @@ function harness({ native, request, autoplayBlocked = false, kind = 'lib' } = {}
   const current = { id: 'episode', kind, ready: true, sourceUrl, abort: new AbortController() };
   const context = vm.createContext({ $, video, current, document, Node: Element, audioChoices, nativeAudioMapping, AbortController, URL, location: { href: 'https://example.test/' },
     party: null, nativeSubs: false, onTvVersion: false, hasRemotePlayback: false, canSetVolume: true,
-    closeCcMenu() {}, extraPlayable: () => '', mediaId: f => f.id,
+    closeCcMenu() {}, extraPlayable: () => '', browserVariant: () => 'browser', mediaId: f => f.id,
     applySubModes: () => calls.push(['subtitles']), updateUpNext() {}, toast() {},
     watchAudio: () => calls.push(['compatibility']),
     api: async (path, options) => { calls.push(['api', path, options]); if (request) return request(path, options); const index = Number(new URL(path, locationURL).searchParams.get('audio')); return { ready: true, url: `https://example.test/audio-${index}.mp4`, track: index, audioSource: info.audioSource }; },
