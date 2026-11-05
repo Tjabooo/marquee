@@ -6,11 +6,11 @@
 // One pass runs at a time, below normal priority, newest request first.
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { execFile, spawn } from 'node:child_process';
 import { trackChild } from './load.js';
+import { background } from './priority.js';
 
 const FFMPEG = process.env.FFMPEG || 'ffmpeg';
 const FFPROBE = process.env.FFPROBE || 'ffprobe';
@@ -136,7 +136,7 @@ export class Previews {
     const ok = await new Promise((resolve) => {
       const child = spawn(FFMPEG, args, { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
       trackChild(child, FFMPEG, args, 'previews');
-      try { os.setPriority(child.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch { /* keep default */ }
+      background(child);
       let rest = '';
       let tail = '';
       child.stderr.setEncoding('utf8');

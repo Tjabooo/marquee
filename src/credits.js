@@ -3,11 +3,11 @@
 // Anything uncertain gives null, and the player then waits for the real end of the file.
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 import { execFile, spawn } from 'node:child_process';
 import { setImmediate as yieldNow } from 'node:timers/promises';
 import { trackChild } from './load.js';
+import { background } from './priority.js';
 
 const FFPROBE = process.env.FFPROBE || 'ffprobe';
 const FFMPEG = process.env.FFMPEG || 'ffmpeg';
@@ -221,7 +221,7 @@ function decodeAudio(file, start, seconds) {
     let child;
     try { child = spawn(FFMPEG, args, { windowsHide: true }); } catch { resolve(null); return; }
     trackChild(child, FFMPEG, args, 'credits');
-    try { os.setPriority(child.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch { /* not allowed */ }
+    background(child);
     const chunks = [];
     let size = 0;
     const timer = setTimeout(() => child.kill(), 120000);

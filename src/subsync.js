@@ -9,11 +9,11 @@
 // best match is applied only when it is clearly better than the alternatives. The original file is
 // kept so the change can be undone.
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { trackChild } from './load.js';
+import { background } from './priority.js';
 
 const FFMPEG = process.env.FFMPEG || 'ffmpeg';
 const FFPROBE = process.env.FFPROBE || 'ffprobe';
@@ -280,7 +280,7 @@ function run(cmd, args, { maxBytes = 64 * 1024 * 1024, timeoutMs = 10 * 60 * 100
   return new Promise((resolve, reject) => {
     let child;
     try { child = spawn(cmd, args, { windowsHide: true }); } catch (e) { return reject(e); }
-    try { os.setPriority(child.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch { /* not permitted */ }
+    background(child);
     trackChild(child, cmd, args, 'subsync');
     const chunks = [];
     let size = 0;

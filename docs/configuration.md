@@ -96,6 +96,9 @@ that is a hard disk shared with downloads and conversions.
 | Setting | Default | Purpose |
 | --- | --- | --- |
 | `STREAM_READ_KB` | `4096` | How much of a file a stream reads at a time (64–65536). Large reads keep a busy hard drive from making a player wait in its queue once per 64 KB. |
+| `MARQUEE_PRIORITY` | `above_normal` | CPU priority of the Marquee process: `above_normal`, `normal` or `high`. On Windows its I/O and memory priority are always set to normal, also when it runs as a scheduled task (whose default is low I/O priority, which made streams stall behind downloads). |
+| `BACKGROUND_PRIORITY` | `below_normal` | CPU priority of background jobs (conversions, browser copies, timeline previews, credits, subtitle sync, clip and note copies, OCR): `below_normal`, `idle` or `normal`. |
+| `BACKGROUND_IO` | `normal` | Windows: I/O and memory priority of those jobs: `normal`, `low` or `very_low`. `low` makes their disk reads wait for a stream's and their cached pages leave RAM first, but slows a conversion 3–4x while anyone watches; try it only if streams still stall during background work. |
 
 ## Conversion
 

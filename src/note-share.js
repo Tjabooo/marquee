@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { trackChild } from './load.js';
+import { background } from './priority.js';
 import { page, baseUrl, esc } from './clips.js';
 
 const FFMPEG = process.env.FFMPEG || 'ffmpeg';
@@ -40,6 +41,7 @@ function run(cmd, args) {
     let child;
     try { child = spawn(cmd, args, { windowsHide: true }); } catch (e) { return reject(e); }
     trackChild(child, cmd, args, 'note-share');
+    background(child);
     let out = '', err = '';
     child.stdout.on('data', (d) => { out += d; });
     child.stderr.on('data', (d) => { err = (err + d).slice(-2000); });

@@ -1,11 +1,11 @@
 // Background converter. Creates MP4 copies of containers Apple devices can't play (MKV, AVI, WebM, ...).
 // Streams are copied where possible; video is re-encoded (NVENC, falling back to x264) only when required.
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { trackChild } from './load.js';
+import { background } from './priority.js';
 
 const FFMPEG = process.env.FFMPEG || 'ffmpeg';
 const FFPROBE = process.env.FFPROBE || 'ffprobe';
@@ -448,9 +448,7 @@ function run(cmd, args, { onStdout, priorityLow = false } = {}) {
     children.add(child);
     trackChild(child, cmd, args, 'convert');
     child.on('close', () => children.delete(child));
-    if (priorityLow) {
-      try { os.setPriority(child.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch { /* not allowed */ }
-    }
+    if (priorityLow) background(child);
     let out = '';
     let err = '';
     child.stdout.on('data', (d) => { out += d; onStdout?.(d.toString()); });

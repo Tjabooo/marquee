@@ -11,6 +11,7 @@
 // disk reads. CPU and the GPU's encoder go to the jobs.
 import fs from 'node:fs';
 import os from 'node:os';
+import { background } from './priority.js';
 import path from 'node:path';
 import { spawn, execFile } from 'node:child_process';
 
@@ -264,7 +265,7 @@ function keepRunning(name, start) {
     let child;
     try { child = start(); } catch { return void setTimeout(run, (backoff = Math.min(backoff * 2, 600000))).unref(); }
     children.add(child);
-    try { os.setPriority(child.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch { /* not allowed */ }
+    background(child);
     let buf = '';
     child.stdout.setEncoding('utf8').on('data', (d) => {
       buf += d;

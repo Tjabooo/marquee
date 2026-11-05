@@ -94,8 +94,10 @@ if (-not $NoWatchdog) {
   # Starts the task if it isn't running; MultipleInstances IgnoreNew leaves a running Marquee alone.
   $triggers += New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(2) -RepetitionInterval (New-TimeSpan -Minutes 2)
 }
+# Priority 4 = normal. Task Scheduler's default (7) starts the server below normal with low I/O and
+# memory priority, so its stream reads would wait behind downloads and other programs.
 $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -StartWhenAvailable `
-  -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew
+  -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew -Priority 4
 Register-ScheduledTask -TaskName 'Marquee' -Description 'Marquee media server' `
   -Action $action -Trigger $triggers -Settings $settings `
   -User $user -Password $cred.GetNetworkCredential().Password -RunLevel Limited -Force | Out-Null

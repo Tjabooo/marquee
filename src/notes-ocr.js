@@ -5,6 +5,7 @@ import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { trackChild } from './load.js';
+import { background } from './priority.js';
 
 const SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'notes-ocr.ps1');
 const BATCH = 20, RETRY = 10 * 60000, MAX_TEXT = 20000;
@@ -15,6 +16,7 @@ export function windowsOcr(files) {
     const exe = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
     const child = spawn(exe, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', SCRIPT], { windowsHide: true });
     trackChild(child, exe, [`${files.length} image${files.length === 1 ? '' : 's'}`], 'ocr');
+    background(child);
     let out = '', err = '';
     const timer = setTimeout(() => child.kill(), 60000 + files.length * 30000);
     child.stdout.setEncoding('utf8').on('data', (c) => { out += c; });
@@ -43,6 +45,7 @@ export async function tesseractOcr(files) {
     results.push(await new Promise((resolve) => {
       const child = spawn(TESSERACT, [file, 'stdout'], { windowsHide: true });
       trackChild(child, TESSERACT, [path.basename(file)], 'ocr');
+      background(child);
       let out = '', err = '';
       const timer = setTimeout(() => child.kill(), 60000);
       child.stdout.setEncoding('utf8').on('data', (c) => { out += c; });
