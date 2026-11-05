@@ -1,7 +1,7 @@
 // MarqueeSetup.exe: opens the Marquee setup wizard (scripts\windows\setup-wizard.ps1) in its own
 // window, with no console. Inside a Marquee folder it runs that installation's wizard; anywhere
 // else (e.g. Downloads) it runs the wizard and install.ps1 embedded in it, which download, verify
-// and install the release this file was built for.
+// and install the newest release (the one this file was built for only if GitHub can't be reached).
 //
 // Built with the C# compiler that ships with Windows (.NET Framework 4): see build-setup-exe.ps1.
 using System;
@@ -43,7 +43,7 @@ static class MarqueeSetup {
         Directory.CreateDirectory(tmp);
         string wizard = Extract("setup-wizard.ps1", tmp);
         string install = Extract("install.ps1", tmp);
-        args = "-File " + Quote(wizard) + " -InstallScript " + Quote(install) + " -Version " + Quote(Version);
+        args = "-File " + Quote(wizard) + " -InstallScript " + Quote(install) + " -BundledVersion " + Quote(Version);
       }
       ProcessStartInfo psi = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "WindowsPowerShell\\v1.0\\powershell.exe"),
         "-NoProfile -STA -ExecutionPolicy Bypass -WindowStyle Hidden " + args + " -LauncherPath " + Quote(self));

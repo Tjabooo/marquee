@@ -16,6 +16,7 @@ param(
   [string]$AppDir = '',          # set up this installation (default: the one this script is part of)
   [string]$Version = '',         # new installs: release to download (default: the latest)
   [string]$InstallScript = '',   # new installs: install.ps1 to use (MarqueeSetup.exe passes its own copy)
+  [string]$BundledVersion = '',  # the release $InstallScript came from; used if the latest can't be looked up
   [string]$LauncherPath = '',    # the MarqueeSetup.exe that started this; copied into the installation
   [string]$Screenshot = '',      # testing: render every page to PNG files in this folder, then exit
   [switch]$SelfTest,             # testing: build the window and check it, then exit
@@ -1552,19 +1553,39 @@ function Install-Node([scriptblock]$then) {
       if ($S.Node -and $S.Node.Ok) { & $ctx.Next } else { Install-Failed "Node.js didn't install (winget exit code $code). Install it from nodejs.org, then press Install." }
     }
 }
+function Get-LatestRelease {
+  # Tag of the newest GitHub release (e.g. v1.3.0), or $null when offline / rate-limited.
+  try {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    $req = [Net.HttpWebRequest]::Create('https://api.github.com/repos/Tjabooo/marquee/releases/latest')
+    $req.UserAgent = 'MarqueeSetup'; $req.Accept = 'application/vnd.github+json'; $req.Timeout = 10000
+    $res = $req.GetResponse()
+    try { $body = (New-Object IO.StreamReader $res.GetResponseStream()).ReadToEnd() } finally { $res.Close() }
+    $t = ($body | ConvertFrom-Json).tag_name
+    if ($t -match '^v\d+\.\d+\.\d+') { return $t }
+  } catch { Add-Log "Couldn't look up the latest release: $($_.Exception.Message)" }
+  return $null
+}
 function Install-Release {
   $dir = [IO.Path]::GetFullPath($U.InstallDir.Text.Trim())
   if ($S.SkipDownload -or (Test-Path (Join-Path $dir '.git'))) { Load-App $dir; return }
-  $inst = if ($InstallScript -and (Test-Path $InstallScript)) { $InstallScript } else { $null }
+  # Always the newest release (unless -Version pins one), even from an older MarqueeSetup.exe:
+  # look it up now, and use that release's install.ps1. Offline lookups fall back to the bundled one.
+  $tag = if ($Version) { $Version } else { Get-LatestRelease }
+  if (-not $tag) { $tag = $BundledVersion }
+  $inst = if ($InstallScript -and (Test-Path $InstallScript) -and (-not $tag -or $tag -eq $BundledVersion)) { $InstallScript } else { $null }
   if (-not $inst) {
     $inst = Join-Path ([IO.Path]::GetTempPath()) ("marquee-install-" + [guid]::NewGuid().ToString('N') + '.ps1')
-    $tag = if ($Version) { $Version } else { 'master' }
-    try { (New-Object Net.WebClient).DownloadFile("https://raw.githubusercontent.com/Tjabooo/marquee/$tag/install.ps1", $inst) } catch { Install-Failed "Couldn't download the installer: $($_.Exception.Message)"; return }
-    [void]$S.TempFiles.Add($inst)
+    $ref = if ($tag) { $tag } else { 'master' }
+    try { (New-Object Net.WebClient).DownloadFile("https://raw.githubusercontent.com/Tjabooo/marquee/$ref/install.ps1", $inst); [void]$S.TempFiles.Add($inst) }
+    catch {
+      if ($InstallScript -and (Test-Path $InstallScript)) { $inst = $InstallScript }
+      else { Install-Failed "Couldn't download the installer: $($_.Exception.Message)"; return }
+    }
   }
-  $U.InstallProgressText.Text = "Downloading Marquee $(if ($Version) { $Version } else { '(latest release)' })..."; $U.InstallProgressText.Foreground = $B.Paper
+  $U.InstallProgressText.Text = "Downloading Marquee $(if ($tag) { $tag } else { '(latest release)' })..."; $U.InstallProgressText.Foreground = $B.Paper
   $iargs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $inst, '-Dir', $dir, '-NoSetup')
-  if ($Version) { $iargs += @('-Version', $Version) }
+  if ($tag) { $iargs += @('-Version', $tag) }
   Start-Proc -File 'powershell.exe' -Arguments $iargs -Ctx @{ Dir = $dir } -OnLine { param($l) if ($l.Trim()) { $U.InstallProgressLine.Text = $l.Trim(); Add-Log $l } } -OnExit {
     param($code, $out, $err, $ctx)
     if ($code -ne 0 -or -not (Test-Path (Join-Path $ctx.Dir 'setup.js'))) {

@@ -4,6 +4,12 @@ All notable changes to Marquee. Versions follow [Semantic Versioning](https://se
 
 ## [Unreleased]
 
+### Changed
+
+- **MarqueeSetup.exe installs the newest release.** It looks up the latest release on GitHub when it
+  runs (and uses that release's `install.ps1`), so an older copy of the exe no longer installs an
+  older Marquee. Offline, it falls back to the release it was built for.
+
 ## [1.2.0] - 2026-11-05
 
 ### Security
