@@ -101,7 +101,7 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
       toggleOpen(note.id, row);
     });
     if (editing) {
-      const text = h('textarea', { class: 'note-edit', 'aria-label': 'Edit note', maxlength: 30000 }); text.value = note.text;
+      const text = h('textarea', { class: 'note-edit', 'aria-label': 'Edit note', maxlength: 1000000 }); text.value = note.text;
       const at = h('input', { type: 'datetime-local', 'aria-label': 'Edit reminder date' }); at.value = localInput(note.reminderAt);
       const save = h('button', { type: 'submit', class: 'retry is-primary' }, 'Save changes');
       const form = h('form', { class: 'note-edit-form', onsubmit: async (e) => {
@@ -251,7 +251,7 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
     older = button('Load older messages', loadOlder, { class: 'retry note-older', hidden: true });
     undo = h('div', { class: 'note-undo', role: 'status', hidden: true });
     list = h('div', { class: 'notes-messages', role: 'list', 'aria-label': 'Shared notes' });
-    draft = h('textarea', { class: 'note-draft', placeholder: 'Write a note…', 'aria-label': 'New note', maxlength: 30000, rows: 1 }); draft.value = state.draft;
+    draft = h('textarea', { class: 'note-draft', placeholder: 'Write a note…', 'aria-label': 'New note', maxlength: 1000000, rows: 1 }); draft.value = state.draft;
     draft.addEventListener('input', () => {
       state.draft = draft.value; draft.style.height = 'auto';
       draft.style.height = `${Math.min(160, Math.round((window.visualViewport?.height || innerHeight) * 0.3), draft.scrollHeight)}px`; updateComposer();
