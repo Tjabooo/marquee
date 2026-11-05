@@ -1212,6 +1212,7 @@ async function resolveMedia(kind, id, subLang = null) {
   };
 }
 
+const NOTES_JSON_MAX_BYTES = 6 * 1024 * 1024; // 1M-char notes plus UTF-8/JSON overhead; other APIs keep the 100 KB default.
 async function readJson(req, maxBytes = 100_000) {
   const chunks = [];
   let size = 0;
@@ -1419,7 +1420,7 @@ async function handleApi(req, res, url) {
         const result = notes.list(Object.fromEntries(url.searchParams));
         return sendJson(res, 200, { ...result, notes: result.notes.map(noteFor) });
       }
-      if (req.method === 'POST') return sendJson(res, 201, { note: noteFor(notes.create(await readJson(req), user.email)) });
+      if (req.method === 'POST') return sendJson(res, 201, { note: noteFor(notes.create(await readJson(req, NOTES_JSON_MAX_BYTES), user.email)) });
     }
     if (p === '/api/admin/notes/import' && req.method === 'POST') {
       const result = notes.import(await readJson(req, 20 * 1024 * 1024), user.email);
@@ -1434,7 +1435,7 @@ async function handleApi(req, res, url) {
     if ((m = p.match(/^\/api\/admin\/notes\/(\d+)(?:\/(trash|restore))?$/))) {
       if (req.method === 'GET' && !m[2]) return sendJson(res, 200, { note: noteFor(notes.get(m[1])) });
       if (req.method === 'POST') {
-        const note = notes.update(m[1], await readJson(req), m[2] || 'edit');
+        const note = notes.update(m[1], await readJson(req, NOTES_JSON_MAX_BYTES), m[2] || 'edit');
         if (m[2] === 'trash' && note.shareToken) sharedMedia.cleanup();
         if (m[2] === 'restore' && note.shareToken) sharedMedia.prepare(note);
         return sendJson(res, 200, { note: noteFor(note) });

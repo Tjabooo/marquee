@@ -57,6 +57,10 @@ test('imports preserve original dates and IDs, are idempotent, and validate the 
   assert.equal(store.list({ filter: 'all' }).total, 1, 'An invalid batch wrote nothing');
   assert.throws(() => store.create({ text: ' '.repeat(5) }, 'owner'), { status: 400 });
   assert.throws(() => store.create(null, 'owner'), { status: 400 });
+  const huge = 'x'.repeat(200_000);
+  const hugeNote = store.create({ text: huge }, 'owner');
+  assert.equal(store.get(hugeNote.id).text.length, huge.length, 'large prompts fit in one note');
+  assert.throws(() => store.create({ text: 'x'.repeat(1_000_001) }, 'owner'), { status: 400 });
 });
 
 test('Discord JSON and quoted multiline CSV preserve IDs, exact UTC dates, text, and author choices', () => {
