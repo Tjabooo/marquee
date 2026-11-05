@@ -1206,7 +1206,8 @@ function verifiedPlayPath(pathname) {
 async function handlePlay(req, res, url) {
   const { kind, id, variant, exp } = verifiedPlayPath(url.pathname);
   if (exp < Date.now() / 1000) throw new HttpError(410, 'This link has expired. Start playback again.');
-  return sendVideo(req, res, await streamFile(kind, id, variant));
+  // Library files name their stream for House → Sharing (cheap); downloads keep the file's own name.
+  return sendVideo(req, res, await streamFile(kind, id, variant), { label: kind === 'lib' ? streamLabel(librarySource(id)) : null });
 }
 
 // Stats for nerds: what ffprobe says about the exact file the player streams (its src path), and
@@ -1433,7 +1434,7 @@ async function creditPeers(file) {
 }
 
 function titleOf(file) {
-  const info = parseName(path.basename(file));
+  const info = parseFile(file); // a full path: "Show/Season 1/S01E05.mkv" takes the show's folder name
   const ep = info.season != null ? ` S${String(info.season).padStart(2, '0')} E${String(info.episode).padStart(2, '0')}` : '';
   return `${info.title}${info.year && !ep ? ` (${info.year})` : ''}${ep}`;
 }
@@ -2152,7 +2153,8 @@ async function handleApi(req, res, url) {
   if (p === '/api/play-link') {
     const q = url.searchParams;
     const link = await playLink(q.get('kind') || '', q.get('id') || '', q.get('variant') || 'browser', q.get('audio'), q.get('audioSource'), q.get('audioRetry') === '1');
-    if (link.url && q.get('audio') === null) activity.record(req, 'play', titleOf(link.name), { quietMs: 3 * 3600 * 1000 });
+    // Named from the library/download file: browsers often stream a cached copy named by a hash.
+    if (link.url && q.get('audio') === null) activity.record(req, 'play', titleOf(await sourceFile(q.get('kind'), q.get('id'))), { quietMs: 3 * 3600 * 1000 });
     return sendJson(res, link.ready === false ? 202 : 200, link);
   }
   if (p === '/api/network') {
