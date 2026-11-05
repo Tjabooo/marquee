@@ -77,19 +77,6 @@ jobs:
 
   verify:
     needs: [image, release]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Pull the published image anonymously and start it
-        run: |
-          docker logout ghcr.io || true
-          v="${GITHUB_REF_NAME#v}"
-          for arch in amd64 arm64; do docker manifest inspect "ghcr.io/tjabooo/marquee:$v" | grep -q "\"architecture\": \"$arch\""; done
-          docker run -d --name m -p 8080:8080 "ghcr.io/tjabooo/marquee:$v"
-          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8080/api/health && break; sleep 2; done
-          curl -fsS http://127.0.0.1:8080/api/health | grep -q "\"version\":\"$v\""
-      - name: Install from the release with install.sh
-        run: |
-          curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/$GITHUB_REF_NAME/install.sh" -o install.sh
-          sh install.sh --version "$GITHUB_REF_NAME" --dir "$RUNNER_TEMP/marquee" --no-setup
-          node "$RUNNER_TEMP/marquee/setup.js" doctor --offline || true
-          test -f "$RUNNER_TEMP/marquee/src/server.js"
+    uses: ./.github/workflows/verify-release.yml
+    with:
+      tag: ${{ github.ref_name }}

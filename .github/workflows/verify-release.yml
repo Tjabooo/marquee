@@ -1,0 +1,42 @@
+name: Verify release
+
+# Checks a published release the way users get it: an anonymous image pull on both
+# architectures, the container's health, and install.sh against the release archive.
+on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag, e.g. v1.1.0
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag }}
+    steps:
+      - name: Pull the published image anonymously and start it
+        run: |
+          docker logout ghcr.io || true
+          v="${TAG#v}"
+          for arch in amd64 arm64; do docker manifest inspect "ghcr.io/tjabooo/marquee:$v" | grep -q "\"architecture\": \"$arch\""; done
+          docker run -d --name marquee-verify -p 8080:8080 "ghcr.io/tjabooo/marquee:$v"
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8080/api/health && break; sleep 2; done
+          curl -fsS http://127.0.0.1:8080/api/health | grep -q "\"version\":\"$v\""
+          docker exec marquee-verify node setup.js doctor --offline
+      - name: Install from the release with install.sh
+        run: |
+          curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/$TAG/install.sh" -o install.sh
+          sh install.sh --version "$TAG" --dir "$RUNNER_TEMP/marquee" --no-setup
+          test -f "$RUNNER_TEMP/marquee/src/server.js"
+          sh install.sh --version "$TAG" --dir "$RUNNER_TEMP/marquee" --no-setup   # update path: keeps state, backs up the old files
+          test -d "$RUNNER_TEMP/marquee/.backup-${TAG#v}"
+          node "$RUNNER_TEMP/marquee/setup.js" doctor --offline || true
