@@ -333,6 +333,14 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
       const keyboard = typing && (touch.matches || h < (fullHeight[window.innerWidth] || h) - 120 || h < window.innerHeight - 120);
       const end = history.scrollHeight - history.scrollTop - history.clientHeight < 48;
       document.body.classList.toggle('notes-keyboard', keyboard);
+      // iOS scrolls the whole page to bring the composer above the keyboard before the notes have shrunk,
+      // which leaves it hidden under the keyboard. Everything fits once the notes are resized, so undo
+      // that scroll and size from the top.
+      // (Focus can also scroll body/main even though they're overflow: hidden.)
+      if (keyboard) {
+        if (window.scrollY || (vv && vv.offsetTop)) window.scrollTo(0, 0);
+        for (const el of [document.body, document.querySelector('main')]) if (el?.scrollTop) el.scrollTop = 0;
+      }
       const visibleBottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
       const tabs = !keyboard && document.querySelector('.tabs')?.getBoundingClientRect();
       const bottom = keyboard || !tabs ? visibleBottom : Math.min(visibleBottom, tabs.top);
@@ -340,7 +348,8 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
       if (end || state.follow) history.scrollTop = history.scrollHeight;
     };
     window.addEventListener('resize', fit);
-    shell.addEventListener('focusin', () => { fit(); setTimeout(fit, 150); setTimeout(fit, 500); });
+    shell.addEventListener('focusin', () => { fit(); for (const ms of [100, 300, 600, 1000]) setTimeout(fit, ms); });
+    window.addEventListener('scroll', () => { if (document.body.classList.contains('notes-keyboard')) requestAnimationFrame(fit); }, { passive: true });
     shell.addEventListener('focusout', () => setTimeout(fit, 120));
     window.visualViewport?.addEventListener('resize', fit); window.visualViewport?.addEventListener('scroll', fit);
     requestAnimationFrame(fit);
