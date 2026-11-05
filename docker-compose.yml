@@ -14,7 +14,7 @@ x-media: &media ${MEDIA_PATH:-./media}:/media
 
 services:
   marquee:
-    image: ghcr.io/tjabooo/marquee:${MARQUEE_VERSION:-1.1.0}
+    image: ghcr.io/tjabooo/marquee:${MARQUEE_VERSION:-1.2.0}
     restart: unless-stopped
     # Runs as this user and group; the data and media folders must be writable by them.
     user: "${PUID:-1000}:${PGID:-1000}"

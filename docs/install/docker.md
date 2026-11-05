@@ -1,7 +1,7 @@
 # Docker
 
 The image `ghcr.io/tjabooo/marquee` is published for `linux/amd64` and `linux/arm64` with the tags
-`1.1.0`, `1.1`, `1` and `latest`. It contains Node.js, ffmpeg and Tesseract, runs as an unprivileged
+`1.2.0`, `1.2`, `1` and `latest`. It contains Node.js, ffmpeg and Tesseract, runs as an unprivileged
 user, and has a health check. Common background is in [README.md](README.md); the NAS guides
 ([Unraid](unraid.md), [Synology](synology.md), [TrueNAS](truenas.md)) build on this page.
 
@@ -16,8 +16,8 @@ user, and has a health check. Common background is in [README.md](README.md); th
 
 ```sh
 mkdir -p ~/marquee && cd ~/marquee
-curl -fsSLO https://raw.githubusercontent.com/Tjabooo/marquee/v1.1.0/docker-compose.yml
-curl -fsSL https://raw.githubusercontent.com/Tjabooo/marquee/v1.1.0/.env.example -o marquee.env
+curl -fsSLO https://raw.githubusercontent.com/Tjabooo/marquee/v1.2.0/docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/Tjabooo/marquee/v1.2.0/.env.example -o marquee.env
 mkdir -p data
 sudo chown 1000:1000 data        # your PUID:PGID
 ```
@@ -41,7 +41,7 @@ TZ=Europe/London
 | `MEDIA_PATH` | `./media` | Host folder mounted at `/media` |
 | `MARQUEE_DATA` | `./data` | Host folder mounted at `/data` (database, state, cache) |
 | `MARQUEE_PORT` | `8080` | Host port |
-| `MARQUEE_VERSION` | `1.1.0` | Image tag |
+| `MARQUEE_VERSION` | `1.2.0` | Image tag |
 | `PUID`, `PGID` | `1000` | User and group Marquee (and qBittorrent) run as |
 | `TZ` | `UTC` | Time zone |
 | `TRUSTED_PROXIES` | `127.0.0.1,::1` | See [../remote-access.md](../remote-access.md) |
@@ -93,7 +93,7 @@ namespace, so its traffic can only leave through the tunnel: if the VPN is down,
 connectivity rather than falling back to your normal connection.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Tjabooo/marquee/v1.1.0/docker/vpn.env.example -o vpn.env
+curl -fsSL https://raw.githubusercontent.com/Tjabooo/marquee/v1.2.0/docker/vpn.env.example -o vpn.env
 # fill in vpn.env (provider options: https://github.com/qdm12/gluetun-wiki)
 docker compose --profile vpn up -d
 ```
@@ -112,7 +112,7 @@ host, then:
 
 ```sh
 mkdir -p docker
-curl -fsSL https://raw.githubusercontent.com/Tjabooo/marquee/v1.1.0/docker/compose.nvidia.yml -o docker/compose.nvidia.yml
+curl -fsSL https://raw.githubusercontent.com/Tjabooo/marquee/v1.2.0/docker/compose.nvidia.yml -o docker/compose.nvidia.yml
 docker compose -f docker-compose.yml -f docker/compose.nvidia.yml up -d
 docker compose exec marquee node setup.js doctor --offline
 ```
@@ -129,7 +129,7 @@ address:
 ```yaml
 services:
   marquee:
-    image: ghcr.io/tjabooo/marquee:1.1.0
+    image: ghcr.io/tjabooo/marquee:1.2.0
     restart: unless-stopped
     user: "1000:1000"
     ports:
@@ -157,7 +157,7 @@ Add other settings under `environment`, or put them in `.env` in the data folder
 
 ## 6. Update
 
-`docker-compose.yml` pins the image to `1.1.0`, so set the new version first:
+`docker-compose.yml` pins the image to `1.2.0`, so set the new version first:
 
 ```sh
 docker compose exec marquee node setup.js backup     # lands in data/backups/

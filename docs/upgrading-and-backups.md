@@ -55,7 +55,7 @@ upgrading between minor versions.
 
 After upgrading, `node setup.js` is safe to run again: it keeps your settings and only adds new ones.
 
-### Upgrading to the sign-in release (after 1.1.0)
+### Upgrading from 1.1 to 1.2 (sign-in)
 
 - **Windows:** run `node setup.js service install` (or `scripts\windows\install-service.ps1`) once
   in an elevated PowerShell. It removes the old `Marquee Watchdog` task, which ran a script from the

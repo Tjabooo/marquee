@@ -18,7 +18,7 @@ Mount the media drive at a fixed path through `/etc/fstab` (by `UUID=`, with `no
 ## 2. Install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Tjabooo/marquee/v1.1.0/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/Tjabooo/marquee/v1.2.0/install.sh -o install.sh
 less install.sh
 sh install.sh
 ```

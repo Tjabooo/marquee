@@ -23,7 +23,7 @@ chown 99:100 /mnt/user/appdata/marquee
 | Field | Value |
 | --- | --- |
 | Name | `marquee` |
-| Repository | `ghcr.io/tjabooo/marquee:1.1.0` |
+| Repository | `ghcr.io/tjabooo/marquee:1.2.0` |
 | Network Type | `Bridge` |
 | Extra Parameters | `--user 99:100` |
 | Port | Container `8080` → Host `8080` |

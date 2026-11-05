@@ -29,7 +29,7 @@ port `8081`), `sudo dnf install pipx && pipx install pyatv` (Apple TV).
 ## 2. Install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Tjabooo/marquee/v1.1.0/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/Tjabooo/marquee/v1.2.0/install.sh -o install.sh
 less install.sh
 sh install.sh
 ```

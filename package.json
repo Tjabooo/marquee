@@ -1,6 +1,6 @@
 {
   "name": "marquee",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Self-hosted, phone-first media server: TMDB discovery, qBittorrent downloads, subtitles, automatic MP4 conversion and casting to smart TVs and Apple TV.",
   "type": "module",
   "main": "server.js",

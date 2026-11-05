@@ -4,6 +4,8 @@ All notable changes to Marquee. Versions follow [Semantic Versioning](https://se
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-05
+
 ### Security
 
 - **Marquee's own sign-in.** Accounts are created on the server (`node setup.js user add EMAIL

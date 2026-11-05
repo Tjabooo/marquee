@@ -51,18 +51,18 @@ Use an **elevated PowerShell** (Run as administrator) if you want setup to regis
 the same run.
 
 ```powershell
-Invoke-WebRequest https://raw.githubusercontent.com/Tjabooo/marquee/v1.1.0/install.ps1 -OutFile install.ps1
+Invoke-WebRequest https://raw.githubusercontent.com/Tjabooo/marquee/v1.2.0/install.ps1 -OutFile install.ps1
 notepad install.ps1
 powershell -ExecutionPolicy Bypass -File install.ps1
 ```
 
-This installs to `%USERPROFILE%\marquee`. Use `-Dir D:\Apps\Marquee` for another folder, `-Version v1.1.0`
+This installs to `%USERPROFILE%\marquee`. Use `-Dir D:\Apps\Marquee` for another folder, `-Version v1.2.0`
 to pin a release, `-DryRun` to preview. The script verifies the archive against `SHA256SUMS` and runs
 `node setup.js`.
 
-By hand: download `marquee-v1.1.0.tar.gz` and `SHA256SUMS` from the release, compare
-`(Get-FileHash marquee-v1.1.0.tar.gz).Hash` with the value in `SHA256SUMS`, then
-`tar -xzf marquee-v1.1.0.tar.gz -C D:\Apps\Marquee --strip-components=1` and run `node setup.js` there.
+By hand: download `marquee-v1.2.0.tar.gz` and `SHA256SUMS` from the release, compare
+`(Get-FileHash marquee-v1.2.0.tar.gz).Hash` with the value in `SHA256SUMS`, then
+`tar -xzf marquee-v1.2.0.tar.gz -C D:\Apps\Marquee --strip-components=1` and run `node setup.js` there.
 
 ## 3. Configure
 
