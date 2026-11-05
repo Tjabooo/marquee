@@ -5649,6 +5649,7 @@ function renderSettings() {
     segmented([['button', 'Show a button'], ['auto', 'Skip automatically']], p.skipIntro || 'button', (v) => saveMe({ skipIntro: v }).then(renderSettings), 'Intros')));
   out.push(settingsRow('Open Marquee on', null,
     segmented([['discover', 'Discover'], ['library', 'Library']], p.startView === 'downloads' ? 'library' : p.startView || 'discover', (v) => saveMe({ startView: v }).then(renderSettings), 'Open Marquee on')));
+  out.push(tvSignInRow());
   out.push(settingsRow('Library order', null,
     segmented([['newest', 'Newest'], ['expiring', 'Leaving soonest'], ['title', 'A–Z']], p.librarySort || 'newest', (v) => saveMe({ librarySort: v }).then(renderSettings), 'Library order')));
   out.push(...notificationSettings());
@@ -5679,6 +5680,26 @@ function renderSettings() {
 
   if (me.isOwner) out.push(...ownerSettings());
   body.replaceChildren(...out.filter(Boolean));
+}
+
+// The Marquee app on a TV (tv/tizen) shows a code; entering it here signs that TV in as you.
+function tvSignInRow() {
+  const input = h('input', { type: 'text', class: 'invite-note tv-code', maxlength: '7', placeholder: 'Code on the TV', 'aria-label': 'Code shown on the TV',
+    autocomplete: 'off', autocapitalize: 'characters', spellcheck: 'false', enterkeyhint: 'done' });
+  const go = h('button', { type: 'submit', class: 'chip' }, 'Sign in');
+  const note = h('p', { class: 'set-hint tv-code-note', role: 'status' });
+  const form = h('form', { class: 'tv-code-form', onsubmit: async (e) => {
+    e.preventDefault();
+    const code = input.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (code.length < 6) { note.textContent = 'The code on the TV has 6 letters and numbers.'; input.focus(); return; }
+    go.disabled = true; note.textContent = 'Signing in the TV…';
+    try {
+      await api('/api/tv/pair/approve', jsonPost({ code }));
+      input.value = ''; note.textContent = 'Done. The TV is signed in as you.';
+    } catch (err) { note.textContent = err.message; } finally { go.disabled = false; }
+  } }, input, go);
+  return settingsRow('Sign in a TV', 'Open the Marquee app on the TV and enter the code it shows. The TV then sees your library.',
+    h('div', { class: 'tv-code-wrap' }, form, note));
 }
 
 // ---------- notifications (notifications.js, sw.js; push.js on the server) ----------

@@ -29,6 +29,8 @@ import { createRequire } from 'node:module';
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite');
 
 export const COOKIE = 'marquee_session';
+export const TV_HEADER = 'x-marquee-tv';
+export const SESSION_HEADER = 'x-marquee-session';
 const IDENTITY = 'cf-access-authenticated-user-email';
 const SCRYPT = { N: 1 << 15, r: 8, p: 1, maxmem: 96 * 1024 * 1024 };
 const MIN_PASSWORD = 10;
@@ -143,7 +145,20 @@ export function openAuthStore(dataDir) {
       agent TEXT
     );
     CREATE INDEX IF NOT EXISTS sessions_email ON sessions(email);
+    -- TVs signed in from a phone (tv.js). Not tied to a password: people who sign in through
+    -- Cloudflare Access or a proxy have none, and their TVs need a session all the same.
+    CREATE TABLE IF NOT EXISTS tv_sessions (
+      id TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      last_seen INTEGER NOT NULL,
+      address TEXT,
+      agent TEXT
+    );
+    CREATE INDEX IF NOT EXISTS tv_sessions_email ON tv_sessions(email);
   `);
+  const dropTvs = (e) => db.prepare('DELETE FROM tv_sessions WHERE email = ?').run(e).changes;
   return {
     db,
     login: (email) => db.prepare('SELECT * FROM logins WHERE email = ?').get(normalEmail(email)) || null,
@@ -157,16 +172,18 @@ export function openAuthStore(dataDir) {
       db.prepare(`INSERT INTO logins (email, password, created_at, changed_at) VALUES (?, ?, ?, ?)
         ON CONFLICT(email) DO UPDATE SET password = excluded.password, changed_at = excluded.changed_at`).run(e, hash, now, now);
       db.prepare('DELETE FROM sessions WHERE email = ?').run(e); // a new password signs everyone out
+      dropTvs(e);
     },
     remove(email) {
       const e = normalEmail(email);
       db.prepare('DELETE FROM sessions WHERE email = ?').run(e);
+      dropTvs(e);
       return db.prepare('DELETE FROM logins WHERE email = ?').run(e).changes > 0;
     },
     list: () => db.prepare(`SELECT l.email, l.created_at AS createdAt, l.changed_at AS changedAt,
       (SELECT COUNT(*) FROM sessions s WHERE s.email = l.email AND s.expires_at > ?) AS sessions,
       (SELECT MAX(last_seen) FROM sessions s WHERE s.email = l.email) AS lastSeen FROM logins l ORDER BY l.email`).all(Date.now()),
-    revokeSessions: (email) => db.prepare('DELETE FROM sessions WHERE email = ?').run(normalEmail(email)).changes,
+    revokeSessions: (email) => db.prepare('DELETE FROM sessions WHERE email = ?').run(normalEmail(email)).changes + dropTvs(normalEmail(email)),
     count: () => db.prepare('SELECT COUNT(*) AS n FROM logins').get().n,
     close: () => db.close(),
   };
@@ -243,6 +260,10 @@ export function createAuth({
       throw httpError(421, `Marquee doesn’t answer to “${hostOnly(req.headers.host)}”. Add it to ALLOWED_HOSTS in .env if it’s yours.`);
     }
     if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return;
+    // The TV app (tv/tizen) runs from the TV's own files, so its Origin is "null" or file://. It marks its
+    // requests with X-Marquee-TV: a web page can't send a custom header to another site without a CORS
+    // preflight, and Marquee approves none, so no other site can make a browser send one here.
+    if (req.headers[TV_HEADER]) return;
     const origin = req.headers.origin;
     const fetchSite = req.headers['sec-fetch-site'];
     // Pages with Referrer-Policy: no-referrer make browsers send `Origin: null` even for their own forms;
@@ -259,26 +280,44 @@ export function createAuth({
     }
   }
 
+  // The session cookie, or the X-Marquee-Session header the TV app sends (it has no cookie jar for Marquee).
   function sessionCookie(req) {
     for (const part of String(req.headers.cookie || '').split(';')) {
       const i = part.indexOf('=');
       if (i > 0 && part.slice(0, i).trim() === COOKIE) return part.slice(i + 1).trim();
     }
-    return null;
+    const header = req.headers[SESSION_HEADER];
+    return header && /^[A-Za-z0-9_-]{20,100}$/.test(String(header)) ? String(header) : null;
+  }
+
+  // A session for a person without a password prompt: a TV that person approved from their phone.
+  function createSession(req, email, agent) {
+    const e = normalEmail(email);
+    if (!validEmail(e)) throw httpError(400, 'Only people with an email address can sign in a TV.');
+    const token = crypto.randomBytes(32).toString('base64url');
+    const t = now();
+    store.db.prepare('INSERT INTO tv_sessions (id, email, created_at, expires_at, last_seen, address, agent) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(tokenHash(token), e, t, t + days * 86400_000, t, clientAddress(req), String(agent || '').slice(0, 200));
+    store.db.prepare('DELETE FROM tv_sessions WHERE expires_at <= ?').run(t);
+    return token;
   }
 
   function sessionFor(token) {
     if (!token || token.length > 100) return null;
-    const row = store.db.prepare('SELECT * FROM sessions WHERE id = ?').get(tokenHash(token));
-    if (!row) return null;
-    const t = now();
-    if (row.expires_at <= t) { store.db.prepare('DELETE FROM sessions WHERE id = ?').run(row.id); return null; }
-    if (t - row.last_seen > 3600_000) {
-      // Sliding expiry, capped at a year from sign-in.
-      const expires = Math.min(t + days * 86400_000, row.created_at + 365 * 86400_000);
-      store.db.prepare('UPDATE sessions SET last_seen = ?, expires_at = ? WHERE id = ?').run(t, expires, row.id);
+    const id = tokenHash(token);
+    for (const table of ['sessions', 'tv_sessions']) {
+      const row = store.db.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(id);
+      if (!row) continue;
+      const t = now();
+      if (row.expires_at <= t) { store.db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(row.id); return null; }
+      if (t - row.last_seen > 3600_000) {
+        // Sliding expiry, capped at a year from sign-in.
+        const expires = Math.min(t + days * 86400_000, row.created_at + 365 * 86400_000);
+        store.db.prepare(`UPDATE ${table} SET last_seen = ?, expires_at = ? WHERE id = ?`).run(t, expires, row.id);
+      }
+      return row;
     }
-    return row;
+    return null;
   }
 
   // Sets req.auth = { via: 'proxy' | 'session' | 'home' | null, remote, email }.
@@ -317,7 +356,7 @@ export function createAuth({
 
   function signOut(req) {
     const token = sessionCookie(req);
-    if (token) store.db.prepare('DELETE FROM sessions WHERE id = ?').run(tokenHash(token));
+    if (token) for (const table of ['sessions', 'tv_sessions']) store.db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(tokenHash(token));
     return cookie(req, '', 0);
   }
 
@@ -339,6 +378,7 @@ export function createAuth({
     identify,
     signIn,
     signOut,
+    createSession,
     changePassword,
     hasLogins: () => store.count() > 0,
   };

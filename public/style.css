@@ -2401,3 +2401,13 @@ html.wrapped-on { overflow: hidden; }
 .remote-up-next .up-next-dismiss { color: inherit; background: transparent; border-color: var(--line) !important; }
 .remote-up-next .up-next-error { color: var(--alert); }
 @media (prefers-reduced-motion: reduce) { .remote-skip-intro, .remote-up-next { animation: none; } }
+
+/* Settings → Sign in a TV: the code the TV app shows */
+.tv-code-wrap { display: grid; gap: 6px; }
+.tv-code-form { display: flex; gap: 8px; }
+.tv-code-form .tv-code {
+  width: 10.5ch; flex: none; height: 40px; background: var(--velvet);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 17px; letter-spacing: .12em; text-transform: uppercase;
+}
+.tv-code-note:empty { display: none; }
+.tv-code-note { margin: 0; max-width: 28ch; }

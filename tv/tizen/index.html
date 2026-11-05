@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Marquee</title>
+<!-- The TV's own APIs (the AVPlay player). Only pages inside the app package get them, which is why
+     this small shell is installed on the TV and loads the rest of Marquee's TV app from the server. -->
+<script src="$WEBAPIS/webapis/webapis.js"></script>
+<script src="config.js"></script>
+<style>
+  html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: #1F1019; color: #F6EADF; font-family: "SamsungOne", "Tizen Sans", sans-serif; }
+  .shell { position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+  .shell b { font-size: 96px; font-weight: 800; color: #F4C152; }
+  .shell p { max-width: 1100px; margin-top: 28px; font-size: 32px; color: #BA9DAD; }
+</style>
+</head>
+<body>
+<div id="app"><div class="shell"><b>Marquee</b><p id="shell-note"></p></div></div>
+<script src="shell.js"></script>
+</body>
+</html>

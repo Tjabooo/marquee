@@ -15,6 +15,7 @@ import * as subtitles from './subtitles.js';
 import * as subsync from './subsync.js';
 import * as activity from './activity.js';
 import * as house from './house.js';
+import { createTvPairing } from './tv.js';
 import * as load from './load.js';
 import * as screenTime from './screentime.js';
 import * as clips from './clips.js';
@@ -109,6 +110,7 @@ function notify(userIds, kind, message) {
   return push.send(ids, kind, message).catch((err) => { console.warn(`[push] ${err.message}`); return 0; });
 }
 const auth = createAuth({ dataDir: DATA_DIR });
+const tvPairing = createTvPairing();
 watchRooms.attachStore(social.partyStore); // planned watch parties survive restarts
 const personName = (id) => accounts.userById(id)?.name || 'Someone';
 const avatarOf = (id) => accounts.userById(id)?.avatar || null;
@@ -1729,6 +1731,17 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, house.bootPoll(req, await readJson(req)));
   }
 
+  // Signing in the TV app (tv.js): the TV asks for a code and waits; a signed-in phone approves it.
+  // Home network only, like casting: the TV and the phone are in the same room.
+  if (p === '/api/tv/pair/start' && req.method === 'POST') {
+    if (req.auth.remote) throw new HttpError(403, 'Sign in a TV from the home network.');
+    return sendJson(res, 200, tvPairing.start());
+  }
+  if (p === '/api/tv/pair/poll') {
+    if (req.auth.remote) throw new HttpError(403, 'Sign in a TV from the home network.');
+    return sendJson(res, 200, tvPairing.poll(url.searchParams.get('id')));
+  }
+
   activity.seen(req);
   { // video requests often come without the Access email: remember who this visitor's address is
     const email = String(req.headers['cf-access-authenticated-user-email'] || '').trim().toLowerCase();
@@ -1876,6 +1889,17 @@ async function handleApi(req, res, url) {
     const next = accounts.setAvatar(user.id, image);
     watchRooms.renameUser(next);
     return sendJson(res, 200, { me: { ...accounts.publicUser(next), via: req.auth.via } });
+  }
+  if (p === '/api/tv/pair/approve' && req.method === 'POST') {
+    const body = await readJson(req, 4096);
+    const email = req.auth.via === 'home' ? null : req.auth.email;
+    const result = tvPairing.approve(`u${user.id}`, body.code, () => ({
+      // The shared Home network account has no email: its TV simply uses home network access.
+      token: email ? auth.createSession(req, email, 'Marquee TV app') : null,
+      name: user.name || accounts.displayNameFor(email) || 'Home network',
+    }));
+    activity.record(req, 'signin', 'Signed in a TV');
+    return sendJson(res, 200, result);
   }
   if (p === '/api/me/progress') {
     if (req.method === 'POST') {
@@ -2714,6 +2738,7 @@ function publicPath(req, url) {
   const p = url.pathname;
   if (p.startsWith('/api/auth/') || p === '/c' || p.startsWith('/c/') || p.startsWith('/play/')) return true;
   if (/^\/api\/(house\/(report|summary|load|boot)|screentime)$/.test(p)) return true;
+  if (/^\/api\/tv\/pair\/(start|poll)$/.test(p)) return true; // home network only (checked in the route)
   if (p.startsWith('/api/subs/file/') && !req.auth.remote) return true;
   if (p.startsWith('/api/')) return false;
   const ext = path.extname(p).toLowerCase();
@@ -2798,7 +2823,7 @@ const server = http.createServer(async (req, res) => {
         || /^\/api\/admin\/notes(?:\/import|\/\d+(?:\/(?:trash|restore|share|unshare))?)?$/.test(url.pathname)
         || /^\/api\/admin\/notes\/uploads(?:\/[a-f0-9]{32}(?:\/(?:finish|cancel))?)?$/.test(url.pathname)
         || /^\/api\/watch(?:\/plan|\/[A-Za-z0-9_-]{24}\/(join|heartbeat|control|leave|invite|chat|react|schedule|cancel))?$/.test(url.pathname)
-        || url.pathname === '/api/social/rate'));
+        || url.pathname === '/api/social/rate' || /^\/api\/tv\/pair\/(start|approve)$/.test(url.pathname)));
     if (!allowed) throw new HttpError(405, 'Method not allowed.');
     if (url.pathname.startsWith('/api/')) await handleApi(req, res, url);
     else if (url.pathname.startsWith('/play/')) await handlePlay(req, res, url);
