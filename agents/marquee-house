@@ -22,6 +22,8 @@ set -u
 CONF=${MARQUEE_HOUSE_CONF:-${XDG_CONFIG_HOME:-$HOME/.config}/marquee-house.env}
 STATE=${XDG_STATE_HOME:-$HOME/.local/state}/marquee-house
 MARQUEE_URL="" HOUSE_TOKEN="" HOME_GW_MAC=""
+# The config is written by `marquee-house setup`.
+# shellcheck source=/dev/null
 [[ -r $CONF ]] && . "$CONF"
 
 gw_mac() {
@@ -209,6 +211,7 @@ case ${1:-report} in
     mkdir -p "$(dirname "$CONF")"; umask 077
     printf 'MARQUEE_URL=%s\nHOUSE_TOKEN=%s\nHOME_GW_MAC=%s\n' "${2%/}" "$3" "$mac" > "$CONF"
     echo "saved $CONF (home = router $mac)"
+    # shellcheck source=/dev/null
     . "$CONF"; exec "$0" report ;;
   json) collect ;;
   report)
