@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { downloadDestination, downloadFilePath } from '../download-paths.js';
+import { downloadDestination, downloadFilePath } from '../src/download-paths.js';
 
 const root = path.resolve('media-root');
 

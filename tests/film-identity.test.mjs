@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import vm from 'node:vm';
-import { initShows, filmInfo, identifyFilm, rememberFilmDownload, filmDownload } from '../shows.js';
+import { initShows, filmInfo, identifyFilm, rememberFilmDownload, filmDownload } from '../src/shows.js';
 
 const first = { id: 1283515, title: 'Verity', release_date: '2026-09-30', poster_path: '/a.jpg', overview: 'A novelist.' };
 const second = { id: 1812260, title: 'Verity', release_date: '2026-10-31', poster_path: '/b.jpg', overview: 'A wish.' };

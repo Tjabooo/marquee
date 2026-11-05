@@ -13,6 +13,7 @@ test('clip renames persist without moving files or breaking public links; downlo
   const app = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-clip-api-'));
   for (const name of await fs.readdir(root)) if (name.endsWith('.js') || name === 'package.json') await fs.copyFile(path.join(root, name), path.join(app, name));
   await fs.cp(path.join(root, 'public'), path.join(app, 'public'), { recursive: true });
+  await fs.cp(path.join(root, 'src'), path.join(app, 'src'), { recursive: true });
   // Only the external torrent service is replaced, in this isolated copy.
   await fs.writeFile(path.join(app, 'torrents.js'), `
     export const torrentsEnabled = () => true;

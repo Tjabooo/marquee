@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { NotesStore } from '../notes.js';
+import { NotesStore } from '../src/notes.js';
 import { parseDiscordExport, importTimestamp } from '../public/notes-import.js';
 
 const setup = (t) => {

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 
 process.env.UPLOAD_MBPS = '100';
-const load = await import('../load.js');
+const load = await import('../src/load.js');
 
 const req = (headers = {}, ip = '192.168.50.26') => ({ headers, socket: { remoteAddress: `::ffff:${ip}` } });
 const later = (ms, fn) => { const real = Date.now; Date.now = () => real() + ms; try { return fn(); } finally { Date.now = real; } };

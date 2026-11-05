@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import * as accounts from '../accounts.js';
-import * as activity from '../activity.js';
-import { WatchRooms } from '../watch.js';
+import * as accounts from '../src/accounts.js';
+import * as activity from '../src/activity.js';
+import { WatchRooms } from '../src/watch.js';
 
 test('Activity resolves current account names for past events without changing email identity', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'marquee-names-'));

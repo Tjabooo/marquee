@@ -23,7 +23,7 @@ test('a freshly downloaded HEVC file gets an H.264 browser copy before anyone pl
       '-tag:v', 'hvc1', '-c:a', 'aac', '-y', file]);
   } catch { t.skip('FFmpeg without libx265'); return; }
 
-  const convert = await import('../convert.js?browser-h264-test');
+  const convert = await import('../src/convert.js?browser-h264-test');
   await convert.startConverter({ dataDir: dir, listCandidates: async () => [{ file, deleteOriginal: false }] });
   // hvc1 HEVC counts as playable for Safari/Chrome, so the old audio/video check never made a copy.
   assert.equal(convert.videoBrowserSafe(await convert.probeVideo(file)), true);
@@ -55,7 +55,7 @@ test('an unavailable candidate inventory preserves existing browser copies', { t
   const old = new Date(Date.now() - 2 * 3600 * 1000);
   await fs.utimes(existing, old, old);
 
-  const convert = await import('../convert.js?cache-outage-test');
+  const convert = await import('../src/convert.js?cache-outage-test');
   await convert.startConverter({ dataDir: dir, listCandidates: async () => null });
 
   // Initial scan runs after five seconds. If null were treated as [], cleanFixDir() would remove this

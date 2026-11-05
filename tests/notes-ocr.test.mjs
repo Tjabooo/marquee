@@ -5,8 +5,8 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { NotesStore } from '../notes.js';
-import { NotesOcr, windowsOcr } from '../notes-ocr.js';
+import { NotesStore } from '../src/notes.js';
+import { NotesOcr, windowsOcr } from '../src/notes-ocr.js';
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite');
 
 const temp = () => fs.mkdtemp(path.join(os.tmpdir(), 'marquee-notes-ocr-'));

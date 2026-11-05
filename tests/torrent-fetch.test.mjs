@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fetchTorrentFile, isPublicAddress, looksLikeTorrent } from '../torrent-fetch.js';
+import { fetchTorrentFile, isPublicAddress, looksLikeTorrent } from '../src/torrent-fetch.js';
 
 const torrent = Buffer.from('d8:announce3:foo4:infod4:name1:aee');
 const publicLookup = async () => [{ address: '93.184.216.34' }];

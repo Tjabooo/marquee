@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { WatchRooms } from '../watch.js';
+import { WatchRooms } from '../src/watch.js';
 import { WatchSession, playbackPlan, offsetCues } from '../public/watch-sync.js';
 const a = { id: 1, name: 'Alice' }, b = { id: 2, name: 'Bob' };
 const ac = 'alice-client-123456', bc = 'bobby-client-123456';

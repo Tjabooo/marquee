@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 
 const clipsDir = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-clip-edit-'));
 process.env.CLIPS_DIR = clipsDir;
-const clips = await import('../clips.js');
+const clips = await import('../src/clips.js');
 const info = { duration: 10, keyframes: [0, 2, 4, 6, 8] };
 
 test('kept parts snap their starts back to keyframes and come out in order', () => {
@@ -71,7 +71,7 @@ test('removing the mic track rebuilds the mix and copies the rest', { skip: !has
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-clip-tracks-'));
   const data = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-clip-data-'));
   process.env.CLIPS_DIR = dir;
-  const fresh = await import(`../clips.js?tracks=${Date.now()}`);
+  const fresh = await import(`../src/clips.js?tracks=${Date.now()}`);
   try {
     fresh.initClips({ dataDir: data });
     await fs.mkdir(path.join(dir, 'Game'), { recursive: true });

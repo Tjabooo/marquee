@@ -46,11 +46,11 @@ function fixture(respond = async (body) => ({ title: body.title }), person = fal
   }
   document = new Element('document'); document.activeElement = null; document.createElement = (tag) => new Element(tag);
   const clip = { id: 'testclip12345678', title: 'An original two-line title' }, calls = [], messages = [];
-  const context = vm.createContext({ document, Node: Element, setTimeout,
+  const context = vm.createContext({ document, Node: Element, setTimeout, pad2: (n) => String(n).padStart(2, '0'),
     state: { clips: { clips: [clip] }, access: { names: {} }, me: { id: 3, name: 'Original' }, people: [{ id: 3, name: 'Original' }], activity: { people: [{ user: 'viewer@example.test', name: 'Original' }], events: [] } }, jsonPost: (body) => body, toast: (message) => messages.push(message),
     api: async (url, body) => { calls.push({ url, body }); return respond(body); },
   });
-  vm.runInContext(builder + titleEditor + source.slice(source.indexOf('function accessName('), source.indexOf('function accessSection(')), context);
+  vm.runInContext(builder + titleEditor + source.slice(source.indexOf('function accessName('), source.indexOf('function peopleSection(')), context);
   const wrap = person ? context.accessName('viewer@example.test', 'Original') : context.clipTitle(clip);
   const edit = async () => { await wrap.children[0].fire('click'); return { form: wrap.children[0], input: wrap.children[0].children[0] }; };
   return { wrap, edit, clip, calls, messages, document, Element, state: context.state };

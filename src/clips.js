@@ -490,12 +490,12 @@ export async function handlePublic(req, res, url, { sendVideo, previews }) {
   }
   // The shared clip player: Marquee's own stylesheet and a player script for one clip.
   if (p === '/c/style.css' || p === '/c/player.js' || p === '/c/seek-preview.js') {
-    const file = new URL({ '/c/style.css': './public/style.css', '/c/player.js': './public/clip-share.js', '/c/seek-preview.js': './public/seek-preview.js' }[p], import.meta.url);
+    const file = new URL({ '/c/style.css': '../public/style.css', '/c/player.js': '../public/clip-share.js', '/c/seek-preview.js': '../public/seek-preview.js' }[p], import.meta.url);
     try { return send(200, p.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/javascript; charset=utf-8', await fs.promises.readFile(file), { 'Cache-Control': 'no-cache' }); }
     catch { return send(404, 'text/plain', 'Not found.'); }
   }
   if (p === '/c/marquee.png') {
-    const file = new URL('./public/og-marquee.png', import.meta.url);
+    const file = new URL('../public/og-marquee.png', import.meta.url);
     try { return send(200, 'image/png', await fs.promises.readFile(file)); } catch { return send(404, 'text/plain', 'Not found.'); }
   }
 

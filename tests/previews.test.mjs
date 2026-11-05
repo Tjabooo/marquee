@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
-import { Previews, stepFor, parseShowinfo, ffmpegArgs } from '../previews.js';
+import { Previews, stepFor, parseShowinfo, ffmpegArgs } from '../src/previews.js';
 import { frameAt, frameSize } from '../public/seek-preview.js';
 
 const FFMPEG = process.env.FFMPEG || 'ffmpeg';

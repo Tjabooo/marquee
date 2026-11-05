@@ -2,12 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
-import { pickBest } from '../recommend.js';
-import { parseTpb } from '../torrents.js';
-import { startSmartJob, smartJob } from '../smart-download.js';
+import { pickBest } from '../src/recommend.js';
+import { parseTpb } from '../src/torrents.js';
+import { startSmartJob, smartJob } from '../src/smart-download.js';
 
 // The server's own release-name parser, taken from server.js so the test can't drift from it.
-const server = await fs.readFile(new URL('../server.js', import.meta.url), 'utf8');
+const server = await fs.readFile(new URL('../src/server.js', import.meta.url), 'utf8');
 const parseName = vm.runInNewContext(server.slice(server.indexOf('const EPISODE_PATTERNS'), server.indexOf('// A file\'s name info')) + '\nparseName');
 
 const GB = 1024 ** 3;
