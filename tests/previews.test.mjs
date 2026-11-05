@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { Previews, stepFor, parseShowinfo, ffmpegArgs } from '../src/previews.js';
-import { frameAt, frameSize } from '../public/seek-preview.js';
+import { frameAt, frameSize, warmOrder } from '../public/seek-preview.js';
 
 const FFMPEG = process.env.FFMPEG || 'ffmpeg';
 const hasFfmpeg = spawnSync(FFMPEG, ['-version'], { windowsHide: true }).status === 0;
@@ -69,4 +69,11 @@ test('a storyboard is made in the background, sheet by sheet', { skip: !hasFfmpe
   const again = new Previews(path.join(dir, 'cache'));
   assert.equal((await again.index(video)).done, true);
   await fs.rm(dir, { recursive: true, force: true });
+});
+
+test('sheets are fetched nearest the hovered spot first, each once', () => {
+  assert.deepEqual(warmOrder(5, 0), [0, 1, 2, 3, 4]);
+  assert.deepEqual(warmOrder(6, 4), [4, 5, 3, 2, 1, 0]);
+  assert.deepEqual(warmOrder(3, 9), [2, 1, 0]);
+  assert.deepEqual(warmOrder(0, 0), []);
 });
