@@ -1380,6 +1380,9 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .set-card { padding: 14px; background: var(--curtain); border-radius: 14px; }
 .set-card p { margin: 0 0 6px; }
 .set-card p:last-child { margin-bottom: 0; }
+.account-password { display: grid; gap: 8px; margin-top: 8px; }
+.account-password .chip { justify-self: start; }
+.set-details summary { cursor: pointer; padding: 10px 0; color: var(--muted, inherit); }
 .set-signin { margin-top: 8px; }
 .set-signin summary { cursor: pointer; font-weight: 600; }
 .set-signin ol { margin: 6px 0 10px; padding-left: 20px; color: var(--dust); font-size: 14px; }

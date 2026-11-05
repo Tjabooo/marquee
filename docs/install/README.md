@@ -163,7 +163,7 @@ node setup.js service install --scope user      # systemd only: user or system
 
 | Platform | Mechanism | Runs |
 | --- | --- | --- |
-| Windows | Task Scheduler: task `Marquee` (runs `start-marquee.cmd` as your account) and `Marquee Watchdog` (SYSTEM, every 2 minutes) | At boot, before sign-in |
+| Windows | Task Scheduler: task `Marquee` (runs `start-marquee.cmd` as your account, not elevated; restarts it within 2 minutes if it stops) | At boot, before sign-in |
 | Linux, systemd, system scope | `/etc/systemd/system/marquee.service`, running as your user, with `RequiresMountsFor=` on the media and data folders | At boot |
 | Linux, systemd, user scope | `~/.config/systemd/user/marquee.service` plus `loginctl enable-linger` | At boot |
 | Linux, OpenRC (Alpine and others) | `/etc/init.d/marquee`, added to the `default` runlevel | At boot |

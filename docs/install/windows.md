@@ -59,12 +59,18 @@ node setup.js service install
 ```
 
 This runs `scripts\windows\install-service.ps1`, which asks for your Windows password (for a
-Microsoft account, the account password, not the PIN) and registers two tasks:
+Microsoft account, the account password, not the PIN) and registers one task:
 
 | Task | Runs as | What it does |
 | --- | --- | --- |
-| `Marquee` | Your account | At boot, 30 seconds after startup, before anyone signs in: runs `start-marquee.cmd` |
-| `Marquee Watchdog` | SYSTEM | At boot and every 2 minutes: starts `Marquee` if it isn't running |
+| `Marquee` | Your account, not elevated | At boot (after 30 seconds, before anyone signs in) runs `start-marquee.cmd`; every 2 minutes starts it again if it isn't running, since Windows occasionally skips a boot trigger |
+
+Nothing runs as SYSTEM or with admin rights. If every user of the PC can change files in the Marquee
+folder (the default for new folders directly under `C:\`), the installer limits write access to
+you, SYSTEM and administrators, so no other account can change what your task runs
+(`-KeepFolderAcl` skips this). Versions before 1.2 also registered a `Marquee Watchdog` task that
+ran a script from the Marquee folder as SYSTEM: re-running the installer removes it, and
+`node setup.js doctor` reports it while it's there.
 
 ```powershell
 node setup.js service status
@@ -73,8 +79,8 @@ node setup.js service uninstall    # elevated
 ```
 
 To keep Marquee stopped on purpose, create an empty file named `.marquee-stopped` in the Marquee
-folder (the watchdog then leaves it alone) and run `Stop-ScheduledTask -TaskName Marquee`; if
-`node.exe` keeps running, end it in Task Manager. Delete the file to let the watchdog start it again. The watchdog logs to `logs\watchdog.log`.
+folder (the 2-minute trigger then leaves it alone) and run `Stop-ScheduledTask -TaskName Marquee`; if
+`node.exe` keeps running, end it in Task Manager. Delete the file to let it start again.
 
 Run `node setup.js service install` again after changing your Windows password or moving Node.js.
 
@@ -98,7 +104,7 @@ The previous version is kept in `.backup-<version>\`. See [README.md](README.md#
 - **"Run this from an elevated PowerShell".** Installing or removing the tasks needs administrator
   rights; status and restart don't.
 - **The task doesn't start after a password change.** Run `node setup.js service install` again.
-- Logs: `logs\marquee.log` and `logs\watchdog.log`. Run `node setup.js doctor`.
+- Logs: `logs\marquee.log`. Run `node setup.js doctor`.
 
 More in [../troubleshooting.md](../troubleshooting.md).
 

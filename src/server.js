@@ -42,6 +42,7 @@ import { PushStore, KINDS as PUSH_KINDS } from './push.js';
 import { Previews } from './previews.js';
 import { isHomeRequest, describeRequest } from './network.js';
 import { createTrust } from './trust.js';
+import { createAuth, signInPage, safeNext } from './auth.js';
 import { checkConfig } from './config-check.js';
 
 import { APP_DIR, DATA_DIR, CACHE_DIR, PUBLIC_DIR, dataDirProblem, ensureDataDir } from './paths.js';
@@ -102,6 +103,7 @@ function notify(userIds, kind, message) {
   if (!ids.length) return Promise.resolve(0);
   return push.send(ids, kind, message).catch((err) => { console.warn(`[push] ${err.message}`); return 0; });
 }
+const auth = createAuth({ dataDir: DATA_DIR });
 const notes = new NotesStore(DATA_DIR, { fileDir: process.env.NOTES_FILES_DIR });
 const watchlist = new WatchlistStore(DATA_DIR);
 // Text in Notes images becomes search keywords. Uploads are read right away; older images catch up after startup.
@@ -1503,6 +1505,7 @@ function announceArrivals(hash, arrived, claimants) {
 async function handleApi(req, res, url) {
   const p = url.pathname;
   let m;
+  if (p.startsWith('/api/auth/')) return handleAuth(req, res, p);
 
   // House reports from the laptop/desktop (token + home network only; see house.js). Handled before
   // activity.seen() so the machines don't show up as people in the Activity tab.
@@ -1649,9 +1652,9 @@ async function handleApi(req, res, url) {
     if (req.method === 'POST') {
       const next = accounts.updateMe(user, await readJson(req));
       watchRooms.renameUser(next);
-      return sendJson(res, 200, { me: accounts.publicUser(next) });
+      return sendJson(res, 200, { me: { ...accounts.publicUser(next), via: req.auth.via } });
     }
-    return sendJson(res, 200, { me: accounts.publicUser(user) });
+    return sendJson(res, 200, { me: { ...accounts.publicUser(user), via: req.auth.via } });
   }
   if (p === '/api/me/progress') {
     if (req.method === 'POST') {
@@ -1853,7 +1856,7 @@ async function handleApi(req, res, url) {
       casting: await castAllowed(req),
       admin: activity.isAdmin(req),
       clips: activity.isAdmin(req) && clips.clipsConfigured(),
-      me: accounts.publicUser(user),
+      me: { ...accounts.publicUser(user), via: req.auth.via },
       rules: accounts.serverSettings(),
       subLangs: subtitles.subtitleLanguages(),
       whatsNew: whatsNew.statusFor(user, WEB_BUILD),
@@ -2379,16 +2382,93 @@ function sendJson(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
+// ---------- sign-in (auth.js) ----------
+// Reachable without an identity: the sign-in page and API, health, public share links (/c),
+// signed video links (/play), the token-protected House/Screen Time agents, subtitles for TVs at
+// home, and the app's static files (code and styles only; the page itself needs an identity).
+function publicPath(req, url) {
+  const p = url.pathname;
+  if (p.startsWith('/api/auth/') || p === '/c' || p.startsWith('/c/') || p.startsWith('/play/')) return true;
+  if (/^\/api\/(house\/(report|summary|load|boot)|screentime)$/.test(p)) return true;
+  if (p.startsWith('/api/subs/file/') && !req.auth.remote) return true;
+  if (p.startsWith('/api/')) return false;
+  const ext = path.extname(p).toLowerCase();
+  return Boolean(ext) && ext !== '.html';
+}
+
+function refuseSignedOut(req, res, url) {
+  if (url.pathname.startsWith('/api/') || req.method !== 'GET') return sendJson(res, 401, { error: 'Sign in to use Marquee.', signin: true });
+  res.writeHead(303, { Location: `/signin?next=${encodeURIComponent(url.pathname + url.search)}`, 'Cache-Control': 'no-store' });
+  res.end();
+}
+
+function sendSignIn(req, res, url) {
+  const next = safeNext(url.searchParams.get('next'));
+  if (req.auth.via) { res.writeHead(303, { Location: next, 'Cache-Control': 'no-store' }); return res.end(); }
+  const errors = { wrong: 'That email and password don’t match.', wait: 'Too many tries. Wait a few minutes and try again.', missing: 'Enter your email and password.' };
+  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+  res.end(req.method === 'HEAD' ? undefined : signInPage({ next, error: errors[url.searchParams.get('error')] || '', hasLogins: auth.hasLogins(), remote: req.auth.remote }));
+}
+
+// JSON from the app, or a plain form post from /signin.
+async function readCredentials(req) {
+  if (/^application\/x-www-form-urlencoded/i.test(req.headers['content-type'] || '')) {
+    const chunks = []; let size = 0;
+    for await (const c of req) { size += c.length; if (size > 4096) throw new HttpError(413, 'Request too large.'); chunks.push(c); }
+    return { form: true, ...Object.fromEntries(new URLSearchParams(Buffer.concat(chunks).toString())) };
+  }
+  return { form: false, ...(await readJson(req, 4096)) };
+}
+
+async function handleAuth(req, res, p) {
+  if (p === '/api/auth/status') {
+    return sendJson(res, 200, { via: req.auth.via, email: req.auth.email, remote: req.auth.remote, homeNetwork: auth.mode, localLogins: auth.hasLogins() });
+  }
+  if (p === '/api/auth/login' && req.method === 'POST') {
+    const body = await readCredentials(req);
+    const next = safeNext(body.next);
+    try {
+      if (!body.email || !body.password) throw new HttpError(400, 'Enter your email and password.');
+      const { email, setCookie } = await auth.signIn(req, body.email, body.password);
+      activity.record(req, 'signin', 'Signed in to Marquee', { user: email });
+      res.setHeader('Set-Cookie', setCookie);
+      if (body.form) { res.writeHead(303, { Location: next, 'Cache-Control': 'no-store' }); return res.end(); }
+      return sendJson(res, 200, { ok: true });
+    } catch (err) {
+      if (!body.form || !err.status) throw err;
+      const code = err.status === 429 ? 'wait' : err.status === 400 ? 'missing' : 'wrong';
+      res.writeHead(303, { Location: `/signin?error=${code}&next=${encodeURIComponent(next)}`, 'Cache-Control': 'no-store' });
+      return res.end();
+    }
+  }
+  if (p === '/api/auth/logout' && req.method === 'POST') {
+    res.setHeader('Set-Cookie', auth.signOut(req));
+    return sendJson(res, 200, { ok: true, signin: auth.mode === 'signin' || req.auth.remote });
+  }
+  if (p === '/api/auth/password' && req.method === 'POST') {
+    const body = await readJson(req, 4096);
+    const { setCookie } = await auth.changePassword(req, body.current, body.next);
+    res.setHeader('Set-Cookie', setCookie);
+    return sendJson(res, 200, { ok: true });
+  }
+  throw new HttpError(404, 'Not found.');
+}
+
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://localhost');
     // Liveness for Docker, service managers and setup.js doctor. Says nothing about the library.
     if (url.pathname === '/api/health' && (req.method === 'GET' || req.method === 'HEAD')) return sendJson(res, 200, { status: 'ok', version: VERSION });
     await trust.sanitize(req);
+    auth.guard(req, res);       // DNS rebinding, cross-site requests, security headers (auth.js)
+    auth.identify(req);         // proxy identity, Marquee sign-in, or the shared home account
+    if (url.pathname === '/signin' && (req.method === 'GET' || req.method === 'HEAD')) return sendSignIn(req, res, url);
+    if (!req.auth.via && !publicPath(req, url)) return refuseSignedOut(req, res, url);
     const allowed = req.method === 'GET' || req.method === 'HEAD'
       || (req.method === 'POST' && (url.pathname.startsWith('/api/cast/') || url.pathname === '/api/downloads/add' || url.pathname === '/api/downloads/smart' || url.pathname === '/api/subs/fetch' || url.pathname === '/api/subs/sync' || url.pathname === '/api/library/delete' || url.pathname === '/api/library/delete-many' || url.pathname === '/api/library/delete-many-info' || /^\/api\/downloads\/\w+\/(pause|resume|retry|delete)$/.test(url.pathname) || /^\/api\/media\/\w+\/[\w-]+\/sync$/.test(url.pathname)
         || /^\/api\/(house\/(report|boot|power)|screentime)$/.test(url.pathname) || /^\/api\/clips\/[\w-]+\/(share|unshare|delete|trim|rename)$/.test(url.pathname)
         || /^\/api\/access\/(invite|remove|rename|invite\/\w+\/revoke)$/.test(url.pathname) || /^\/c\/i\/[\w-]+\/?$/.test(url.pathname)
+        || /^\/api\/auth\/(login|logout|password)$/.test(url.pathname)
         || /^\/api\/(me|me\/progress|library\/add|library\/extend|library\/identify|admin\/settings|admin\/users\/\d+|push\/subscribe|push\/unsubscribe|push\/test)$/.test(url.pathname)
         || /^\/api\/watchlist(?:\/seen)?$/.test(url.pathname)
         || /^\/api\/admin\/notes(?:\/import|\/\d+(?:\/(?:trash|restore|share|unshare))?)?$/.test(url.pathname)
@@ -2407,6 +2487,7 @@ const server = http.createServer(async (req, res) => {
   } catch (err) {
     const status = err.status || 500;
     if (status === 500) console.error(err);
+    if (!res.headersSent && err.retryAfter) res.setHeader('Retry-After', String(err.retryAfter));
     if (!res.headersSent) sendJson(res, status, { error: status === 500 ? 'Something broke on the server. Check the console.' : err.message });
     else res.destroy();
   }
@@ -2955,7 +3036,8 @@ server.on('error', (err) => {
 server.listen(PORT, HOST, () => {
   console.log(`Marquee is running: http://localhost:${PORT} (version ${VERSION})`);
   console.log(`  Data:      ${DATA_DIR}`);
-  console.log(`  Accounts:  ${trust.mode === 'access-jwt' ? 'Cloudflare Access tokens verified' : `identity headers trusted from ${process.env.TRUSTED_PROXIES || '127.0.0.1, ::1'}`}`);
+  console.log(`  Accounts:  ${trust.mode === 'access-jwt' ? 'Cloudflare Access tokens verified' : `identity headers trusted from ${process.env.TRUSTED_PROXIES || '127.0.0.1, ::1'}`}; ${auth.store.count()} Marquee sign-in${auth.store.count() === 1 ? '' : 's'}`);
+  console.log(`  Sign-in:   ${auth.mode === 'signin' ? 'required for everyone' : 'home network shares one account; visitors from the internet must sign in'}`);
   console.log(`  Search:    ${TMDB_TOKEN || TMDB_KEY ? 'ready' : 'off (add TMDB_TOKEN to .env)'}`);
   console.log(`  Library:   ${MEDIA_DIR || 'off (add MEDIA_DIR to .env)'}`);
   console.log(`  Downloads: ${QBIT_URL ? `${QBIT_URL}${REMOVE_FINISHED ? ', finished downloads removed (no seeding)' : ''}` : 'off (add QBIT_URL to .env)'}`);

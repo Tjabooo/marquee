@@ -41,16 +41,21 @@ if (Test-Path $envFile) {
 $status = $null
 for ($i = 0; $i -lt 20 -and -not $status; $i++) {
   Start-Sleep -Seconds 1
-  try { $status = Invoke-RestMethod "http://127.0.0.1:$port/api/status" -TimeoutSec 2 } catch { }
+  try { $status = Invoke-RestMethod "http://127.0.0.1:$port/api/health" -TimeoutSec 2 } catch { }
 }
+# Feature summary (needs the shared home account; with HOME_NETWORK_ACCESS=signin it's skipped).
+$health = $status
+if ($status) { try { $status = Invoke-RestMethod "http://127.0.0.1:$port/api/status" -TimeoutSec 2 } catch { $status = $null } }
 
 function OnOff($v) { if ($v) { 'on' } else { 'off' } }
 
-if ($status) {
+if ($health) {
   Write-Host "Marquee is running on port $port." -ForegroundColor Green
+}
+if ($status) {
   Write-Host ("  Search: {0}   Library: {1}   Downloads: {2}   Torrents: {3}   Subtitles: {4}" -f `
     (OnOff $status.search), (OnOff $status.library), (OnOff $status.downloads), (OnOff $status.torrents), (OnOff $status.subtitles))
-} else {
+} elseif (-not $health) {
   Write-Host "Marquee didn't respond within 20 seconds. Last lines of the log:" -ForegroundColor Yellow
   Get-Content (Join-Path $dir 'logs\marquee.log') -Tail 15 -ErrorAction SilentlyContinue
 }

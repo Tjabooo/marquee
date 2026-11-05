@@ -241,10 +241,15 @@ test('clipper: quality names, install commands and share instructions', async ()
   assert.equal(c.defaultClipsDir({}, '/home/me', 'linux'), '/home/me/Marquee Clips');
 
   const win = c.remoteInstallCommand({ target: 'windows', share: "\\\\box\\Clips", marqueeUrl: 'http://box:8080', quality: 'bench:smooth' });
-  assert.match(win, /^& \(\[scriptblock\]::Create\(\(irm https:\/\/raw\.githubusercontent\.com\/Tjabooo\/clipper\/main\/install\.ps1\)\)\) /);
-  assert.match(win, /-Share '\\\\box\\Clips' -MarqueeUrl 'http:\/\/box:8080' -Bench smooth$/);
+  // Pinned commit, installer checksum checked before it runs, never `main` or a pipe into a shell.
+  assert.ok(win.includes(`https://raw.githubusercontent.com/Tjabooo/clipper/${c.CLIPPER_COMMIT}/install.ps1 -OutFile $f`));
+  assert.ok(win.includes(`(Get-FileHash $f -Algorithm SHA256).Hash -ne '${c.CLIPPER_SCRIPT_SHA256['install.ps1'].toUpperCase()}'`));
+  assert.match(win, new RegExp(`-Ref ${c.CLIPPER_COMMIT} -Share '\\\\\\\\box\\\\Clips' -MarqueeUrl 'http://box:8080' -Bench smooth$`));
   const lin = c.remoteInstallCommand({ target: 'linux', share: "/mnt/my clips", quality: 'max' });
-  assert.equal(lin, "curl -fsSL https://raw.githubusercontent.com/Tjabooo/clipper/main/install.sh | sh -s -- --marquee '/mnt/my clips' --quality max");
+  assert.equal(lin, `f=$(mktemp) && curl -fsSL https://raw.githubusercontent.com/Tjabooo/clipper/${c.CLIPPER_COMMIT}/install.sh -o "$f" `
+    + `&& echo '${c.CLIPPER_SCRIPT_SHA256['install.sh']}  '"$f" | sha256sum -c --quiet - && CLIPPER_REF=${c.CLIPPER_COMMIT} sh "$f" --marquee '/mnt/my clips' --quality max`);
+  for (const cmd of [win, lin]) { assert.ok(!/\/main\//.test(cmd)); assert.ok(!/\| *(sh|iex)\b/.test(cmd)); }
+  assert.match(c.CLIPPER_COMMIT, /^[0-9a-f]{40}$/);
 
   const sw = c.shareInstructions({ clipsDir: 'D:\\Clips', host: 'box', target: 'windows', platform: 'win32', user: 'me' });
   assert.equal(sw.share, '\\\\box\\Clips');
@@ -274,7 +279,8 @@ test('clipper setup sets CLIPS_DIR and prints the gaming PC commands (dry run wr
   assert.equal(r.status, 0, r.stderr);
   assert.ok(fs.existsSync(path.join(clips, 'Kept')));
   assert.equal(parseEnv(fs.readFileSync(envFile, 'utf8')).CLIPS_DIR, clips);
-  assert.match(r.stdout, /install\.sh \| sh -s -- --marquee \/mnt\/clips --quality bench:smooth/);
+  assert.match(r.stdout, /sha256sum -c --quiet - && CLIPPER_REF=[0-9a-f]{40} sh "\$f" --marquee \/mnt\/clips --quality bench:smooth/);
+  assert.match(r.stdout, /It sets up:/);
   assert.match(r.stdout, /cifs/);
   assert.match(r.stdout, /Restart Marquee/);
   assert.doesNotMatch(run().stdout, /Restart Marquee/, 'unchanged CLIPS_DIR needs no restart');

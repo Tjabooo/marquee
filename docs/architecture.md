@@ -152,7 +152,7 @@ src/
   setup/             wizard, detection, integrations, services, packages, backups
 public/              the web app (plain JavaScript and CSS, no build step)
 agents/              marquee-house reporter for Linux machines (bash + systemd units)
-scripts/windows/     Task Scheduler service, restart and watchdog scripts
+scripts/windows/     Task Scheduler service and restart scripts
 start-marquee.cmd    Windows launcher the scheduled task runs
 tools/               optional extras: torrent-vpn (Windows), Discord notes import
 docker/, Dockerfile, docker-compose.yml
@@ -191,6 +191,11 @@ The web client uses a JSON API that can also be scripted. `<kind>` is `lib` for 
 | `GET`, `POST` | `/api/library/identify` | Owner only: search film candidates (`?id=&q=`) or assign a TMDB identity to one file (`{ id, tmdbId }`) |
 | `GET` | `/api/library/delete-info?id=` | What deleting an item would remove, and how many others have it |
 | `POST` | `/api/library/delete` | Remove from your library; deletes the file or torrent when nobody else has it (`{ id, scope: "file" \| "torrent", everyone? }`) |
+| `GET` | `/signin` | Sign-in page (public; redirects home when already signed in) |
+| `POST` | `/api/auth/login` | `{ email, password }` as JSON, or the sign-in form; sets the session cookie. Public |
+| `POST` | `/api/auth/logout` | Ends this browser's session. Public |
+| `POST` | `/api/auth/password` | `{ current, next }`: change your Marquee password (signs out other sessions) |
+| `GET` | `/api/auth/status` | How this request is identified (`via`: proxy, session, home or null). Public |
 | `GET`, `POST` | `/api/me` | You and your settings (`{ name?, theme?, subLang?, quality?, startView?, librarySort?, seenUpdate?, skipIntro?, pushDownload?, pushEpisode?, pushWatch? }`); `skipIntro`: `button` or `auto` |
 | `GET` | `/api/media/<lib\|dl>/<id>/credits` | When the closing credits start (`{ creditsAt }`, seconds or `null`) |
 | `GET` | `/api/media/<lib\|dl>/<id>/intro` | The opening titles to skip (`{ intro: { start, end } }` in seconds, or `intro: null`) |

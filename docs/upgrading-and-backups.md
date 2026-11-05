@@ -55,6 +55,18 @@ upgrading between minor versions.
 
 After upgrading, `node setup.js` is safe to run again: it keeps your settings and only adds new ones.
 
+### Upgrading to the sign-in release (after 1.1.0)
+
+- **Windows:** run `node setup.js service install` (or `scripts\windows\install-service.ps1`) once
+  in an elevated PowerShell. It removes the old `Marquee Watchdog` task, which ran a script from the
+  Marquee folder as SYSTEM, and limits write access to the folder. Until then `node setup.js doctor`
+  reports it as a problem. To remove just the old task: `Unregister-ScheduledTask "Marquee Watchdog"`.
+- Visitors arriving through a proxy or tunnel **without** an identity (for example cloudflared
+  without an Access application) now get the sign-in page instead of the Home network account.
+  Cloudflare Access setups are unaffected. Create Marquee sign-ins with `node setup.js user add`.
+- If you open Marquee by a host name that isn't an IP address, a single word, `.local`/`.lan`/
+  `.home.arpa`/`.internal`/`.ts.net` or `PUBLIC_URL`'s host, add it to `ALLOWED_HOSTS`.
+
 ### Rolling back
 
 - Installer: stop Marquee, move the current application files aside and move the contents of
@@ -70,7 +82,7 @@ If the newer version changed the database, restore the backup you made before up
 - **Server code moved to `src/`.** `node server.js` and `npm start` work as before. On Windows,
   `start-marquee.cmd` stays where it was, so the existing scheduled task keeps working; the other
   scripts moved to `scripts\windows\` (`restart-marquee.ps1`, `install-service.ps1`, formerly
-  `setup-autostart.ps1`). Re-run `scripts\windows\install-service.ps1` once to add the watchdog task.
+  `setup-autostart.ps1`). Re-run `scripts\windows\install-service.ps1` once (from 1.2 it also removes the old SYSTEM watchdog task).
 - **Identity headers are only trusted from `TRUSTED_PROXIES`** (default: this machine). If
   cloudflared or your proxy runs on another machine, set `TRUSTED_PROXIES` or the Access token
   settings before upgrading, or everyone will appear as the Home network account. See

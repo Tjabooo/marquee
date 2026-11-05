@@ -1,5 +1,25 @@
 [
   {
+    "id": "2026-11-05-signin",
+    "date": "2026-11-05",
+    "title": "Sign in to Marquee",
+    "items": [
+      {
+        "title": "Your own password",
+        "text": "Marquee can now sign you in by itself. If the owner made you an account, you'll see a sign-in page when you're away from home, and Settings lets you change your password or sign out."
+      },
+      {
+        "title": "Safer from other websites",
+        "text": "Marquee now ignores requests that other websites try to send through your browser, so a page you visit can't start downloads or delete anything."
+      },
+      {
+        "title": "Server security",
+        "audience": "owner",
+        "text": "Create sign-ins with node setup.js user add EMAIL. Visitors from the internet always sign in; HOME_NETWORK_ACCESS=signin makes people at home sign in too. On Windows, run node setup.js service install once in an admin PowerShell: it removes the old SYSTEM watchdog task. Clipper installs are now pinned and checksum-verified."
+      }
+    ]
+  },
+  {
     "id": "2026-11-05-notifications",
     "date": "2026-11-05",
     "title": "Notifications",

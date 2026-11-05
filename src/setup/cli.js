@@ -15,6 +15,8 @@ import { servicePlan, describeStep } from './services.js';
 import { installCommand } from './packages.js';
 import { backup, migrateData } from './data.js';
 import * as clipper from './clipper.js';
+import { userCommand, USER_ACTIONS, askNewPassword } from './users.js';
+import { openAuthStore } from '../auth.js';
 import { checkConfig } from '../config-check.js';
 import { dataDirProblem, STATE_FILES } from '../paths.js';
 
@@ -28,6 +30,8 @@ Usage:
   node setup.js backup [--to DIR]        Consistent copy of the database and state
   node setup.js migrate-data --to DIR    Move state to a new DATA_DIR (Marquee stopped)
   node setup.js service install|status|restart|uninstall [--scope user|system]
+  node setup.js user add EMAIL [--owner]   Create a Marquee sign-in (or reset its password)
+  node setup.js user passwd|remove|signout EMAIL, user list
   node setup.js clipper          Game clips: set up CLIPS_DIR and install Clipper (the recorder)
                                  on this PC, or print the commands for your gaming PC
 
@@ -42,6 +46,7 @@ Options:
   --offline            Skip network checks of integrations
   --scope user|system  systemd service scope (default: system on servers, user otherwise)
   --env FILE           Use this .env instead of the one in the Marquee folder
+  --owner              With user add: also make them an owner (adds them to ADMIN_EMAILS)
 
 Clipper options (node setup.js clipper):
   --here               Install Clipper on this computer (downloads it from GitHub)
@@ -51,11 +56,12 @@ Clipper options (node setup.js clipper):
                        (measure the gaming PC and pick for that goal)
   --share PATH         How the gaming PC reaches the folder (\\\\server\\Clips, or its mount point)
   --clipper-source DIR Install from this Clipper checkout instead of downloading it
+  --clipper-ref REF    Download this Clipper commit/tag instead of the pinned, checked one
 `;
 
 export function parseArgs(argv) {
   const opts = { command: 'setup', action: null, yes: false, dryRun: false, config: null, allow: new Set(), offline: false, scope: null, to: null, help: false, envFile: null,
-    where: null, clipsDir: null, quality: null, share: null, clipperSource: null };
+    where: null, clipsDir: null, quality: null, share: null, clipperSource: null, owner: false, email: null, clipperRef: null };
   const rest = [...argv];
   const value = (flag) => { const v = rest.shift(); if (!v || v.startsWith('--')) throw new Error(`${flag} needs a value`); return v; };
   const positional = [];
@@ -75,16 +81,23 @@ export function parseArgs(argv) {
     else if (a === '--quality') { opts.quality = value(a); clipper.parseQuality(opts.quality); }
     else if (a === '--share') opts.share = value(a);
     else if (a === '--clipper-source') opts.clipperSource = value(a);
+    else if (a === '--clipper-ref') opts.clipperRef = value(a);
+    else if (a === '--owner') opts.owner = true;
     else if (/^--allow-(install|service|sudo|qbit-config)$/.test(a)) opts.allow.add(a.slice(8));
     else if (a.startsWith('-')) throw new Error(`Unknown option ${a}. Run node setup.js --help.`);
     else positional.push(a);
   }
   if (positional.length) {
     opts.command = positional[0];
-    if (!['setup', 'doctor', 'backup', 'migrate-data', 'service', 'clipper'].includes(opts.command)) throw new Error(`Unknown command ${opts.command}. Run node setup.js --help.`);
+    if (!['setup', 'doctor', 'backup', 'migrate-data', 'service', 'clipper', 'user'].includes(opts.command)) throw new Error(`Unknown command ${opts.command}. Run node setup.js --help.`);
     if (opts.command === 'service') {
       opts.action = positional[1];
       if (!['install', 'status', 'restart', 'uninstall'].includes(opts.action)) throw new Error('Use: node setup.js service install|status|restart|uninstall');
+    }
+    if (opts.command === 'user') {
+      opts.action = positional[1];
+      opts.email = positional[2] || null;
+      if (!USER_ACTIONS.includes(opts.action)) throw new Error(`Use: node setup.js user ${USER_ACTIONS.join('|')} [EMAIL]`);
     }
   }
   if (opts.config) opts.yes = true;
@@ -276,6 +289,13 @@ async function setup(opts) {
     manual.push('Finish Cloudflare Tunnel + Access: docs/remote-access.md#cloudflare-tunnel-and-access');
   } else if (remote === 'tailscale') manual.push('Install Tailscale and open http://<this machine\'s tailnet name>:' + port + ' (docs/remote-access.md#tailscale)');
   else if (remote === 'proxy') manual.push('Put Marquee behind an authenticating proxy: docs/remote-access.md#reverse-proxy');
+  if (remote !== 'cloudflare') {
+    set.ADMIN_EMAILS = await ask.text('ADMIN_EMAILS', 'Your email, for signing in to Marquee as its owner (blank = skip)', cur('ADMIN_EMAILS'));
+  }
+  set.HOME_NETWORK_ACCESS = await ask.choose('HOME_NETWORK_ACCESS', 'Who can use Marquee on your home network without signing in?', [
+    ['shared', 'Everyone at home, as one shared account (visitors from the internet always sign in)'],
+    ['signin', 'No one: everyone signs in, at home too'],
+  ], cur('HOME_NETWORK_ACCESS', 'shared'));
 
   // Secrets for the optional agents: generated once, never shown.
   for (const key of ['HOUSE_TOKEN', 'SCREENTIME_TOKEN']) {
@@ -356,6 +376,26 @@ async function setup(opts) {
 
   if (!env.CLIPS_DIR) skipped.push('Game clips: not set up (node setup.js clipper)');
 
+  // The owner's own sign-in (auth.js), unless Cloudflare Access signs people in.
+  const ownerEmail = String(env.ADMIN_EMAILS || '').split(',')[0].trim().toLowerCase();
+  if (ownerEmail && remote !== 'cloudflare' && !opts.dryRun) {
+    const dataDir = env.DATA_DIR ? path.resolve(env.DATA_DIR) : APP_DIR;
+    let store = null;
+    try {
+      store = openAuthStore(dataDir);
+      if (!store.login(ownerEmail)) {
+        const now = opts.yes ? Boolean(process.env.MARQUEE_PASSWORD) : process.stdin.isTTY && await ask.confirm(`Create a Marquee password for ${ownerEmail} now?`, { dflt: true });
+        if (now) {
+          ask.close(); // the password is read straight from the terminal, without echo
+          await store.setPassword(ownerEmail, await askNewPassword(ownerEmail));
+          done.push(`Sign-in created for ${ownerEmail}`);
+        } else manual.push(`Create your sign-in: node setup.js user add ${ownerEmail}`);
+      }
+    } catch (e) {
+      manual.push(`Create your sign-in: node setup.js user add ${ownerEmail} (${e.message})`);
+    } finally { store?.close(); }
+  }
+
   // Summary
   const lan = info.lan[0]?.address;
   console.log(bold('\nSummary'));
@@ -409,6 +449,8 @@ async function doctor(opts) {
     report(d.free < 5 * 1024 ** 3 ? 'warn' : 'ok', `${gib(d.free)} free on the ${label} drive (${d.path})`, d.free < 5 * 1024 ** 3 ? 'Downloads and conversions need room; free some space.' : null);
   }
 
+  securityChecks({ env, dataDir, report });
+
   console.log(bold('\nMedia tools'));
   const ff = info.ffmpeg;
   if (!ff.ffmpeg || ff.error) report('warn', ff.error || 'ffmpeg not found', 'Install ffmpeg (node setup.js) or set FFMPEG/FFPROBE.');
@@ -450,6 +492,36 @@ async function doctor(opts) {
 
   console.log(`\n${errors ? red(`${errors} problem(s)`) : green('No problems')}${warnings ? `, ${yellow(`${warnings} warning(s)`)}` : ''}`);
   return errors ? 1 : 0;
+}
+
+// Sign-in setup, and whether anyone but you could change what Marquee runs.
+function securityChecks({ env, dataDir, report }) {
+  console.log(bold('\nSecurity'));
+  let logins = [];
+  if (fs.existsSync(path.join(dataDir, '.marquee.db'))) {
+    try { const store = openAuthStore(dataDir); logins = store.list().map((r) => r.email); store.close(); } catch (e) { report('warn', `Couldn't read sign-ins: ${e.message}`); }
+  }
+  const mode = String(env.HOME_NETWORK_ACCESS || 'shared').toLowerCase();
+  report('ok', mode === 'signin' ? 'Everyone signs in, at home too (HOME_NETWORK_ACCESS=signin)'
+    : 'Home network shares one account; visitors from the internet must sign in');
+  report(logins.length ? 'ok' : 'info', logins.length ? `${logins.length} Marquee sign-in(s): ${logins.join(', ')}` : 'No Marquee sign-ins', logins.length ? null : 'Create one with: node setup.js user add you@example.com --owner');
+  const owners = String(env.ADMIN_EMAILS || '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
+  if (!env.CF_ACCESS_TEAM_DOMAIN && owners.length && !owners.some((o) => logins.includes(o))) {
+    report('info', 'No owner (ADMIN_EMAILS) has a Marquee sign-in; the owner tabs then need Cloudflare Access or a proxy', `node setup.js user add ${owners[0]}`);
+  }
+  if (mode === 'signin' && !logins.length && !env.CF_ACCESS_TEAM_DOMAIN) report('error', 'HOME_NETWORK_ACCESS=signin but nobody can sign in', 'node setup.js user add you@example.com --owner');
+  if (process.platform === 'win32') {
+    const legacy = spawnSync('schtasks.exe', ['/query', '/tn', 'Marquee Watchdog'], { windowsHide: true, timeout: 10000 });
+    if (legacy.status === 0) report('error', 'The old "Marquee Watchdog" task runs a script from the Marquee folder as SYSTEM', 'In an elevated PowerShell: node setup.js service install (it replaces it), or Unregister-ScheduledTask "Marquee Watchdog".');
+    const ps = `$b='S-1-1-0','S-1-5-11','S-1-5-32-545','S-1-5-4';$w=[int][Security.AccessControl.FileSystemRights]'WriteData,AppendData,Delete,ChangePermissions,TakeOwnership';@((Get-Acl -LiteralPath $env:MQ_DIR).Access|?{$_.AccessControlType -eq 'Allow' -and ([int]$_.FileSystemRights -band $w) -and $(try{$b -contains $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value}catch{$false})}).Count`;
+    const r = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { encoding: 'utf8', windowsHide: true, timeout: 20000, env: { ...process.env, MQ_DIR: APP_DIR } });
+    if (r.status === 0 && Number(r.stdout.trim()) > 0) report('warn', `Every user of this PC can change files in ${APP_DIR}`, 'In an elevated PowerShell: node setup.js service install (it limits write access to you), so no one else can change what Marquee runs.');
+    else if (r.status === 0) report('ok', 'Only you and administrators can change the Marquee folder');
+  } else {
+    for (const f of [APP_DIR, path.join(APP_DIR, 'server.js'), ENV_FILE]) {
+      try { if (fs.statSync(f).mode & 0o002) report('warn', `${f} can be changed by every user of this machine`, `chmod o-w '${f}'`); } catch { /* missing */ }
+    }
+  }
 }
 
 async function service(opts) {
@@ -514,13 +586,20 @@ async function clipperSetup(opts) {
       throw new Error(`${clipsDir} is Clipper's own working folder (it empties it as clips move on). Pick another CLIPS_DIR.`);
     }
     const cmd = clipper.localInstallCommand({ src, clipsDir, marqueeUrl, quality, yes: opts.yes });
-    console.log(`\n  ${opts.clipperSource ? `From ${src}` : `Download ${clipper.clipperTarball()} → ${src}`}, then:`);
+    const ref = opts.clipperRef || clipper.CLIPPER_COMMIT;
+    console.log(bold('\n  Clipper is separate software; review it before installing.'));
+    console.log(`  Source: ${clipper.clipperSourceUrl(ref)}`);
+    if (opts.clipperRef) console.log(`  ${mark.warn} --clipper-ref ${opts.clipperRef}: not the version this Marquee pins, so its contents can't be checked.`);
+    else console.log(dim(`  Pinned commit ${ref.slice(0, 12)}; the download is checked against its SHA-256 before anything runs.`));
+    console.log('  It installs:');
+    for (const line of clipper.CLIPPER_INSTALLS[process.platform === 'win32' ? 'windows' : 'linux']) console.log(`    - ${line}`);
+    console.log(`\n  ${opts.clipperSource ? `From ${src}` : `Download ${clipper.clipperTarball(ref)} → ${src}`}, then:`);
     console.log(`  ${dim('$')} ${cmd.join(' ')}`);
     if (q.bench) console.log(dim(`  The benchmark records 8 s of you playing: have a game running when it counts down.`));
-    const ok = opts.dryRun || await ask.confirm('Install Clipper on this computer now?', { dflt: true, allow: 'install', allowed: opts.allow });
+    const ok = opts.dryRun || await ask.confirm('Install Clipper on this computer now?', { dflt: false, allow: 'install', allowed: opts.allow });
     if (!ok) { console.log(`${mark.info} Skipped. Run the command above when you're ready.`); }
     else if (!opts.dryRun) {
-      if (!opts.clipperSource) await clipper.downloadClipper(src, { spawn: spawnSync });
+      if (!opts.clipperSource) await clipper.downloadClipper(src, { spawn: spawnSync, ref, expectTree: opts.clipperRef ? null : clipper.CLIPPER_TREE_SHA256 });
       const r = spawnSync(cmd[0], cmd.slice(1), { stdio: 'inherit' });
       if (r.status === 0) console.log(`${mark.ok} Clipper is installed; kept clips go to ${clipsDir}`);
       else { console.log(`${mark.error} Clipper's installer failed (see above)`); status = 1; }
@@ -532,6 +611,8 @@ async function clipperSetup(opts) {
     console.log(bold('\nOn this server'));
     for (const l of share.lines) console.log(`  ${l}`);
     console.log(bold(`\nOn the gaming PC (${where === 'windows' ? 'PowerShell' : 'a terminal'})`));
+    console.log(dim(`  Installs Clipper ${clipper.CLIPPER_COMMIT.slice(0, 12)} (review: ${clipper.clipperSourceUrl()}); the installer's checksum is checked first. It sets up:`));
+    for (const line of clipper.CLIPPER_INSTALLS[where]) console.log(dim(`    - ${line}`));
     console.log(`  ${clipper.remoteInstallCommand({ target: where, share: reach, marqueeUrl, quality })}`);
     if (q.bench) console.log(dim('  Start a game before running it: the benchmark records 8 s of you playing.'));
   }
@@ -539,6 +620,15 @@ async function clipperSetup(opts) {
   console.log(dim('\nThe Clips tab is for the owner (ADMIN_EMAILS); see docs/integrations.md#clips-and-discord-share-links.'));
   ask.close();
   return status;
+}
+
+// Adds `email` to ADMIN_EMAILS in .env (owners are read at startup, so Marquee needs a restart).
+function addOwnerEmail(file, email) {
+  const text = readEnvFile(file) ?? '';
+  const list = String(parseEnv(text).ADMIN_EMAILS || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+  if (list.includes(email)) { console.log(`${mark.ok} ${email} is already an owner`); return; }
+  writeEnvFile(file, updateEnvText(text, { ADMIN_EMAILS: [...list, email].join(',') }));
+  console.log(`${mark.ok} Added ${email} to ADMIN_EMAILS in ${file}. Restart Marquee to apply: node setup.js service restart`);
 }
 
 export async function main(argv = process.argv.slice(2)) {
@@ -549,6 +639,15 @@ export async function main(argv = process.argv.slice(2)) {
     if (opts.command === 'doctor') return await doctor(opts);
     if (opts.command === 'service') return await service(opts);
     if (opts.command === 'clipper') return await clipperSetup(opts);
+    if (opts.command === 'user') {
+      const file = opts.envFile ? path.resolve(opts.envFile) : ENV_FILE;
+      const env = { ...parseEnv(readEnvFile(file) ?? ''), ...process.env };
+      return await userCommand({
+        action: opts.action, email: opts.email, owner: opts.owner,
+        dataDir: env.DATA_DIR ? path.resolve(env.DATA_DIR) : APP_DIR,
+        addOwner: (email) => addOwnerEmail(file, email),
+      });
+    }
     if (opts.command === 'backup' || opts.command === 'migrate-data') {
       const env = { ...parseEnv(readEnvFile(opts.envFile ? path.resolve(opts.envFile) : ENV_FILE) ?? ''), ...process.env };
       const dataDir = env.DATA_DIR ? path.resolve(env.DATA_DIR) : APP_DIR;

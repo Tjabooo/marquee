@@ -108,12 +108,14 @@ platforms' standard procedures and haven't been verified on that hardware.
 
 ## Security model
 
-Marquee has no login screen of its own. On your home network everyone shares one account; personal
-accounts come from an authenticating proxy, normally Cloudflare Access. Marquee believes identity
-headers only from trusted proxies (by default, this machine) or with a verified Access token.
+Marquee has its own sign-in (`node setup.js user add you@example.com --owner`; passwords hashed
+with scrypt, server-side sessions, rate-limited) and also accepts identity from Cloudflare Access
+or an authenticating proxy. On your home network everyone may share one account without signing in
+(`HOME_NETWORK_ACCESS=signin` turns that off); visitors from the internet always have to sign in.
+Requests from other websites (CSRF) and unknown host names (DNS rebinding) are refused.
 
-**Don't expose Marquee's port to the internet.** For remote access use Tailscale, Cloudflare Tunnel
-with Access, or a reverse proxy that requires sign-in: [docs/remote-access.md](docs/remote-access.md).
+**Don't forward Marquee's port to the internet anyway.** It's plain HTTP: use Tailscale, Cloudflare
+Tunnel with Access, or a reverse proxy with HTTPS: [docs/remote-access.md](docs/remote-access.md).
 To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
 ## Documentation

@@ -78,8 +78,14 @@ async function api(path, opts = {}) {
   }
   let data = {};
   try { data = await r.json(); } catch { /* non-JSON */ }
+  if (r.status === 401 && data.signin) { toSignIn(); throw Object.assign(new Error('Sign in to carry on.'), { status: 401 }); }
   if (!r.ok) throw Object.assign(new Error(data.error || `The server responded with ${r.status}.`), { status: r.status });
   return data;
+}
+
+// Marquee's own sign-in (auth.js): a 401 with `signin` means this browser needs to sign in.
+function toSignIn() {
+  location.assign(`/signin?next=${encodeURIComponent(location.pathname + location.search + location.hash)}`);
 }
 
 // When the Cloudflare Access sign-in runs out, API calls get redirected to Cloudflare's login page,
@@ -4960,7 +4966,8 @@ function renderSettings() {
     h('span', { class: 'avatar', 'aria-hidden': 'true' }, (me.name || '?').slice(0, 1).toUpperCase()),
     h('div', { class: 'profile-text' },
       nameInput,
-      h('div', { class: 'set-hint' }, me.email ? `Signed in as ${me.email} through Cloudflare` : 'Home network: everyone at home who opens the server’s local address shares this'),
+      h('div', { class: 'set-hint' }, !me.email ? 'Home network: everyone at home who opens the server’s local address shares this'
+        : me.via === 'session' ? `Signed in as ${me.email}` : `Signed in as ${me.email} through Cloudflare`),
       h('div', { class: 'profile-tags' }, me.isOwner && h('span', { class: 'tag' }, 'Owner'), !me.canDownload && h('span', { class: 'tag' }, 'Can’t download')))));
 
   {
@@ -4969,6 +4976,8 @@ function renderSettings() {
     open.addEventListener('click', showUpdateHistory);
     out.push(settingsRow('What’s new', 'Everything that changed in Marquee lately.', open));
   }
+
+  if (me.via === 'session') out.push(accountSection());
 
   out.push(...appearanceSection());
 
@@ -5105,6 +5114,32 @@ function notificationSettings() {
     })), h('div', { class: 'set-row push-test' }, test));
   }
   return out;
+}
+
+// Marquee's own sign-in: change the password, sign out of this browser.
+function accountSection() {
+  const current = h('input', { type: 'password', class: 'invite-note', autocomplete: 'current-password', placeholder: 'Current password', 'aria-label': 'Current password' });
+  const next = h('input', { type: 'password', class: 'invite-note', autocomplete: 'new-password', minlength: '10', placeholder: 'New password (10+ characters)', 'aria-label': 'New password' });
+  const save = h('button', { class: 'chip', type: 'submit' }, 'Change password');
+  const msg = h('div', { class: 'set-hint', role: 'status' });
+  const form = h('form', { class: 'set-card account-password' }, current, next, save, msg);
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    save.disabled = true;
+    try {
+      await api('/api/auth/password', jsonPost({ current: current.value, next: next.value }));
+      current.value = next.value = '';
+      msg.textContent = 'Password changed. Other devices were signed out.';
+    } catch (err) { msg.textContent = err.message; } finally { save.disabled = false; }
+  });
+  const out = h('button', { class: 'chip', type: 'button' }, 'Sign out');
+  out.addEventListener('click', async () => {
+    out.disabled = true;
+    try { await api('/api/auth/logout', { method: 'POST' }); } catch { /* signed out either way */ }
+    location.assign('/signin');
+  });
+  return h('div', {}, settingsRow('Sign out', 'Signs this browser out of Marquee.', out),
+    h('details', { class: 'set-details' }, h('summary', {}, 'Change password'), form));
 }
 
 function ownerSettings() {

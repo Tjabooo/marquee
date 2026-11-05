@@ -2,14 +2,62 @@
 // recorder that fills it (https://github.com/Tjabooo/clipper). Clipper is installed on the PC you
 // play on: this one (downloaded and installed for you), or another PC (the commands to paste
 // there are printed with your share filled in). Pure helpers here; prompting lives in cli.js.
+//
+// Clipper is other code, so Marquee never installs "whatever is on main": it pins one reviewed
+// commit and checks what it downloads against hashes recorded here. The source download must match
+// CLIPPER_TREE_SHA256 (a hash over every file's path and contents), and the one-liners for another
+// PC check the installer script's SHA-256 before running it; that script then fetches the same
+// pinned commit. What Clipper itself installs is listed in CLIPPER_INSTALLS and shown before asking.
+// To move to a newer Clipper: review its changes, then update the commit and the three hashes
+// (tests/clipper-pin.test.mjs prints them when they're out of date).
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
 export const CLIPPER_REPO = 'Tjabooo/clipper';
-export const CLIPPER_REF = 'main';
-const RAW = `https://raw.githubusercontent.com/${CLIPPER_REPO}/${CLIPPER_REF}`;
+export const CLIPPER_COMMIT = '30cd2d10cf18a9bac18d5439512407eb276273d9';
+export const CLIPPER_TREE_SHA256 = 'd05f5580da90b8994303260c190260040221623c0baed50876b8bccdf21c3c47';
+export const CLIPPER_SCRIPT_SHA256 = {
+  'install.ps1': '74dc783c65dc86c576ed2cdd4b039cb2c576efba77769335777f87d612dfbf18',
+  'install.sh': '79bf57d2577fcc05357fa40999cd78758205de5c9595095ab60ff1d5fa3a3585',
+};
+export const CLIPPER_REF = CLIPPER_COMMIT;
+const RAW = `https://raw.githubusercontent.com/${CLIPPER_REPO}/${CLIPPER_COMMIT}`;
 export const clipperTarball = (ref = CLIPPER_REF) => `https://codeload.github.com/${CLIPPER_REPO}/tar.gz/${ref}`;
+export const clipperSourceUrl = (ref = CLIPPER_REF) => `https://github.com/${CLIPPER_REPO}/tree/${ref}`;
+
+// What Clipper's installer sets up, so nobody installs it blind.
+export const CLIPPER_INSTALLS = {
+  windows: [
+    'OBS Studio, and the .NET 8 SDK to build Clipper (with winget, from the official winget repository)',
+    'Python and FFmpeg only if you pick a benchmark (winget)',
+    'clipper.exe in %LOCALAPPDATA%\\clipper and a scheduled task that starts it when you sign in (your account, no admin rights)',
+    'An OBS profile and scene collection for the replay buffer (your existing OBS setup is backed up)',
+  ],
+  linux: [
+    'The clipper script in ~/.local/share/clipper and ~/.local/bin, plus systemd user units (no root)',
+    'It needs gpu-screen-recorder, ffmpeg, mpv and libnotify from your package manager; it tells you which are missing instead of installing them',
+  ],
+};
+
+// sha256 over "path\0sha256(contents)\n" for every file, sorted by path. Independent of how the
+// download was compressed, so GitHub re-packing an archive doesn't break the check.
+export function treeHash(dir) {
+  const files = [];
+  const walk = (d, rel) => {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const r = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory()) walk(path.join(d, e.name), r);
+      else if (e.isFile()) files.push(r);
+      else throw new Error(`Unexpected ${e.isSymbolicLink() ? 'link' : 'entry'} in the download: ${r}`);
+    }
+  };
+  walk(dir, '');
+  const h = crypto.createHash('sha256');
+  for (const f of files.sort()) h.update(`${f}\0${crypto.createHash('sha256').update(fs.readFileSync(path.join(dir, ...f.split('/')))).digest('hex')}\n`);
+  return h.digest('hex');
+}
 
 // Same names as Clipper's presets and benchmark goals (bench/clipperbench.py there).
 export const QUALITY_CHOICES = [
@@ -48,17 +96,21 @@ export const shareName = (dir) => ((String(dir).split(/[\\/]/).filter(Boolean).p
 const psQuote = (s) => `'${String(s).replace(/'/g, "''")}'`;
 const shQuote = (s) => (/^[\w./:@%+=-]+$/.test(String(s)) ? String(s) : `'${String(s).replace(/'/g, `'\\''`)}'`);
 
-// The one-liner to run on the gaming PC.
+// The command to run on the gaming PC: downloads the pinned installer, checks its SHA-256, runs it.
 export function remoteInstallCommand({ target, share, marqueeUrl, quality }) {
   const q = parseQuality(quality);
   if (target === 'windows') {
     const args = [`-Share ${psQuote(share)}`];
     if (marqueeUrl) args.push(`-MarqueeUrl ${psQuote(marqueeUrl)}`);
     args.push(q.bench ? `-Bench ${q.bench}` : `-Quality ${q.preset}`);
-    return `& ([scriptblock]::Create((irm ${RAW}/install.ps1))) ${args.join(' ')}`;
+    return [`$f = "$env:TEMP\\clipper-install.ps1"; irm ${RAW}/install.ps1 -OutFile $f;`,
+      `if ((Get-FileHash $f -Algorithm SHA256).Hash -ne '${CLIPPER_SCRIPT_SHA256['install.ps1'].toUpperCase()}') { throw 'Clipper installer checksum mismatch: not running it' };`,
+      `powershell -NoProfile -ExecutionPolicy Bypass -File $f -Ref ${CLIPPER_COMMIT} ${args.join(' ')}`].join(' ');
   }
   const args = ['--marquee', shQuote(share), '--quality', q.bench ? `bench:${q.bench}` : q.preset];
-  return `curl -fsSL ${RAW}/install.sh | sh -s -- ${args.join(' ')}`;
+  return [`f=$(mktemp) && curl -fsSL ${RAW}/install.sh -o "$f"`,
+    `&& echo '${CLIPPER_SCRIPT_SHA256['install.sh']}  '"$f" | sha256sum -c --quiet -`,
+    `&& CLIPPER_REF=${CLIPPER_COMMIT} sh "$f" ${args.join(' ')}`].join(' ');
 }
 
 // How to share the folder from this (the Marquee) machine, and how the gaming PC reaches it.
@@ -102,8 +154,10 @@ export function localInstallCommand({ src, clipsDir, marqueeUrl, quality, yes = 
   return args;
 }
 
-// Download Clipper's source (a GitHub tarball) into `dest`, replacing what's there.
-export async function downloadClipper(dest, { fetchImpl = fetch, tar = 'tar', spawn, ref = CLIPPER_REF } = {}) {
+// Download Clipper's source (a GitHub tarball of the pinned commit) into `dest`, replacing what's
+// there, after checking it against CLIPPER_TREE_SHA256. Another `ref` is only installed with
+// `expectTree: null`, which cli.js allows for --clipper-ref after a warning.
+export async function downloadClipper(dest, { fetchImpl = fetch, tar = 'tar', spawn, ref = CLIPPER_REF, expectTree = CLIPPER_TREE_SHA256 } = {}) {
   const res = await fetchImpl(clipperTarball(ref), { signal: AbortSignal.timeout(60_000) });
   if (!res.ok) throw new Error(`Downloading Clipper failed: HTTP ${res.status}`);
   const tmp = `${dest}.download`;
@@ -116,6 +170,13 @@ export async function downloadClipper(dest, { fetchImpl = fetch, tar = 'tar', sp
   const r = spawn(tar, ['-xzf', file, '-C', out, '--strip-components=1'], { stdio: 'inherit' });
   if (r.status !== 0) throw new Error('Unpacking Clipper failed (is tar installed?)');
   if (!fs.existsSync(path.join(out, 'bench', 'clipperbench.py'))) throw new Error('The download doesn\'t look like Clipper');
+  if (expectTree) {
+    const got = treeHash(out);
+    if (got !== expectTree) {
+      fs.rmSync(tmp, { recursive: true, force: true });
+      throw new Error(`Clipper's download doesn't match the reviewed version (tree hash ${got.slice(0, 12)}…, expected ${expectTree.slice(0, 12)}…). Nothing was installed.`);
+    }
+  }
   fs.rmSync(dest, { recursive: true, force: true });
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   fs.renameSync(out, dest);

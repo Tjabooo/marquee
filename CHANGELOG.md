@@ -4,6 +4,28 @@ All notable changes to Marquee. Versions follow [Semantic Versioning](https://se
 
 ## [Unreleased]
 
+### Security
+
+- **Marquee's own sign-in.** Accounts are created on the server (`node setup.js user add EMAIL
+  [--owner]`, also `passwd`, `remove`, `signout`, `list`); people sign in at `/signin` and can change
+  their password or sign out in Settings. scrypt password hashes, random session tokens stored only
+  as hashes, `HttpOnly; SameSite=Lax` cookies, per-account backoff and per-address lockout.
+- **Visitors from the internet must sign in.** The shared Home network account is given only to
+  visitors connecting directly from a private, loopback or Tailscale address, so a port forwarded by
+  mistake (or a tunnel without Access) shows a sign-in page instead of the library.
+  `HOME_NETWORK_ACCESS=signin` makes everyone sign in.
+- **Unwanted requests are refused:** changes from other websites (CSRF, `Origin`/`Sec-Fetch-Site`),
+  requests for unknown host names (DNS rebinding; `ALLOWED_HOSTS` adds names), and framing by other
+  sites. Security headers on every response.
+- **Windows autostart without SYSTEM.** The `Marquee Watchdog` task ran a script from the Marquee
+  folder as SYSTEM, so anyone able to change that script could take over the PC. The `Marquee` task
+  now restarts itself every 2 minutes as your account, without elevation; re-running
+  `install-service.ps1` removes the old task and limits write access to the Marquee folder.
+  `node setup.js doctor` warns about both.
+- **Clipper is pinned.** `node setup.js clipper` installs one reviewed commit and checks its SHA-256
+  tree hash before running anything, lists what Clipper installs, and no longer defaults to yes.
+  The commands for another PC check the installer's checksum instead of piping `main` into a shell.
+
 ### Added
 
 - **Skip intro**: a button (or **S**) during an episode's opening titles, found from an

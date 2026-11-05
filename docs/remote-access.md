@@ -1,14 +1,13 @@
 # Remote access and security
 
-Marquee is built for a home network. Out of the box it listens on your LAN, has no login screen and
-treats everyone on the network as one shared "Home network" account. That is fine at home and unsafe
-anywhere else: **never forward Marquee's port on your router or expose it directly to the internet.**
-Anyone who can reach it can browse, start downloads and delete files.
-
-To use Marquee away from home, put something in front of it that authenticates people first:
+Marquee is built for a home network. Out of the box it listens on your LAN and treats everyone who
+connects directly from it as one shared "Home network" account; anyone else has to sign in. Even so,
+**don't forward Marquee's port on your router**: Marquee speaks plain HTTP, so passwords and video
+would cross the internet unencrypted. Put something in front of it that adds HTTPS:
 
 | Option | Good for | Accounts |
 | --- | --- | --- |
+| [Marquee's own sign-in](#marquees-own-sign-in) behind any of these | everyone | personal accounts with passwords |
 | [Tailscale](#tailscale) | your own devices | one shared account |
 | [Cloudflare Tunnel + Access](#cloudflare-tunnel-and-access) | family and friends, no VPN app | personal accounts, owner role, invites |
 | [Reverse proxy with authentication](#reverse-proxy) | you already run Caddy or nginx with SSO | shared, or personal through a trusted header |
@@ -17,13 +16,53 @@ TLS on its own is not authentication. An HTTPS proxy without a login in front st
 
 ## How accounts work
 
-Marquee has no passwords of its own. It reads who someone is from a header set by an
-authenticating proxy, `Cf-Access-Authenticated-User-Email`:
+Each request belongs to one account, decided in this order:
 
-- A request with that header is that person's account: their library, progress and preferences.
-  Accounts are created on first visit. Emails listed in `ADMIN_EMAILS` are owners (the first is the
-  main owner, whose library receives files added outside Marquee).
-- A request without it is the shared **Home network** account, which is never an owner.
+1. **A proxy's identity.** `Cf-Access-Authenticated-User-Email`, set by Cloudflare Access or your
+   authenticating proxy (only believed as described below).
+2. **Marquee's own sign-in.** A session from the sign-in page at `/signin`.
+3. **The shared Home network account**, for visitors connecting directly from the home network
+   (private, loopback and Tailscale `100.64.0.0/10` addresses) while `HOME_NETWORK_ACCESS=shared`,
+   the default. It is never an owner, and it's never given to visitors from the internet, not even
+   through a tunnel or proxy: they get the sign-in page.
+
+A person's account (library, progress, preferences) is the same whichever way they sign in with the
+same email. Emails listed in `ADMIN_EMAILS` are owners (the first is the main owner, whose library
+receives files added outside Marquee).
+
+## Marquee's own sign-in
+
+Accounts are created on the server, never over the network:
+
+```sh
+node setup.js user add you@example.com --owner   # asks for a password; --owner adds you to ADMIN_EMAILS
+node setup.js user add friend@example.com
+node setup.js user passwd friend@example.com      # new password; signs them out everywhere
+node setup.js user signout friend@example.com     # end their sessions
+node setup.js user remove friend@example.com      # their library and settings are kept
+node setup.js user list
+```
+
+People sign in at `/signin` (Marquee sends them there) and can change their password and sign out in
+Settings. Passwords are hashed with scrypt; sessions are random 256-bit tokens stored only as hashes,
+in `HttpOnly; SameSite=Lax` cookies (`Secure` over HTTPS) that last `SESSION_DAYS` (30) unused.
+After 5 wrong passwords an account waits 30 seconds, doubling up to 15 minutes, and an address with
+30 misses in 15 minutes is locked out for 15 minutes.
+
+To make everyone sign in, at home too, set `HOME_NETWORK_ACCESS=signin`. Smart TVs fetching
+subtitles from the server's LAN address keep working.
+
+### Requests Marquee refuses
+
+- **From other websites.** A page you open could otherwise make your browser send requests to
+  Marquee on your LAN (CSRF). Changes are accepted only from Marquee's own pages (`Origin` and
+  `Sec-Fetch-Site` checks); tools without a browser, like the House and Screen Time agents, are
+  unaffected.
+- **For unknown host names.** A malicious site can point its own domain at your server's LAN
+  address (DNS rebinding). Marquee answers only to IP addresses, `localhost`, single-label names
+  (`http://nas:8080`), home-network suffixes (`.local`, `.lan`, `.home.arpa`, `.internal`, `.ts.net`),
+  `PUBLIC_URL`'s host and `ALLOWED_HOSTS`. Requests through Cloudflare are exempt, since Cloudflare
+  only routes your own hostnames. If you use another name, add it to `ALLOWED_HOSTS`.
 
 Because any client can send any header, Marquee only believes identity and proxy headers
 (`Cf-Access-*`, `Cf-Connecting-IP`, `Cf-Ray`, `X-Forwarded-*`) when one of these holds:
@@ -181,21 +220,3 @@ With either proxy on another host, set `TRUSTED_PROXIES` to that host's address.
 - Keep Marquee and Node.js updated (`node setup.js doctor` shows versions).
 - Downloads and deletions are available to every account the owner allows (Settings → who may
   download). The Home network account can download too unless the owner turns that off.
-
-## Future: built-in sign-in (proposal)
-
-Marquee deliberately relies on an external identity provider today. A built-in login is planned as
-separate, careful work rather than a quick addition. The intended design:
-
-- **Opt-in** (`AUTH=local`), so existing Cloudflare Access setups are unaffected; both can coexist,
-  with the proxy identity taking precedence when verified.
-- **Passkeys (WebAuthn) first**, with optional passwords hashed with scrypt (Node's built-in
-  `crypto.scrypt`, so still no dependencies) and per-account rate limiting with backoff.
-- **Server-side sessions** in `.marquee.db`: random 256-bit IDs in `HttpOnly; Secure; SameSite=Lax`
-  cookies, idle and absolute expiry, listing and revoking sessions per account, rotation on sign-in.
-- **CSRF protection** for every state-changing request (Origin check plus a per-session token),
-  which the current header-based model does not need.
-- **Bootstrap**: the first owner is created from the server console (`node setup.js owner add`), never
-  from the network; invites become sign-up links that work without Cloudflare.
-- **LAN mode stays available** as an explicit choice (`HOME_NETWORK_ACCESS=shared|signin`), so a
-  household can keep the current no-login experience at home.

@@ -28,7 +28,10 @@ See [remote-access.md](remote-access.md) for how accounts work and how to publis
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
-| `ADMIN_EMAILS` | | Owner accounts, as signed in through Cloudflare Access, comma-separated. The first is the owner: files added outside Marquee go to their library. Owners see Activity, House, Clips, Notes and the server settings. |
+| `ADMIN_EMAILS` | | Owner accounts, as they sign in (Marquee's own sign-in or Cloudflare Access), comma-separated. The first is the owner: files added outside Marquee go to their library. Owners see Activity, House, Clips, Notes and the server settings. |
+| `HOME_NETWORK_ACCESS` | `shared` | `shared`: visitors directly on the home network (private, loopback and Tailscale addresses) use the shared Home network account without signing in. `signin`: everyone signs in. Visitors from the internet must sign in either way. |
+| `SESSION_DAYS` | `30` | How long a Marquee sign-in lasts unused. Renewed while in use, never longer than a year from signing in. |
+| `ALLOWED_HOSTS` | | Extra host names Marquee answers to, comma-separated (`*.example.com` allowed). IP addresses, `localhost`, single-label names, home-network suffixes (`.local`, `.lan`, `.home.arpa`, `.internal`, `.ts.net`) and `PUBLIC_URL`'s host always work; any other name is refused (DNS-rebinding protection). |
 | `TRUSTED_PROXIES` | `127.0.0.1,::1` | Addresses or CIDR ranges whose identity headers (`Cf-Access-Authenticated-User-Email`, `Cf-Connecting-IP`, `X-Forwarded-*`) are believed. Headers from anywhere else are removed. Set it to the address of a proxy on another machine; an empty value trusts nobody. |
 | `CF_ACCESS_TEAM_DOMAIN` | | Your Cloudflare Access team domain, e.g. `myteam.cloudflareaccess.com`. With `CF_ACCESS_AUD`, Marquee verifies each request's Access token and takes the account from it, wherever the connection comes from. |
 | `CF_ACCESS_AUD` 🔒 | | The Access application's Audience (AUD) tag. |

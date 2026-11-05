@@ -4,21 +4,26 @@
 #   powershell -ExecutionPolicy Bypass -File scripts\windows\install-service.ps1 -Status
 #   powershell -ExecutionPolicy Bypass -File scripts\windows\install-service.ps1 -Uninstall
 #
-# Two tasks are created. Re-running replaces them, so nothing is ever registered twice.
-#   Marquee           runs start-marquee.cmd as your account (its password is needed to run before sign-in)
-#   Marquee Watchdog  runs as SYSTEM every 2 minutes and starts "Marquee" if it isn't running, because
-#                     Windows occasionally skips a boot trigger. Create .marquee-stopped in the Marquee
-#                     folder to keep Marquee stopped on purpose.
+# One task, "Marquee", runs start-marquee.cmd as your account with normal (not elevated) rights; its
+# password is needed to run before sign-in. Besides the boot trigger it has a trigger every 2 minutes
+# that starts it again if it isn't running (Windows occasionally skips a boot trigger); a running
+# Marquee is left alone. Create .marquee-stopped in the Marquee folder to keep it stopped on purpose.
+#
+# Nothing runs as SYSTEM or elevated. Older versions registered a "Marquee Watchdog" task that ran a
+# script from this folder as SYSTEM; re-running this removes it. The Marquee folder is also checked:
+# if every user of the PC may change its files, write access is limited to you, SYSTEM and
+# administrators (others keep read access), so no one else can change what your task runs.
 param(
   [switch]$Status,
   [switch]$Uninstall,
-  [switch]$NoWatchdog,
+  [switch]$NoWatchdog,      # no 2-minute restart trigger, only the boot trigger
+  [switch]$KeepFolderAcl,   # don't limit write access to the Marquee folder
   [switch]$NoStart
 )
 
 $ErrorActionPreference = 'Stop'
 $dir = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-$tasks = 'Marquee', 'Marquee Watchdog'
+$tasks = 'Marquee', 'Marquee Watchdog'   # the second is from older versions: removed on install
 
 if ($Status) {
   foreach ($name in $tasks) {
@@ -58,28 +63,48 @@ $user = "$env:USERDOMAIN\$env:USERNAME"
 $cred = Get-Credential -UserName $user -Message ("Windows password for $user (for a Microsoft account, the account " +
   'password, not the PIN). Task Scheduler needs it to start Marquee before anyone signs in.')
 
+# Limit who can change the files the task runs. New folders under C:\ let every signed-in user
+# modify files in them (Authenticated Users: Modify), which would let another account on this PC
+# change start-marquee.cmd or server.js and run code as you.
+$broad = @('S-1-1-0', 'S-1-5-11', 'S-1-5-32-545', 'S-1-5-4')   # Everyone, Authenticated Users, Users, INTERACTIVE
+$writeBits = [int]([Security.AccessControl.FileSystemRights]'WriteData, AppendData, WriteExtendedAttributes, WriteAttributes, Delete, DeleteSubdirectoriesAndFiles, ChangePermissions, TakeOwnership')
+function Get-BroadWriters([string]$path) {
+  @((Get-Acl $path).Access | Where-Object {
+    $_.AccessControlType -eq 'Allow' -and ([int]$_.FileSystemRights -band $writeBits) -and
+    $(try { $broad -contains $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value } catch { $false })
+  })
+}
+$writers = Get-BroadWriters $dir
+if ($writers.Count -and -not $KeepFolderAcl) {
+  $me = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+  & icacls.exe $dir /inheritance:d /Q | Out-Null
+  & icacls.exe $dir /remove:g '*S-1-1-0' '*S-1-5-11' '*S-1-5-32-545' '*S-1-5-4' /Q | Out-Null
+  & icacls.exe $dir /grant:r "*${me}:(OI)(CI)F" '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-32-545:(OI)(CI)RX' /Q | Out-Null
+  if ((Get-BroadWriters $dir).Count) { Write-Warning "Couldn't limit write access to $dir. Check its Security tab." }
+  else { Write-Host "Limited write access to $dir to you, SYSTEM and administrators (others can read)." }
+} elseif ($writers.Count) {
+  Write-Warning "Every user of this PC can change files in $dir (-KeepFolderAcl). Anyone signed in to it could run code as you."
+}
+
 $action   = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument ('/c "' + (Join-Path $dir 'start-marquee.cmd') + '"') -WorkingDirectory $dir
-$trigger  = New-ScheduledTaskTrigger -AtStartup
-$trigger.Delay = 'PT30S'   # let the network and mapped drives come up
+$boot     = New-ScheduledTaskTrigger -AtStartup
+$boot.Delay = 'PT30S'   # let the network and mapped drives come up
+$triggers = @($boot)
+if (-not $NoWatchdog) {
+  # Starts the task if it isn't running; MultipleInstances IgnoreNew leaves a running Marquee alone.
+  $triggers += New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(2) -RepetitionInterval (New-TimeSpan -Minutes 2)
+}
 $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -StartWhenAvailable `
   -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew
 Register-ScheduledTask -TaskName 'Marquee' -Description 'Marquee media server' `
-  -Action $action -Trigger $trigger -Settings $settings `
+  -Action $action -Trigger $triggers -Settings $settings `
   -User $user -Password $cred.GetNetworkCredential().Password -RunLevel Limited -Force | Out-Null
-Write-Host 'Registered task Marquee.'
+Write-Host ('Registered task Marquee' + $(if ($NoWatchdog) { '.' } else { ' (restarts within 2 minutes if it stops; create .marquee-stopped to keep it stopped).' }))
 
-if (-not $NoWatchdog) {
-  $wdAction   = New-ScheduledTaskAction -Execute 'powershell.exe' `
-    -Argument ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + (Join-Path $PSScriptRoot 'watchdog-marquee.ps1') + '"')
-  $wdBoot     = New-ScheduledTaskTrigger -AtStartup
-  $wdBoot.Delay = 'PT2M'
-  $wdRepeat   = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 2)
-  $wdSettings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 1) -StartWhenAvailable `
-    -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew
-  $wdPrincipal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
-  Register-ScheduledTask -TaskName 'Marquee Watchdog' -Description 'Starts the Marquee task if it is not running' `
-    -Action $wdAction -Trigger $wdBoot, $wdRepeat -Settings $wdSettings -Principal $wdPrincipal -Force | Out-Null
-  Write-Host 'Registered task Marquee Watchdog (create .marquee-stopped to keep Marquee stopped on purpose).'
+# Older versions: a SYSTEM task running a script from this folder. Never leave it behind.
+if (Get-ScheduledTask -TaskName 'Marquee Watchdog' -ErrorAction SilentlyContinue) {
+  Unregister-ScheduledTask -TaskName 'Marquee Watchdog' -Confirm:$false
+  Write-Host 'Removed the old Marquee Watchdog task (it ran as SYSTEM; the Marquee task now restarts itself).'
 }
 
 if (-not $NoStart) {

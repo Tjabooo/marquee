@@ -58,6 +58,8 @@ export function checkConfig(env = process.env, { tools = true } = {}) {
     }
   }
 
+  if (env.HOME_NETWORK_ACCESS && !['shared', 'signin'].includes(String(env.HOME_NETWORK_ACCESS).toLowerCase())) add('error', 'HOME_NETWORK_ACCESS', `HOME_NETWORK_ACCESS="${env.HOME_NETWORK_ACCESS}" isn't shared or signin, so shared is used`, 'Set it to shared or signin.');
+  if (env.SESSION_DAYS && !(Number(env.SESSION_DAYS) >= 1 && Number(env.SESSION_DAYS) <= 365)) add('warn', 'SESSION_DAYS', 'SESSION_DAYS should be a number of days from 1 to 365', 'Fix it in .env (default 30).');
   if (env.CF_ACCESS_TEAM_DOMAIN && !env.CF_ACCESS_AUD) add('error', 'CF_ACCESS_AUD', 'CF_ACCESS_TEAM_DOMAIN is set without CF_ACCESS_AUD, so Access tokens are not verified', 'Copy the Application Audience (AUD) tag from the Access application.');
   if (env.CF_ACCESS_AUD && !env.CF_ACCESS_TEAM_DOMAIN) add('error', 'CF_ACCESS_TEAM_DOMAIN', 'CF_ACCESS_AUD is set without CF_ACCESS_TEAM_DOMAIN', 'Set it to <team>.cloudflareaccess.com.');
   if (env.CF_API_TOKEN && !(env.CF_ACCOUNT_ID && env.CF_ACCESS_LIST_ID)) add('warn', 'CF_ACCESS_LIST_ID', 'Invites need CF_API_TOKEN, CF_ACCOUNT_ID and CF_ACCESS_LIST_ID together', 'See docs/remote-access.md#invites.');

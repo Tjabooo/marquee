@@ -88,8 +88,8 @@ export function servicePlan(action, {
   if (manager === 'task-scheduler') {
     const script = nodePath.win32.join(appDir, 'scripts', 'windows', action === 'restart' ? 'restart-marquee.ps1' : 'install-service.ps1');
     const flag = { install: [], status: ['-Status'], uninstall: ['-Uninstall'], restart: [] }[action];
-    step({ install: 'Register the Marquee and Marquee Watchdog scheduled tasks (asks for your Windows password)',
-      status: 'Show the scheduled tasks', uninstall: 'Remove both scheduled tasks', restart: 'Restart the Marquee task' }[action],
+    step({ install: 'Register the Marquee scheduled task, runs as you without admin rights (asks for your Windows password)',
+      status: 'Show the scheduled tasks', uninstall: 'Remove the Marquee scheduled task', restart: 'Restart the Marquee task' }[action],
     { cmd: ['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script, ...flag], privileged: action === 'install' || action === 'uninstall', interactive: action === 'install' });
     return steps;
   }
