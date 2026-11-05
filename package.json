@@ -1,15 +1,21 @@
 {
   "name": "marquee",
-  "version": "1.0.0",
-  "description": "Self-hosted media server with torrent search, subtitles, automatic conversion and casting to smart TVs and Apple TV.",
+  "version": "1.1.0",
+  "description": "Self-hosted, phone-first media server: TMDB discovery, qBittorrent downloads, subtitles, automatic MP4 conversion and casting to smart TVs and Apple TV.",
   "type": "module",
   "main": "server.js",
   "private": true,
   "scripts": {
     "start": "node server.js",
+    "setup": "node setup.js",
+    "doctor": "node setup.js doctor",
     "test": "node --test tests/*.test.mjs"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.16"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Tjabooo/marquee.git"
   }
 }

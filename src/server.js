@@ -39,6 +39,7 @@ import { creditsFor, initCredits } from './credits.js';
 import { Previews } from './previews.js';
 import { isHomeRequest, describeRequest } from './network.js';
 import { createTrust } from './trust.js';
+import { checkConfig } from './config-check.js';
 
 import { DATA_DIR, CACHE_DIR, PUBLIC_DIR, dataDirProblem, ensureDataDir } from './paths.js';
 
@@ -2678,6 +2679,7 @@ server.listen(PORT, HOST, () => {
   console.log(`  Torrents:  ${torrents.torrentsEnabled() ? 'search on (1337x + The Pirate Bay)' : 'off (TORRENTS=off)'}`);
   console.log(`  Subtitles: ${subtitles.subtitlesConfigured() ? 'OpenSubtitles on' : 'off (add OPENSUBTITLES_API_KEY to .env)'}${subsync.autoSyncEnabled() ? ', timing auto-fix on' : ''}`);
   console.log(`  TVs will stream from: http://${LAN_IP}:${PORT} (set SERVER_IP in .env if this is wrong)`);
+  for (const w of checkConfig(process.env).filter((c) => c.level !== 'info')) console.warn(`  ! ${w.message}. ${w.fix}`);
 });
 
 // Docker and service managers stop Marquee with SIGTERM. Open live-update streams would keep
