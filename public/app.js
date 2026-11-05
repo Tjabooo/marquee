@@ -854,7 +854,7 @@ function renderUpdatedLibrary() {
 }
 
 async function loadConvert() {
-  try { const next = await api('/api/convert'); if (state.convert?.current?.name && state.convert.current.name !== next.current?.name) libraryRefreshNeeded = true; state.convert = next; } catch { state.convert = null; }
+  try { const next = await api(`/api/convert?plays=${extraPlayable()}`); if (state.convert?.current?.name && state.convert.current.name !== next.current?.name) libraryRefreshNeeded = true; state.convert = next; } catch { state.convert = null; }
 }
 
 // What each conversion job is for (src/convert.js sets `purpose`): one file can get two jobs,

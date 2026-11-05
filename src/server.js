@@ -1338,6 +1338,41 @@ async function playLink(kind, id, variant, audio = null, audioSource = null, ret
   };
 }
 
+// Whether this browser can already play a job's video as served right now (so it isn't waiting for the job).
+// Same checks as /api/media/.../audio: video codec, default audio codec and audio alignment.
+async function browserPlaysNow(job, plays) {
+  if (job.kind === 'retire') return true; // the MP4 copy exists; only the original's subtitles are being saved
+  const hevc = plays.has('hevc');
+  const served = converter.preferConverted(job.file, { browser: true, hevc });
+  if (converter.needsConversion(served)) return false; // no MP4 copy yet: Play waits for it
+  try {
+    const [tracks, vid] = await Promise.all([converter.probeAudio(served), converter.probeVideo(served)]);
+    const main = tracks?.[0]?.codec;
+    return converter.videoBrowserSafe(vid, { hevc }) && converter.isAligned(tracks)
+      && (!main || converter.BROWSER_AUDIO.has(main) || plays.has(main));
+  } catch { return false; }
+}
+
+// The conversion banner for one person: only videos in their library, and only jobs their browser is
+// actually waiting for. A browser that already plays a file never sees its background copies.
+const CONVERT_QUEUE_CHECK = 30;
+async function convertStatusFor(user, plays) {
+  const all = converter.converterStatus();
+  const jobs = converter.jobFiles();
+  const mine = user ? accounts.libraryOf(user.id) : new Map();
+  const inLibrary = (file) => { const key = file && accounts.mediaKey(file); return Boolean(key && mine.has(key)); };
+  const waiting = async (job) => inLibrary(job.file) && !(await browserPlaysNow(job, plays));
+  const active = [];
+  for (const job of jobs.active) if (await waiting(job)) active.push(job.slot);
+  let queued = 0;
+  for (const job of jobs.queued.slice(0, CONVERT_QUEUE_CHECK)) if (await waiting(job)) queued += 1;
+  return {
+    enabled: all.enabled, reason: all.reason, encoder: all.encoder, done: all.done,
+    active, current: active[0] || null, queued,
+    recentFailures: jobs.failures.filter((f) => inLibrary(f.file)).map(({ name, error }) => ({ name, error })),
+  };
+}
+
 // The file a signed /play/ path names, once its signature checks out (expiry is the caller's business).
 function verifiedPlayPath(pathname) {
   const m = pathname.match(/^\/play\/(lib|dl)\/([A-Za-z0-9_-]+)\/(browser(?:-hevc)?(?:-a\d+-[a-f0-9]{24})?|tv)\/(\d+)\/([A-Za-z0-9_-]+)(?:\/[^/]*)?$/);
@@ -2094,7 +2129,10 @@ async function handleApi(req, res, url) {
   }
   // Every update's notes, for Settings → What's new.
   if (p === '/api/whats-new') return sendJson(res, 200, { updates: whatsNew.allFor(user), seen: user.settings.seenUpdate || null });
-  if (p === '/api/convert') return sendJson(res, 200, converter.converterStatus());
+  if (p === '/api/convert') {
+    const plays = new Set((url.searchParams.get('plays') || '').split(',').filter(Boolean));
+    return sendJson(res, 200, await convertStatusFor(user, plays));
+  }
   if (p === '/api/discover/home') {
     return sendJson(res, 200, await discoverHome(url.searchParams.get('type') || 'all'));
   }

@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-05-convert-banner-mine",
+    "date": "2026-11-05",
+    "title": "Only conversions you're waiting for",
+    "items": [
+      {
+        "title": "Quieter library",
+        "text": "The \"Preparing playback\" bar now only appears for videos in your library, and only when your browser actually needs that copy to play them. If you can already watch it, you won't see it."
+      }
+    ]
+  },
+  {
     "id": "2026-11-05-convert-lanes",
     "date": "2026-11-05",
     "title": "Ready to play sooner",

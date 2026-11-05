@@ -462,6 +462,17 @@ export function syncState(file) {
 export const jobState = (file) => (isActive(file) ? 'converting' : queue.some((q) => q.file === file && !q.retire) ? 'queued' : null);
 
 // `current` (the first running job) is kept for older callers; `active` lists every running lane.
+// Running and waiting jobs with their files, so the server can show each person only their own videos
+// (the status itself carries no paths, it goes to every browser).
+const failureFiles = new Map(); // error + name -> file, for recentFailures
+export function jobFiles() {
+  return {
+    active: [...active.values()].map(({ job, slot }) => ({ file: job.file, kind: kindOf(job), slot: { ...slot } })),
+    queued: queue.map((j) => ({ file: j.file, kind: kindOf(j) })),
+    failures: status.recentFailures.map((f) => ({ ...f, file: failureFiles.get(f.error + f.name) || null })),
+  };
+}
+
 export function converterStatus() {
   const running = status.active.map((s) => ({ ...s }));
   return { ...status, active: running, current: running[0] || null, queued: queue.length };
@@ -958,6 +969,7 @@ async function runJob(lane, job) {
     console.warn(`[convert] failed: ${path.basename(job.file)}: ${msg}`);
     failures[failureKey(job.file)] = { error: msg, at: Date.now() };
     saveFailures();
+    failureFiles.set(msg + path.basename(job.file), job.file);
     status.recentFailures = [{ name: path.basename(job.file), error: msg }, ...status.recentFailures].slice(0, 5);
   } finally {
     active.delete(lane);
