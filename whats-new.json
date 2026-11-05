@@ -1,14 +1,5 @@
 [
   {
-<<<<<<< HEAD
-    "id": "2026-11-05-invite-fix",
-    "date": "2026-11-05",
-    "title": "Invite links work again",
-    "items": [
-      {
-        "title": "Invite links work again",
-        "text": "Since the sign-in update, opening an invite link and pressing Get access showed “This request came from another website”. That's fixed: invites you already sent work as they are.",
-=======
     "id": "2026-11-05-faces-room",
     "date": "2026-11-05",
     "title": "Faces, and a new Watch Together",
@@ -24,7 +15,18 @@
       {
         "title": "Pictures for the family",
         "text": "In Settings → People, tap someone's circle to give them a picture (right-click to remove it).",
->>>>>>> f029483 (feat(social): profile pictures everywhere and a redesigned Watch Together room)
+        "audience": "owner"
+      }
+    ]
+  },
+  {
+    "id": "2026-11-05-invite-fix",
+    "date": "2026-11-05",
+    "title": "Invite links work again",
+    "items": [
+      {
+        "title": "Invite links work again",
+        "text": "Since the sign-in update, opening an invite link and pressing Get access showed “This request came from another website”. That's fixed: invites you already sent work as they are.",
         "audience": "owner"
       }
     ]
