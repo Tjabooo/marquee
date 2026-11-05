@@ -1,10 +1,11 @@
-# Restarts the scheduled task created by setup-autostart.ps1 and reports status.
-#   powershell -ExecutionPolicy Bypass -File .\restart-marquee.ps1
+# Restarts the scheduled task created by install-service.ps1 and reports status.
+#   powershell -ExecutionPolicy Bypass -File scripts\windows\restart-marquee.ps1
+# (or: node setup.js service restart)
 
-$dir = $PSScriptRoot
+$dir = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 
 if (-not (Get-ScheduledTask -TaskName 'Marquee' -ErrorAction SilentlyContinue)) {
-  Write-Host "No Marquee task found. Run setup-autostart.ps1 first." -ForegroundColor Red
+  Write-Host "No Marquee task found. Run scripts\windows\install-service.ps1 (or node setup.js service install) first." -ForegroundColor Red
   exit 1
 }
 
