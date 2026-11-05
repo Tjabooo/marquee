@@ -7,6 +7,7 @@ import { createSeekPreview } from './seek-preview.js';
 import { createStreamStats } from './player-stats.js';
 import { SUB_SIZES, SUB_BACKGROUNDS, SUB_POSITIONS, subLook, subRaise, secondChoices, createNightAudio,
   SLEEP_MINUTES, sleepTimer, sleepSecondsLeft, sleepFade, sleepLabel } from './player-comfort.js';
+import { comingUp, newEpisodes, watchStatus, todayIso } from './watchlist.js';
 import { libraryUnion, libraryAvailability, filterLibrary, transferState, transferAttention, transferPaused } from './library-downloads.js';
 
 const $ = (sel, el = document) => el.querySelector(sel);
@@ -37,6 +38,7 @@ const ICONS = {
   search: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>',
   trash: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 7h15M10 4h4M6.5 7l.9 12.1a1.5 1.5 0 0 0 1.5 1.4h6.2a1.5 1.5 0 0 0 1.5-1.4L17.5 7M10 11v6M14 11v6"/></svg>',
   copy: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6.5a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2"/></svg>',
+  bookmark: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 3.5h11v17l-5.5-4-5.5 4z"/></svg>',
   bell: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4M12 2V1"/></svg>',
   plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
   send: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg>',
@@ -273,6 +275,105 @@ function savedProgress(f) {
 }
 async function loadProgress() {
   try { state.progress = (await api('/api/me/progress')).progress || {}; } catch { /* local copy only */ }
+}
+
+// ---------- Save for later and Follow (watchlist.js; the server downloads, src/watchlist.js) ----------
+const watch = { items: [], autoDownload: false, revision: 0 };
+const watchItem = (type, id) => watch.items.find((i) => i.type === type && i.id === Number(id)) || null;
+async function loadWatchlist() {
+  if (!state.status.search) return;
+  try { Object.assign(watch, await api('/api/watchlist')); watch.revision++; } catch { return; }
+  refreshWatchViews();
+}
+// Every place that shows the list: Save / Follow boxes in open sheets, the shelves, New badges.
+function refreshWatchViews() {
+  document.querySelectorAll('.watch-box').forEach((box) => box._update?.());
+  if (state.view === 'library') renderLibrary();
+  if (state.view === 'discover' && !state.query.trim() && !disc.list && !disc.genre) refreshSavedShelf();
+}
+async function setWatch(t, flags) {
+  const { item } = await api('/api/watchlist', jsonPost({ type: t.type, tmdbId: t.id, ...flags }));
+  watch.items = watch.items.filter((i) => !(i.type === t.type && i.id === Number(t.id)));
+  if (item) watch.items.unshift(item);
+  watch.revision++;
+  refreshWatchViews();
+  return item;
+}
+// Save (any title), Follow (shows) and the automatic-download switch, with one status line.
+function watchBox(t) {
+  const isTv = t.type === 'tv';
+  const box = h('div', { class: 'watch-box' });
+  let busy = false;
+  const act = async (flags, what) => {
+    if (busy) return;
+    busy = true; box.classList.add('is-busy');
+    try {
+      const item = await setWatch(t, flags);
+      if (what) toast(what(item));
+    } catch (err) { toast(err.message); } finally { busy = false; box.classList.remove('is-busy'); box._update(); }
+  };
+  box._update = () => {
+    if (!box.isConnected && box._drawn) return;
+    box._drawn = true;
+    const item = watchItem(t.type, t.id);
+    const saved = Boolean(item?.saved), follow = Boolean(item?.follow);
+    const auto = Boolean(item?.auto) && watch.autoDownload;
+    const inLibrary = !isTv && matchesFor(t).some((f) => f.done);
+    const save = h('button', { type: 'button', class: `chip watch-toggle${saved ? ' is-on' : ''}`, 'aria-pressed': String(saved),
+      onclick: () => act({ saved: !saved }, (i) => (i?.saved ? 'Saved for later' : 'Removed from Saved')) }, icon('bookmark'), saved ? 'Saved' : 'Save');
+    const followBtn = isTv && h('button', { type: 'button', class: `chip watch-toggle${follow ? ' is-on' : ''}`, 'aria-pressed': String(follow),
+      onclick: () => act({ follow: !follow }, (i) => (i?.follow ? (i.auto ? 'Following. New episodes download as they air.' : 'Following') : 'Stopped following')) },
+      icon('bell'), follow ? 'Following' : 'Follow');
+    // Films: wait for the release. Shows: new episodes as they air (only while following).
+    const offerAuto = watch.autoDownload && (isTv ? follow : saved && !inLibrary && item?.state !== 'got');
+    const autoSwitch = offerAuto && h('label', { class: 'watch-auto' },
+      h('input', { type: 'checkbox', checked: auto, onchange: (e) => act({ auto: e.currentTarget.checked }) }),
+      h('span', {}, isTv ? 'Download new episodes as they air' : 'Download it when a good copy is out'));
+    const line = watchStatus(item, { today: todayIso(), autoDownload: watch.autoDownload, inLibrary });
+    box.replaceChildren(...[h('div', { class: 'watch-buttons' }, save, followBtn), autoSwitch, line && h('p', { class: 'watch-status', role: 'status' }, line)].filter(Boolean));
+  };
+  box._update();
+  return box;
+}
+
+// Discover: your saved titles first, as their own row.
+function savedShelf() {
+  const items = watch.items.filter((i) => i.saved && (disc.type === 'all' || disc.type === i.type));
+  if (!items.length) return h('div', { class: 'saved-shelf', hidden: true });
+  const list = h('ul', { class: 'shelf-items', tabindex: '0', 'aria-label': 'Saved for later' }, items.map(titleCard));
+  const node = carousel('Saved for later', list);
+  node.classList.add('saved-shelf');
+  return node;
+}
+function refreshSavedShelf() {
+  const old = $('#discover-body .saved-shelf');
+  if (old) old.replaceWith(savedShelf());
+}
+
+// Library: the next episode of each followed show and the release of each saved film, soonest first.
+function comingUpShelf() {
+  const list = comingUp(watch.items, todayIso())
+    .filter((c) => state.libFilter === 'all' || state.libFilter === c.item.type)
+    .filter((c) => !state.query.trim() || norm(c.item.title).includes(norm(state.query))).slice(0, 20);
+  if (!list.length) return null;
+  return libraryShelf('Coming up', list.map((c) => h('li', { class: 'library-card continue-card coming-card' },
+    h('button', { type: 'button', class: 'title-card', onclick: (e) => openDetails(c.item, e.currentTarget) },
+      (() => { const art = wideArt([c.item.backdrop, { src: c.item.poster, contain: true }], '', CONTINUE_SIZES); art.append(h('span', { class: 'coming-date' }, c.when)); return art; })(),
+      h('div', { class: 'name' }, c.item.title),
+      h('div', { class: 'sub' }, c.what)))), 'continue-shelf coming-shelf');
+}
+// "3 new" on a followed show's card, for episodes that downloaded by themselves since you last opened it.
+function newBadgeCount(entry) {
+  const id = entry.show?.tmdbId;
+  return id ? newEpisodes(watchItem('tv', id), entry.files) : 0;
+}
+function markShowSeen(tmdbId) {
+  const item = watchItem('tv', tmdbId);
+  if (!item?.newEpisodes?.length) return;
+  item.newEpisodes = [];
+  watch.revision++;
+  api('/api/watchlist/seen', jsonPost({ tmdbId })).catch(() => {});
+  if (state.view === 'library') renderLibrary();
 }
 
 // ---------- auto-delete countdown ----------
@@ -539,6 +640,7 @@ async function renderDiscover() {
     const data = await cachedApi(`/api/discover/home?type=${disc.type}`, signal);
     content.replaceChildren(...[
       data.featured.length && carousel('Trending this week', h('ul', { class: 'hero', tabindex: '0', 'aria-label': 'Trending this week' }, data.featured.map(heroSlide))),
+      savedShelf(),
       ...data.rows.map(row),
     ].filter(Boolean));
   } catch (err) {
@@ -708,14 +810,14 @@ function renderLibrary() {
   const emptyText = entries.length || [...libraryCards.values()].some(c => c.contains(document.activeElement)) ? '' : all.length ? 'No titles match these filters.' : 'Your library is empty. Find something in Discover or use Find torrents to add your first title.';
   if (ui.empty.textContent !== emptyText) ui.empty.replaceChildren(emptyText ? notice(all.length ? 'No matching titles' : 'Your library is empty', emptyText) : '');
   // Shelves use ready files only; transfers never create fake playback progress.
-  const shelfKey = JSON.stringify([librarySignature, state.libFilter, state.query, libraryProgressRevision]);
+  const shelfKey = JSON.stringify([librarySignature, state.libFilter, state.query, libraryProgressRevision, watch.revision, todayIso()]);
   // Also rebuilt when this page changed the list itself (a delete), before the server's copy catches up.
   if (ui.shelfKey !== shelfKey || ui.shelfLibrary !== state.library || ui.shelfProgress !== state.progress) {
     ui.shelfKey = shelfKey; ui.shelfLibrary = state.library; ui.shelfProgress = state.progress;
     const q = norm(state.query), ready = state.library.filter(f => (!q || norm(`${f.title} ${f.filmTitle || ''} ${f.file}`).includes(q)) && (state.libFilter === 'all' || (state.libFilter === 'tv') === (f.season != null)));
     const watching = ready.map(f => ({ f, progress: savedProgress(libraryFile(f)) })).filter(x => partlyWatched(x.progress)).sort((a,b) => (b.progress.at || 0) - (a.progress.at || 0)).slice(0,12);
     const leaving = libraryEntries(ready.filter(f => f.expiresAt != null && f.expiresAt - Date.now() < 48 * 3600000));
-    ui.shelves.replaceChildren(...[watching.length && libraryShelf('Continue watching', watching.map(({f, progress}) => continueCard(f, progress)), 'continue-shelf'), leaving.length && libraryShelf('Leaving soon', leaving.map(e => libraryCard(e, true)))].filter(Boolean));
+    ui.shelves.replaceChildren(...[watching.length && libraryShelf('Continue watching', watching.map(({f, progress}) => continueCard(f, progress)), 'continue-shelf'), comingUpShelf(), leaving.length && libraryShelf('Leaving soon', leaving.map(e => libraryCard(e, true)))].filter(Boolean));
   }
   ui.shelves.hidden = state.libAvailability !== 'all' && state.libAvailability !== 'ready';
   if (showView.id) updateOpenShow();
@@ -734,7 +836,8 @@ function makeUnifiedCard(entry) {
 function updateUnifiedCard(card, entry) {
   const old = card._entry;
   card._entry = entry;
-  const paint = JSON.stringify([entry.key, entry.type, entry.transfers.map(d => [d.hash, d.done]), entry.name, entry.poster, entry.ready, entry.state, entry.progress, entry.attention, entry.files.map(f => [f.id, f.expiresAt, savedProgress(libraryFile(f))]), libraryAvailability(entry)]);
+  const fresh = newBadgeCount(entry);
+  const paint = JSON.stringify([fresh, entry.key, entry.type, entry.transfers.map(d => [d.hash, d.done]), entry.name, entry.poster, entry.ready, entry.state, entry.progress, entry.attention, entry.files.map(f => [f.id, f.expiresAt, savedProgress(libraryFile(f))]), libraryAvailability(entry)]);
   if (card._paint === paint) return; card._paint = paint;
   const button = $('.title-card', card), poster = $('.poster', card), panel = $('.library-transfer', card);
   button.setAttribute('data-library-focus', entry.key);
@@ -761,6 +864,8 @@ function updateUnifiedCard(card, entry) {
   let pill = $('.transfer-pill', poster);
   const pillText = entry.attention ? 'Needs attention' : entry.state === 'Paused' ? 'Paused' : /Preparing|Checking/.test(entry.state) ? 'Preparing' : '';
   if (pillText) { if (!pill) { pill = h('span', { class: 'transfer-pill' }); poster.append(pill); } pill.textContent = pillText; } else pill?.remove();
+  let badge = $('.new-badge', poster);
+  if (fresh) { if (!badge) { badge = h('span', { class: 'new-badge' }); poster.append(badge); } badge.textContent = fresh === 1 ? 'New' : `${fresh} new`; badge.setAttribute('aria-label', `${fresh} new episode${fresh === 1 ? '' : 's'}`); } else badge?.remove();
   if (old && (old.ready !== entry.ready || old.attention !== entry.attention)) $('#library-live').textContent = `${entry.name}: ${entry.attention ? 'needs attention' : entry.ready ? 'ready to watch' : entry.state}`;
 }
 function openUnifiedTitle(entry, opener) {
@@ -992,6 +1097,8 @@ function openFilmIdentity(f, opener) {
 // A show with one season on the server opens straight on its episodes.
 const showView = { id: null, season: null };
 function openShow(id, opener) {
+  const tmdbId = unifiedLibrary().find((e) => e.show?.id === id)?.show?.tmdbId;
+  if (tmdbId) markShowSeen(tmdbId);
   showView.id = id;
   showView.season = null;
   renderShow();
@@ -1057,6 +1164,7 @@ function renderShow() {
   $('#sheet-body').replaceChildren(h('div', { class: `sheet-hero${show.backdrop ? '' : ' no-image'}`, style: show.backdrop ? `background-image:url("${show.backdrop}")` : null }),
     h('div', { class: 'sheet-content' }, h('h2', { id: 'sheet-title' }, show.title), h('ul', { class: 'facts' }, [show.year, 'Series', libraryAvailability(entry)].filter(Boolean).map(text => h('li', {}, text))),
       h('div', { class: 'title-actions' }, (tv || deleteShow) && h('div', { class: 'action-row' }, tv?.toggle, deleteShow), tv?.panel, transferPanel(entry)),
+      state.status.search && show.tmdbId && watchBox({ id: show.tmdbId, type: 'tv', title: show.title }),
       files.length > 0 && keepBar(files, renderShow), show.overview && h('p', { class: 'overview' }, show.overview), ...content));
   showStructure = JSON.stringify([showView.id, showView.season, entry.files, entry.transfers.map(d => [d.hash, d.season, (d.episodes || []).map(ep => [ep.season, ep.episode, ep.available, ep.libraryId])])]);
 }
@@ -1388,6 +1496,7 @@ async function applyLive() {
     jobs.push(loadProgress().then(() => { invalidateLibraryProgress(); if (state.view === 'library') renderLibrary(); updateUpNext(); }));
   }
   if (has('sessions')) jobs.push(loadSessions());
+  if (has('watchlist')) jobs.push(loadWatchlist());
   if (has('me') || has('people')) {
     jobs.push((async () => {
       try {
@@ -1498,6 +1607,7 @@ function renderDetails(t) {
         h('li', {}, t.type === 'tv' ? 'Series' : 'Film'),
         t.rating && h('li', {}, `★ ${t.rating}`)),
       actions,
+      state.status.search && t.id && watchBox(t),
       t.overview && h('p', { class: 'overview' }, t.overview),
       // Without download rights, episodes someone else has here can still be added (no copy is made).
       isTv && !canGet() && onServer.length > 0 && serverOffer(t, onServer),
@@ -6345,7 +6455,7 @@ $('#find-torrents').addEventListener('click', (e) => openTorrents({ query: state
   if (state.status.admin) { enableActivityTab(); enableHouseTab(); enableNotesTab(); }
   if (state.status.clips) enableClipsTab();
   updateTabOverflow();
-  await Promise.all([loadLibrary(), loadDownloads(), loadSessions(), loadProgress()]);
+  await Promise.all([loadLibrary(), loadDownloads(), loadSessions(), loadProgress(), loadWatchlist()]);
   // A reload stays on the tab it was on (#library); a fresh visit opens the chosen start tab.
   const start = linkedView() || prefs().startView;
   if (start && start !== 'discover') { state.view = null; await setView(start); } else { rememberView('discover'); renderDiscover(); }

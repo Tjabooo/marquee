@@ -1875,3 +1875,23 @@ button.st-col:hover .st-stack { filter: brightness(1.12); }
 .whats-new-open { min-height: 40px; white-space: nowrap; }
 .whats-new-open.has-new { color: var(--on-bulb); background: var(--bulb); border-color: var(--bulb); }
 @media (min-width: 700px) { .whats-new-done { flex: 0 0 auto; min-width: 160px; margin-left: auto; } }
+
+/* ---------- Save for later and Follow ---------- */
+.watch-box { display: grid; gap: 10px; margin: -6px 0 20px; }
+.watch-box.is-busy { opacity: .7; pointer-events: none; }
+.watch-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.watch-toggle { display: inline-flex; align-items: center; gap: 7px; }
+.watch-toggle svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.watch-toggle[aria-pressed="true"] svg { fill: currentColor; }
+.watch-auto { display: flex; align-items: center; gap: 10px; width: fit-content; font-size: 14px; color: var(--paper); cursor: pointer; }
+.watch-auto input { width: 18px; height: 18px; margin: 0; accent-color: var(--bulb); }
+.watch-status { margin: 0; font-size: 14px; line-height: 1.5; color: var(--dust); max-width: 60ch; }
+.new-badge {
+  position: absolute; top: 8px; right: 8px; padding: 4px 8px; border-radius: 7px;
+  font-size: 12px; font-weight: 800; letter-spacing: .02em; color: var(--on-bulb); background: var(--bulb);
+}
+.coming-card .wide-art { position: relative; }
+.coming-date {
+  position: absolute; left: 8px; bottom: 8px; padding: 4px 8px; border-radius: 7px;
+  font-size: 12px; font-weight: 700; color: var(--paper); background: var(--curtain);
+}

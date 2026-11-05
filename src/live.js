@@ -10,6 +10,7 @@ const pending = new Map(); // coalesces bursts: one event per topic and audience
 const RULES = [
   [/^\/api\/me\/progress$/, 'progress', 'user'],
   [/^\/api\/me$/, 'me', 'user'],
+  [/^\/api\/watchlist(?:\/seen)?$/, 'watchlist', 'user'],
   [/^\/api\/(library|downloads)\/(?!.*-info$)/, 'library', 'all'], // not the read-only delete-info checks
   [/^\/api\/media\/\w+\/[\w-]+\/sync$/, 'library', 'all'],
   [/^\/api\/admin\/notes(?:\/import|\/\d+(?:\/\w+)?|\/uploads\/[a-f0-9]{32}\/finish)?$/, 'notes', 'admin'],

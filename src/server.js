@@ -37,6 +37,7 @@ import { WatchRooms } from './watch.js';
 import { handleWatchPage } from './watch-page.js';
 import { creditsFor, introFor, initCredits } from './credits.js';
 import * as whatsNew from './whats-new.js';
+import { WatchlistStore, runRound as watchlistRound, baselineFrom } from './watchlist.js';
 import { Previews } from './previews.js';
 import { isHomeRequest, describeRequest } from './network.js';
 import { createTrust } from './trust.js';
@@ -92,6 +93,7 @@ setInterval(() => watchRooms.cleanup(), 3000).unref();
 activity.initActivity({ dataDir: DATA_DIR, nameForUser: accounts.displayNameFor });
 accounts.initAccounts({ dataDir: DATA_DIR, adminEmails: activity.adminEmails(), mediaDir: MEDIA_DIR });
 const notes = new NotesStore(DATA_DIR, { fileDir: process.env.NOTES_FILES_DIR });
+const watchlist = new WatchlistStore(DATA_DIR);
 // Text in Notes images becomes search keywords. Uploads are read right away; older images catch up after startup.
 const notesOcr = new NotesOcr(notes);
 // Previews of shared notes: video/image copies Discord can show. Shared notes get theirs at startup too.
@@ -735,6 +737,88 @@ async function haveEpisodes(key, seasonNo, user = null) {
   }
   return have;
 }
+
+// The Download command (smart-download.js) for one person: a film, a season or some episodes.
+// Used by the Download button and by Save for later / Follow (watchlist.js) in the background.
+async function startSmartFor(user, body) {
+  if (!QBIT_URL) throw new HttpError(503, 'Downloads aren’t connected. Add QBIT_URL to .env and restart.');
+  const type = body.type === 'tv' ? 'tv' : 'movie';
+  const tmdbId = Number(body.tmdbId);
+  if (!Number.isSafeInteger(tmdbId) || tmdbId <= 0) throw new HttpError(400, 'Which film or show?');
+  if (!TMDB_TOKEN && !TMDB_KEY) throw new HttpError(503, 'Downloading by title needs TMDB. Add TMDB_TOKEN to .env and restart.');
+  const details = await tmdb(`/${type}/${tmdbId}`);
+  const title = String((type === 'tv' ? details.name : details.title) || '').trim();
+  if (!title) throw new HttpError(404, 'That title couldn’t be found.');
+  const date = type === 'tv' ? details.first_air_date : details.release_date;
+  const year = date ? Number(date.slice(0, 4)) : null;
+  const original = String((type === 'tv' ? details.original_name : details.original_title) || '').trim();
+  const seasonNo = type === 'tv' ? Number(body.season) : null;
+  if (type === 'tv' && (!Number.isInteger(seasonNo) || seasonNo < 1 || seasonNo > 99)) throw new HttpError(400, 'Which season?');
+  const episodes = type === 'tv' && Array.isArray(body.episodes)
+    ? [...new Set(body.episodes.map(Number).filter((e) => Number.isInteger(e) && e > 0 && e < 1000))].slice(0, 200) : null;
+  const film = type === 'movie' ? details : null, show = type === 'tv' ? details : null;
+  const subs = subtitles.subtitlesConfigured() && user.settings?.subLang ? [user.settings.subLang] : [];
+  const id = smart.startSmartJob({
+    type, title, year, season: seasonNo, episodes: episodes?.length ? episodes : null, requester: user.id, subs,
+    originalTitle: original && original !== title && /^[\p{Script=Latin}\d\s\p{P}]+$/u.test(original) ? original : null,
+    want: downloadWant(user, body),
+  }, {
+    parseName, searchTorrents: torrents.searchTorrents, magnetFor1337x: torrents.magnetFor1337x,
+    addDownload: (opts) => addDownload({ ...opts, user, film, show }),
+    wantSubtitles: (link, list, name) => { subtitles.wantSubtitles(link, list, name); setTimeout(checkSubtitleWants, 30_000); },
+    filmHave: () => filmHave(tmdbId, user), freeBytes: freeBytesFor,
+    seasonEpisodes: (t, y, n) => shows.seasonEpisodes(t, y, n, tmdb),
+    haveEpisodes: (key, n) => haveEpisodes(key, n, user),
+    trimPack: (link, n, owned) => trimSeasonPack(link, n, owned), removePack: removeNewPack,
+    inOrder: ({ hash, existing }, n) => { if (!existing) orderEpisodes(hash, shows.showKey(title), n); },
+    log: (msg) => console.log(msg),
+  });
+  return { id, title, type, season: seasonNo, episodes };
+}
+
+// ---- Save for later and Follow (watchlist.js) ----
+const tmdbOn = () => Boolean(TMDB_TOKEN || TMDB_KEY);
+const mayAutoDownload = (u) => Boolean(u && u.canDownload && QBIT_URL && tmdbOn() && torrents.torrentsEnabled());
+function watchMeta(type, d) {
+  const date = type === 'tv' ? d.first_air_date : d.release_date;
+  return {
+    title: String((type === 'tv' ? d.name : d.title) || '').trim() || 'Untitled', year: date ? Number(date.slice(0, 4)) : null,
+    poster: d.poster_path ? `https://image.tmdb.org/t/p/w342${d.poster_path}` : null,
+    backdrop: d.backdrop_path ? `https://image.tmdb.org/t/p/w780${d.backdrop_path}` : null,
+    overview: d.overview || null, rating: d.vote_average ? Math.round(d.vote_average * 10) / 10 : null,
+  };
+}
+async function finishedSmartJob(user, body) {
+  const { id } = await startSmartFor(user, body);
+  for (const end = Date.now() + 20 * 60 * 1000; Date.now() < end;) {
+    const job = smart.smartJob(id);
+    if (!job || job.state !== 'running') return job;
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  return smart.smartJob(id);
+}
+let watchlistBusy = false, watchlistAgain = false;
+async function checkWatchlist() {
+  if (!tmdbOn()) return;
+  if (watchlistBusy) { watchlistAgain = true; return; }
+  watchlistBusy = true;
+  try {
+    do {
+      watchlistAgain = false;
+      await watchlistRound(watchlist, {
+        user: (id) => accounts.userById(id), canAuto: mayAutoDownload,
+        film: (id) => cachedTmdb(`/movie/${id}`, { append_to_response: 'release_dates' }, 6 * 3600 * 1000),
+        show: (id) => cachedTmdb(`/tv/${id}`, {}, 3600 * 1000),
+        season: (id, n) => cachedTmdb(`/tv/${id}/season/${n}`, {}, 3600 * 1000),
+        download: finishedSmartJob,
+        changed: (userId) => live.publish('watchlist', { audience: 'user', userId }),
+        log: (msg) => console.log(msg),
+      });
+    } while (watchlistAgain);
+  } catch (e) { console.log(`[watchlist] ${e.message || e}`); } finally { watchlistBusy = false; }
+}
+setInterval(checkWatchlist, 10 * 60 * 1000).unref();
+setTimeout(checkWatchlist, 60 * 1000).unref();
 
 // ---- smart downloads (smart-download.js): what the job needs from the server ----
 // Space left for new downloads on the disk a film or show goes to: free space, minus what queued
@@ -1673,6 +1757,41 @@ async function handleApi(req, res, url) {
       })),
     });
   }
+  // ---- Save for later and Follow (watchlist.js) ----
+  if (p === '/api/watchlist' && req.method === 'GET') {
+    return sendJson(res, 200, { items: watchlist.list(user.id), autoDownload: mayAutoDownload(user) });
+  }
+  if (p === '/api/watchlist' && req.method === 'POST') {
+    const body = await readJson(req);
+    const type = body.type === 'tv' ? 'tv' : body.type === 'movie' ? 'movie' : null;
+    const tmdbId = Number(body.tmdbId);
+    if (!type || !Number.isSafeInteger(tmdbId) || tmdbId <= 0) throw new HttpError(400, 'Which film or show?');
+    const flags = {};
+    for (const k of ['saved', 'follow', 'auto']) if (body[k] != null) flags[k] = Boolean(body[k]);
+    if (flags.auto && !mayAutoDownload(user)) {
+      throw user.canDownload ? new HttpError(503, 'Automatic downloads need TMDB, qBittorrent and torrent search set up on the server.')
+        : new HttpError(403, 'Automatic downloads need download rights. Ask the server’s owner.');
+    }
+    const old = watchlist.get(user.id, type, tmdbId);
+    const leaving = !(flags.saved ?? old?.saved) && !(type === 'tv' && (flags.follow ?? old?.follow));
+    if (leaving) {
+      watchlist.remove(user.id, type, tmdbId);
+      return sendJson(res, 200, { item: null });
+    }
+    if (!tmdbOn()) throw new HttpError(503, 'Saving titles needs TMDB. Add TMDB_TOKEN to .env and restart.');
+    const details = await cachedTmdb(`/${type}/${tmdbId}`, {}, 3600 * 1000);
+    if (type === 'tv' && flags.follow && !old?.follow && flags.auto == null) flags.auto = mayAutoDownload(user);
+    // Following starts after the episode that aired last, so nothing older downloads by itself.
+    if (type === 'tv' && (flags.auto ?? old?.auto) && (!old?.auto || !old?.follow)) flags.baseline = baselineFrom(details);
+    watchlist.set(user.id, type, tmdbId, watchMeta(type, details), flags);
+    setImmediate(checkWatchlist);
+    return sendJson(res, 200, { item: watchlist.list(user.id).find((i) => i.type === type && i.id === tmdbId) || null });
+  }
+  if (p === '/api/watchlist/seen' && req.method === 'POST') {
+    const tmdbId = Number((await readJson(req)).tmdbId);
+    if (!Number.isSafeInteger(tmdbId) || tmdbId <= 0) throw new HttpError(400, 'Which show?');
+    return sendJson(res, 200, { cleared: watchlist.markSeen(user.id, tmdbId) });
+  }
   if (p === '/api/discover/genres') {
     return sendJson(res, 200, { genres: await genres() });
   }
@@ -1807,39 +1926,8 @@ async function handleApi(req, res, url) {
   }
   // ---- Download: one command for a film, a season or some episodes (see smart-download.js) ----
   if (p === '/api/downloads/smart' && req.method === 'POST') {
-    if (!QBIT_URL) throw new HttpError(503, 'Downloads aren’t connected. Add QBIT_URL to .env and restart.');
     const body = await readJson(req);
-    const type = body.type === 'tv' ? 'tv' : 'movie';
-    const tmdbId = Number(body.tmdbId);
-    if (!Number.isSafeInteger(tmdbId) || tmdbId <= 0) throw new HttpError(400, 'Which film or show?');
-    if (!TMDB_TOKEN && !TMDB_KEY) throw new HttpError(503, 'Downloading by title needs TMDB. Add TMDB_TOKEN to .env and restart.');
-    const details = await tmdb(`/${type}/${tmdbId}`);
-    const title = String((type === 'tv' ? details.name : details.title) || '').trim();
-    if (!title) throw new HttpError(404, 'That title couldn’t be found.');
-    const date = type === 'tv' ? details.first_air_date : details.release_date;
-    const year = date ? Number(date.slice(0, 4)) : null;
-    const original = String((type === 'tv' ? details.original_name : details.original_title) || '').trim();
-    const seasonNo = type === 'tv' ? Number(body.season) : null;
-    if (type === 'tv' && (!Number.isInteger(seasonNo) || seasonNo < 1 || seasonNo > 99)) throw new HttpError(400, 'Which season?');
-    const episodes = type === 'tv' && Array.isArray(body.episodes)
-      ? [...new Set(body.episodes.map(Number).filter((e) => Number.isInteger(e) && e > 0 && e < 1000))].slice(0, 200) : null;
-    const film = type === 'movie' ? details : null, show = type === 'tv' ? details : null;
-    const subs = subtitles.subtitlesConfigured() && user.settings?.subLang ? [user.settings.subLang] : [];
-    const id = smart.startSmartJob({
-      type, title, year, season: seasonNo, episodes: episodes?.length ? episodes : null, requester: user.id, subs,
-      originalTitle: original && original !== title && /^[\p{Script=Latin}\d\s\p{P}]+$/u.test(original) ? original : null,
-      want: downloadWant(user, body),
-    }, {
-      parseName, searchTorrents: torrents.searchTorrents, magnetFor1337x: torrents.magnetFor1337x,
-      addDownload: (opts) => addDownload({ ...opts, user, film, show }),
-      wantSubtitles: (link, list, name) => { subtitles.wantSubtitles(link, list, name); setTimeout(checkSubtitleWants, 30_000); },
-      filmHave: () => filmHave(tmdbId, user), freeBytes: freeBytesFor,
-      seasonEpisodes: (t, y, n) => shows.seasonEpisodes(t, y, n, tmdb),
-      haveEpisodes: (key, n) => haveEpisodes(key, n, user),
-      trimPack: (link, n, owned) => trimSeasonPack(link, n, owned), removePack: removeNewPack,
-      inOrder: ({ hash, existing }, n) => { if (!existing) orderEpisodes(hash, shows.showKey(title), n); },
-      log: (msg) => console.log(msg),
-    });
+    const { id, title, type, season: seasonNo, episodes } = await startSmartFor(user, body);
     activity.record(req, 'download', type === 'tv'
       ? `${title} season ${seasonNo}${episodes?.length ? `, ${episodes.length === 1 ? `episode ${episodes[0]}` : `${episodes.length} episodes`}` : ''}` : title);
     return sendJson(res, 202, { id });
@@ -2177,6 +2265,7 @@ const server = http.createServer(async (req, res) => {
         || /^\/api\/(house\/(report|boot|power)|screentime)$/.test(url.pathname) || /^\/api\/clips\/[\w-]+\/(share|unshare|delete|trim|rename)$/.test(url.pathname)
         || /^\/api\/access\/(invite|remove|rename|invite\/\w+\/revoke)$/.test(url.pathname) || /^\/c\/i\/[\w-]+\/?$/.test(url.pathname)
         || /^\/api\/(me|me\/progress|library\/add|library\/extend|library\/identify|admin\/settings|admin\/users\/\d+)$/.test(url.pathname)
+        || /^\/api\/watchlist(?:\/seen)?$/.test(url.pathname)
         || /^\/api\/admin\/notes(?:\/import|\/\d+(?:\/(?:trash|restore|share|unshare))?)?$/.test(url.pathname)
         || /^\/api\/admin\/notes\/uploads(?:\/[a-f0-9]{32}(?:\/(?:finish|cancel))?)?$/.test(url.pathname)
         || /^\/api\/watch(?:\/[A-Za-z0-9_-]{24}\/(join|heartbeat|control|leave))?$/.test(url.pathname)));

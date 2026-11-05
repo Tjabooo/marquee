@@ -1,5 +1,28 @@
 [
   {
+    "id": "2026-11-05-watchlist",
+    "date": "2026-11-05",
+    "title": "Save for later and Follow",
+    "items": [
+      {
+        "title": "Save for later",
+        "text": "Press Save on any film or show to keep it in a Saved for later row at the top of Discover."
+      },
+      {
+        "title": "Download when it's out",
+        "text": "Saved a film that isn't out yet? Tick \"Download it when a good copy is out\" and it downloads by itself once it's released, never a cinema recording."
+      },
+      {
+        "title": "Follow a show",
+        "text": "Press Follow on a show and each new episode downloads by itself once it has aired. Episodes you already had aren't fetched again, and older episodes are left alone."
+      },
+      {
+        "title": "New and Coming up",
+        "text": "Episodes that arrived this way show a New badge on the show until you open it, and the Library has a Coming up row with the next episodes and release dates."
+      }
+    ]
+  },
+  {
     "id": "2026-11-05-skip-intro",
     "date": "2026-11-05",
     "title": "Skip intro",

@@ -54,6 +54,14 @@ The details sheet of a film or show has one Download (smart-download.js, ranking
 - **Episodes in order** (episode-order.js): for a season Marquee downloads, the next unfinished episode in a pack gets qBittorrent's top file priority, and separate episode torrents run one at a time (the rest show as Queued). A stalled episode lets the next one run alongside it (up to three). A finished episode is converted to MP4 straight away, even while the rest of its pack downloads. Pausing, resuming or removing one yourself takes it out of the order.
 - **Advanced options** on a title: an exact resolution (finds nothing rather than another one) and the release list to pick from yourself.
 
+## Save for later and Follow
+
+Every title sheet has **Save** (films and shows) and **Follow** (shows) (watchlist.js on the server, public/watchlist.js on the page; tables `watchlist` and `follow_episodes` in `.marquee.db`). Saved titles are a row at the top of Discover. A background round every 10 minutes checks what's due, one title at a time, and downloads with the same Download command as the button, as that person and with their quality settings. Automatic downloads need download rights.
+
+- **Films**: a saved film can wait for its release (*Download it when a good copy is out*). The expected date is the earliest digital or disc release on TMDB, else the first release date. Before that it's checked once a day; afterwards the Download command runs (it never takes a cam), and when nothing suitable is out yet it tries again after 1, 2, 4, 8 and 12 hours, then daily. Once a download starts (or the film is already here) it's done.
+- **Shows**: following starts after the last episode that had aired when you followed (or switched automatic downloads on), so nothing older downloads by itself. Every 3 hours the show's newest aired episodes are added to a per-episode list and fetched with the Download command for exactly those episodes (it skips episodes in your library, on the server or already downloading). A missing episode is retried with the same pauses and reported as not found 14 days after it aired. Episodes that downloaded this way show a **New** badge on the show's Library card until you open the show.
+- **Coming up** (Library): the next episode of each followed show and the release date of each saved film that isn't out yet, soonest first.
+
 ## Shows in the library
 
 Films and shows appear as poster cards, separated into Films and Shows inside each library section. A card shows the next deletion countdown; the Leaving soon shelf collects titles with less than 48 hours left and offers a keep button directly on the card. Opening a film or show puts its countdown and keep controls above the synopsis and seasons. Titles without a countdown say that no automatic deletion is scheduled. Film posters, backdrops and descriptions come from TMDB, matched by title and year and cached in `.marquee-shows.json` (30 days for matches, one day for misses); unavailable artwork falls back to the title.
@@ -174,6 +182,9 @@ The web client uses a JSON API that can also be scripted. `<kind>` is `lib` for 
 | `POST` | `/api/downloads/add` | Add a magnet or `.torrent` URL (`{ link, subs?, movieId? }`); `movieId` carries the selected TMDB film identity |
 | `POST` | `/api/downloads/smart` | Download a film or season (`{ type: "movie" \| "tv", tmdbId, season?, episodes?, profile?, quality? }`), returns `{ id }` |
 | `GET` | `/api/downloads/smart/:id` | That command's state: `running`, then `outcome` (`started`, `partial`, `have`, `queued`, `none`) with a plain `message` and `unavailable` episodes |
+| `GET` | `/api/watchlist` | Your saved and followed titles (`items`: `type`, `id`, `title`, `saved`, `follow`, `auto`, `release`, `nextEpisode`, `state`, `note`, `newEpisodes`, `waiting`, `missed`) and whether automatic downloads are open to you (`autoDownload`) |
+| `POST` | `/api/watchlist` | Save, follow or switch automatic downloads (`{ type, tmdbId, saved?, follow?, auto? }`); returns the `item`, or `null` once it's neither saved nor followed |
+| `POST` | `/api/watchlist/seen` | Clear a followed show's New badge (`{ tmdbId }`) |
 | `GET` | `/api/torrents/search?q=&type=` | Torrent search (`type`: `movie`, `tv` or `all`) |
 | `GET` | `/api/torrents/magnet?ref=` | Magnet link for a 1337x result |
 | `GET` | `/api/convert` | Conversion progress |
