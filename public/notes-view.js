@@ -319,11 +319,18 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
     // Sizes the notes to the part of the screen that's visible. With the on-screen keyboard open the
     // visible part is the visual viewport (which iOS also pans), and the header and tab bar step
     // aside so the composer sits right above the keyboard with the latest notes in view.
+    const fullHeight = {};
+    const touch = window.matchMedia('(hover: none) and (pointer: coarse)');
     fit = () => {
       if (!shell.offsetParent) { document.body.classList.remove('notes-keyboard'); return; }
       const vv = window.visualViewport;
       const typing = shell.contains(document.activeElement) && /^(TEXTAREA|INPUT)$/.test(document.activeElement.tagName);
-      const keyboard = !!vv && typing && vv.height < window.innerHeight - 120;
+      // iOS 26 (Safari and home-screen app) shrinks innerHeight along with the visual viewport, so compare
+      // against the tallest viewport seen at this width instead; on touch screens a focused field means the
+      // keyboard is up anyway.
+      const h = vv ? vv.height : window.innerHeight;
+      if (!typing) fullHeight[window.innerWidth] = Math.max(fullHeight[window.innerWidth] || 0, h);
+      const keyboard = typing && (touch.matches || h < (fullHeight[window.innerWidth] || h) - 120 || h < window.innerHeight - 120);
       const end = history.scrollHeight - history.scrollTop - history.clientHeight < 48;
       document.body.classList.toggle('notes-keyboard', keyboard);
       const visibleBottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
@@ -333,6 +340,8 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
       if (end || state.follow) history.scrollTop = history.scrollHeight;
     };
     window.addEventListener('resize', fit);
+    shell.addEventListener('focusin', () => { fit(); setTimeout(fit, 150); setTimeout(fit, 500); });
+    shell.addEventListener('focusout', () => setTimeout(fit, 120));
     window.visualViewport?.addEventListener('resize', fit); window.visualViewport?.addEventListener('scroll', fit);
     requestAnimationFrame(fit);
   }
