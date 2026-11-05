@@ -174,6 +174,6 @@ test('server: sign-in gate, form login, CSRF and host checks end to end', { time
   } finally {
     child.kill();
     await exited;
-    await fs.rm(app, { recursive: true, force: true });
+    await fs.rm(app, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
   }
 });

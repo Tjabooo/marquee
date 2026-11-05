@@ -87,6 +87,6 @@ test('devices turn notifications on and off, get a test, and only room members c
   } finally {
     child.kill();
     await exited;
-    await fs.rm(app, { recursive: true, force: true }).catch(() => {});
+    await fs.rm(app, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 }).catch(() => {});
   }
 });

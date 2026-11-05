@@ -79,7 +79,7 @@ async function fixture(t, { authenticated = false, missingMedia = false, inspect
   t.after(async () => {
     child.kill(); await new Promise((r) => child.exitCode !== null ? r() : child.once('exit', r));
     mock.closeAllConnections(); await new Promise((r) => mock.close(r));
-    await fs.rm(app, { recursive: true, force: true });
+    await fs.rm(app, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
   });
   await new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(Error(logs)), 7000);

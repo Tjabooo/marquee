@@ -77,7 +77,7 @@ test('the store keeps its key, devices per person, and sends encrypted messages'
   const store = new PushStore(dir, { fetch, log: { warn() {} } });
   const key = store.publicKey();
   assert.equal(new PushStore(dir).publicKey(), key, 'the VAPID key survives a restart');
-  assert.equal(fs.statSync(path.join(dir, '.marquee-push.json')).mode & 0o077, 0, 'the key file is private');
+  if (process.platform !== 'win32') assert.equal(fs.statSync(path.join(dir, '.marquee-push.json')).mode & 0o077, 0, 'the key file is private'); // Windows has no mode bits
 
   const phone = browserKeys(), laptop = browserKeys();
   const id = store.subscribe(1, subscription(phone, 'https://fcm.googleapis.com/fcm/send/phone'), 'Chrome on Android');

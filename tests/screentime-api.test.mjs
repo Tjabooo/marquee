@@ -87,6 +87,6 @@ test('screentime daemons push daily summaries; the owner sees days, weeks and al
   } finally {
     child.kill();
     await exited;
-    await fs.rm(app, { recursive: true, force: true });
+    await fs.rm(app, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
   }
 });

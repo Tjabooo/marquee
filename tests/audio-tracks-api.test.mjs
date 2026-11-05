@@ -35,7 +35,7 @@ test('selected audio links bind source and stream and retain signed range playba
   let logs = ''; child.stdout.on('data', (c) => { logs += c; }); child.stderr.on('data', (c) => { logs += c; });
   t.after(async () => {
     child.kill(); await new Promise((r) => child.exitCode !== null ? r() : child.once('exit', r));
-    await fs.rm(app, { recursive: true, force: true });
+    await fs.rm(app, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
   });
   await new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('Startup timeout: ' + logs)), 7000);
