@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { bitmapCues } from '../src/subsync.js';
+import { bitmapCues, retime, shiftAt, solve } from '../src/subsync.js';
 import { selectSubtitle } from '../src/subtitles.js';
 
 test('bitmap subtitle pictures have usable display times even with indefinite duration', () => {
@@ -53,4 +53,66 @@ test('subtitle search uses the selected movie ID rather than an ambiguous title'
     globalThis.fetch = savedFetch;
     if (savedKey == null) delete process.env.OPENSUBTITLES_API_KEY; else process.env.OPENSUBTITLES_API_KEY = savedKey;
   }
+});
+
+// ---------- alignment ----------
+// Irregular, reproducible dialogue: 0.8–4 s lines with 0.2–3 s gaps.
+function dialogue(minutes, seed = 3) {
+  let s = seed;
+  const rnd = () => ((s = (s * 1103515245 + 12345) % 2147483648) / 2147483648);
+  const cues = [];
+  for (let t = 5; t < minutes * 60;) { const d = 0.8 + rnd() * 3.2; cues.push({ start: t, end: t + d }); t += d + 0.2 + rnd() * 2.8; }
+  return cues;
+}
+const track = (cues) => {
+  const v = new Float32Array(Math.ceil((cues.at(-1).end + 30) * 100));
+  for (const c of cues) for (let i = Math.floor(c.start * 100); i < c.end * 100; i++) v[i] = 1;
+  const mean = v.reduce((a, b) => a + b, 0) / v.length;
+  return { step: 0.01, values: v.map((x) => x - mean) };
+};
+const placed = (r, cues) => cues.map((c) => c.start * r.ratio + shiftAt(r.sections, c.start));
+
+test('a plain offset is found as a single part', () => {
+  const truth = dialogue(20);
+  const r = solve(truth.map((c) => ({ start: c.start - 22.8, end: c.end - 22.8 })), track(truth));
+  assert.equal(r.confident, true);
+  assert.equal(r.sections.length, 1);
+  assert.equal(r.ratio, 1);
+  assert.ok(Math.abs(r.offset - 22.8) < 0.02, `offset ${r.offset}`);
+});
+
+test('subtitles for a differently cut release are fixed in parts', () => {
+  const truth = dialogue(24);
+  const a = truth[Math.floor(truth.length * 0.3)].start;
+  const b = truth[Math.floor(truth.length * 0.7)].start;
+  // Ad breaks: 30 s extra after 30 %, 12 s less after 70 %.
+  const shift = (t) => 2 + (t >= a ? 30 : 0) + (t >= b ? -12 : 0);
+  const cues = truth.map((c) => ({ start: c.start + shift(c.start), end: c.end + shift(c.start) }));
+  const r = solve(cues, track(truth));
+  assert.equal(r.confident, true);
+  assert.equal(r.sections.length, 3);
+  const errors = placed(r, cues).map((t, i) => Math.abs(t - truth[i].start));
+  assert.ok(errors.filter((e) => e < 0.1).length / errors.length > 0.98);
+});
+
+test('frame-rate drift is a ratio, not a staircase of parts', () => {
+  const truth = dialogue(40);
+  const k = 24 / (24000 / 1001);
+  const cues = truth.map((c) => ({ start: c.start * k + 1, end: c.end * k + 1 }));
+  const r = solve(cues, track(truth));
+  assert.equal(r.confident, true);
+  assert.equal(r.sections.length, 1);
+  assert.ok(Math.abs(r.ratio - 1 / k) < 1e-9);
+});
+
+test('an unrelated subtitle is not trusted', () => {
+  const r = solve(dialogue(20, 11), track(dialogue(20, 5)));
+  assert.equal(r.confident, false);
+});
+
+test('retime moves each line by the shift of its part', () => {
+  const srt = '1\n00:00:10,000 --> 00:00:12,000\nA\n\n2\n00:01:00,000 --> 00:01:02,500\nB\n';
+  const out = retime(srt, 1, 0, [{ from: 0, offset: 1.5 }, { from: 60, offset: -20 }]);
+  assert.match(out, /00:00:11,500 --> 00:00:13,500\nA/);
+  assert.match(out, /00:00:40,000 --> 00:00:42,500\nB/);
 });

@@ -18,17 +18,26 @@ Output files start with a stereo AAC track, followed by the original tracks, so 
 
 ## Subtitle timing
 
-Subtitles from OpenSubtitles are often made for a different release of the same film, so they can start a few seconds early or late, or slowly drift when the release runs at a different frame rate (23.976 vs 25 fps). After a download, Marquee lines the file up in the background against the first of these it finds:
+Subtitles from OpenSubtitles are often made for a different release of the same film, so they can start a few seconds early or late, slowly drift when the release runs at a different frame rate (23.976 vs 25 fps), or be right only in parts because the other release is cut differently (a recap, a longer intro, ad breaks, an extra or missing scene). After a download, Marquee lines the file up in the background against the first of these it finds:
 
 1. a subtitle track inside the video (or the MKV it was converted from), including the display/clear timings of PGS/DVD bitmap captions,
 2. a subtitle file Marquee extracted from such a track,
-3. the film's audio, by finding where people are talking.
+3. subtitles that came with the release (`Subs/<video name>/*.srt`, or `Subs/*.srt` next to a single film),
+4. the film's audio, by finding where people are talking.
 
-Both subtitle files are turned into on/off signals and compared at every offset up to ten minutes and for the common frame-rate ratios; the best match is applied only when it clearly beats every alternative, otherwise the file is left alone. Checking against a subtitle track takes a second; against the audio, roughly a minute for a feature film. Subtitles OpenSubtitles matched to your exact file are skipped.
+For the audio, every 10 ms of the main track (the centre channel of a surround mix) is scored for how speech-like it is: loudness inside and outside the voice band, how much it flickers at syllable rate, how strongly it has a voice pitch, and how these change. The weights were fitted to when subtitles are on screen in English and Japanese films and series, and each measure is standardised within the film, so the language, the mix and the loudness don't matter.
 
-The subtitle menu in the player shows the result and has **Undo timing fix**; the original is kept in `cache/subsync/`. **Fix timing** runs the check on demand for subtitles that weren't checked automatically. The **Subtitle offset** buttons (−1 s, −¼ s, +¼ s, +1 s) in the player's subtitle menu and in the TV remote move every line by hand; on a TV the new timing is sent over a moment after the last tap, restarting at the same spot. **Reset offset** puts the lines back. A fix moves or stretches the whole file, so subtitles for a different cut of the film (extra or missing scenes) can't be fully corrected.
+The alignment then works in three steps:
 
-Subtitle selection uses the original release's file hash when a converted copy is being played, prefers the matching BluRay/WEB/TV source, and checks episode numbers when choosing a file from a multi-file upload. Identified films are searched by TMDB ID. Existing automatic results are revisited once with the bitmap-aware engine when subtitles are opened; manual offsets and undone fixes are preserved. **Check timing again** is also available after an uncertain result. Bitmap timing requires the original file to still exist; it aligns text subtitles but does not turn subtitle pictures into text. A weak match is left unchanged.
+1. **Overall match.** The subtitle lines and the reference become on/off signals and are compared at every offset up to ten minutes, for each common frame-rate ratio.
+2. **Parts.** Every line picks its own shift from a 0.1 s grid within five minutes of that match. Consecutive lines keep the same shift unless switching gains clearly more than it costs (about ten well-placed lines' worth). The best choice for all lines together is found exactly by dynamic programming, and lines stay in their original order. A part must have at least eight lines and its shift must stand out on its own, otherwise it joins a neighbour. Each part is then refined to 5 ms. The likeliest frame rates are each tried, and they compete on the same measure, so a slow drift isn't mistaken for a staircase of splits.
+3. **Check.** The re-timed file is compared with the reference at every other offset again. The fix is applied only when it clearly beats every alternative, otherwise the file is left alone.
+
+Checking against a subtitle track takes about a second. Against the audio it takes roughly 10–20 seconds for a feature film. Hash matches from OpenSubtitles are checked as well, because uploads are often tagged with the wrong release.
+
+The subtitle menu in the player shows the result and has **Undo timing fix**; the original is kept in `cache/subsync/`. **Fix timing** runs the check on demand for subtitles that weren't checked automatically. The **Subtitle offset** buttons (−1 s, −¼ s, +¼ s, +1 s) in the player's subtitle menu and in the TV remote move every line by hand; on a TV the new timing is sent over a moment after the last tap, restarting at the same spot. **Reset offset** puts the lines back. When a file is fixed in parts, the menu says how many. Lines that exist only in the other cut stay near the part they belong to.
+
+Subtitle selection uses the original release's file hash when a converted copy is being played, prefers the matching BluRay/WEB/TV source, and checks episode numbers when choosing a file from a multi-file upload. Identified films are searched by TMDB ID. Existing automatic results (and earlier hash matches) are revisited once with the current engine when subtitles are opened; manual offsets and undone fixes are preserved. **Check timing again** is also available after an uncertain result. Bitmap timing requires the original file to still exist; it aligns text subtitles but does not turn subtitle pictures into text. A weak match is left unchanged.
 
 ## Browser copies of MP4s
 

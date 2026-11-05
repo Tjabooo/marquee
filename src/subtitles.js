@@ -274,7 +274,7 @@ async function download(file, info, lang) {
   const out = sidecarPath(file, lang);
   await fs.promises.writeFile(out, text, 'utf8');
   console.log(`[subtitles] saved ${path.basename(out)} (${dl.remaining ?? '?'} downloads left today)`);
-  // Lets the timing check run; an exact file-hash match was made for this very release.
+  // Lets the timing check run (whether or not the file hash matched).
   try { onDownloaded?.(file, out, { exact: best.sub.attributes.moviehash_match === true }); } catch { /* best effort */ }
   return out;
 }

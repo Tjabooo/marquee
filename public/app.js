@@ -3085,7 +3085,7 @@ function subSyncText(s) {
   if (s.state === 'failed') return `Timing check failed: ${s.error || 'unknown error'}`;
   if (s.state !== 'synced') return SUB_SYNC_TEXT[s.state];
   return s.offset != null
-    ? `Timing fixed: lines moved ${fmtSubShift(s.offset)}${s.ratio && s.ratio !== 1 ? ', adjusted for frame rate' : ''}.`
+    ? `Timing fixed: lines moved ${fmtSubShift(s.offset)}${s.ratio && s.ratio !== 1 ? ', adjusted for frame rate' : ''}${s.parts > 1 ? `, in ${s.parts} parts (the subtitles were made for a differently cut version)` : ''}.`
     : null;
 }
 

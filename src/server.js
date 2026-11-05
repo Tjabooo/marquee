@@ -128,10 +128,10 @@ cast.initCasting({ lanIp: LAN_IP });
 subsync.initSubsync({ dataDir: DATA_DIR, audioShift: (video) => converter.syncState(video).shift });
 subtitles.initSubtitles({
   dataDir: DATA_DIR,
-  // Downloaded subtitles get their timing checked in the background, unless they were made for this exact file.
-  onDownload: (video, srt, { exact }) => {
-    if (exact) subsync.markExact(srt);
-    else if (subsync.autoSyncEnabled()) subsync.queueSync(srt, video);
+  // Downloaded subtitles get their timing checked in the background. Even a file-hash match is checked:
+  // uploads are often tagged with the wrong release, and an in-sync file costs only a quick check.
+  onDownload: (video, srt) => {
+    if (subsync.autoSyncEnabled()) subsync.queueSync(srt, video);
   },
 });
 
