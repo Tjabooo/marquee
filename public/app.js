@@ -60,10 +60,12 @@ const CLIENT_ID = (() => {
   } catch { return make(); }
 })();
 
+// This page only: live updates (see connectLive) skip changes this page already shows itself.
+const TAB_ID = Math.random().toString(36).slice(2, 12);
 async function api(path, opts = {}) {
   let r;
   try {
-    r = await fetch(path, { ...opts, headers: { ...opts.headers, 'X-Marquee-Client': CLIENT_ID } });
+    r = await fetch(path, { ...opts, headers: { ...opts.headers, 'X-Marquee-Client': CLIENT_ID, 'X-Marquee-Tab': TAB_ID } });
   } catch (err) {
     if (err.name !== 'AbortError' && await signedOut()) throw new Error('You’ve been signed out. Sign in again to carry on.');
     throw err;
@@ -704,8 +706,9 @@ function renderLibrary() {
   if (ui.empty.textContent !== emptyText) ui.empty.replaceChildren(emptyText ? notice(all.length ? 'No matching titles' : 'Your library is empty', emptyText) : '');
   // Shelves use ready files only; transfers never create fake playback progress.
   const shelfKey = JSON.stringify([librarySignature, state.libFilter, state.query, libraryProgressRevision]);
-  if (ui.shelfKey !== shelfKey) {
-    ui.shelfKey = shelfKey;
+  // Also rebuilt when this page changed the list itself (a delete), before the server's copy catches up.
+  if (ui.shelfKey !== shelfKey || ui.shelfLibrary !== state.library || ui.shelfProgress !== state.progress) {
+    ui.shelfKey = shelfKey; ui.shelfLibrary = state.library; ui.shelfProgress = state.progress;
     const q = norm(state.query), ready = state.library.filter(f => (!q || norm(`${f.title} ${f.filmTitle || ''} ${f.file}`).includes(q)) && (state.libFilter === 'all' || (state.libFilter === 'tv') === (f.season != null)));
     const watching = ready.map(f => ({ f, progress: savedProgress(libraryFile(f)) })).filter(x => partlyWatched(x.progress)).sort((a,b) => (b.progress.at || 0) - (a.progress.at || 0)).slice(0,12);
     const leaving = libraryEntries(ready.filter(f => f.expiresAt != null && f.expiresAt - Date.now() < 48 * 3600000));
@@ -1334,6 +1337,72 @@ function refreshOnReturn() {
 document.addEventListener('visibilitychange', refreshOnReturn);
 window.addEventListener('pageshow', refreshOnReturn);
 document.addEventListener('focusout', () => { if (libraryRenderPending) setTimeout(renderUpdatedLibrary, 0); });
+
+// ---------- live updates ----------
+// The server announces what changed (live.js on the server: a delete, a finished download, progress
+// saved on another device, a new note...), and this page refetches just that part right away instead
+// of waiting for the next poll or a reload. Polling above stays as the fallback.
+const live = { source: null, topics: new Set(), timer: null, resync: false, retry: null };
+function connectLive(resync = false) {
+  if (live.source || document.hidden || typeof EventSource !== 'function') return;
+  clearTimeout(live.retry);
+  live.resync ||= resync;
+  const source = live.source = new EventSource(`/api/events?tab=${TAB_ID}`);
+  source.onopen = () => { if (live.resync) { live.resync = false; queueLive('all'); } };
+  source.onmessage = (e) => { try { queueLive(JSON.parse(e.data).topic); } catch { /* not ours */ } };
+  source.onerror = () => {
+    live.resync = true; // events may have been missed while the stream was down
+    if (source.readyState !== EventSource.CLOSED) return; // the browser reconnects by itself
+    if (live.source === source) live.source = null; // e.g. the sign-in ran out; try again later
+    live.retry = setTimeout(() => connectLive(true), 30000);
+  };
+}
+function disconnectLive() { clearTimeout(live.retry); live.source?.close(); live.source = null; }
+// Hidden pages drop the stream (phones, and the browser's limit on open connections) and catch up on return.
+document.addEventListener('visibilitychange', () => { if (document.hidden) disconnectLive(); else connectLive(true); });
+function queueLive(topic) {
+  live.topics.add(topic);
+  clearTimeout(live.timer);
+  live.timer = setTimeout(applyLive, 150);
+}
+// A refresh that is already running may have started before the change, so run one more after it.
+async function refreshLibraryNow() {
+  libraryRefreshNeeded = true;
+  if (mediaRefreshRequest) await mediaRefreshRequest.catch(() => {});
+  if (libraryRefreshNeeded) await refreshMediaLibrary();
+}
+const editingIn = (sel) => { const el = document.activeElement; return Boolean(el && $(sel)?.contains(el) && el.matches('input, textarea, select, [contenteditable="true"]')); };
+async function applyLive() {
+  const topics = live.topics;
+  live.topics = new Set();
+  const has = (t) => topics.has('all') || topics.has(t);
+  const view = state.view;
+  const jobs = [];
+  if (has('library') || has('people')) {
+    jobs.push(refreshLibraryNow().then(() => (view === 'library' ? loadConvert().then(renderConvertBanner) : null)));
+  }
+  if (has('progress')) {
+    jobs.push(loadProgress().then(() => { invalidateLibraryProgress(); if (state.view === 'library') renderLibrary(); updateUpNext(); }));
+  }
+  if (has('sessions')) jobs.push(loadSessions());
+  if (has('me') || has('people')) {
+    jobs.push((async () => {
+      try {
+        state.status = await api('/api/status');
+        state.me = state.status.me; state.rules = state.status.rules;
+        applyTheme(prefs().theme);
+      } catch { return; }
+      if (state.view === 'settings' && state.me?.isOwner) await loadPeople();
+      if (state.view === 'settings' && !editingIn('#settings-body')) renderSettings();
+    })());
+  }
+  if (has('notes') && view === 'notes') jobs.push(notesView.poll());
+  if (has('clips') && view === 'clips' && !$('#clips-body .clip-rename-form')) jobs.push(loadClips().then(() => { if (state.view === 'clips') renderClips(); }));
+  if (has('house') && view === 'house') jobs.push(loadHouse().then(() => { if (state.view === 'house') renderHouse(); }));
+  // Every change shows up in the Activity log.
+  if (topics.size && view === 'activity' && !$('#activity-body .person-name .clip-rename-form')) jobs.push(loadActivity().then(() => { if (state.view === 'activity') renderActivity(); }));
+  await Promise.allSettled(jobs);
+}
 
 // ---------- overlays ----------
 // Each overlay pushes a history entry so the browser/phone back gesture closes it.
@@ -5742,11 +5811,23 @@ $('#q-clear').addEventListener('click', () => {
   input.focus();
 });
 
+// The open tab lives in the address (#library), so reloading the page comes back to it.
+function rememberView(view) {
+  if (!view || location.hash === `#${view}`) return;
+  history.replaceState(history.state, '', `${location.pathname}${location.search}#${view}`);
+}
+// Closing a sheet restores the address it opened on; keep the tab shown now in it.
+window.addEventListener('popstate', () => rememberView(state.view));
+function linkedView() {
+  const view = decodeURIComponent(location.hash.slice(1));
+  return view && [...document.querySelectorAll('.tab')].some((t) => t.dataset.view === view) ? view : null;
+}
 async function setView(view) {
   if (view === 'library' || view === 'downloads') invalidateLibraryProgress();
   if (view === 'downloads') { state.libAvailability = 'downloading'; view = 'library'; }
   if (view === state.view) { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
   state.view = view;
+  rememberView(view);
   document.querySelectorAll('.tab').forEach((t) => {
     if (t.dataset.view === view) {
       t.setAttribute('aria-current', 'page');
@@ -5815,8 +5896,9 @@ $('#find-torrents').addEventListener('click', (e) => openTorrents({ query: state
   if (state.status.clips) enableClipsTab();
   updateTabOverflow();
   await Promise.all([loadLibrary(), loadDownloads(), loadSessions(), loadProgress()]);
-  const start = prefs().startView;
-  if (start && start !== 'discover') { state.view = null; await setView(start); } else renderDiscover();
+  // A reload stays on the tab it was on (#library); a fresh visit opens the chosen start tab.
+  const start = linkedView() || prefs().startView;
+  if (start && start !== 'discover') { state.view = null; await setView(start); } else { rememberView('discover'); renderDiscover(); }
   const watchToken = new URL(location.href).searchParams.get('watch');
   if (watchToken) await offerWatchRoom(watchToken);
   // A shared note link (/c/n/<token>) lands here as ?note=<id>.
@@ -5826,4 +5908,5 @@ $('#find-torrents').addEventListener('click', (e) => openTorrents({ query: state
     if (state.status.admin && /^\d+$/.test(noteId)) { await setView('notes'); await notesView.focus(Number(noteId)); }
   }
   schedulePoll();
+  connectLive();
 })();

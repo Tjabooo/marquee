@@ -28,6 +28,7 @@ import * as smart from './smart-download.js';
 import { planEpisodeOrder } from './episode-order.js';
 import { PROFILES } from './recommend.js';
 import * as accounts from './accounts.js';
+import * as live from './live.js';
 import { NotesStore } from './notes.js';
 import { NotesUploads, mediaType } from './notes-media.js';
 import { NotesOcr } from './notes-ocr.js';
@@ -348,7 +349,8 @@ async function discoverGenre({ type, movieGenre, tvGenre, sort, page }) {
 let libraryCache = { at: 0, items: [] };
 let libraryScan = null;
 let libraryRevision = 0;
-function invalidateLibrary() { libraryCache.at = 0; libraryRevision++; }
+function invalidateLibrary() { libraryCache.at = 0; libraryRevision++; live.publish('library'); }
+let libraryIds = null; // what the last scan found, so files added or removed outside Marquee show up live
 
 async function scanLibrary() {
   if (!MEDIA_DIR) return null;
@@ -401,6 +403,9 @@ async function scanLibraryNow() {
   const visible = items.filter((i) => !(converter.needsConversion(i.full) && fulls.has(converter.twinPath(i.full))));
   visible.sort((a, b) => b.added - a.added);
   libraryCache = { at: Date.now(), items: visible, all: items };
+  const ids = visible.map((i) => i.id).sort().join('|');
+  if (libraryIds != null && ids !== libraryIds) live.publish('library');
+  libraryIds = ids;
   return visible;
 }
 
@@ -1320,6 +1325,9 @@ async function handleApi(req, res, url) {
     if (email && req.headers['cf-connecting-ip']) load.noteVisitor(req.headers['cf-connecting-ip'], accounts.displayNameFor(email));
   }
   const user = accounts.userFor(req);
+  // Live updates (live.js): one stream per open page, and every successful change announces itself.
+  if (p === '/api/events' && req.method === 'GET') return live.subscribe(req, res, { userId: user.id, admin: activity.isAdmin(req), tab: url.searchParams.get('tab') });
+  if (req.method === 'POST') res.once('finish', () => live.afterRequest(p, res.statusCode, { userId: user.id, tab: req.headers['x-marquee-tab'] }));
 
   // Watch-room links still require the normal Cloudflare sign-in. A room grants access to this
   // one title, without adding it to every participant's library or changing anyone's subtitles.
