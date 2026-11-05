@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-05-continue-arrows",
+    "date": "2026-11-05",
+    "title": "Arrows on Continue watching",
+    "items": [
+      {
+        "title": "Scroll with arrows",
+        "text": "Continue watching in Library now has ← → buttons next to its title, like the rows in Discover. They only show when there are more cards than fit on screen."
+      }
+    ]
+  },
+  {
     "id": "2026-11-05-sheet-fixes",
     "date": "2026-11-05",
     "title": "Tidier sheets",

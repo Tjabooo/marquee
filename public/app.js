@@ -661,22 +661,27 @@ function heroSlide(t) {
         h('p', { class: 'hero-overview' }, t.overview))));
 }
 
-function carousel(title, list, seeAll = null) {
+function carousel(title, list, seeAll = null, cls = '') {
   const move = (direction) => list.scrollBy({ left: direction * Math.max(160, list.clientWidth * 0.85),
     behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
   const prev = h('button', { type: 'button', class: 'carousel-arrow', disabled: true, 'aria-label': `Previous in ${title}`, onclick: () => move(-1) }, icon('back'));
   const next = h('button', { type: 'button', class: 'carousel-arrow next', 'aria-label': `Next in ${title}`, onclick: () => move(1) }, icon('back'));
+  let section, observer, shown = false;
   const update = () => {
+    // Library shelves are rebuilt in place; a removed one stops watching its size.
+    if (list.isConnected === false && shown) return observer?.disconnect();
+    if (list.isConnected) shown = true;
     prev.disabled = list.scrollLeft <= 2;
     next.disabled = list.scrollLeft + list.clientWidth >= list.scrollWidth - 2;
+    prev.hidden = next.hidden = prev.disabled && next.disabled; // everything fits: no arrows
   };
   list.addEventListener('scroll', update, { passive: true });
-  const section = h('section', { class: 'shelf carousel', 'aria-label': title },
+  section = h('section', { class: `shelf carousel ${cls}`.trim(), 'aria-label': title },
     h('div', { class: 'shelf-head' }, h('h3', {}, title),
       h('div', { class: 'carousel-controls' }, seeAll, prev, next)), list);
-  const observer = new ResizeObserver(update);
+  observer = new ResizeObserver(update);
   observer.observe(list);
-  searchCtrl?.signal.addEventListener('abort', () => observer.disconnect(), { once: true });
+  if (!cls) searchCtrl?.signal.addEventListener('abort', () => observer.disconnect(), { once: true }); // Discover rows
   requestAnimationFrame(update);
   return section;
 }
@@ -962,7 +967,7 @@ function renderLibrary() {
     const q = norm(state.query), ready = state.library.filter(f => (!q || norm(`${f.title} ${f.filmTitle || ''} ${f.file}`).includes(q)) && (state.libFilter === 'all' || (state.libFilter === 'tv') === (f.season != null)));
     const watching = ready.map(f => ({ f, progress: savedProgress(libraryFile(f)) })).filter(x => partlyWatched(x.progress)).sort((a,b) => (b.progress.at || 0) - (a.progress.at || 0)).slice(0,12);
     const leaving = libraryEntries(ready.filter(f => f.expiresAt != null && f.expiresAt - Date.now() < 48 * 3600000));
-    ui.shelves.replaceChildren(...[watching.length && libraryShelf('Continue watching', watching.map(({f, progress}) => continueCard(f, progress)), 'continue-shelf'), comingUpShelf(), leaving.length && libraryShelf('Leaving soon', leaving.map(e => libraryCard(e, true)))].filter(Boolean));
+    ui.shelves.replaceChildren(...[watching.length && continueShelf(watching.map(({f, progress}) => continueCard(f, progress))), comingUpShelf(), leaving.length && libraryShelf('Leaving soon', leaving.map(e => libraryCard(e, true)))].filter(Boolean));
   }
   ui.shelves.hidden = state.libAvailability !== 'all' && state.libAvailability !== 'ready';
   if (showView.id) updateOpenShow();
@@ -1061,6 +1066,11 @@ function libraryGroups(entries) {
 function libraryShelf(title, cards, cls = '') {
   return h('section', { class: `shelf library-shelf ${cls}`.trim(), 'aria-label': title },
     h('div', { class: 'shelf-head' }, h('h3', {}, title)), h('ul', { class: 'shelf-items' }, cards));
+}
+// Continue watching scrolls like the Discover rows: arrows beside the title, hidden while every card fits.
+function continueShelf(cards) {
+  return carousel('Continue watching',
+    h('ul', { class: 'shelf-items', tabindex: '0', 'aria-label': 'Continue watching' }, cards), null, 'library-shelf continue-shelf');
 }
 
 // 16:9 artwork (episode stills, backdrops). Each source is tried in turn, then a themed placeholder.

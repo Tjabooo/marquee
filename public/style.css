@@ -1558,6 +1558,9 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .carousel-arrow.next svg { transform: rotate(180deg); }
 .carousel-arrow:disabled { opacity: 0.3; cursor: default; }
 .carousel .shelf-head { align-items: center; }
+.carousel-arrow[hidden] { display: none; }
+/* Keeps the head the same height as the arrow row, so a shelf doesn't jump when its arrows hide. */
+.library-shelf.carousel .shelf-head { min-height: 38px; }
 .carousel .hero { margin-bottom: 0; }
 .identity-note { margin: 0 0 16px; padding: 12px; border-radius: 12px; background: var(--seat); color: var(--paper); }
 .identity-search { display: flex; gap: 8px; margin: 16px 0 10px; }

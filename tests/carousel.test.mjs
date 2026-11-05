@@ -37,5 +37,13 @@ test('carousel arrows move both ways, respect reduced motion and disable at the 
   assert.equal(next.disabled, true); assert.equal(prev.disabled, false);
   list.scrollWidth = 200; list.scrollLeft = 0; observer.cb();
   assert.equal(prev.disabled, true); assert.equal(next.disabled, true, 'No scrolling when everything fits');
+  assert.equal(prev.hidden, true); assert.equal(next.hidden, true, 'Arrows hide when everything fits');
+  list.scrollWidth = 1600; observer.cb(); assert.equal(next.hidden, false, 'Arrows come back when it overflows again');
   controller.abort(); assert.equal(observer.disconnected, true);
+
+  // Library shelves (Continue watching) carry their own classes and outlive Discover searches.
+  const shelf = create('Continue watching', new Element('ul'), null, 'library-shelf continue-shelf');
+  assert.equal(shelf.className, 'shelf carousel library-shelf continue-shelf');
+  const libraryObserver = observer;
+  controller.abort(); assert.equal(libraryObserver.disconnected, undefined);
 });
