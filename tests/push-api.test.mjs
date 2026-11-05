@@ -28,10 +28,11 @@ test('devices turn notifications on and off, get a test, and only room members c
       return new Response(null, { status: String(url).endsWith('/gone') ? 410 : 201 });
     };
   `);
+  const HOUSE = 'h0use-t0ken-for-the-agent-test-0123456789';
   const reserve = net.createServer(); await new Promise((r) => reserve.listen(0, '127.0.0.1', r));
   const port = reserve.address().port; await new Promise((r) => reserve.close(r));
   const env = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, WINDIR: process.env.WINDIR, TEMP: process.env.TEMP, TMP: process.env.TMP,
-    PORT: String(port), ADMIN_EMAILS: 'owner@push.test', CONVERT: 'off', SUBSYNC: 'off', CAST_APPLETV: 'off', NOTES_OCR: 'off', SERVER_IP: '127.0.0.1' };
+    PORT: String(port), HOUSE_TOKEN: HOUSE, ADMIN_EMAILS: 'owner@push.test', CONVERT: 'off', SUBSYNC: 'off', CAST_APPLETV: 'off', NOTES_OCR: 'off', SERVER_IP: '127.0.0.1' };
   const child = spawn(process.execPath, ['--import', pathToFileURL(stub).href, 'server.js'], { cwd: app, env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
   const exited = new Promise((r) => child.once('exit', r));
   await new Promise((resolve, reject) => {
@@ -81,6 +82,27 @@ test('devices turn notifications on and off, get a test, and only room members c
     // Inviting needs a live room you're in.
     await request(`/api/watch/${'a'.repeat(24)}/invite`, { clientId: 'c'.repeat(20), userIds: [1] }, undefined, 410);
     await request(`/api/watch/${'a'.repeat(24)}/invitees?clientId=${'c'.repeat(20)}`, undefined, undefined, 410);
+
+    // Agents on the home network can ask the owner for attention: House token, owner's devices only, rate-limited.
+    const agent = async (body, token, status) => {
+      const r = await fetch(`http://127.0.0.1:${port}/api/agent/notify`, { method: 'POST', body: JSON.stringify(body),
+        headers: { 'content-type': 'application/json', ...(token ? { 'x-marquee-token': token } : {}) } });
+      const data = await r.json(); assert.equal(r.status, status, JSON.stringify(data)); return data;
+    };
+    await agent({ title: 'Hi' }, undefined, 403);
+    await agent({ title: 'Hi' }, 'x'.repeat(HOUSE.length), 403);
+    await agent({ body: 'no title' }, HOUSE, 400);
+    assert.equal((await agent({ title: 'Hi' }, HOUSE, 200)).sent, 0, 'the owner has no device yet');
+    const ownerPhone = browser();
+    await request('/api/push/subscribe', { subscription: sub(ownerPhone, 'owner-phone') }, 'owner@push.test');
+    const before = (await fs.readFile(inbox, 'utf8')).trim().split('\n').length;
+    assert.equal((await agent({ title: 'Claude needs you', body: 'Pick a name', url: '//evil.example/' }, HOUSE, 200)).sent, 1);
+    const lines = (await fs.readFile(inbox, 'utf8')).trim().split('\n');
+    assert.equal(lines.length, before + 1, 'only the owner gets it');
+    const got = JSON.parse(decrypt(Buffer.from(JSON.parse(lines.at(-1)).body, 'base64'), ownerPhone));
+    assert.equal(got.kind, 'agent'); assert.equal(got.title, 'Claude needs you'); assert.equal(got.body, 'Pick a name'); assert.equal(got.url, '/');
+    await agent({ title: 'Again' }, HOUSE, 429); // one every 20 s
+    assert.equal((await request('/api/me', { pushAgent: false }, 'owner@push.test')).me.settings.pushAgent, false);
 
     const off = await request('/api/push/unsubscribe', { endpoint: sub(phone, 'phone').endpoint });
     assert.deepEqual(off.devices, []);

@@ -1633,6 +1633,7 @@ function titleOf(file) {
 // downloaded them, and "new episode" for others who have that show in their library.
 const watchInvitesSent = new Map(); // room|person -> when they were last invited
 const pushTestsSent = new Map();
+let agentPushes = []; // times of recent agent notifications (rate limit)
 const announcedEpisodes = new Set(); // media keys already announced as new episodes since startup
 setInterval(() => { for (const [k, at] of watchInvitesSent) if (Date.now() - at > 120000) watchInvitesSent.delete(k); }, 600000).unref();
 const pushTitle = (title) => shows.knownShow(title, null)?.title || title;
@@ -1707,6 +1708,23 @@ async function handleApi(req, res, url) {
     if (!house.agentAllowed(req)) throw new HttpError(403, 'Not allowed.');
     house.acceptReport(req, await readJson(req));
     return sendJson(res, 200, { ok: true });
+  }
+  // An agent on one of the home machines (a script, Claude, Codex) asking the owner for attention: one push to the
+  // owner's devices. Same gate as House reports (HOUSE_TOKEN, straight from the home network); max 1 per 20 s, 30 a day.
+  if (p === '/api/agent/notify' && req.method === 'POST') {
+    if (!house.agentAllowed(req)) throw new HttpError(403, 'Not allowed.');
+    const body = await readJson(req);
+    const title = String(body.title || '').trim().slice(0, 60);
+    if (!title) throw new HttpError(400, 'A title is needed.');
+    const owner = accounts.ownerUser();
+    if (!owner || !push.hasDevice(owner.id)) return sendJson(res, 200, { sent: 0, reason: 'The owner has no device with notifications on.' });
+    const now = Date.now();
+    agentPushes = agentPushes.filter((t) => now - t < 86400000);
+    if (agentPushes.length >= 30 || now - (agentPushes.at(-1) || 0) < 20000) throw new HttpError(429, 'Too many agent notifications; try again later.');
+    agentPushes.push(now);
+    const url = typeof body.url === 'string' && /^\/(?![\/\\])/.test(body.url) ? body.url.slice(0, 200) : '/';
+    const sent = await notify([owner.id], 'agent', { title, body: String(body.body || '').trim().slice(0, 200), url });
+    return sendJson(res, 200, { sent });
   }
   if (p === '/api/house/summary') {
     if (!house.agentAllowed(req) && !activity.isAdmin(req)) throw new HttpError(403, 'Not allowed.');
@@ -2745,7 +2763,7 @@ function sendJson(res, status, body) {
 function publicPath(req, url) {
   const p = url.pathname;
   if (p.startsWith('/api/auth/') || p === '/c' || p.startsWith('/c/') || p.startsWith('/play/')) return true;
-  if (/^\/api\/(house\/(report|summary|load|boot)|screentime)$/.test(p)) return true;
+  if (/^\/api\/(house\/(report|summary|load|boot)|screentime|agent\/notify)$/.test(p)) return true;
   if (/^\/api\/tv\/pair\/(start|poll)$/.test(p)) return true; // home network only (checked in the route)
   if (p.startsWith('/api/subs/file/') && !req.auth.remote) return true;
   if (p.startsWith('/api/')) return false;
@@ -2823,7 +2841,7 @@ const server = http.createServer(async (req, res) => {
     if (!req.auth.via && !publicPath(req, url)) return refuseSignedOut(req, res, url);
     const allowed = req.method === 'GET' || req.method === 'HEAD'
       || (req.method === 'POST' && (url.pathname.startsWith('/api/cast/') || url.pathname === '/api/downloads/add' || url.pathname === '/api/downloads/smart' || url.pathname === '/api/subs/fetch' || url.pathname === '/api/subs/sync' || url.pathname === '/api/library/delete' || url.pathname === '/api/library/delete-many' || url.pathname === '/api/library/delete-many-info' || /^\/api\/downloads\/\w+\/(pause|resume|retry|delete)$/.test(url.pathname) || /^\/api\/media\/\w+\/[\w-]+\/sync$/.test(url.pathname)
-        || /^\/api\/(house\/(report|boot|power)|screentime)$/.test(url.pathname) || /^\/api\/clips\/[\w-]+\/(share|unshare|delete|trim|rename)$/.test(url.pathname)
+        || /^\/api\/(house\/(report|boot|power)|screentime|agent\/notify)$/.test(url.pathname) || /^\/api\/clips\/[\w-]+\/(share|unshare|delete|trim|rename)$/.test(url.pathname)
         || /^\/api\/access\/(invite|remove|rename|invite\/\w+\/revoke)$/.test(url.pathname) || /^\/c\/i\/[\w-]+\/?$/.test(url.pathname)
         || /^\/api\/auth\/(login|logout|password)$/.test(url.pathname)
         || /^\/api\/(me|me\/progress|me\/avatar|library\/add|library\/extend|library\/identify|admin\/settings|admin\/users\/\d+|admin\/users\/\d+\/avatar|push\/subscribe|push\/unsubscribe|push\/test)$/.test(url.pathname)

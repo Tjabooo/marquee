@@ -4,6 +4,11 @@ All notable changes to Marquee. Versions follow [Semantic Versioning](https://se
 
 ## [Unreleased]
 
+### Added
+
+- **Agents can ask for your attention.** `POST /api/agent/notify` (House token, home network only) sends the
+  owner one notification; switch it off under Settings › Notifications › Agents.
+
 ### Changed
 
 - **MarqueeSetup.exe installs the newest release.** It looks up the latest release on GitHub when it

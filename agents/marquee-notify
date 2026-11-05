@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# marquee-notify TITLE [BODY] [URL]: ask Marquee to send its owner a notification (POST /api/agent/notify).
+# For scripts and AI agents on the home machines that need the owner's attention. Reads MARQUEE_URL and
+# HOUSE_TOKEN from ~/.config/marquee-house.env (written by `marquee-house setup`); works only from the home network.
+# Marquee allows one every 20 s and 30 a day; the owner can switch them off under Settings › Notifications › Agents.
+set -euo pipefail
+CONF=${MARQUEE_HOUSE_CONF:-$HOME/.config/marquee-house.env}
+[[ -r $CONF ]] && . "$CONF"
+: "${MARQUEE_URL:?MARQUEE_URL is not set}" "${HOUSE_TOKEN:?HOUSE_TOKEN is not set}"
+[[ $# -ge 1 && -n $1 ]] || { echo "usage: marquee-notify TITLE [BODY] [URL]" >&2; exit 2; }
+body=$(jq -n --arg t "$1" --arg b "${2:-}" --arg u "${3:-/}" '{title: $t, body: $b, url: $u}')
+curl -sS --max-time 10 -X POST -H "X-Marquee-Token: $HOUSE_TOKEN" -H 'Content-Type: application/json' \
+  --data-binary "$body" "${MARQUEE_URL%/}/api/agent/notify"
+echo

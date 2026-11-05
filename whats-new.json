@@ -1,5 +1,17 @@
 [
   {
+    "id": "2026-11-06-agent-notify",
+    "date": "2026-11-06",
+    "title": "Agents can tap you on the shoulder",
+    "items": [
+      {
+        "audience": "owner",
+        "title": "Notifications from your agents",
+        "text": "A script or AI agent on your home machines can now send you a notification when it needs you. It uses the House token and only works from the home network. Turn it off under Settings › Notifications › Agents."
+      }
+    ]
+  },
+  {
     "id": "2026-11-05-cache-space",
     "date": "2026-11-05",
     "title": "Browser copies can't fill a drive",

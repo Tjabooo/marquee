@@ -13,9 +13,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 // kind -> the user setting that switches it (all on by default)
-export const KINDS = { download: 'pushDownload', episode: 'pushEpisode', watch: 'pushWatch' };
-const TTL = { download: 86400, episode: 2 * 86400, watch: 600, test: 600 }; // an invite is stale after a few minutes
-const URGENCY = { watch: 'high' };
+export const KINDS = { download: 'pushDownload', episode: 'pushEpisode', watch: 'pushWatch', agent: 'pushAgent' };
+const TTL = { download: 86400, episode: 2 * 86400, watch: 600, test: 600, agent: 12 * 3600 }; // an invite is stale after a few minutes
+const URGENCY = { watch: 'high', agent: 'high' };
 const MAX_DEVICES = 10; // per person; the oldest goes first
 const RECORD_SIZE = 4096;
 

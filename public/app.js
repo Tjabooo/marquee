@@ -5779,6 +5779,8 @@ function notificationSettings() {
       toggle(p.pushEpisode !== false, (v) => saveMe({ pushEpisode: v }), 'Notify about new episodes')));
     out.push(settingsRow('Watch Together invites', 'When someone asks you to join their room. Off: nobody can invite you this way.',
       toggle(p.pushWatch !== false, (v) => saveMe({ pushWatch: v }), 'Notify about Watch Together invites')));
+    if (state.me?.isOwner) out.push(settingsRow('Agents', 'When a script or AI agent on your home machines asks for your attention.',
+      toggle(p.pushAgent !== false, (v) => saveMe({ pushAgent: v }), 'Notify when an agent needs you')));
     const test = h('button', { class: 'chip', type: 'button' }, 'Send a test');
     test.addEventListener('click', async () => {
       test.disabled = true;

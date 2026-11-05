@@ -191,6 +191,7 @@ The web client uses a JSON API that can also be scripted. `<kind>` is `lib` for 
 | `POST` | `/api/push/subscribe` | Turn notifications on for a device (`{ subscription, label?, replaces? }`, the browser's `PushSubscription.toJSON()`) |
 | `POST` | `/api/push/unsubscribe` | Turn them off (`{ endpoint }` for this device or `{ id }` from the list) |
 | `POST` | `/api/push/test` | Send a test notification to your devices |
+| `POST` | `/api/agent/notify` | An agent on the home network (`X-Marquee-Token: HOUSE_TOKEN`) sends the owner a notification `{title, body, url}`; 1 per 20 s, 30 a day |
 | `POST` | `/api/watch/<token>/chat`, `/react` | Room chat (`{ text }`, last 50 kept for late joiners) and emoji reactions (`{ emoji }`); both arrive on the room's event stream |
 | `POST` | `/api/watch/<token>/schedule` | Host only: `{ startsAt }` (ms) starts playback by itself at that time, `null` clears it |
 | `POST` | `/api/watch/plan` | Plan a party for later (`{ id, startsAt }`, up to two weeks ahead); saved in `watch_parties` so it survives a restart |
