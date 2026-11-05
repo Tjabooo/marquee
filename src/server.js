@@ -38,6 +38,7 @@ import { handleWatchPage } from './watch-page.js';
 import { creditsFor, introFor, initCredits } from './credits.js';
 import * as whatsNew from './whats-new.js';
 import { WatchlistStore, runRound as watchlistRound, baselineFrom } from './watchlist.js';
+import { PushStore, KINDS as PUSH_KINDS } from './push.js';
 import { Previews } from './previews.js';
 import { isHomeRequest, describeRequest } from './network.js';
 import { createTrust } from './trust.js';
@@ -92,6 +93,15 @@ function watchArtwork(media) {
 setInterval(() => watchRooms.cleanup(), 3000).unref();
 activity.initActivity({ dataDir: DATA_DIR, nameForUser: accounts.displayNameFor });
 accounts.initAccounts({ dataDir: DATA_DIR, adminEmails: activity.adminEmails(), mediaDir: MEDIA_DIR });
+// Notifications (push.js): a download is ready, a new episode arrived, a Watch Together invite.
+const push = new PushStore(DATA_DIR);
+// Sends `kind` to each person who has it switched on, in the background.
+function notify(userIds, kind, message) {
+  const ids = [...new Set(userIds)].filter((id) => id != null && push.hasDevice(id)
+    && (kind === 'test' || accounts.userById(id)?.settings?.[PUSH_KINDS[kind]] !== false));
+  if (!ids.length) return Promise.resolve(0);
+  return push.send(ids, kind, message).catch((err) => { console.warn(`[push] ${err.message}`); return 0; });
+}
 const notes = new NotesStore(DATA_DIR, { fileDir: process.env.NOTES_FILES_DIR });
 const watchlist = new WatchlistStore(DATA_DIR);
 // Text in Notes images becomes search keywords. Uploads are read right away; older images catch up after startup.
@@ -147,6 +157,7 @@ const MIME = {
   '.css': 'text/css; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.json': 'application/json',
+  '.webmanifest': 'application/manifest+json',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.ico': 'image/x-icon',
@@ -1422,6 +1433,73 @@ function titleOf(file) {
   return `${info.title}${info.year && !ep ? ` (${info.year})` : ''}${ep}`;
 }
 
+// Notifications for files that just landed in people's libraries: "ready to watch" for the people who
+// downloaded them, and "new episode" for others who have that show in their library.
+const watchInvitesSent = new Map(); // room|person -> when they were last invited
+const pushTestsSent = new Map();
+const announcedEpisodes = new Set(); // media keys already announced as new episodes since startup
+setInterval(() => { for (const [k, at] of watchInvitesSent) if (Date.now() - at > 120000) watchInvitesSent.delete(k); }, 600000).unref();
+const pushTitle = (title) => shows.knownShow(title, null)?.title || title;
+function announceArrivals(hash, arrived, claimants) {
+  const follows = new Map(); // person -> show keys they follow (Follow, watchlist.js)
+  for (const r of watchlist.followers()) {
+    if (!follows.has(r.user_id)) follows.set(r.user_id, new Set());
+    follows.get(r.user_id).add(shows.showKey(r.title));
+  }
+  for (const [userId, files] of arrived) {
+    const infos = files.map(parseFile);
+    const shown = new Set(infos.map((i) => (i.season != null ? shows.showKey(i.title) : `film:${i.title}`)));
+    // A followed show's episodes that downloaded by themselves count as new episodes.
+    if (shown.size === 1 && infos[0].season != null && follows.get(userId)?.has([...shown][0])) {
+      const name = pushTitle(infos[0].title);
+      notify([userId], 'episode', { title: files.length === 1 ? `New episode of ${name}` : `${files.length} new episodes of ${name}`,
+        body: `${files.length === 1 ? `${titleOf(files[0])} is` : 'They’re'} in your library. Tap to watch.`, url: '/#library', tag: `download-${hash.toLowerCase()}` });
+      continue;
+    }
+    let title;
+    if (files.length === 1) title = `${titleOf(files[0])} is ready`;
+    else if (shown.size === 1 && infos[0].season != null) title = `${files.length} episodes of ${pushTitle(infos[0].title)} are ready`;
+    else title = `${files.length} videos are ready`;
+    notify([userId], 'download', { title, body: files.length === 1 ? 'It’s in your library. Tap to watch.' : 'They’re in your library. Tap to watch.',
+      url: '/#library', tag: `download-${hash.toLowerCase()}` });
+  }
+  // New episodes: everyone else who follows the show or has an episode of it in their library hears once per episode.
+  const episodes = [...new Set([...arrived.values()].flat())].map((full) => ({ key: accounts.mediaKey(full), info: parseFile(full) }))
+    .filter((e) => e.key && e.info.season != null && !announcedEpisodes.has(e.key));
+  if (!episodes.length) return;
+  const showsOf = new Map(); // person -> show keys in their library
+  for (const r of accounts.libraryRows()) {
+    const info = parseFile(path.join(MEDIA_DIR, `${r.media_key}.mkv`));
+    if (info.season == null) continue;
+    if (!showsOf.has(r.user_id)) showsOf.set(r.user_id, new Set());
+    showsOf.get(r.user_id).add(shows.showKey(info.title));
+  }
+  for (const [id, keys] of follows) {
+    if (!showsOf.has(id)) showsOf.set(id, new Set());
+    for (const k of keys) showsOf.get(id).add(k);
+  }
+  const skip = new Set(claimants);
+  const byShow = new Map();
+  if (announcedEpisodes.size > 5000) announcedEpisodes.clear();
+  for (const e of episodes) {
+    announcedEpisodes.add(e.key);
+    const k = shows.showKey(e.info.title);
+    byShow.set(k, [...(byShow.get(k) || []), e]);
+  }
+  const label = (i) => `S${String(i.season).padStart(2, '0')} E${String(i.episode).padStart(2, '0')}`;
+  for (const [k, eps] of byShow) {
+    const people = [...showsOf].filter(([id, set]) => !skip.has(id) && set.has(k)).map(([id]) => id);
+    if (!people.length) continue;
+    eps.sort((a, b) => a.info.season - b.info.season || a.info.episode - b.info.episode);
+    const name = pushTitle(eps[0].info.title);
+    notify(people, 'episode', {
+      title: eps.length === 1 ? `New episode of ${name}` : `${eps.length} new episodes of ${name}`,
+      body: `${eps.length === 1 ? label(eps[0].info) : `${label(eps[0].info)} to ${label(eps.at(-1).info)}`} just arrived on Marquee. Find it on the show’s page to add it to your library.`,
+      url: '/', tag: `episode-${k}`.slice(0, 64),
+    });
+  }
+}
+
 async function handleApi(req, res, url) {
   const p = url.pathname;
   let m;
@@ -1486,6 +1564,31 @@ async function handleApi(req, res, url) {
     activity.record(req, 'watch', `started a room for ${info.title}`);
     return sendJson(res, 200, room);
   }
+  // Invite people to a room with a notification: anyone else who has Watch Together invites on.
+  if ((m = p.match(/^\/api\/watch\/([A-Za-z0-9_-]{24})\/(invitees|invite)$/))) {
+    const [, token, action] = m;
+    const body = req.method === 'POST' ? await readJson(req) : {};
+    const room = watchRooms.room(token);
+    watchRooms.member(room, user, String(body.clientId || url.searchParams.get('clientId') || ''));
+    const inRoom = new Set([...room.members.values()].map((v) => v.userId));
+    const invitees = accounts.listUsers().filter((u) => !inRoom.has(u.id) && push.hasDevice(u.id) && u.settings?.pushWatch !== false)
+      .map((u) => ({ id: u.id, name: u.name }));
+    if (action === 'invitees') return sendJson(res, 200, { people: invitees });
+    if (req.method !== 'POST') throw new HttpError(405, 'Unsupported watch-room action.');
+    const allowedIds = new Set(invitees.map((u) => u.id));
+    const ids = (Array.isArray(body.userIds) ? body.userIds : []).map(Number).filter((id) => allowedIds.has(id)).slice(0, 20)
+      .filter((id) => { // one invite per person per room every two minutes
+        const k = `${token}|${id}`, last = watchInvitesSent.get(k) || 0;
+        if (Date.now() - last < 120000) return false;
+        watchInvitesSent.set(k, Date.now());
+        return true;
+      });
+    if (!ids.length) throw new HttpError(400, 'Choose someone to invite (each person can be invited once every two minutes).');
+    const what = [room.media.title, room.media.season != null ? `S${String(room.media.season).padStart(2, '0')} E${String(room.media.episode).padStart(2, '0')}` : ''].filter(Boolean).join(' ');
+    const sent = await notify(ids, 'watch', { title: `${user.name || 'Someone'} wants to watch with you`, body: `${what}. Tap to join the room.`, url: `/?watch=${token}`, tag: `watch-${token}` });
+    activity.record(req, 'watch', `invited ${ids.length === 1 ? accounts.userById(ids[0])?.name : `${ids.length} people`} to ${room.media.title}`);
+    return sendJson(res, 200, { invited: ids.length, sent });
+  }
   if ((m = p.match(/^\/api\/watch\/([A-Za-z0-9_-]{24})\/(preview|join|events|heartbeat|control|leave|play-link)$/))) {
     const [, token, action] = m;
     if (action === 'preview') return sendJson(res, 200, watchRooms.preview(token));
@@ -1519,6 +1622,26 @@ async function handleApi(req, res, url) {
       return;
     }
     throw new HttpError(405, 'Unsupported watch-room action.');
+  }
+
+  // ---- notifications on this person's devices (push.js) ----
+  if (p === '/api/push') return sendJson(res, 200, { publicKey: push.publicKey(), devices: push.devices(user.id) });
+  if (p === '/api/push/subscribe' && req.method === 'POST') {
+    const body = await readJson(req);
+    const id = push.subscribe(user.id, body.subscription, body.label, String(body.replaces || ''));
+    return sendJson(res, 200, { id, devices: push.devices(user.id) });
+  }
+  if (p === '/api/push/unsubscribe' && req.method === 'POST') {
+    const body = await readJson(req);
+    push.unsubscribe(user.id, { endpoint: String(body.endpoint || ''), id: String(body.id || '') });
+    return sendJson(res, 200, { devices: push.devices(user.id) });
+  }
+  if (p === '/api/push/test' && req.method === 'POST') {
+    if (!push.hasDevice(user.id)) throw new HttpError(400, 'Turn notifications on for this device first.');
+    if (Date.now() - (pushTestsSent.get(user.id) || 0) < 10000) throw new HttpError(429, 'Wait a few seconds before sending another test.');
+    pushTestsSent.set(user.id, Date.now());
+    const sent = await notify([user.id], 'test', { title: 'Marquee', body: 'Notifications work. You’ll hear when downloads are ready, new episodes arrive and someone invites you to watch.', url: '/#settings', tag: 'test' });
+    return sendJson(res, 200, { sent, devices: push.devices(user.id) });
   }
 
   // ---- the signed-in person: profile, preferences, watch progress ----
@@ -1668,6 +1791,8 @@ async function handleApi(req, res, url) {
     if (p === '/api/access/remove' && req.method === 'POST') {
       const { email } = await readJson(req);
       const left = await invites.removeMember(email, activity.adminEmails());
+      const gone = accounts.listUsers().find((u) => u.email && u.email === String(email || '').trim().toLowerCase());
+      if (gone) push.forgetUser(gone.id); // their devices stop getting notifications
       activity.record(req, 'revoke', String(email || '').toLowerCase());
       return sendJson(res, 200, { members: left });
     }
@@ -2264,11 +2389,11 @@ const server = http.createServer(async (req, res) => {
       || (req.method === 'POST' && (url.pathname.startsWith('/api/cast/') || url.pathname === '/api/downloads/add' || url.pathname === '/api/downloads/smart' || url.pathname === '/api/subs/fetch' || url.pathname === '/api/subs/sync' || url.pathname === '/api/library/delete' || url.pathname === '/api/library/delete-many' || url.pathname === '/api/library/delete-many-info' || /^\/api\/downloads\/\w+\/(pause|resume|retry|delete)$/.test(url.pathname) || /^\/api\/media\/\w+\/[\w-]+\/sync$/.test(url.pathname)
         || /^\/api\/(house\/(report|boot|power)|screentime)$/.test(url.pathname) || /^\/api\/clips\/[\w-]+\/(share|unshare|delete|trim|rename)$/.test(url.pathname)
         || /^\/api\/access\/(invite|remove|rename|invite\/\w+\/revoke)$/.test(url.pathname) || /^\/c\/i\/[\w-]+\/?$/.test(url.pathname)
-        || /^\/api\/(me|me\/progress|library\/add|library\/extend|library\/identify|admin\/settings|admin\/users\/\d+)$/.test(url.pathname)
+        || /^\/api\/(me|me\/progress|library\/add|library\/extend|library\/identify|admin\/settings|admin\/users\/\d+|push\/subscribe|push\/unsubscribe|push\/test)$/.test(url.pathname)
         || /^\/api\/watchlist(?:\/seen)?$/.test(url.pathname)
         || /^\/api\/admin\/notes(?:\/import|\/\d+(?:\/(?:trash|restore|share|unshare))?)?$/.test(url.pathname)
         || /^\/api\/admin\/notes\/uploads(?:\/[a-f0-9]{32}(?:\/(?:finish|cancel))?)?$/.test(url.pathname)
-        || /^\/api\/watch(?:\/[A-Za-z0-9_-]{24}\/(join|heartbeat|control|leave))?$/.test(url.pathname)));
+        || /^\/api\/watch(?:\/[A-Za-z0-9_-]{24}\/(join|heartbeat|control|leave|invite))?$/.test(url.pathname)));
     if (!allowed) throw new HttpError(405, 'Method not allowed.');
     if (url.pathname.startsWith('/api/')) await handleApi(req, res, url);
     else if (url.pathname.startsWith('/play/')) await handlePlay(req, res, url);
@@ -2711,10 +2836,14 @@ function claimCompletedTorrents(torrents) {
         if (!ready.length) continue;
         const claimants = accounts.torrentClaimants(t.hash);
         let changed = false;
+        const arrived = new Map(); // person -> files that just landed in their library (notifications)
         for (const f of ready) {
           const full = torrentFilePath(t, f), key = accounts.mediaKey(full);
           for (const userId of claimants) {
-            if (accounts.addEntry(userId, key, first ? 'existing' : 'download')) changed = true;
+            if (accounts.addEntry(userId, key, first ? 'existing' : 'download')) {
+              changed = true;
+              if (!first) arrived.set(userId, [...(arrived.get(userId) || []), full]);
+            }
           }
           const film = shows.filmDownload(t.hash);
           if (film && parseFile(full).season == null && shows.knownFilm(key, '', null)?.id !== film.id) {
@@ -2725,6 +2854,7 @@ function claimCompletedTorrents(torrents) {
         // pending until the whole selected video set is ready; INSERT OR IGNORE preserves dates.
         if (t.progress >= 1 && availability.every(Boolean)) accounts.markClaimed(t.hash);
         if (changed) invalidateLibrary();
+        if (arrived.size) announceArrivals(t.hash, arrived, claimants);
       } catch {
         // A transient qBittorrent/filesystem failure is retried on the next poll.
       }

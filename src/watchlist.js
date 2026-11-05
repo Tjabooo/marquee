@@ -153,6 +153,11 @@ export class WatchlistStore {
     return Number(this.db.prepare("UPDATE follow_episodes SET seen = 1 WHERE user_id = ? AND tmdb_id = ? AND state = 'got' AND seen = 0").run(userId, tmdbId).changes);
   }
 
+  // Who follows which show (by title): new-episode notifications (push.js via server.js).
+  followers() {
+    return this.db.prepare("SELECT user_id, title FROM watchlist WHERE type = 'tv' AND follow = 1").all();
+  }
+
   // A person's list, newest first, as the page sees it.
   list(userId) {
     const eps = this.db.prepare('SELECT * FROM follow_episodes WHERE user_id = ? ORDER BY season, episode').all(userId);

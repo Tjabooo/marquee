@@ -1,5 +1,28 @@
 [
   {
+    "id": "2026-11-05-notifications",
+    "date": "2026-11-05",
+    "title": "Notifications",
+    "items": [
+      {
+        "title": "Hear when it's ready",
+        "text": "Turn on notifications in Settings and your phone or computer tells you when a download is ready to watch, even with Marquee closed."
+      },
+      {
+        "title": "New episodes",
+        "text": "When a new episode of a show you follow or have in your library arrives on Marquee, you'll get a heads-up. Each kind of notification can be switched off on its own."
+      },
+      {
+        "title": "Invite people to watch",
+        "text": "In a Watch Together room, tap Invite and pick someone: they get a notification that opens the room."
+      },
+      {
+        "title": "On iPhone",
+        "text": "Apple only allows notifications for apps on the Home Screen: tap Share, then Add to Home Screen, and turn notifications on from there."
+      }
+    ]
+  },
+  {
     "id": "2026-11-05-watchlist",
     "date": "2026-11-05",
     "title": "Save for later and Follow",

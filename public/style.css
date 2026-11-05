@@ -1564,6 +1564,12 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .watch-actions .chip { color: var(--paper); font-size: 12px; height: 36px; padding: 0 11px; }
 .watch-actions #watch-ready { color: var(--on-bulb); background: var(--bulb); border-color: var(--bulb); }
 .player:not(.ui-visible) .watch-bar { opacity: 0; visibility: hidden; pointer-events: none; }
+.watch-invite-list { flex: 1 0 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding-top: 10px; border-top: 1px solid var(--line); }
+.watch-invite-list[hidden] { display: none; }
+.watch-invite-list small { flex: 1 0 100%; color: var(--dust); font-size: 12px; }
+.watch-invite-list .chip { color: var(--paper); font-size: 12px; height: 36px; padding: 0 12px; }
+.watch-invite-list .chip:disabled { color: var(--bulb); border-color: var(--bulb-dim); opacity: 1; }
+#watch-invite[aria-expanded="true"] { border-color: var(--bulb); color: var(--bulb); }
 .party-guest :is(.pc-play, .pc-skip, .pc-big-play):disabled { opacity: 0.35; cursor: default; }
 .party-guest .seek { opacity: 0.6; }
 @media (max-width: 420px) {
@@ -1895,3 +1901,8 @@ button.st-col:hover .st-stack { filter: brightness(1.12); }
   position: absolute; left: 8px; bottom: 8px; padding: 4px 8px; border-radius: 7px;
   font-size: 12px; font-weight: 700; color: var(--paper); background: var(--curtain);
 }
+/* Settings → Notifications: this person's devices */
+.push-devices { margin: 4px 0 6px; }
+.push-devices .row { align-items: center; }
+.push-devices .row .chip { flex: none; }
+.set-row.push-test { justify-content: flex-end; background: none; padding: 0 0 4px; }

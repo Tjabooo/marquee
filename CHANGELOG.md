@@ -10,6 +10,13 @@ All notable changes to Marquee. Versions follow [Semantic Versioning](https://se
   Intro/Opening chapter or the theme song shared with neighbouring episodes of the season (audio
   fingerprint of the first eight minutes, cached with the credits). Settings → Watching → **Intros**
   can skip them automatically. `GET /api/media/<lib|dl>/<id>/intro`.
+- **Notifications** through Web Push with no dependencies (`src/push.js`: VAPID ES256 signing and
+  RFC 8291 aes128gcm encryption on `node:crypto`, checked against the RFC's test vector). Settings →
+  Notifications turns them on per device and switches **downloads ready**, **new episodes** (a show
+  you follow or have in your library got a new episode) and **Watch Together invites** (new **Invite** button in the
+  room bar) on or off. A service worker (`public/sw.js`), web app manifest and icons; iPhone needs
+  Marquee on the Home Screen. Keys and devices live in `.marquee-push.json`; endpoints must belong to
+  a known push service.
 - **Bedtime menu** in the player (moon button). **Night mode** (also **N**) evens out loud and
   quiet scenes and lifts voices through Web Audio; the **sleep timer** pauses after 15–90 minutes
   with a short fade, or at the end of the episode without starting the next one.

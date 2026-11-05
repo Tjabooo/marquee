@@ -27,6 +27,8 @@ Docker, and installs as a web app on your phone's home screen.
   time or at the end of the episode.
 - **Casting** to DLNA smart TVs and Apple TV, with a full-screen remote.
 - **Watch Together** rooms with synced playback.
+- **Notifications** on phones and computers (Web Push, nothing to sign up for): downloads ready, new
+  episodes and Watch Together invites, each switchable.
 - **Personal accounts** through Cloudflare Access: everyone gets their own library, progress and
   settings; files exist once on disk and auto-delete when nobody keeps them.
 - **For the owner**: Activity, a House dashboard for the server and home machines, game Clips with

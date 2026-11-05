@@ -10,6 +10,9 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Marquee">
+  <!-- use-credentials: the manifest and icons sit behind the same Cloudflare sign-in as the app -->
+  <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <title>Marquee</title>
   <!-- The colours picked in Settings, applied before anything is drawn (app.js keeps this copy up to date) -->
   <script>
@@ -147,10 +150,12 @@
         <div class="watch-description"><strong id="watch-status" role="status"></strong><span id="watch-members"></span><small>Subtitles and volume are just for you.</small></div>
         <div class="watch-actions">
           <button class="chip" id="watch-ready" type="button" hidden>Ready to watch</button>
+          <button class="chip" id="watch-invite" type="button" aria-expanded="false" aria-controls="watch-invite-list">Invite</button>
           <button class="chip" id="watch-copy" type="button">Copy invite</button>
           <button class="chip" id="watch-leave" type="button">Leave room</button>
           <button class="chip" id="watch-hide" type="button">Hide</button>
         </div>
+        <div class="watch-invite-list" id="watch-invite-list" hidden></div>
       </div>
       <div class="seek-row">
         <span class="pc-time" id="pc-time">0:00</span>

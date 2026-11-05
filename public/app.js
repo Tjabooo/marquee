@@ -4,6 +4,7 @@ import { createNotesView } from './notes-view.js';
 import { nextLibraryEpisode, isNextEpisodeTime, AUTOPLAY_SECONDS, AUTOPLAY_CHAIN } from './player-next.js';
 import { audioChoices, nativeAudioMapping } from './player-audio.js';
 import { createSeekPreview } from './seek-preview.js';
+import * as pushDevice from './notifications.js';
 import { createStreamStats } from './player-stats.js';
 import { SUB_SIZES, SUB_BACKGROUNDS, SUB_POSITIONS, subLook, subRaise, secondChoices, createNightAudio,
   SLEEP_MINUTES, sleepTimer, sleepSecondsLeft, sleepFade, sleepLabel } from './player-comfort.js';
@@ -1497,6 +1498,7 @@ async function applyLive() {
   }
   if (has('sessions')) jobs.push(loadSessions());
   if (has('watchlist')) jobs.push(loadWatchlist());
+  if (has('push')) { pushView.loaded = false; if (view === 'settings' && !editingIn('#settings-body')) jobs.push(loadPush().then(renderSettings)); }
   if (has('me') || has('people')) {
     jobs.push((async () => {
       try {
@@ -2899,7 +2901,7 @@ async function offerWatchRoom(token) {
   } catch (err) { toast(err.message); }
 }
 
-function setWatchPanel(open) { watchPanelOpen = Boolean(open && party); renderParty(); showPlayerUi(); }
+function setWatchPanel(open) { watchPanelOpen = Boolean(open && party); if (!watchPanelOpen) closeInviteList(); renderParty(); showPlayerUi(); }
 $('#watch-btn').addEventListener('click', () => { if (party) setWatchPanel(!watchPanelOpen); else hostWatchRoom(); });
 $('#watch-hide').addEventListener('click', () => { setWatchPanel(false); $('#watch-btn').focus(); });
 document.addEventListener('click', (event) => { if (watchPanelOpen && !event.target.closest?.('#watch-bar, #watch-btn')) setWatchPanel(false); });
@@ -2909,6 +2911,36 @@ $('#watch-copy').addEventListener('click', () => {
   if (party) copyWithToast(`${location.origin}/c/w/${party.state.token}`, 'Watch-room invite copied. Everyone uses their usual Marquee sign-in.');
 });
 $('#watch-leave').addEventListener('click', () => { leaveWatchRoom(); video.pause(); toast('Left the watch room'); });
+// Invite: people with Watch Together invites on get a notification that opens the room.
+const inviteList = $('#watch-invite-list');
+function closeInviteList() { inviteList.hidden = true; $('#watch-invite').setAttribute('aria-expanded', 'false'); }
+$('#watch-invite').addEventListener('click', async () => {
+  if (!inviteList.hidden) { closeInviteList(); return; }
+  if (!party) return;
+  const token = party.state.token;
+  inviteList.hidden = false; $('#watch-invite').setAttribute('aria-expanded', 'true');
+  inviteList.replaceChildren(h('small', {}, 'Finding people…'));
+  try {
+    const { people } = await api(`/api/watch/${token}/invitees?clientId=${encodeURIComponent(watchClient)}`);
+    if (party?.state.token !== token) return;
+    if (!people.length) {
+      inviteList.replaceChildren(h('small', {}, 'Nobody else has notifications on yet. Copy the invite and send it instead.'));
+      return;
+    }
+    inviteList.replaceChildren(h('small', {}, 'Tap someone to send them a notification:'), ...people.map((u) => {
+      const chip = h('button', { class: 'chip', type: 'button' }, u.name);
+      chip.addEventListener('click', async () => {
+        chip.disabled = true;
+        try {
+          const r = await api(`/api/watch/${token}/invite`, jsonPost({ clientId: watchClient, userIds: [u.id] }));
+          chip.textContent = r.sent ? `${u.name} · invited` : `${u.name} · not reached`;
+          if (!r.sent) toast(`${u.name}’s devices didn’t accept the notification. Copy the invite instead.`);
+        } catch (err) { chip.disabled = false; toast(err.message); }
+      });
+      return chip;
+    }));
+  } catch (err) { inviteList.replaceChildren(h('small', {}, err.message)); }
+});
 document.addEventListener('visibilitychange', () => { if (!document.hidden && party) { party.clock().then(() => party?.pulse()).catch(() => {}); } });
 
 function saveProgress(force = false) {
@@ -4950,6 +4982,7 @@ function renderSettings() {
     segmented([['discover', 'Discover'], ['library', 'Library']], p.startView === 'downloads' ? 'library' : p.startView || 'discover', (v) => saveMe({ startView: v }).then(renderSettings), 'Open Marquee on')));
   out.push(settingsRow('Library order', null,
     segmented([['newest', 'Newest'], ['expiring', 'Leaving soonest'], ['title', 'A–Z']], p.librarySort || 'newest', (v) => saveMe({ librarySort: v }).then(renderSettings), 'Library order')));
+  out.push(...notificationSettings());
   // ---- downloads: set once, used by every Download ----
   if (canDownload()) {
     const profile = savedProfile();
@@ -4977,6 +5010,101 @@ function renderSettings() {
 
   if (me.isOwner) out.push(...ownerSettings());
   body.replaceChildren(...out.filter(Boolean));
+}
+
+// ---------- notifications (notifications.js, sw.js; push.js on the server) ----------
+const pushView = { loaded: false, loading: null, publicKey: null, devices: [], deviceId: null, busy: false };
+async function loadPush() {
+  pushView.loading ??= (async () => {
+    try {
+      const data = await api('/api/push');
+      pushView.publicKey = data.publicKey; pushView.devices = data.devices;
+      // A device that already has a subscription re-registers it, so it's in the list (and the
+      // server gets it back if its copy was lost). Unchanged ones aren't rewritten.
+      const sub = globalThis.Notification?.permission === 'granted' ? await pushDevice.currentSubscription() : null;
+      if (sub && pushDevice.sameKey(sub, data.publicKey)) {
+        const r = await api('/api/push/subscribe', jsonPost({ subscription: sub.toJSON() }));
+        pushView.deviceId = r.id; pushView.devices = r.devices;
+      } else pushView.deviceId = null;
+    } catch { /* offline: try again next time Settings opens */ }
+    pushView.loaded = true; pushView.loading = null;
+  })();
+  return pushView.loading;
+}
+function notificationSettings() {
+  const support = pushDevice.pushSupport();
+  const p = prefs();
+  const out = [h('h3', { class: 'set-head' }, 'Notifications')];
+  if (!pushView.loaded) {
+    if (support === 'ok') { loadPush().then(() => { if (state.view === 'settings') renderSettings(); }); out.push(h('p', { class: 'muted' }, 'Loading…')); return out; }
+    pushView.loaded = true;
+  }
+  const on = Boolean(pushView.deviceId);
+  const why = {
+    insecure: 'Notifications need Marquee opened through its https address, not the local one.',
+    'ios-install': 'On iPhone and iPad, notifications work once Marquee is on your Home Screen: tap Share, then Add to Home Screen, and open Marquee from there.',
+    unsupported: 'This browser can’t show notifications from websites.',
+    denied: 'Notifications are blocked for Marquee in this browser. Allow them in the site settings (the icon next to the address), then reload.',
+  }[support];
+  if (why) out.push(settingsRow('This device', why, null));
+  else {
+    const sw = toggle(on, async (want, input) => {
+      if (pushView.busy) { input.checked = on; return; }
+      pushView.busy = true; input.disabled = true;
+      try {
+        if (want) {
+          const sub = await pushDevice.subscribe(pushView.publicKey);
+          const r = await api('/api/push/subscribe', jsonPost({ subscription: sub.toJSON(), label: pushDevice.deviceLabel(navigator.userAgent) }));
+          pushView.deviceId = r.id; pushView.devices = r.devices;
+          toast('Notifications are on for this device');
+        } else {
+          const sub = await pushDevice.currentSubscription();
+          const r = await api('/api/push/unsubscribe', jsonPost({ endpoint: sub?.endpoint || '', id: pushView.deviceId || '' }));
+          await sub?.unsubscribe().catch(() => {});
+          pushView.deviceId = null; pushView.devices = r.devices;
+          toast('Notifications are off for this device');
+        }
+      } catch (err) { toast(err.message); }
+      pushView.busy = false;
+      renderSettings();
+    }, 'Notifications on this device');
+    out.push(settingsRow('This device', on ? 'Marquee can tell you about these even when it’s closed.' : 'Get a notification when something’s ready, even with Marquee closed.', sw));
+  }
+  if (pushView.devices.length) {
+    out.push(settingsRow('Downloads ready', 'When something you downloaded can be watched.',
+      toggle(p.pushDownload !== false, (v) => saveMe({ pushDownload: v }), 'Notify when downloads are ready')));
+    out.push(settingsRow('New episodes', 'When a new episode of a show you follow or have in your library arrives on Marquee.',
+      toggle(p.pushEpisode !== false, (v) => saveMe({ pushEpisode: v }), 'Notify about new episodes')));
+    out.push(settingsRow('Watch Together invites', 'When someone asks you to join their room. Off: nobody can invite you this way.',
+      toggle(p.pushWatch !== false, (v) => saveMe({ pushWatch: v }), 'Notify about Watch Together invites')));
+    const test = h('button', { class: 'chip', type: 'button' }, 'Send a test');
+    test.addEventListener('click', async () => {
+      test.disabled = true;
+      try {
+        const r = await api('/api/push/test', jsonPost({}));
+        pushView.devices = r.devices;
+        toast(r.sent ? `Sent to ${plural(r.sent, 'device')}` : 'No device accepted it. Turn notifications off and on again on that device.');
+      } catch (err) { toast(err.message); }
+      setTimeout(() => { test.disabled = false; }, 10000);
+    });
+    out.push(h('ul', { class: 'rows push-devices', 'aria-label': 'Devices with notifications' }, pushView.devices.map((d) => {
+      const remove = h('button', { class: 'chip', type: 'button', 'aria-label': `Stop notifications on ${d.label}` }, 'Remove');
+      remove.addEventListener('click', async () => {
+        remove.disabled = true;
+        try {
+          if (d.id === pushView.deviceId) { const sub = await pushDevice.currentSubscription(); await sub?.unsubscribe().catch(() => {}); pushView.deviceId = null; }
+          pushView.devices = (await api('/api/push/unsubscribe', jsonPost({ id: d.id }))).devices;
+        } catch (err) { toast(err.message); }
+        renderSettings();
+      });
+      return h('li', { class: 'row' },
+        h('div', { class: 'row-text' },
+          h('div', { class: 'row-title' }, d.label, d.id === pushView.deviceId && h('span', { class: 'tag' }, 'This device')),
+          h('div', { class: 'row-meta' }, h('span', {}, `Added ${fmtAgo(d.createdAt)}`))),
+        remove);
+    })), h('div', { class: 'set-row push-test' }, test));
+  }
+  return out;
 }
 
 function ownerSettings() {
@@ -6440,6 +6568,18 @@ $('#manage-downloads').addEventListener('click', e => openTransferDetails(null, 
 $('#find-torrents').addEventListener('click', (e) => openTorrents({ query: state.query.trim(), opener: e.currentTarget }));
 
 // ---------- start ----------
+// A tapped notification while Marquee is open (sw.js): open what it points at without a reload.
+navigator.serviceWorker?.addEventListener('message', async (event) => {
+  if (event.data?.type !== 'marquee:open') return;
+  let url;
+  try { url = new URL(event.data.url, location.origin); } catch { return; }
+  if (url.origin !== location.origin) return;
+  const token = url.searchParams.get('watch');
+  if (token) { await offerWatchRoom(token); return; }
+  const view = url.hash.slice(1);
+  if (view && view !== state.view && $(`#view-${view}`)) await setView(view);
+});
+
 (async function init() {
   try {
     state.status = await api('/api/status');
@@ -6469,5 +6609,6 @@ $('#find-torrents').addEventListener('click', (e) => openTorrents({ query: state
   }
   schedulePoll();
   connectLive();
+  pushDevice.registerWorker();
   setTimeout(maybeShowWhatsNew, 1200); // let the first screen settle before showing update notes
 })();

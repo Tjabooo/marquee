@@ -108,6 +108,20 @@ After an update, everyone sees a short **What's new** sheet once, the next time 
 
 Each person's settings remember the newest update they've closed (`seenUpdate`). Someone who has never closed one sees only the updates dated on or after the day they joined, so newcomers aren't shown the whole history. At most the three newest unseen updates are shown. The sheet waits while a video is playing or another sheet is open. A page that was left open through an update (the web app's files changed since it loaded) offers **Reload to update**. Settings → What's new lists every update. The file is re-read when it changes, so a note can be fixed without a restart.
 
+## Notifications
+
+Marquee can notify people's phones and computers through **Web Push**, with no dependencies and no third-party account: the server signs each message with its own VAPID key (ES256, RFC 8292) and encrypts it for the device (aes128gcm, RFC 8291), all with `node:crypto`. The key pair is made on first start and kept with the devices in `.marquee-push.json` (mode 600) in `DATA_DIR`; deleting that file means everyone turns notifications on again. `public/sw.js` is a service worker that only shows notifications and opens Marquee when one is tapped (an open Marquee handles the link without reloading); it caches nothing. `manifest.webmanifest` and the icons let phones install Marquee to the Home Screen.
+
+People turn it on per device in **Settings → Notifications** and switch each kind on or off for all their devices:
+
+| Kind | Setting | Sent when |
+| --- | --- | --- |
+| Downloads ready | `pushDownload` | Something you downloaded (or asked for) landed in your library; a season pack's episodes replace each other's notification |
+| New episodes | `pushEpisode` | A show you follow got an episode (downloaded for you, or by someone else), or an episode of a show in your library was downloaded by someone else; once per episode |
+| Watch Together invites | `pushWatch` | Someone in a room taps **Invite** and picks you; opens the room's join screen. Off: you aren't offered as an invitee |
+
+Push endpoints must belong to a known push service (Google FCM, Mozilla, Apple, Windows), so a subscription can't make the server POST to an address on your network. A device the push service reports as gone (404/410) is removed. On iPhone and iPad, Apple allows web notifications only for Home Screen apps (iOS 16.4+), which Settings explains. A server reached only over plain `http://` (not localhost) can't use notifications: browsers require https.
+
 ## Watch Together
 
 Rooms work in the browser player, including fullscreen. Invite URLs are `/?watch=<random token>` and stay behind the existing Cloudflare sign-in. The room grants access to that title without adding it to each guest's library. Up to 12 viewers can join. Casting is outside synchronized playback: leave the room before using a TV receiver.
@@ -146,7 +160,8 @@ tests/               node --test suites
 ```
 
 State lives in `DATA_DIR` (the Marquee folder unless set): `.marquee.db` (SQLite: accounts, libraries,
-progress, Notes), `.marquee-*.json` (caches and small registries), `.marquee-secret`,
+progress, Notes), `.marquee-*.json` (caches and small registries; `.marquee-push.json` holds the
+notification key), `.marquee-secret`,
 `.marquee-notes-files/` and `cache/` (rebuildable copies and previews).
 
 # API
@@ -163,6 +178,12 @@ The web client uses a JSON API that can also be scripted. `<kind>` is `lib` for 
 | `POST` | `/api/watch/<token>/join`, `/heartbeat`, `/control`, `/leave` | Room membership and playback; all use `clientId`, control adds `{ action, position }`, heartbeat adds `{ ready, buffering, blocked, rtt }` |
 | `GET` | `/api/watch/<token>/events?clientId=` | Immediate timeline updates over SSE (joined viewers only) |
 | `GET` | `/api/watch/<token>/play-link?clientId=` | Browser stream for the room's title (joined viewers only) |
+| `GET` | `/api/watch/<token>/invitees?clientId=` | People you can invite with a notification (`people: [{ id, name }]`; joined viewers only) |
+| `POST` | `/api/watch/<token>/invite` | Notify people about the room (`{ clientId, userIds }`; each person once every two minutes) |
+| `GET` | `/api/push` | The server's VAPID public key and your devices with notifications on |
+| `POST` | `/api/push/subscribe` | Turn notifications on for a device (`{ subscription, label?, replaces? }`, the browser's `PushSubscription.toJSON()`) |
+| `POST` | `/api/push/unsubscribe` | Turn them off (`{ endpoint }` for this device or `{ id }` from the list) |
+| `POST` | `/api/push/test` | Send a test notification to your devices |
 | `GET` | `/api/trending`, `/api/search?q=` | TMDB titles |
 | `GET` | `/api/library` | Your library (`items`, with `expiresAt`), and what else is on the server (`server`) |
 | `POST` | `/api/library/add` | Add videos already on the server to your library (`{ ids }`) |
@@ -170,7 +191,7 @@ The web client uses a JSON API that can also be scripted. `<kind>` is `lib` for 
 | `GET`, `POST` | `/api/library/identify` | Owner only: search film candidates (`?id=&q=`) or assign a TMDB identity to one file (`{ id, tmdbId }`) |
 | `GET` | `/api/library/delete-info?id=` | What deleting an item would remove, and how many others have it |
 | `POST` | `/api/library/delete` | Remove from your library; deletes the file or torrent when nobody else has it (`{ id, scope: "file" \| "torrent", everyone? }`) |
-| `GET`, `POST` | `/api/me` | You and your settings (`{ name?, theme?, subLang?, quality?, startView?, librarySort?, seenUpdate?, skipIntro? }`); `skipIntro`: `button` or `auto` |
+| `GET`, `POST` | `/api/me` | You and your settings (`{ name?, theme?, subLang?, quality?, startView?, librarySort?, seenUpdate?, skipIntro?, pushDownload?, pushEpisode?, pushWatch? }`); `skipIntro`: `button` or `auto` |
 | `GET` | `/api/media/<lib\|dl>/<id>/credits` | When the closing credits start (`{ creditsAt }`, seconds or `null`) |
 | `GET` | `/api/media/<lib\|dl>/<id>/intro` | The opening titles to skip (`{ intro: { start, end } }` in seconds, or `intro: null`) |
 | `GET` | `/api/whats-new` | Every update's notes (`updates`, newest first) and the newest one you've seen (`seen`); `/api/status` carries `whatsNew: { latest, unseen, build }` |
