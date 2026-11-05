@@ -19,7 +19,10 @@ Docker, and installs as a web app on your phone's home screen.
   in episode order and skip what you already have. Torrent search covers The Pirate Bay and 1337x.
 - **Plays everywhere**: automatic MP4 copies for iPhone and Apple TV, browser-safe audio for Dolby/DTS,
   H.264 copies of HEVC for Firefox, timeline previews, Up next with credits detection.
-- **Subtitles** from OpenSubtitles, with their timing checked and fixed against the audio.
+- **Subtitles** from OpenSubtitles, with their timing checked and fixed against the audio. Two
+  languages at once, with size, style and height choices.
+- **Bedtime**: night mode evens out loud scenes and lifts voices; a sleep timer pauses after a set
+  time or at the end of the episode.
 - **Casting** to DLNA smart TVs and Apple TV, with a full-screen remote.
 - **Watch Together** rooms with synced playback.
 - **Personal accounts** through Cloudflare Access: everyone gets their own library, progress and

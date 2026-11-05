@@ -13,12 +13,12 @@ const deferred = () => {
 
 function subtitles() {
   const requests = [], tracks = [], messages = [];
-  const context = vm.createContext({ current: {}, subtitleGeneration: 0, ccActive: null, ccSync: null, ccSyncTimer: null,
+  const context = vm.createContext({ current: {}, subtitleGeneration: 0, secondGeneration: 0, ccActive: null, ccSecond: null, ccSync: null, ccSyncTimer: null,
     localStorage: { setItem() {} }, mediaId: () => 'example', jsonPost: value => value,
     closeCcMenu() {}, applySubModes() {}, renderCcMenu() {}, watchSubSync() {}, clearTimeout() {},
     toast: message => messages.push(message), api: () => { const request = deferred(); requests.push(request); return request.promise; },
     video: { append: track => tracks.push(track), querySelectorAll: () => [...tracks] },
-    h: (tag, attrs) => ({ tag, ...attrs, addEventListener() {}, remove() { tracks.splice(tracks.indexOf(this), 1); } }),
+    h: (tag, attrs) => ({ tag, ...attrs, addEventListener() {}, getAttribute(k) { return this[k]; }, remove() { tracks.splice(tracks.indexOf(this), 1); } }),
   });
   vm.runInContext(between('function clearSubTracks(', 'function closeCcMenu('), context);
   vm.runInContext(between('async function pickPlayerSub(', '// ---- audio compatibility ----'), context);
@@ -42,6 +42,22 @@ test('the newest subtitle language wins regardless of response order', async () 
   h.requests[0].resolve({ url: '/example.en.vtt' }); await english;
   assert.equal(h.context.ccActive, 'sv');
   assert.deepEqual(h.tracks.map(track => track.srclang), ['sv']);
+});
+
+test('Off also hides the second language, and picking the second as the first moves it', async () => {
+  const h = subtitles();
+  const english = h.pick('en'); h.requests[0].resolve({ url: '/example.en.vtt' }); await english;
+  h.tracks.push({ srclang: 'sv', getAttribute(k) { return this[k]; }, remove() { h.tracks.splice(h.tracks.indexOf(this), 1); } });
+  h.context.ccSecond = 'sv';
+  const swedish = h.pick('sv'); h.requests[1].resolve({ url: '/example.sv.vtt' }); await swedish;
+  assert.equal(h.context.ccActive, 'sv');
+  assert.equal(h.context.ccSecond, null);
+  assert.deepEqual(h.tracks.map(track => track.srclang), ['sv']);
+  h.tracks.push({ srclang: 'en', getAttribute(k) { return this[k]; }, remove() { h.tracks.splice(h.tracks.indexOf(this), 1); } });
+  h.context.ccSecond = 'en';
+  await h.pick(null);
+  assert.equal(h.context.ccSecond, null);
+  assert.equal(h.tracks.length, 0);
 });
 
 test('a superseded subtitle failure does not replace the new selection with an error', async () => {

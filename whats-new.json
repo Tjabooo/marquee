@@ -1,5 +1,28 @@
 [
   {
+    "id": "2026-11-05-bedtime",
+    "date": "2026-11-05",
+    "title": "Bedtime and better subtitles",
+    "items": [
+      {
+        "title": "Night mode",
+        "text": "Tap the moon in the player (or press N) to even out loud explosions and quiet dialogue, with voices lifted so you can keep the volume down."
+      },
+      {
+        "title": "Sleep timer",
+        "text": "Also under the moon: pause after 15 minutes to an hour and a half, with the sound fading out gently, or at the end of the episode so the next one doesn't start while you sleep."
+      },
+      {
+        "title": "Subtitles your way",
+        "text": "The subtitles menu now sets the style (a dark box, a soft shadow or an outline) and how high the lines sit, as well as the size."
+      },
+      {
+        "title": "Two languages at once",
+        "text": "Pick a Second language in the subtitles menu to show it above the first. Handy for learning a language, or when you're watching with someone who reads another."
+      }
+    ]
+  },
+  {
     "id": "2026-11-05",
     "date": "2026-11-05",
     "title": "Fresh this week",

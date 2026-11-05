@@ -90,6 +90,7 @@ function playbackHarness({ prepare, autoplayRejected = false, clock = null } = {
     setupPlayerSubs() {}, watchAudio() {}, watchCastTargets() {}, canCastFromBrowser: false,
     fsElement: () => false, setTheme() {}, pageThemeColor: '#000', renderLibrary() {},
     pushOverlay: () => logs.push({ overlay: 'push' }), swapTopOverlay: () => logs.push({ overlay: 'swap' }),
+    sleep: null, closeNightMenu() {}, renderNightMenu() {}, clearSleep() {}, sleepPause() {}, nightWanted: false, nightAvailable: () => false, night: { on: false, set() {} },
   });
   Object.assign(video, { currentSrc: 'https://example.test/one.mp4', src: 'https://example.test/one.mp4', currentTime: 500, duration: 1000, paused: false, ended: false, readyState: 1,
     pause: () => { logs.push({ pause: context.current?.id || null }); video.paused = true; video.dispatch('pause'); },

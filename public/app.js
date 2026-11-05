@@ -5,6 +5,8 @@ import { nextLibraryEpisode, isNextEpisodeTime, AUTOPLAY_SECONDS, AUTOPLAY_CHAIN
 import { audioChoices, nativeAudioMapping } from './player-audio.js';
 import { createSeekPreview } from './seek-preview.js';
 import { createStreamStats } from './player-stats.js';
+import { SUB_SIZES, SUB_BACKGROUNDS, SUB_POSITIONS, subLook, subRaise, secondChoices, createNightAudio,
+  SLEEP_MINUTES, sleepTimer, sleepSecondsLeft, sleepFade, sleepLabel } from './player-comfort.js';
 import { libraryUnion, libraryAvailability, filterLibrary, transferState, transferAttention, transferPaused } from './library-downloads.js';
 
 const $ = (sel, el = document) => el.querySelector(sel);
@@ -2707,7 +2709,7 @@ function leaveWatchRoom(notify = true) {
   party = null;
   watchPanelOpen = false;
   old.close({ notify });
-  offsetCues(video.querySelector('track')?.track, 0);
+  for (const t of video.querySelectorAll('track')) offsetCues(t.track, 0);
   video.disableRemotePlayback = false;
   video.preload = 'metadata';
   playerEl.classList.remove('party-guest');
@@ -2958,7 +2960,9 @@ const ccBtn = $('#cc-btn');
 const ccMenu = $('#cc-menu');
 let ccLangs = [];
 let ccActive = null;
+let ccSecond = null; // a second language shown with the first, smaller and above it
 let subtitleGeneration = 0;
+let secondGeneration = 0;
 
 // Subtitles are drawn by the page (#player-subs) rather than the browser, so they stay inside the
 // picture and move up out of the way while the controls are showing. The track runs in 'hidden'
@@ -2967,17 +2971,22 @@ let subtitleGeneration = 0;
 const subsEl = $('#player-subs');
 let nativeSubs = false;
 let subTrack = null;
+let secondTrack = null;
 
+// The browser's own drawing (iOS fullscreen, picture-in-picture) shows one language: the first.
 function applySubModes() {
-  subTrack = null;
+  subTrack = secondTrack = null;
   for (const t of video.textTracks) {
     if (t.kind !== 'subtitles') continue;
-    const on = Boolean(ccActive) && t.language === ccActive;
-    if (party && on) offsetCues(t, party.offsets[t.language] || 0);
-    t.mode = on ? (nativeSubs ? 'showing' : 'hidden') : 'disabled';
-    if (on && !nativeSubs) subTrack = t;
+    const first = Boolean(ccActive) && t.language === ccActive;
+    const second = !first && Boolean(ccSecond) && t.language === ccSecond;
+    if (party && (first || second)) offsetCues(t, party.offsets[t.language] || 0);
+    t.mode = first ? (nativeSubs ? 'showing' : 'hidden') : second && !nativeSubs ? 'hidden' : 'disabled';
+    if (first && !nativeSubs) subTrack = t;
+    if (second && !nativeSubs) secondTrack = t;
   }
   if (subTrack) subTrack.oncuechange = renderCues;
+  if (secondTrack) secondTrack.oncuechange = renderCues;
   renderCues();
 }
 
@@ -3002,16 +3011,18 @@ function widenCue(node) {
 
 function renderCues() {
   const [top, bottom] = subsEl.children;
-  const cues = subTrack?.activeCues ? [...subTrack.activeCues] : [];
-  const draw = (list) => list.map((c) => {
+  const active = (t) => (t?.activeCues ? [...t.activeCues] : []);
+  const cues = active(subTrack), seconds = active(secondTrack);
+  const draw = (list, second = false) => list.map((c) => {
     const text = h('span');
     if (typeof c.getCueAsHTML === 'function') text.append(c.getCueAsHTML()); // <i>, <b> and friends; never parsed as page HTML
     else text.textContent = c.text;
     widenCue(text);
-    return h('div', { class: 'sub-cue' }, text);
+    return h('div', { class: second ? 'sub-cue sub-second' : 'sub-cue' }, text);
   });
-  top.replaceChildren(...draw(cues.filter(cueAtTop)));
-  bottom.replaceChildren(...draw(cues.filter((c) => !cueAtTop(c))));
+  // The second language sits just above the first, so the eye moves between them line by line.
+  top.replaceChildren(...draw(cues.filter(cueAtTop)), ...draw(seconds.filter(cueAtTop), true));
+  bottom.replaceChildren(...draw(seconds.filter((c) => !cueAtTop(c)), true), ...draw(cues.filter((c) => !cueAtTop(c))));
 }
 
 // iOS's own fullscreen player picks captions itself and often lands on "Auto", which hides
@@ -3025,6 +3036,7 @@ video.addEventListener('webkitbeginfullscreen', () => {
 video.addEventListener('webkitendfullscreen', () => {
   const showing = [...video.textTracks].find((t) => t.kind === 'subtitles' && t.mode === 'showing');
   ccActive = showing ? showing.language : null;
+  if (ccActive && ccActive === ccSecond) ccSecond = null;
   nativeSubs = false;
   applySubModes();
   ccBtn.classList.toggle('is-on', Boolean(ccActive));
@@ -3037,10 +3049,27 @@ video.addEventListener('leavepictureinpicture', () => { nativeSubs = false; appl
 
 function clearSubTracks() {
   subtitleGeneration++;
+  secondGeneration++;
   video.querySelectorAll('track').forEach((t) => t.remove());
+  ccActive = ccSecond = null;
+  ccSync = null;
+  clearTimeout(ccSyncTimer);
+  applySubModes();
+}
+const subTrackEl = (code) => (code ? [...video.querySelectorAll('track')].find((t) => t.getAttribute('srclang') === code) : null);
+// Drops the first language only; a second language stays on.
+function dropFirstSub() {
+  subtitleGeneration++;
+  subTrackEl(ccActive)?.remove();
   ccActive = null;
   ccSync = null;
   clearTimeout(ccSyncTimer);
+  applySubModes();
+}
+function dropSecondSub() {
+  secondGeneration++;
+  subTrackEl(ccSecond)?.remove();
+  ccSecond = null;
   applySubModes();
 }
 function closeCcMenu() { ccMenu.hidden = true; ccBtn.setAttribute('aria-expanded', 'false'); }
@@ -3062,7 +3091,7 @@ function renderCcMenu(f, session, message) {
       onclick: () => pickPlayerSub(f, session, l),
     }, l.name)),
     ...(message ? [h('p', { class: 'cc-message' }, message)] : []),
-    ...(ccActive ? [h('div', { class: 'cc-divider', role: 'separator' }), subSizeRow()] : []),
+    ...(ccActive ? [h('div', { class: 'cc-divider', role: 'separator' }), ...[secondSubRow(f, session)].filter(Boolean), ...subLookRows()] : []),
     ...subSyncItems(f, session));
   ccBtn.classList.toggle('is-on', Boolean(ccActive));
 }
@@ -3202,16 +3231,24 @@ async function setupPlayerSubs(f, session) {
   try { pref = localStorage.getItem('subs:lang'); } catch { /* blocked */ }
   const want = prefs().subLang;
   const saved = ccLangs.find((l) => l.code === pref && l.saved) || (want && pref !== '' && ccLangs.find((l) => l.code === want));
-  if (saved) pickPlayerSub(f, session, saved, { quiet: true });
+  if (!saved) return;
+  await pickPlayerSub(f, session, saved, { quiet: true });
+  // The second language comes back too, but only when it's already saved here (no download quota).
+  let second = null;
+  try { second = localStorage.getItem('subs:second'); } catch { /* blocked */ }
+  const again = second && current === session && ccActive && secondChoices(ccLangs, ccActive).find((l) => l.code === second && l.saved);
+  if (again) pickSecondSub(f, session, again, { quiet: true });
 }
 
 async function pickPlayerSub(f, session, l, { quiet = false } = {}) {
   if (current !== session) return;
   if (!quiet) closeCcMenu();
   try { localStorage.setItem('subs:lang', l.code || ''); } catch { /* blocked */ }
-  clearSubTracks();
+  // Picking the language that was second makes it the first; there's no point showing it twice.
+  if (l.code && l.code === ccSecond) { dropSecondSub(); try { localStorage.setItem('subs:second', ''); } catch { /* blocked */ } }
+  dropFirstSub();
   const generation = subtitleGeneration;
-  if (!l.code) { renderCcMenu(f, session); return; }
+  if (!l.code) { dropSecondSub(); renderCcMenu(f, session); return; } // Off means no text at all
   if (!quiet) toast(`Getting ${l.name} subtitles…`);
   try {
     const { url } = await api('/api/subs/fetch', jsonPost({ kind: f.kind, id: mediaId(f), lang: l.code }));
@@ -3230,6 +3267,44 @@ async function pickPlayerSub(f, session, l, { quiet = false } = {}) {
     renderCcMenu(f, session, err.message);
     if (!quiet) toast(err.message);
   }
+}
+
+// ---- second language ----
+// Two languages at once, for learning one or watching with someone who reads another. The second
+// one is drawn smaller, in a warm tint, just above the first. Its timing follows the first's fixes
+// only where the files already agree; it has no timing controls of its own.
+async function pickSecondSub(f, session, l, { quiet = false } = {}) {
+  if (current !== session) return;
+  if (!quiet) { try { localStorage.setItem('subs:second', l.code || ''); } catch { /* blocked */ } }
+  dropSecondSub();
+  const generation = secondGeneration;
+  if (!l.code || l.code === ccActive) { renderCcMenu(f, session); return; }
+  if (!quiet) toast(`Getting ${l.name} subtitles…`);
+  try {
+    const { url } = await api('/api/subs/fetch', jsonPost({ kind: f.kind, id: mediaId(f), lang: l.code }));
+    if (current !== session || generation !== secondGeneration || l.code === ccActive) return;
+    const track = h('track', { kind: 'subtitles', srclang: l.code, label: l.name, src: url });
+    video.append(track);
+    ccSecond = l.code;
+    applySubModes();
+    track.addEventListener('load', applySubModes);
+    l.saved = true;
+    renderCcMenu(f, session);
+    if (!quiet) toast(`${l.name} added as a second language`);
+  } catch (err) {
+    if (current !== session || generation !== secondGeneration) return;
+    renderCcMenu(f, session, err.message);
+    if (!quiet) toast(err.message);
+  }
+}
+function secondSubRow(f, session) {
+  const choices = secondChoices(ccLangs, ccActive);
+  if (!choices.length) return null;
+  const pick = h('select', { class: 'cc-select', 'aria-label': 'Second subtitle language',
+    onchange: () => pickSecondSub(f, session, choices.find((l) => l.code === pick.value) || { code: null, name: 'Off' }) },
+  h('option', { value: '' }, 'Off'), ...choices.map((l) => h('option', { value: l.code }, l.name)));
+  pick.value = ccSecond || '';
+  return h('label', { class: 'cc-row' }, h('span', { class: 'cc-nudge-label' }, 'Second'), pick);
 }
 
 // ---- audio compatibility ----
@@ -3573,6 +3648,120 @@ landscapeQuery.addEventListener('change', (e) => {
   toast('Tip: open Marquee from your Home Screen for fullscreen without Safari’s bar');
 });
 
+// ---- night mode and sleep timer ----
+// One "Bedtime" menu: night mode evens out the sound (player-comfort.js), and the sleep timer
+// pauses after a while or at the end of what's playing, fading the sound out first.
+const nightBtn = $('#night-btn');
+const nightMenu = $('#night-menu');
+const night = createNightAudio(video);
+let nightWanted = false;
+try { nightWanted = localStorage.getItem('player:night') === '1'; } catch { /* blocked */ }
+let sleep = null; // { kind: 'minutes', minutes, ends } or { kind: 'episode' }
+let sleepTick = null;
+let sleepVolume = null; // the volume before the fade, put back once paused
+
+// The TV plays the sound itself while casting, so night mode has nothing to work on there.
+const nightAvailable = () => night.supported && !audioCasting();
+const sleepAvailable = () => !party; // pausing one viewer of a Watch Together room would pause the room
+const sleepEndLabel = () => (current?.episode ? 'the end of this episode' : plainMedia(current) ? 'the end of this video' : 'the end of this film');
+const sleepChoiceLabel = (m) => (m < 60 ? `${m} minutes` : m % 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : m === 60 ? '1 hour' : `${m / 60} hours`);
+function closeNightMenu() { nightMenu.hidden = true; nightBtn.setAttribute('aria-expanded', 'false'); }
+
+function renderNightMenu() {
+  const chosen = !sleep ? 'off' : sleep.kind === 'episode' ? 'episode' : String(sleep.minutes);
+  const choices = [['off', 'Off'], ...SLEEP_MINUTES.map((m) => [String(m), sleepChoiceLabel(m)]),
+    ['episode', current?.episode ? 'End of episode' : 'When this ends']];
+  const focused = nightMenu.contains(document.activeElement) ? document.activeElement?.dataset?.choice : null;
+  nightMenu.replaceChildren(...[
+    h('p', { class: 'audio-title' }, 'Bedtime'),
+    nightAvailable() && h('button', { type: 'button', role: 'menuitemcheckbox', class: 'cc-item night-item', tabindex: '-1',
+      'data-choice': 'night', 'aria-checked': String(night.on), onclick: () => setNight(!night.on) },
+    h('span', {}, 'Night mode', h('small', {}, 'Softer loud scenes, clearer voices'))),
+    sleepAvailable() && nightAvailable() && h('div', { class: 'cc-divider', role: 'separator' }),
+    sleepAvailable() && h('p', { class: 'cc-nudge-label night-label' }, 'Sleep timer'),
+    ...(sleepAvailable() ? choices.map(([v, label]) => h('button', { type: 'button', role: 'menuitemradio', class: 'cc-item', tabindex: '-1',
+      'data-choice': v, 'aria-checked': String(chosen === v), onclick: () => setSleep(v) }, label)) : []),
+    sleep && h('p', { class: 'cc-message sleep-left', role: 'status' }, sleepLabel(sleep, Date.now(), sleepEndLabel())),
+  ].filter(Boolean));
+  if (focused && !nightMenu.hidden) nightMenu.querySelector(`[data-choice="${focused}"]`)?.focus({ preventScroll: true });
+  nightBtn.hidden = !nightAvailable() && !sleepAvailable();
+  if (nightBtn.hidden) closeNightMenu();
+  nightBtn.classList.toggle('is-on', night.on || Boolean(sleep));
+  nightBtn.setAttribute('aria-label', [night.on && 'Night mode on', sleep && sleepLabel(sleep, Date.now(), sleepEndLabel())].filter(Boolean).join(', ') || 'Bedtime: night mode and sleep timer (N)');
+}
+
+// Must run from a click or key press the first time (browsers start Web Audio only from one).
+function setNight(on, feedback = false) {
+  if (on && !nightAvailable()) { if (feedback) osd('Night mode isn’t available here'); return; }
+  const now = night.set(on);
+  if (on && !now) toast('Night mode isn’t available in this browser.');
+  nightWanted = now;
+  try { localStorage.setItem('player:night', now ? '1' : ''); } catch { /* blocked */ }
+  if (feedback) osd(now ? 'Night mode on' : 'Night mode off');
+  renderNightMenu();
+}
+video.addEventListener('play', () => night.resume()); // iOS suspends the audio when the phone locks
+
+function restoreSleepVolume() {
+  if (sleepVolume != null) { video.volume = sleepVolume; sleepVolume = null; }
+}
+function clearSleep() {
+  restoreSleepVolume();
+  sleep = null;
+  clearInterval(sleepTick);
+  sleepTick = null;
+}
+function setSleep(choice) {
+  clearSleep();
+  if (choice !== 'off' && sleepAvailable()) sleep = sleepTimer(choice);
+  if (sleep?.kind === 'minutes') sleepTick = setInterval(sleepStep, 500);
+  osd(sleep ? sleepLabel(sleep, Date.now(), sleepEndLabel()) : 'Sleep timer off');
+  renderNightMenu();
+  updateUpNext();
+}
+function sleepStep() {
+  if (!sleep || sleep.kind !== 'minutes') return;
+  if (!sleepAvailable()) { clearSleep(); renderNightMenu(); return; }
+  const now = Date.now();
+  const fade = sleepFade(sleep, now);
+  if (fade < 1 && canSetVolume && !video.paused) {
+    if (sleepVolume == null) sleepVolume = video.volume;
+    video.volume = Math.round(sleepVolume * fade * 100) / 100;
+  }
+  if (sleepSecondsLeft(sleep, now) <= 0) { sleepPause(); return; }
+  const left = nightMenu.querySelector('.sleep-left');
+  if (left && !nightMenu.hidden) left.textContent = sleepLabel(sleep, now, sleepEndLabel());
+}
+function sleepPause() {
+  clearSleep();
+  video.pause();
+  autoChain = AUTOPLAY_CHAIN; // no Next episode countdown while they sleep; a key press or tap brings it back
+  osd('Paused by the sleep timer');
+  toast('Paused by the sleep timer. Press play to keep watching.');
+  renderNightMenu();
+}
+
+nightBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const open = nightMenu.hidden;
+  closeCcMenu();
+  closeAudioMenu();
+  renderNightMenu();
+  if (nightBtn.hidden) return;
+  nightMenu.hidden = !open;
+  nightBtn.setAttribute('aria-expanded', String(open));
+  if (open) (nightMenu.querySelector('[aria-checked="true"]') || nightMenu.querySelector('button'))?.focus();
+});
+nightMenu.addEventListener('keydown', (e) => {
+  const items = [...nightMenu.querySelectorAll('button')];
+  const index = items.indexOf(document.activeElement);
+  const target = e.key === 'Home' ? 0 : e.key === 'End' ? items.length - 1
+    : e.key === 'ArrowDown' ? (index + 1) % items.length : e.key === 'ArrowUp' ? (index - 1 + items.length) % items.length : null;
+  if (target != null && items.length) { e.preventDefault(); items[target].focus(); }
+  if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeNightMenu(); nightBtn.focus(); }
+});
+document.addEventListener('click', (e) => { if (!nightMenu.hidden && !nightMenu.contains(e.target)) closeNightMenu(); });
+
 // ---- controls ----
 // Marquee's own controls instead of the browser's, so they look the same everywhere, work from
 // the keyboard, and the subtitles know where they are. They show on mouse movement or a tap and
@@ -3597,7 +3786,7 @@ const osdEl = $('#player-osd');
 const spinner = $('#player-spinner');
 const helpEl = $('#player-help');
 
-const menuOpen = () => !ccMenu.hidden || !audioMenu.hidden || !helpEl.hidden || watchPanelOpen;
+const menuOpen = () => !ccMenu.hidden || !audioMenu.hidden || !nightMenu.hidden || !helpEl.hidden || watchPanelOpen;
 let lastPointer = 'mouse';
 let overControls = false;
 let uiTimer = null;
@@ -3850,9 +4039,14 @@ for (const ev of ['playing', 'canplay', 'pause', 'emptied', 'error']) video.addE
 // The subtitle layer covers the picture itself, not the black bars around it, and its text is
 // sized to the picture. While the controls or the title bar are showing, the lines move just far
 // enough to clear them, and slide back when they fade.
-const SUB_SIZES = [['S', 0.8, 'Small'], ['M', 1, 'Medium'], ['L', 1.25, 'Large'], ['XL', 1.55, 'Extra large']];
-let subSize = 1;
-try { subSize = Number(localStorage.getItem('subs:size')) || 1; } catch { /* blocked */ }
+// Size, background and position are kept on this device (player-comfort.js): a phone and a TV
+// usually want different ones.
+let look = subLook();
+try { look = subLook({ size: localStorage.getItem('subs:size'), background: localStorage.getItem('subs:look'), position: localStorage.getItem('subs:position') }); } catch { /* blocked */ }
+function applySubLook() {
+  for (const [v] of SUB_BACKGROUNDS) subsEl.classList.toggle(`look-${v}`, look.background === v);
+}
+applySubLook();
 
 function layoutSubs() {
   if (playerEl.hidden) return;
@@ -3875,19 +4069,22 @@ function layoutSubs() {
   // three lines fit between the picture and the controls, the dialogue goes there instead of over
   // the picture. (The controls take up their space even while faded, so this doesn't jump around.)
   const below = subtitleBottom - (top + height);
-  const sizeOver = Math.min(Math.max(height * 0.05, 15), 52) * subSize; // ~1/20 of the picture's height
-  const sizeUnder = Math.min(Math.max(width * 0.045, 15), 26) * subSize;
+  const sizeOver = Math.min(Math.max(height * 0.05, 15), 52) * look.size; // ~1/20 of the picture's height
+  const sizeUnder = Math.min(Math.max(width * 0.045, 15), 26) * look.size;
   const outside = below >= sizeUnder * 1.45 * 3 + sizeUnder; // three lines and a gap
   subsEl.classList.toggle('subs-below', outside);
   Object.assign(subsEl.style, {
     left: `${left - box.left}px`, top: `${top - box.top}px`, width: `${width}px`, height: `${height}px`,
     fontSize: `${outside ? sizeUnder : sizeOver}px`,
   });
+  // Under the picture there's nothing to clear, so the position choice applies over it only.
+  const raise = outside ? 0 : height * subRaise(look.position);
+  subsEl.style.setProperty('--raise', `${raise}px`);
   let lift = 0;
   let drop = 0;
   if (playerEl.classList.contains('ui-visible') || !upNextEl.hidden) {
     const gap = height * 0.05;
-    lift = Math.max(0, top + height - gap - subtitleBottom);
+    lift = Math.max(0, top + height - gap - raise - subtitleBottom);
     if (playerEl.classList.contains('ui-visible')) drop = Math.max(0, $('#player-close').getBoundingClientRect().bottom + 10 - (top + gap));
   }
   subsEl.style.setProperty('--lift', `${lift}px`);
@@ -3898,26 +4095,37 @@ playerResize.observe(stage);
 playerResize.observe(controlsEl);
 video.addEventListener('loadedmetadata', layoutSubs);
 
-function setSubSize(v) {
-  subSize = v;
-  try { localStorage.setItem('subs:size', String(v)); } catch { /* blocked */ }
-  ccMenu.querySelectorAll('.cc-size button').forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.size) === v)));
+const LOOK_KEYS = { size: 'subs:size', background: 'subs:look', position: 'subs:position' };
+function setSubLook(key, v) {
+  look = subLook({ ...look, [key]: v });
+  try { localStorage.setItem(LOOK_KEYS[key], String(v)); } catch { /* blocked */ }
+  ccMenu.querySelectorAll(`[data-look="${key}"] button`).forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.value === String(look[key]))));
+  applySubLook();
   layoutSubs();
 }
-function subSizeRow() {
-  return h('div', { class: 'cc-nudge cc-size' },
-    h('span', { class: 'cc-nudge-label' }, 'Size'),
-    h('div', { class: 'cc-nudge-buttons' }, SUB_SIZES.map(([label, v, name]) => h('button', {
-      type: 'button', 'data-size': v, 'aria-label': `${name} subtitles`, 'aria-pressed': String(subSize === v), onclick: () => setSubSize(v),
-    }, label))));
+// One line each: a label, then the choices side by side.
+function subLookRows() {
+  const row = (key, label, options) => h('div', { class: 'cc-row', role: 'group', 'aria-label': `Subtitle ${label.toLowerCase()}`, 'data-look': key },
+    h('span', { class: 'cc-nudge-label' }, label),
+    h('div', { class: 'cc-choices' }, options.map(([text, v, name]) => h('button', {
+      type: 'button', 'data-value': String(v), 'aria-label': name || text, 'aria-pressed': String(String(look[key]) === String(v)),
+      onclick: () => setSubLook(key, v),
+    }, text))));
+  return [
+    row('size', 'Size', SUB_SIZES.map(([text, v, name]) => [text, v, `${name} subtitles`])),
+    row('background', 'Style', SUB_BACKGROUNDS.map(([v, text]) => [text, v, `${text} behind subtitles`])),
+    row('position', 'Height', SUB_POSITIONS.map(([v, text]) => [text, v, `Subtitles ${text.toLowerCase()} on the picture`])),
+  ];
 }
 
-// C turns subtitles off, or back on in the language used last.
+// C turns subtitles off, or back on in the language used last (with its second language).
 let lastSubLang = null;
-function toggleSubs() {
+let lastSecondLang = null;
+async function toggleSubs() {
   if (!current || ccBtn.hidden) return;
   if (ccActive) {
     lastSubLang = ccActive;
+    lastSecondLang = ccSecond;
     pickPlayerSub(current, current, { code: null, name: 'Off' }, { quiet: true });
     osd('Subtitles off');
     return;
@@ -3925,7 +4133,11 @@ function toggleSubs() {
   let pref = lastSubLang;
   try { pref ||= localStorage.getItem('subs:lang'); } catch { /* blocked */ }
   const l = ccLangs.find((x) => x.code === pref) || ccLangs.find((x) => x.saved) || ccLangs[0];
-  if (l) pickPlayerSub(current, current, l);
+  if (!l) return;
+  const session = current;
+  await pickPlayerSub(session, session, l);
+  const second = lastSecondLang && ccActive && secondChoices(ccLangs, ccActive).find((x) => x.code === lastSecondLang);
+  if (second && current === session) pickSecondSub(session, session, second, { quiet: true });
 }
 
 // ---- keyboard ----
@@ -3937,6 +4149,7 @@ const SHORTCUTS = [
   ['M', 'Mute'],
   ['F', 'Fullscreen'],
   ['C', 'Subtitles on or off'],
+  ['N', 'Night mode'],
   ['P', 'Picture in picture'],
   ['I or right-click', 'Stats for nerds'],
   ['0 – 9', 'Jump to 0% – 90%'],
@@ -3990,6 +4203,7 @@ const PLAYER_KEYS = {
   ArrowLeft: () => skip(-5), ArrowRight: () => skip(5), j: () => skip(-10), l: () => skip(10),
   ArrowUp: () => nudgeVolume(0.05), ArrowDown: () => nudgeVolume(-0.05),
   m: toggleMute, f: toggleFullscreen, c: toggleSubs, p: togglePip, '?': toggleHelp, i: () => streamStats.toggle(),
+  n: () => setNight(!night.on, true),
   Home: () => seekToFraction(0), End: () => seekToFraction(0.999),
 };
 // Keys typed into a menu or a text field are left alone.
@@ -4028,6 +4242,7 @@ function resetPlayerMedia() {
   ccBtn.hidden = true;
   closeAudioMenu();
   audioBtn.hidden = true;
+  closeNightMenu();
   helpEl.hidden = true;
   endSeek(false);
   audioWatch = null;
@@ -4068,6 +4283,7 @@ async function loadPlayerMedia(f, opts = {}) {
   updateTime();
   showPlayerUi();
   setSpinner(true);
+  renderNightMenu();
   // Clips use the same player without what only library media has: subtitles, audio choices,
   // casting, Watch Together, Up next and resume points. They play straight from the clips folder.
   if (f.kind === 'clip') {
@@ -4134,6 +4350,7 @@ async function openPlayer(f, opts = {}) {
   const opener = document.activeElement;
   (opts.replace ? swapTopOverlay : pushOverlay)(() => {
     resetPlayerMedia();
+    clearSleep();
     setTheme(pageThemeColor);
     if (fsElement()) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
     if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {});
@@ -4149,6 +4366,7 @@ async function openPlayer(f, opts = {}) {
   document.body.classList.add('in-player');
   setTheme('#000000');
   $('#player-close').focus({ preventScroll: true });
+  if (nightWanted && !night.on && nightAvailable()) night.set(true); // opening the player is a click
   return loadPlayerMedia(f, opts);
 }
 
@@ -4174,6 +4392,9 @@ async function loadPlayerCredits(session) {
 
 function updateUpNext() {
   const session = current;
+  // "End of episode" on the sleep timer: pause where Up next would start (the credits, or the end).
+  if (sleep?.kind === 'episode' && session?.ready && !party && seeking == null && !video.seeking
+    && isNextEpisodeTime({ ended: video.ended, time: video.currentTime, duration: video.duration, creditsAt: session.creditsAt })) sleepPause();
   const next = session && nextLibraryEpisode(session, state.library, state.libraryShows);
   const externalPlayer = nativeSubs || video.webkitDisplayingFullscreen || document.pictureInPictureElement === video
     || video.webkitCurrentPlaybackTargetIsWireless || video.remote?.state === 'connected' || onTvVersion;

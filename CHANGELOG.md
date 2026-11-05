@@ -6,6 +6,11 @@ All notable changes to Marquee. Versions follow [Semantic Versioning](https://se
 
 ### Added
 
+- **Bedtime menu** in the player (moon button). **Night mode** (also **N**) evens out loud and
+  quiet scenes and lifts voices through Web Audio; the **sleep timer** pauses after 15–90 minutes
+  with a short fade, or at the end of the episode without starting the next one.
+- **Subtitle look**: style (Box, Shadow, Outline) and height (Low, Mid, High) next to the size,
+  and a **second subtitle language** shown above the first.
 - **What's new**: after an update, everyone sees its notes once in a sheet (written in `whats-new.json`,
   newest first; items can be marked `"audience": "owner"`). Settings → What's new lists past updates,
   and a page left open through an update offers a reload.
