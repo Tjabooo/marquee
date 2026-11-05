@@ -1101,6 +1101,7 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 @media (prefers-reduced-motion: reduce) { .fold-chev { transition: none; } }
 .activity-row { align-items: flex-start; padding: 10px 12px; }
 .activity-time { flex: none; width: 44px; padding-top: 1px; font-size: 13px; font-variant-numeric: tabular-nums; color: var(--dust); }
+.activity-row > .activity-row-face { align-self: center; }
 .activity-text { display: block; line-height: 1.35; overflow-wrap: anywhere; }
 .activity-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--seat); border: 1px solid var(--line); }
 .activity-dot.is-on { background: #6fcf8f; border-color: #6fcf8f; box-shadow: 0 0 6px rgba(111, 207, 143, 0.7); }

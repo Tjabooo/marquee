@@ -5882,8 +5882,9 @@ function renderActivity() {
     d.n++;
     d.list.append(h('li', { class: 'row activity-row' },
       h('span', { class: 'activity-time' }, clock(e.at)),
+      people.face(e, { size: 32, cls: 'activity-row-face' }),
       h('span', { class: 'row-text' },
-        h('span', { class: 'activity-text' }, people.face(e, { size: 20, cls: 'inline' }), h('strong', { title: e.user }, personName(e)), ' ', (ACTIVITY_TEXT[e.action] || ((d) => `${e.action} ${d}`))(e.subjectName || e.detail)),
+        h('span', { class: 'activity-text' }, h('strong', { title: e.user }, personName(e)), ' ', (ACTIVITY_TEXT[e.action] || ((d) => `${e.action} ${d}`))(e.subjectName || e.detail)),
         h('span', { class: 'row-meta' }, h('span', {}, activityDevice(e))))));
   }
   for (const d of days) eventKids.push(...foldGroup(d.key, 'p', 'activity-day', d.label, d.n, [d.list], Boolean(q)));
