@@ -194,12 +194,20 @@
   }
 
   // ---------- home: Continue watching, Shows, Films ----------
+  // A library the owner shares between people (Settings -> People) shows everyone's titles here.
+  function sharedNote() {
+    var mates = (state.me && state.me.sharedWith || []).map(function (m) { return m.name; });
+    if (!mates.length) return null;
+    var names = mates.length < 2 ? mates[0] : mates.slice(0, -1).join(', ') + ' and ' + mates[mates.length - 1];
+    return h('span', { class: 'shared', text: 'Shared with ' + names });
+  }
+
   function homeScreen() {
     var el = h('div', { class: 'screen home' });
     var rowsEl = h('div', { class: 'rows' });
     var top = h('header', { class: 'topbar' }, h('div', { class: 'wordmark', text: 'Marquee' }),
       h('div', { class: 'who' }, h('span', { text: state.me && state.me.name || '' }),
-        h('button', { class: 'switch focusable', text: 'Switch account' })));
+        sharedNote(), h('button', { class: 'switch focusable', text: 'Switch account' })));
     el.appendChild(top);
     el.appendChild(rowsEl);
     var rows = [];   // { el, track, items: [{ el, open }], index }

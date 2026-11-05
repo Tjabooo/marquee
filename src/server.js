@@ -1155,8 +1155,9 @@ async function listDownloads(user, all = false) {
     if (!names.has(id)) names.set(id, id == null ? null : accounts.userById(id)?.name || null);
     return names.get(id);
   };
-  const owned = torrents.map((t) => [t, torrentOwner(t), accounts.torrentRequesters(t.hash).includes(user.id)])
-    .filter(([, owner, requested]) => all || owner === user.id || requested);
+  const mates = accounts.libraryMates(user.id); // a shared library shows the group's downloads too
+  const owned = torrents.map((t) => [t, torrentOwner(t), accounts.torrentRequesters(t.hash).some((id) => mates.includes(id))])
+    .filter(([, owner, requested]) => all || mates.includes(owner) || requested);
   await scanLibrary();
   const library = new Map((libraryCache.items || []).map((i) => [accounts.mediaKey(i.full), i]));
   const mine = accounts.libraryOf(user.id);
@@ -1205,8 +1206,8 @@ async function listDownloads(user, all = false) {
     ready: Boolean(primary?.available), hasVideo: filesKnown ? videos.length > 0 : null, files: safeFiles, episodes,
     libraryIds: [...new Set(safeFiles.map((f) => f.libraryId).filter(Boolean))],
     owner: all ? nameOf(owner) : undefined,
-    mine: owner === user.id || requested,
-    canManage: user.isOwner || owner === user.id,
+    mine: mates.includes(owner) || requested,
+    canManage: user.isOwner || mates.includes(owner),
     name: t.name,
     ...parsed,
     progress: t.progress,
@@ -1758,7 +1759,7 @@ async function handleApi(req, res, url) {
   const watchMedia = (id) => {
     const full = librarySource(id);
     const key = accounts.mediaKey(full);
-    if (!key || !accounts.holders(key).includes(user.id)) throw new HttpError(403, 'Add this title to your library before hosting a room.');
+    if (!key || !accounts.hasEntry(user.id, key)) throw new HttpError(403, 'Add this title to your library before hosting a room.');
     if (!isVideo(full) || !fs.existsSync(full)) throw new HttpError(404, 'That video is no longer available.');
     const info = parseFile(full);
     const film = info.season == null ? shows.knownFilm(key, info.title, info.year) : null;
@@ -2027,6 +2028,11 @@ async function handleApi(req, res, url) {
       const u = accounts.updateUser(Number(m[1]), body);
       if ('canDownload' in body) activity.record(req, 'permission', `${u.name} ${body.canDownload ? 'can' : 'can’t'} download`);
       if ('keep' in body) activity.record(req, 'permission', `${u.name}’s videos ${body.keep ? 'are never auto-deleted' : 'are auto-deleted again'}`);
+      if ('libraryWith' in body) {
+        const mates = accounts.libraryMates(u.id).filter((id) => id !== u.id).map((id) => accounts.userById(id)?.name).filter(Boolean);
+        activity.record(req, 'permission', mates.length ? `${u.name} shares a library with ${mates.join(', ')}` : `${u.name} has their own library again`);
+        live.publish('library');
+      }
       return sendJson(res, 200, { ok: true });
     }
     throw new HttpError(404, 'Unknown admin route.');
@@ -2381,7 +2387,7 @@ async function handleApi(req, res, url) {
     const body = await readJson(req).catch(() => ({}));
     const [t] = await qbit(`/api/v2/torrents/info?hashes=${m[1]}`);
     if (!t) throw new HttpError(404, 'That download no longer exists.');
-    if (!user.isOwner && torrentOwner(t) !== user.id) throw new HttpError(403, 'That’s someone else’s download.');
+    if (!user.isOwner && !accounts.sameLibrary(torrentOwner(t), user.id)) throw new HttpError(403, 'That’s someone else’s download.');
     if (['resume', 'retry'].includes(m[2]) && !user.canDownload) throw new HttpError(403, 'Downloads have been turned off for you. Ask the server’s owner before resuming this download.');
     releaseEpisodeOrder(t.hash); // pausing, resuming or removing it yourself overrides the episode order
     if (m[2] === 'delete') {
@@ -2594,18 +2600,19 @@ async function handleApi(req, res, url) {
   if (p === '/api/library/delete-info') {
     const id = String(url.searchParams.get('id') || '');
     const key = accounts.mediaKey(librarySource(id));
-    const others = accounts.holders(key).filter((u) => u !== user.id).length;
-    return sendJson(res, 200, { ...(await deleteInfo(id)), others, canDeleteForEveryone: user.isOwner && others > 0 });
+    const others = accounts.holders(key).filter((u) => !accounts.sameLibrary(u, user.id)).length;
+    const sharedWith = accounts.libraryMates(user.id).length - 1;
+    return sendJson(res, 200, { ...(await deleteInfo(id)), others, sharedWith, canDeleteForEveryone: user.isOwner && others > 0 });
   }
   if (p === '/api/library/delete' && req.method === 'POST') {
     const body = await readJson(req);
     const id = String(body.id || '');
     const key = accounts.mediaKey(librarySource(id));
     const everyone = Boolean(body.everyone) && user.isOwner;
-    if (!everyone && !accounts.libraryOf(user.id).has(key) && !user.isOwner) throw new HttpError(403, 'That isn’t in your library.');
+    if (!everyone && !accounts.hasEntry(user.id, key) && !user.isOwner) throw new HttpError(403, 'That isn’t in your library.');
     let what = id;
     try { what = titleOf((await deletePlan(id)).original); } catch { /* named by id */ }
-    const heldByOthers = (k) => accounts.holders(k).some((u) => u !== user.id);
+    const heldByOthers = (k) => accounts.heldOutside(k, user.id);
     if (!everyone && heldByOthers(key)) {
       accounts.removeEntry(user.id, key);
       activity.record(req, 'remove', what);
@@ -3003,8 +3010,8 @@ async function deleteMediaPlan({ original, torrent }, scope, { user = null, ever
   const wholeTorrent = torrent && (scope === 'torrent' || torrent.videos.length <= 1);
   const videos = wholeTorrent ? torrent.videos.map((v) => v.full) : [original];
   if (!videos.some((v) => samePath(v, original))) videos.push(original);
-  if (!everyone && (videos.some((v) => accounts.holders(accounts.mediaKey(v)).some((id) => id !== user?.id))
-    || (torrent && accounts.torrentClaimants(torrent.hash).some((id) => id !== user?.id)))) {
+  if (!everyone && (videos.some((v) => accounts.heldOutside(accounts.mediaKey(v), user?.id))
+    || (torrent && accounts.torrentClaimants(torrent.hash).some((id) => !accounts.sameLibrary(id, user?.id))))) {
     throw new HttpError(409, 'Someone else is using a video from this download. Its files have been kept. Try again after their request finishes.');
   }
   if (videos.some((v) => converter.isBusy(v))) throw new HttpError(409, 'A file from this download is being converted right now. Try again when that finishes.');
@@ -3058,7 +3065,7 @@ async function deleteManyItems(ids, user) {
   for (const id of ids) {
     const key = accounts.mediaKey(librarySource(id));
     if (!mine.has(key) && !user.isOwner) continue; // not yours to delete
-    items.push({ id, key, plan: await deletePlan(id), shared: accounts.holders(key).some((u) => u !== user.id) });
+    items.push({ id, key, plan: await deletePlan(id), shared: accounts.heldOutside(key, user.id) });
   }
   return items;
 }
@@ -3070,7 +3077,7 @@ function wholeDownloads(items, user, everyone) {
     if (!t || whole.has(t.hash)) continue;
     const listed = items.filter((i) => i.plan.torrent?.hash === t.hash && (everyone || !i.shared));
     if (!t.videos.every((v) => listed.some((i) => samePath(i.plan.original, v.full)))) continue;
-    if (!everyone && t.videos.some((v) => accounts.holders(accounts.mediaKey(v.full)).some((u) => u !== user.id))) continue;
+    if (!everyone && t.videos.some((v) => accounts.heldOutside(accounts.mediaKey(v.full), user.id))) continue;
     whole.add(t.hash);
   }
   return whole;
@@ -3168,8 +3175,8 @@ async function deleteDownloadNow(t, withFiles, user = null) {
   if (withFiles) {
     const files = await torrentFileMetadata(t, { fresh: true });
     videos = files.filter((f) => isVideo(f.name)).map((f) => torrentFilePath(t, f));
-    if (user && (accounts.torrentClaimants(t.hash).some((id) => id !== user.id)
-      || videos.some((v) => accounts.holders(accounts.mediaKey(v)).some((id) => id !== user.id)))) {
+    if (user && (accounts.torrentClaimants(t.hash).some((id) => !accounts.sameLibrary(id, user.id))
+      || videos.some((v) => accounts.heldOutside(accounts.mediaKey(v), user.id)))) {
       throw new HttpError(409, 'Someone else has a video from this download in their library. Remove the download with files kept instead.');
     }
     if (videos.some((v) => watchRooms.protects(accounts.mediaKey(v)))) throw new HttpError(409, 'A Watch Together room is using a video from this download.');

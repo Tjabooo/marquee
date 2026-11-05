@@ -14,6 +14,10 @@
 //   ratings, watch_log, watch_company, watch_parties  thumbs, watch time and planned watch parties
 //             (see social.js; watch_log keeps watch time after progress rows are deleted)
 //
+// Shared libraries (library_shares): people the owner puts in one group see and manage one library
+// together. Rows stay per person (who added it, their countdown); every read merges the group's rows,
+// and removing or keeping longer acts on the whole group. Watch progress stays personal.
+//
 // A video is one file on disk however many people have it: "Add to my library" adds a row, never a
 // copy. Its media key is its path inside MEDIA_DIR without the extension, lower case, so the MP4
 // copy the converter makes and the original count as the same video.
@@ -157,6 +161,11 @@ export function initAccounts({ dataDir, adminEmails, mediaDir: dir }) {
       people TEXT NOT NULL DEFAULT '[]',
       created_at INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS library_shares (
+      user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      group_id INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS library_shares_group ON library_shares(group_id);
   `);
 }
 // The open database, for modules that keep their own tables here (social.js).
@@ -377,7 +386,8 @@ function cleanTheme(t) {
 
 // What the browser gets about the person signed in.
 export function publicUser(u) {
-  return { id: u.id, email: u.email === HOME ? null : u.email, name: u.name, avatar: u.avatar, isOwner: u.isOwner, canDownload: u.canDownload, keep: u.keep, settings: u.settings };
+  return { id: u.id, email: u.email === HOME ? null : u.email, name: u.name, avatar: u.avatar, isOwner: u.isOwner, canDownload: u.canDownload, keep: u.keep, settings: u.settings,
+    sharedWith: libraryMates(u.id).filter((id) => id !== u.id).map((id) => userById(id)).filter(Boolean).map((m) => ({ id: m.id, name: m.name, avatar: m.avatar })) };
 }
 
 // The owner's list of people: everyone who has opened Marquee, with what's in their library.
@@ -386,8 +396,9 @@ export function listUsers() {
   const counts = db.prepare('SELECT user_id, media_key, source FROM library').all();
   return rows.map((r) => {
     const u = rowToUser(r);
-    const mine = counts.filter((c) => c.user_id === u.id);
-    return { ...publicUser(u), email: r.email === HOME ? null : r.email, lastSeen: u.lastSeen, createdAt: u.createdAt, keys: mine.map((c) => c.media_key), downloads: mine.filter((c) => c.source === 'download').length };
+    const mates = libraryMates(u.id);
+    const mine = counts.filter((c) => mates.includes(c.user_id));
+    return { ...publicUser(u), email: r.email === HOME ? null : r.email, lastSeen: u.lastSeen, createdAt: u.createdAt, keys: [...new Set(mine.map((c) => c.media_key))], downloads: mine.filter((c) => c.source === 'download').length };
   });
 }
 
@@ -398,6 +409,7 @@ export function updateUser(id, patch) {
     if (u.isOwner && !patch.canDownload) throw httpError(400, 'The owner can always download.');
     db.prepare('UPDATE users SET can_download = ? WHERE id = ?').run(patch.canDownload ? 1 : 0, id);
   }
+  if ('libraryWith' in patch) shareLibrary(id, patch.libraryWith == null || patch.libraryWith === '' ? null : Number(patch.libraryWith));
   if ('keep' in patch) {
     db.prepare('UPDATE users SET keep = ? WHERE id = ?').run(patch.keep ? 1 : 0, id);
     // Exempt: everything they have stays. No longer exempt: their videos start a fresh countdown.
@@ -432,26 +444,107 @@ function expiryFor(userId) {
 
 const rowToEntry = (r) => ({ key: r.media_key, source: r.source, addedAt: r.added_at, expiresAt: r.expires_at, extensions: r.extensions });
 
+// ---------- shared libraries ----------
+// Everyone whose library this person sees (themselves included).
+export function libraryMates(userId) {
+  const g = db.prepare('SELECT group_id FROM library_shares WHERE user_id = ?').get(userId);
+  if (!g) return [userId];
+  return db.prepare('SELECT user_id FROM library_shares WHERE group_id = ? ORDER BY user_id').all(g.group_id).map((r) => r.user_id);
+}
+export const sameLibrary = (a, b) => a === b || (a != null && b != null && libraryMates(a).includes(b));
+const matesSql = (ids) => ids.map(() => '?').join(',');
+
+// Puts `userId` in `withId`'s library (null = back to a library of their own). Each keeps the rows they
+// added, so leaving takes back what they brought and leaves the rest with the group.
+export function shareLibrary(userId, withId) {
+  if (!userById(userId)) throw httpError(404, 'No such person.');
+  const leave = () => {
+    const g = db.prepare('SELECT group_id FROM library_shares WHERE user_id = ?').get(userId);
+    db.prepare('DELETE FROM library_shares WHERE user_id = ?').run(userId);
+    if (g) {
+      const left = db.prepare('SELECT user_id FROM library_shares WHERE group_id = ?').all(g.group_id);
+      if (left.length < 2) db.prepare('DELETE FROM library_shares WHERE group_id = ?').run(g.group_id);
+    }
+  };
+  if (withId == null) { leave(); return libraryMates(userId); }
+  withId = Number(withId);
+  if (withId === userId) throw httpError(400, 'Pick someone else to share with.');
+  if (!userById(withId)) throw httpError(404, 'No such person.');
+  if (sameLibrary(userId, withId)) return libraryMates(userId);
+  leave();
+  const target = db.prepare('SELECT group_id FROM library_shares WHERE user_id = ?').get(withId);
+  const group = target?.group_id ?? withId;
+  if (!target) db.prepare('INSERT INTO library_shares (user_id, group_id) VALUES (?, ?)').run(withId, group);
+  db.prepare('INSERT INTO library_shares (user_id, group_id) VALUES (?, ?)').run(userId, group);
+  return libraryMates(userId);
+}
+
+// One video seen by a whole group: kept forever if anyone keeps it, else the latest countdown.
+function mergeEntries(rows) {
+  const out = new Map();
+  for (const r of rows) {
+    const e = rowToEntry(r);
+    const had = out.get(e.key);
+    if (!had) { out.set(e.key, e); continue; }
+    const later = had.expiresAt != null && (e.expiresAt == null || e.expiresAt > had.expiresAt);
+    out.set(e.key, {
+      ...(later ? e : had),
+      addedAt: Math.min(had.addedAt, e.addedAt),
+      extensions: Math.max(had.extensions, e.extensions),
+    });
+  }
+  return out;
+}
+
 export function libraryOf(userId) {
-  return new Map(db.prepare('SELECT * FROM library WHERE user_id = ?').all(userId).map((r) => [r.media_key, rowToEntry(r)]));
+  const ids = libraryMates(userId);
+  return mergeEntries(db.prepare(`SELECT * FROM library WHERE user_id IN (${matesSql(ids)})`).all(...ids));
+}
+export function hasEntry(userId, key) {
+  const ids = libraryMates(userId);
+  return Boolean(db.prepare(`SELECT 1 FROM library WHERE media_key = ? AND user_id IN (${matesSql(ids)}) LIMIT 1`).get(key, ...ids));
 }
 // Everyone's library as (user, video) pairs: who has which shows, for new-episode notifications.
-export const libraryRows = () => db.prepare('SELECT user_id, media_key FROM library').all();
-export const holders = (key) => db.prepare('SELECT user_id FROM library WHERE media_key = ?').all(key).map((r) => r.user_id);
+// People sharing a library each get the group's videos.
+export function libraryRows() {
+  const rows = db.prepare('SELECT user_id, media_key FROM library').all();
+  const groups = db.prepare('SELECT user_id, group_id FROM library_shares').all();
+  if (!groups.length) return rows;
+  const groupOf = new Map(groups.map((g) => [g.user_id, g.group_id]));
+  const members = new Map();
+  for (const g of groups) members.set(g.group_id, [...(members.get(g.group_id) || []), g.user_id]);
+  const out = new Map();
+  for (const r of rows) {
+    for (const id of groupOf.has(r.user_id) ? members.get(groupOf.get(r.user_id)) : [r.user_id]) {
+      out.set(`${id}\n${r.media_key}`, { user_id: id, media_key: r.media_key });
+    }
+  }
+  return [...out.values()];
+}
+// Who has the video in their library: the people with a row, plus everyone sharing a library with them.
+export function holders(key) {
+  const direct = db.prepare('SELECT user_id FROM library WHERE media_key = ?').all(key).map((r) => r.user_id);
+  return [...new Set(direct.flatMap((id) => libraryMates(id)))];
+}
+// Someone outside this person's (shared) library has the video, so removing it must keep the file.
+export const heldOutside = (key, userId) => holders(key).some((id) => !sameLibrary(id, userId));
 
 // source: 'download' (they downloaded it), 'added' (added from the server), 'existing' (on the server
 // before accounts, or copied in by hand: kept, no countdown). Adding what's already there does nothing.
 export function addEntry(userId, key, source) {
   if (!userId || !key) return false;
   track(key);
+  if (hasEntry(userId, key)) return false; // already in their (shared) library
   const expires = source === 'existing' ? null : expiryFor(userId);
   return db.prepare('INSERT OR IGNORE INTO library (user_id, media_key, source, added_at, expires_at) VALUES (?, ?, ?, ?, ?)')
     .run(userId, key, source, Date.now(), expires).changes > 0;
 }
 
 // Returns true when nobody has the video any more (the caller deletes the file).
+// In a shared library it leaves everyone's view, so it goes for the whole group.
 export function removeEntry(userId, key) {
-  db.prepare('DELETE FROM library WHERE user_id = ? AND media_key = ?').run(userId, key);
+  const ids = libraryMates(userId);
+  db.prepare(`DELETE FROM library WHERE media_key = ? AND user_id IN (${matesSql(ids)})`).run(key, ...ids);
   return !holders(key).length;
 }
 export function removeAll(key) {
@@ -459,16 +552,19 @@ export function removeAll(key) {
 }
 
 export function extend(userId, key) {
-  const r = db.prepare('SELECT * FROM library WHERE user_id = ? AND media_key = ?').get(userId, key);
+  const ids = libraryMates(userId);
+  const r = libraryOf(userId).get(key);
   if (!r) throw httpError(404, 'That isn’t in your library.');
-  if (r.expires_at == null) return rowToEntry(r);
+  if (r.expiresAt == null) return r;
   const { extendDays, maxExtensions } = serverSettings();
   if (maxExtensions && r.extensions >= maxExtensions) {
     throw httpError(409, `This has already been kept longer ${maxExtensions === 1 ? 'once' : `${maxExtensions} times`}, the most the server allows.`);
   }
-  const expires = Math.max(r.expires_at, Date.now()) + extendDays * DAY;
-  db.prepare('UPDATE library SET expires_at = ?, extensions = extensions + 1 WHERE user_id = ? AND media_key = ?').run(expires, userId, key);
-  return { ...rowToEntry(r), expiresAt: expires, extensions: r.extensions + 1 };
+  const expires = Math.max(r.expiresAt, Date.now()) + extendDays * DAY;
+  // Every countdown in the group moves, so the merged entry shows the same date for everyone.
+  db.prepare(`UPDATE library SET expires_at = ?, extensions = ? WHERE media_key = ? AND expires_at IS NOT NULL AND user_id IN (${matesSql(ids)})`)
+    .run(expires, r.extensions + 1, key, ...ids);
+  return { ...r, expiresAt: expires, extensions: r.extensions + 1 };
 }
 
 // Removes library entries whose time is up. Returns the keys nobody has any more, marked for deletion.
@@ -477,7 +573,9 @@ export function expireDue() {
   const due = db.prepare('SELECT user_id, media_key FROM library WHERE expires_at IS NOT NULL AND expires_at <= ?').all(Date.now());
   const orphaned = new Set();
   for (const r of due) {
-    if (removeEntry(r.user_id, r.media_key)) orphaned.add(r.media_key);
+    // only this row: someone in a shared library may still have their own, later countdown
+    db.prepare('DELETE FROM library WHERE user_id = ? AND media_key = ?').run(r.user_id, r.media_key);
+    if (!holders(r.media_key).length) orphaned.add(r.media_key);
   }
   for (const key of orphaned) markDeleting(key);
   return [...orphaned];

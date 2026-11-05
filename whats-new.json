@@ -1,5 +1,21 @@
 [
   {
+    "id": "2026-11-05-shared-libraries",
+    "date": "2026-11-05",
+    "title": "Shared libraries",
+    "items": [
+      {
+        "title": "One library for the household",
+        "text": "The owner can now let several people share one library. Everyone in it sees the same films and shows, on the TV too, and anyone can add, keep or remove titles. Your watch progress stays your own."
+      },
+      {
+        "audience": "owner",
+        "title": "Set it in People",
+        "text": "Settings → People has a Library choice for each person: Own library, or share with someone (joining someone who already shares joins the whole group)."
+      }
+    ]
+  },
+  {
     "id": "2026-11-05-convert-banner-mine",
     "date": "2026-11-05",
     "title": "Only conversions you're waiting for",

@@ -903,6 +903,11 @@ function renderConvertBanner() {
 const libraryCards = new Map();
 let libraryUI = null;
 const unifiedLibrary = () => libraryUnion(state.library, state.libraryShows, state.downloads);
+// "Pappa", "Pappa and Anita", "Pappa, Anita and Home network"
+const nameList = (names) => names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+// The people this person shares one library with (the owner sets it in Settings → People).
+const libraryMates = () => (state.me?.sharedWith || []).map((m) => m.name);
+
 function renderLibrary() {
   libraryRenderPending = false;
   const body = $('#library-body');
@@ -914,9 +919,9 @@ function renderLibrary() {
       return [type, { list, section: h('section', { class: 'lib-group' }, h('h3', { class: 'lib-subhead' }, { movie: 'Films', tv: 'Shows', unknown: 'Unidentified' }[type]), list) }];
     }));
     const root = h('div', { class: 'unified-library' });
-    libraryUI = { root, groups, filters, availability, notices: h('div'), travel: h('button', { type: 'button', class: 'library-summary travel-summary', hidden: true, onclick: (e) => openTravelList(e.currentTarget) }), parties: h('div', { class: 'parties-slot' }), shelves: h('div'), summary: h('button', { class: 'library-summary', onclick: () => { state.libAvailability = 'downloading'; renderLibrary(); } }), empty: h('div') };
+    libraryUI = { root, groups, filters, availability, shared: h('p', { class: 'library-shared muted', hidden: true }), notices: h('div'), travel: h('button', { type: 'button', class: 'library-summary travel-summary', hidden: true, onclick: (e) => openTravelList(e.currentTarget) }), parties: h('div', { class: 'parties-slot' }), shelves: h('div'), summary: h('button', { class: 'library-summary', onclick: () => { state.libAvailability = 'downloading'; renderLibrary(); } }), empty: h('div') };
     root.append(h('div', { class: 'dl convert-banner', id: 'convert-banner', hidden: true }),
-      h('div', { class: 'library-toolbar' }, filters, h('label', { class: 'library-availability' }, 'Availability', availability)), libraryUI.summary, libraryUI.travel, libraryUI.notices, libraryUI.parties, libraryUI.shelves, ...[...groups.values()].map(g => g.section), libraryUI.empty);
+      h('div', { class: 'library-toolbar' }, filters, h('label', { class: 'library-availability' }, 'Availability', availability)), libraryUI.shared, libraryUI.summary, libraryUI.travel, libraryUI.notices, libraryUI.parties, libraryUI.shelves, ...[...groups.values()].map(g => g.section), libraryUI.empty);
     body.replaceChildren(root);
     loadParties();
     libraryCards.clear();
@@ -928,6 +933,10 @@ function renderLibrary() {
   const entries = filterLibrary(all, { type: state.libFilter, availability: state.libAvailability, query: state.query, sort: prefs().librarySort });
   const active = all.flatMap(e => e.active).length, attention = all.filter(e => e.attention).length;
   ui.summary.hidden = !active;
+  const mates = libraryMates();
+  ui.shared.hidden = !mates.length;
+  const sharedText = mates.length ? `Shared library with ${nameList(mates)}: you all see and manage the same titles.` : '';
+  if (ui.shared.textContent !== sharedText) ui.shared.textContent = sharedText;
   ui.summary.textContent = `${active} downloading${attention ? ` · ${attention} needs attention` : ''}`;
   const phone = travelSummary(travelView.items);
   ui.travel.hidden = !phone;
@@ -2456,6 +2465,7 @@ async function openDelete(f, opener) {
     body.replaceChildren(h('h2', { id: 'picker-title' }, 'Remove from your library?'),
       h('p', { class: 'del-name' }, label),
       h('p', { class: 'muted' }, `${plural(info.others, 'other person has', 'other people have')} this in their library, so the file stays on the server. You can add it back from Discover.`),
+      info.sharedWith > 0 && h('p', { class: 'muted' }, `It also leaves the library you share with ${nameList(libraryMates())}.`),
       h('div', { class: 'del-actions' },
         button('Remove from my library', 'del-confirm', 'file'),
         info.canDeleteForEveryone && button(`Delete the file for everyone (${fmtBytes(info.size)})`, 'del-confirm del-secondary', 'file', true),
@@ -2471,6 +2481,7 @@ async function openDelete(f, opener) {
       ? `This is one of ${t.videos} videos in the torrent “${t.name}”. Deleting all of them also removes the torrent from qBittorrent.`
       : t ? `This also removes the torrent from qBittorrent, so it stops seeding. ${fmtBytes(t.size)} will be freed.`
         : `${fmtBytes(info.size)} will be freed. This can’t be undone.`),
+    info.sharedWith > 0 && h('p', { class: 'muted' }, `You share this library with ${nameList(libraryMates())}, so it goes for them too.`),
   ];
   const actions = pack
     ? [button('Delete this video only', 'del-confirm', 'file'), button(`Delete all ${t.videos} videos (${fmtBytes(t.size)})`, 'del-confirm del-secondary', 'torrent')]
@@ -5673,6 +5684,7 @@ function renderSettings() {
   out.push(h('div', { class: 'set-card' },
     h('p', {}, `${plural(mine.length, 'video')}, ${fmtBytes(mine.reduce((n, f) => n + (f.size || 0), 0))}.`,
       next ? ` Next to go: ${next.title}${episodeLabel(next) ? ` ${episodeLabel(next)}` : ''}, ${timeLeft(next.expiresAt).replace(' left', '')} left.` : ''),
+    libraryMates().length > 0 && h('p', {}, `Shared with ${nameList(libraryMates())}: you all see the same library and can add, keep or remove titles in it. Watch progress stays your own.`),
     h('p', { class: 'set-hint' }, me.keep ? 'The owner has set your videos to stay until you delete them.'
       : r.retentionDays
         ? `Downloads are deleted ${plural(r.retentionDays, 'day')} after they finish, to keep space free on the server. Use “Keep ${r.extendDays} more days” in the Library to hold on to something${r.maxExtensions ? ` (up to ${plural(r.maxExtensions, 'time')} per video)` : ''}.`
@@ -5868,9 +5880,22 @@ function ownerSettings() {
             await personUpdate(u, { canDownload: on });
           }, `${u.name} can download`)),
         h('label', { class: 'person-toggle' }, 'Never auto-delete',
-          toggle(u.keep, (on) => personUpdate(u, { keep: on }), `Never auto-delete ${u.name}’s videos`)))))));
+          toggle(u.keep, (on) => personUpdate(u, { keep: on }), `Never auto-delete ${u.name}’s videos`)),
+        h('label', { class: 'person-toggle person-library' }, 'Library', libraryShareSelect(u)))))));
   }
   return out;
+}
+// Own library, or one shared with someone else (joining them joins everyone they already share with).
+function libraryShareSelect(u) {
+  const mates = u.sharedWith || [];
+  const options = [['', 'Own library']];
+  if (mates.length) options.push([String(mates[0].id), `Shared with ${nameList(mates.map((m) => m.name))}`]);
+  for (const p of state.people) {
+    if (p.id === u.id || mates.some((m) => m.id === p.id)) continue;
+    const theirs = (p.sharedWith || []).filter((m) => m.id !== u.id).map((m) => m.name);
+    options.push([String(p.id), theirs.length ? `Join ${p.name} (with ${nameList(theirs)})` : `Share with ${p.name}`]);
+  }
+  return select(options, mates.length ? String(mates[0].id) : '', (v) => personUpdate(u, { libraryWith: v ? Number(v) : null }), `${u.name}’s library`);
 }
 async function personUpdate(u, patch) {
   try {

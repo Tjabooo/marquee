@@ -1507,6 +1507,7 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .person .row-title { display: flex; align-items: center; }
 .person-controls { display: flex; gap: 8px 16px; flex-wrap: wrap; margin-left: auto; }
 .person-toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--dust); }
+.person-library .sub-select { max-width: 240px; }
 
 /* Light themes: the player and its menus stay dark over the video */
 :root[data-scheme="light"] .player {
@@ -1620,6 +1621,7 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .library-availability { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--dust); }
 .library-availability select { min-height: 44px; max-width: 100%; }
 .library-summary { padding: 5px 0 12px; min-height: 44px; color: var(--bulb); background: none; border: 0; font-size: 13px; text-align: left; }
+.library-shared { margin: -4px 0 12px; font-size: 13px; }
 .library-source-notice { padding: 12px; border: 1px solid var(--line); border-radius: 10px; color: var(--dust); font-size: 13px; }
 .unified-card { position: relative; }
 .unified-card .title-card .sub { min-height: 19px; }
