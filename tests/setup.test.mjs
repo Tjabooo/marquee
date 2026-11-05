@@ -174,10 +174,10 @@ test('migrate-data copies state, verifies it and sets the originals aside', asyn
   const data = path.join(app, 'state');
   const dry = await migrateData({ from: app, to: data, dryRun: true, log: () => {} });
   assert.ok(dry.dryRun && !fs.existsSync(data));
+  db.close(); // Marquee is stopped during a migration (and Windows can't move an open database)
   const r = await migrateData({ from: app, to: data, log: () => {} });
-  db.close();
   const copy = new DatabaseSync(path.join(data, '.marquee.db'));
-  assert.equal(copy.prepare('SELECT v FROM t').get().v, 'kept', 'uncheckpointed WAL rows made it across');
+  assert.equal(copy.prepare('SELECT v FROM t').get().v, 'kept');
   copy.close();
   assert.equal(fs.readFileSync(path.join(data, '.marquee-shows.json'), 'utf8'), '{"a":1}');
   assert.ok(fs.existsSync(path.join(data, '.marquee-notes-files', 'x.png')));

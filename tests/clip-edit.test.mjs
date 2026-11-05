@@ -111,8 +111,10 @@ test('removing the mic track rebuilds the mix and copies the rest', { skip: !has
   }
 });
 
-const hasSvt = hasFfmpeg && /libsvtav1/.test(spawnSync(ffmpeg, ['-hide_banner', '-encoders']).stdout) && /libdav1d/.test(spawnSync(ffmpeg, ['-hide_banner', '-decoders']).stdout);
-test('AV1 clips are cut on the exact frame and every frame matches the original', { skip: !hasSvt && 'ffmpeg without SVT-AV1/dav1d', timeout: 120000 }, async () => {
+const hasSvt = hasFfmpeg && /libsvtav1/.test(spawnSync(ffmpeg, ['-hide_banner', '-encoders']).stdout) && /libdav1d/.test(spawnSync(ffmpeg, ['-hide_banner', '-decoders']).stdout)
+  // Lossless SVT-AV1 (lossless=1) needs SVT-AV1 2.0 or later; older builds (e.g. Ubuntu 24.04) reject it.
+  && spawnSync(ffmpeg, ['-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=64x64:rate=30:duration=0.2', '-c:v', 'libsvtav1', '-svtav1-params', 'lossless=1', '-f', 'null', '-']).status === 0;
+test('AV1 clips are cut on the exact frame and every frame matches the original', { skip: !hasSvt && 'ffmpeg without SVT-AV1 2.0+ (lossless) and dav1d', timeout: 120000 }, async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-clip-exact-'));
   const data = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-clip-data-'));
   process.env.CLIPS_DIR = dir;

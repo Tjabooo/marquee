@@ -2,7 +2,11 @@
 // setup.js prints the plan, asks before anything privileged, and re-running produces the same
 // files at the same paths, so a service is never registered twice.
 import os from 'node:os';
-import path from 'node:path';
+import nodePath from 'node:path';
+
+// Units, plists and init scripts are for POSIX systems: build their paths with POSIX separators even
+// when the plan is computed elsewhere (tests on Windows).
+const path = nodePath.posix;
 
 export const LABEL = 'io.github.tjabooo.marquee';
 const q = (s) => (/[\s"'\\$`]/.test(s) ? `"${String(s).replace(/(["\\$`])/g, '\\$1')}"` : s);
@@ -82,7 +86,7 @@ export function servicePlan(action, {
   const step = (description, extra) => steps.push({ description, privileged: false, ...extra });
 
   if (manager === 'task-scheduler') {
-    const script = path.join(appDir, 'scripts', 'windows', action === 'restart' ? 'restart-marquee.ps1' : 'install-service.ps1');
+    const script = nodePath.win32.join(appDir, 'scripts', 'windows', action === 'restart' ? 'restart-marquee.ps1' : 'install-service.ps1');
     const flag = { install: [], status: ['-Status'], uninstall: ['-Uninstall'], restart: [] }[action];
     step({ install: 'Register the Marquee and Marquee Watchdog scheduled tasks (asks for your Windows password)',
       status: 'Show the scheduled tasks', uninstall: 'Remove both scheduled tasks', restart: 'Restart the Marquee task' }[action],
