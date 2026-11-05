@@ -6,7 +6,7 @@ import { createRequire } from 'node:module';
 import { importTimestamp } from './public/notes-import.js';
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite');
 const fail = (status, message) => { throw Object.assign(new Error(message), { status }); };
-const MAX_TEXT = 30000;
+const MAX_TEXT = 1_000_000; // Practical ceiling: keeps accidental giant payloads bounded without limiting normal prompts/documents.
 // Image types Windows' OCR can read (see notes-ocr.js).
 const OCR_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/heic', 'image/avif'];
 const bool = (v) => v ? 1 : 0;
