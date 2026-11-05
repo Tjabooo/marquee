@@ -4621,10 +4621,11 @@ function accessName(email, name) {
 function accessSection() {
   const a = state.access;
   if (!a) return [];
-  const out = [h('h3', { class: 'activity-head' }, 'Access')];
+  const out = [];
+  const group = () => foldGroup('access', 'h3', 'activity-head', 'Access', a.members?.length, out);
   if (!a.configured) {
     out.push(h('p', { class: 'muted' }, 'Set CF_API_TOKEN, CF_ACCOUNT_ID and CF_ACCESS_LIST_ID in .env to invite people from here (see the README).'));
-    return out;
+    return group();
   }
   const noteInput = h('input', { id: 'invite-note', class: 'invite-note', type: 'text', maxlength: '60', placeholder: 'Who’s it for?' });
   out.push(h('div', { class: 'invite-new' }, noteInput,
@@ -4666,7 +4667,40 @@ function accessSection() {
         }, 'Remove')));
     })));
   }
-  return out;
+  return group();
+}
+
+// Activity sections and days fold open/closed; the folded ones are remembered per browser.
+const ACTIVITY_FOLD_KEY = 'marquee:activityFolded';
+let activityFolded = null;
+function activityFoldSet() {
+  if (!activityFolded) {
+    try { activityFolded = new Set(JSON.parse(localStorage.getItem(ACTIVITY_FOLD_KEY)) || []); } catch { activityFolded = new Set(); }
+  }
+  return activityFolded;
+}
+
+function foldGroup(key, tag, cls, title, count, kids, forceOpen = false) {
+  const folded = !forceOpen && activityFoldSet().has(key);
+  const content = h('div', { class: 'fold-body', hidden: folded }, kids);
+  const btn = h('button', {
+    type: 'button',
+    class: 'fold-btn',
+    'aria-expanded': String(!folded),
+    title: folded ? 'Show' : 'Hide',
+    onclick: () => {
+      const open = content.hidden;
+      content.hidden = !open;
+      btn.setAttribute('aria-expanded', String(open));
+      btn.title = open ? 'Hide' : 'Show';
+      const set = activityFoldSet();
+      set.delete(key);
+      if (!open) set.add(key);
+      while (set.size > 60) set.delete(set.values().next().value);
+      try { localStorage.setItem(ACTIVITY_FOLD_KEY, JSON.stringify([...set])); } catch { /* blocked */ }
+    },
+  }, h('span', { class: 'fold-chev', 'aria-hidden': 'true' }), h('span', {}, title), count != null && h('span', { class: 'fold-count' }, String(count)));
+  return [h(tag, { class: `${cls} fold-head` }, btn), content];
 }
 
 function renderActivity() {
@@ -4677,31 +4711,31 @@ function renderActivity() {
   const q = norm(state.query);
   const people = state.activity.people.filter((p) => !q || norm(`${p.user} ${personName(p)} ${activityDevice(p)}`).includes(q));
   const events = state.activity.events.filter((e) => !q || norm(`${e.user} ${personName(e)} ${e.subjectName || ''} ${e.detail} ${e.action} ${activityDevice(e)}`).includes(q));
-  const out = [...accessSection(), h('h3', { class: 'activity-head' }, 'People'),
-    h('p', { class: 'muted activity-location-note' }, 'Locations are approximate. City names require Cloudflare’s “Add visitor location headers” Managed Transform.')];
-  out.push(people.length ? h('ul', { class: 'rows' }, people.map((p) => h('li', { class: 'row' },
+  const out = [...accessSection()];
+  const peopleKids = [h('p', { class: 'muted activity-location-note' }, 'Locations are approximate. City names require Cloudflare’s “Add visitor location headers” Managed Transform.')];
+  peopleKids.push(people.length ? h('ul', { class: 'rows' }, people.map((p) => h('li', { class: 'row' },
     h('span', { class: `activity-dot${Date.now() - p.at < 3 * 60000 ? ' is-on' : ''}`, 'aria-hidden': 'true' }),
     h('span', { class: 'row-text' },
       h('span', { class: 'row-title', title: p.user }, personName(p)),
       h('span', { class: 'row-meta' }, p.user.includes('@') && h('span', {}, p.user), h('span', {}, lastSeenText(p.at)), h('span', {}, activityDevice(p)))))))
     : h('p', { class: 'muted' }, 'Nobody yet.'));
-  out.push(h('h3', { class: 'activity-head' }, 'What happened'));
-  if (!events.length) out.push(h('p', { class: 'muted' }, q ? 'Nothing matches.' : 'Nothing has happened yet.'));
-  let day = null;
-  let list = null;
+  out.push(...foldGroup('people', 'h3', 'activity-head', 'People', people.length, peopleKids, Boolean(q)));
+  const eventKids = [];
+  if (!events.length) eventKids.push(h('p', { class: 'muted' }, q ? 'Nothing matches.' : 'Nothing has happened yet.'));
+  const days = [];
   for (const e of events) {
     const label = dayLabel(e.at);
-    if (label !== day) {
-      day = label;
-      list = h('ul', { class: 'rows activity-list' });
-      out.push(h('p', { class: 'activity-day' }, label), list);
-    }
-    list.append(h('li', { class: 'row activity-row' },
+    if (days.at(-1)?.label !== label) days.push({ label, key: `day:${new Date(e.at).toDateString()}`, list: h('ul', { class: 'rows activity-list' }), n: 0 });
+    const d = days.at(-1);
+    d.n++;
+    d.list.append(h('li', { class: 'row activity-row' },
       h('span', { class: 'activity-time' }, clock(e.at)),
       h('span', { class: 'row-text' },
         h('span', { class: 'activity-text' }, h('strong', { title: e.user }, personName(e)), ' ', (ACTIVITY_TEXT[e.action] || ((d) => `${e.action} ${d}`))(e.subjectName || e.detail)),
         h('span', { class: 'row-meta' }, h('span', {}, activityDevice(e))))));
   }
+  for (const d of days) eventKids.push(...foldGroup(d.key, 'p', 'activity-day', d.label, d.n, [d.list], Boolean(q)));
+  out.push(...foldGroup('events', 'h3', 'activity-head', 'What happened', events.length, eventKids, Boolean(q)));
   body.replaceChildren(...out);
 }
 

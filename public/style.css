@@ -932,6 +932,14 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .activity-head:first-child { margin-top: 0; }
 .activity-day { margin: 16px 0 8px; font-size: 13px; font-weight: 700; color: var(--dust); text-transform: uppercase; letter-spacing: 0.04em; }
 .activity-list { gap: 6px; }
+.fold-btn { display: inline-flex; align-items: center; gap: 8px; margin: -4px -6px; padding: 4px 6px; border: 0; border-radius: 8px; background: none; color: inherit; font: inherit; text-transform: inherit; letter-spacing: inherit; cursor: pointer; }
+.fold-btn:hover { color: var(--paper); background: var(--seat); }
+.fold-chev { flex: none; width: 6px; height: 6px; margin: 0 2px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: translateY(-2px) rotate(45deg); transition: transform 0.15s ease; }
+.fold-btn[aria-expanded="false"] .fold-chev { transform: rotate(-45deg); }
+.fold-count { padding: 2px 7px; border-radius: 999px; background: var(--curtain); color: var(--dust); font: 600 11px/1.4 var(--body); letter-spacing: 0; font-variant-numeric: tabular-nums; }
+.fold-body[hidden] { display: none; }
+.fold-body > .activity-day:first-child { margin-top: 4px; }
+@media (prefers-reduced-motion: reduce) { .fold-chev { transition: none; } }
 .activity-row { align-items: flex-start; padding: 10px 12px; }
 .activity-time { flex: none; width: 44px; padding-top: 1px; font-size: 13px; font-variant-numeric: tabular-nums; color: var(--dust); }
 .activity-text { display: block; line-height: 1.35; overflow-wrap: anywhere; }
