@@ -13,12 +13,12 @@
 // same size get one file.
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { createRequire } from 'node:module';
 import { execFile, spawn } from 'node:child_process';
 import { trackChild } from './load.js';
+import { background } from './priority.js';
 
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite');
 
@@ -393,7 +393,7 @@ export class TravelStore {
       try { child = spawn(FFMPEG, args, { windowsHide: true }); } catch (e) { return reject(e); }
       this.child = child;
       trackChild(child, FFMPEG, args, 'travel');
-      try { os.setPriority(child.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch { /* not allowed */ }
+      background(child);
       let err = '';
       child.stdout.on('data', (d) => {
         const secs = progressSeconds(d);
