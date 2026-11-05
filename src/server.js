@@ -38,6 +38,7 @@ import { handleWatchPage } from './watch-page.js';
 import { creditsFor, initCredits } from './credits.js';
 import { Previews } from './previews.js';
 import { isHomeRequest, describeRequest } from './network.js';
+import { createTrust } from './trust.js';
 
 import { DATA_DIR, CACHE_DIR, PUBLIC_DIR, dataDirProblem, ensureDataDir } from './paths.js';
 
@@ -48,6 +49,9 @@ import { DATA_DIR, CACHE_DIR, PUBLIC_DIR, dataDirProblem, ensureDataDir } from '
 }
 
 const PORT = Number(process.env.PORT) || 8080;
+const HOST = process.env.HOST || '0.0.0.0';
+const VERSION = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
+const trust = createTrust();
 const MEDIA_DIR = process.env.MEDIA_DIR ? path.resolve(process.env.MEDIA_DIR) : null;
 const TMDB_TOKEN = process.env.TMDB_TOKEN || '';
 const TMDB_KEY = process.env.TMDB_API_KEY || '';
@@ -2100,6 +2104,9 @@ function sendJson(res, status, body) {
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://localhost');
+    // Liveness for Docker, service managers and setup.js doctor. Says nothing about the library.
+    if (url.pathname === '/api/health' && (req.method === 'GET' || req.method === 'HEAD')) return sendJson(res, 200, { status: 'ok', version: VERSION });
+    await trust.sanitize(req);
     const allowed = req.method === 'GET' || req.method === 'HEAD'
       || (req.method === 'POST' && (url.pathname.startsWith('/api/cast/') || url.pathname === '/api/downloads/add' || url.pathname === '/api/downloads/smart' || url.pathname === '/api/subs/fetch' || url.pathname === '/api/subs/sync' || url.pathname === '/api/library/delete' || url.pathname === '/api/library/delete-many' || url.pathname === '/api/library/delete-many-info' || /^\/api\/downloads\/\w+\/(pause|resume|retry|delete)$/.test(url.pathname) || /^\/api\/media\/\w+\/[\w-]+\/sync$/.test(url.pathname)
         || /^\/api\/(house\/(report|boot|power)|screentime)$/.test(url.pathname) || /^\/api\/clips\/[\w-]+\/(share|unshare|delete|trim|rename)$/.test(url.pathname)
@@ -2657,8 +2664,14 @@ converter.startConverter({
   onConverted: () => { invalidateLibrary(); },
 });
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Marquee is running: http://localhost:${PORT}`);
+server.on('error', (err) => {
+  console.error(err.code === 'EADDRINUSE' ? `Port ${PORT} is already in use. Stop the other program or set PORT in .env.` : err);
+  process.exit(1);
+});
+server.listen(PORT, HOST, () => {
+  console.log(`Marquee is running: http://localhost:${PORT} (version ${VERSION})`);
+  console.log(`  Data:      ${DATA_DIR}`);
+  console.log(`  Accounts:  ${trust.mode === 'access-jwt' ? 'Cloudflare Access tokens verified' : `identity headers trusted from ${process.env.TRUSTED_PROXIES || '127.0.0.1, ::1'}`}`);
   console.log(`  Search:    ${TMDB_TOKEN || TMDB_KEY ? 'ready' : 'off (add TMDB_TOKEN to .env)'}`);
   console.log(`  Library:   ${MEDIA_DIR || 'off (add MEDIA_DIR to .env)'}`);
   console.log(`  Downloads: ${QBIT_URL ? `${QBIT_URL}${REMOVE_FINISHED ? ', finished downloads removed (no seeding)' : ''}` : 'off (add QBIT_URL to .env)'}`);
@@ -2666,3 +2679,15 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`  Subtitles: ${subtitles.subtitlesConfigured() ? 'OpenSubtitles on' : 'off (add OPENSUBTITLES_API_KEY to .env)'}${subsync.autoSyncEnabled() ? ', timing auto-fix on' : ''}`);
   console.log(`  TVs will stream from: http://${LAN_IP}:${PORT} (set SERVER_IP in .env if this is wrong)`);
 });
+
+// Docker and service managers stop Marquee with SIGTERM. Open live-update streams would keep
+// server.close() waiting forever, so connections are closed too. qBittorrent keeps downloading;
+// an interrupted conversion starts over on the next run.
+for (const signal of ['SIGTERM', 'SIGINT']) {
+  process.once(signal, () => {
+    console.log(`Marquee stopping (${signal})`);
+    server.close();
+    server.closeAllConnections();
+    setTimeout(() => process.exit(0), 300).unref();
+  });
+}
