@@ -860,7 +860,7 @@ async function loadConvert() {
 // an MP4 for Apple devices and later an H.264 copy for browsers that can't play HEVC.
 const CONVERT_PURPOSE = {
   apple: 'Making an MP4 copy that plays on iPhone and Apple TV',
-  'browser-h264': 'Making a one-time H.264 copy so it plays in every browser (Firefox can\u2019t play HEVC). You can already watch it.',
+  'browser-h264': 'Making a one-time H.264 copy for browsers that can\u2019t play HEVC. You can already watch it.',
   'browser-audio': 'Making a browser copy with audio every browser can play. You can already watch it.',
 };
 
