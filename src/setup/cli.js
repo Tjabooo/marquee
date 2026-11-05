@@ -401,7 +401,7 @@ async function doctor(opts) {
   }
   if (info.gpus.length) report('info', `GPU: ${info.gpus.join('; ')}`);
   report(info.tesseract ? 'ok' : 'info', info.tesseract === 'windows-ocr' ? 'Notes OCR: Windows OCR' : info.tesseract ? `Notes OCR: Tesseract (${info.tesseract})` : 'Notes OCR off (install tesseract to search text in images)');
-  if (String(env.CAST_APPLETV || 'on') !== 'off') report(info.pyatv.works ? 'ok' : 'info', info.pyatv.works ? `Apple TV: atvscript ${info.pyatv.version || ''}` : 'Apple TV casting off (pipx install pyatv)');
+  if (String(env.CAST_APPLETV || 'on') !== 'off') report(info.pyatv.works ? 'ok' : 'info', info.pyatv.works ? `Apple TV: ${info.pyatv.atvscript}` : 'Apple TV casting off (pipx install pyatv)');
   if (process.platform !== 'win32') report('info', 'House → Sharing CPU/GPU history uses Windows performance counters and is off on this system');
 
   console.log(bold('\nServer'));
@@ -409,6 +409,7 @@ async function doctor(opts) {
   const h = await health(port);
   if (h) report('ok', `Marquee ${h.version} is answering on port ${port}`);
   else if (await portFree(port)) report('warn', `Marquee isn't running on port ${port}`, 'Start it: npm start, or node setup.js service restart.');
+  else if (await fetch(`http://127.0.0.1:${port}/api/status`, { signal: AbortSignal.timeout(3000) }).then((r) => r.ok, () => false)) report('warn', `An older Marquee is running on port ${port}`, 'Restart it to run this version: node setup.js service restart.');
   else report('error', `Port ${port} is used by another program`, 'Stop it or change PORT in .env.');
   const mgr = serviceManager();
   if (mgr) {

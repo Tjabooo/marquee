@@ -165,7 +165,8 @@ export function gpus() {
 
 export function pyatvInfo(env = process.env) {
   const atv = env.ATVSCRIPT || which('atvscript');
-  if (atv) { const r = run(atv, ['--version']); return { atvscript: atv, works: r.ok, version: r.out.trim() || null }; }
+  // atvscript has no --version; --help exits 0 when the install (and its Python) works.
+  if (atv) { const r = run(atv, ['--help']); return { atvscript: atv, works: r.ok && /atvscript/.test(r.out), version: null }; }
   const python = which('python3') || which('python');
   return { atvscript: null, works: false, python };
 }
