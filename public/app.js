@@ -5356,11 +5356,13 @@ async function shareClip(c, btn) {
   renderClips();
 }
 const copyLink = (url) => copyWithToast(url, 'Link copied: paste it in Discord');
-// ---------- clip editor (lossless: the server copies, never re-encodes) ----------
+// ---------- clip editor (lossless: never a lossy re-encode) ----------
 // The clip is a row of parts on a timeline. Split at the playhead, then remove the parts you don't
 // want; trimming the start or end is the same thing at the edges. What's kept is joined into a new
-// file. Each kept stretch has to start on a keyframe, so it may begin a little early: the timeline
-// shows that lead-in, and a cut too short to clear the next keyframe is flagged before saving.
+// file. AV1 clips (`exact` from the server) cut on the exact frame: the frames between a cut and the
+// next keyframe are rebuilt losslessly, the rest is copied. Other clips can only start a kept stretch
+// on a keyframe, so it may begin a little early: the timeline shows that lead-in, and a cut too
+// short to clear the next keyframe is flagged before saving.
 const fmtT = (t) => { const d = Math.round(t * 10); return `${Math.floor(d / 600)}:${((d % 600) / 10).toFixed(1).padStart(4, '0')}`; };
 const EDIT_ICONS = {
   split: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M8.6 7.5 20 18M8.6 16.5 20 6"/></svg>',
@@ -5375,13 +5377,17 @@ async function openTrim(c, opener) {
   try { video.volume = Math.min(1, Math.max(0, Number(localStorage.getItem('player:volume') ?? 1))); video.muted = localStorage.getItem('player:muted') === '1'; } catch { /* blocked */ }
   let duration = 0;
   let keys = [0];
+  let exact = false;      // the server can cut this clip on any frame
+  let frameDur = 1 / 30;  // one frame, for , and .
   let pieces = [];        // [{ start, end, keep }] covering the whole clip, in order
   let tracks = [];        // the clip's audio tracks (from the server); the mix isn't offered
   const removed = new Set();
   const undo = [];
   let busy = false;
   const MIN_PIECE = 0.2;  // seconds; no slivers from double-clicking Split
-  const snap = (t) => keys.filter((k) => k <= t + 0.001).pop() ?? 0;
+  const snap = (t) => (exact ? t : keys.filter((k) => k <= t + 0.001).pop() ?? 0);
+  // an exact cut that doesn't land on a keyframe's own frame gets a losslessly rebuilt lead-in
+  const offKey = (t) => t > 0.0005 && !keys.some((k) => t >= k - 0.0005 && t < k + frameDur - 0.0005);
   // Kept stretches: neighbouring kept parts merge; `from` is where the copy really starts.
   const runs = () => {
     const out = [];
@@ -5521,7 +5527,7 @@ async function openTrim(c, opener) {
     info.classList.toggle('is-error', Boolean(issue));
     const gone = tracks.filter((t) => removed.has(t.index)).map((t) => t.mic ? `${t.label} (mic)` : t.label);
     const remix = gone.length && tracks.some((t) => t.mix) && tracks.filter((t) => !t.mix && !removed.has(t.index)).length > 1;
-    info.textContent = issue || `${list.length === 1 ? 'Keeping 1 part' : `Keeping ${list.length} parts`} · ${fmtT(length)} long${early ? ' · striped bits are kept so each part starts on a keyframe' : ''}${gone.length ? ` · without ${gone.join(' and ')}` : ''} · ${remix ? 'video untouched, only the mix is re-encoded' : 'no re-encoding, same quality'}`;
+    info.textContent = issue || `${list.length === 1 ? 'Keeping 1 part' : `Keeping ${list.length} parts`} · ${fmtT(length)} long${early ? ' · striped bits are kept so each part starts on a keyframe' : ''}${gone.length ? ` · without ${gone.join(' and ')}` : ''} · ${exact && list.some((r) => offKey(r.start)) ? `exact cuts, every frame identical to the original${remix ? ', the mix re-encoded' : ''}` : remix ? 'video untouched, only the mix is re-encoded' : 'no re-encoding, same quality'}`;
     save.disabled = busy || Boolean(issue);
     save.textContent = busy ? 'Saving…' : list.length > 1 || gone.length ? 'Save edited copy' : 'Save trimmed copy';
     previewBtn.disabled = !list.length;
@@ -5598,7 +5604,7 @@ async function openTrim(c, opener) {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const step = (d) => { video.pause(); video.currentTime = Math.min(Math.max(video.currentTime + d, 0), duration); updateHead(); };
     const run = { ' ': togglePlayback, k: togglePlayback, s: () => act('split'), x: () => act('toggle'), Delete: () => act('toggle'), Backspace: () => act('toggle'),
-      '[': () => act('start'), ']': () => act('end'), ArrowLeft: () => step(-1), ArrowRight: () => step(1), ',': () => step(-1 / 30), '.': () => step(1 / 30) }[e.key.length === 1 ? e.key.toLowerCase() : e.key];
+      '[': () => act('start'), ']': () => act('end'), ArrowLeft: () => step(-1), ArrowRight: () => step(1), ',': () => step(-frameDur), '.': () => step(frameDur) }[e.key.length === 1 ? e.key.toLowerCase() : e.key];
     if (!run || (e.key === ' ' && e.target.matches?.('button:not(.edit-play)'))) return;
     e.preventDefault();
     run();
@@ -5624,6 +5630,8 @@ async function openTrim(c, opener) {
   try {
     const k = await api(`/api/clips/${c.id}/keyframes`);
     keys = k.keyframes.length ? k.keyframes : [0];
+    exact = Boolean(k.exact);
+    if (k.frame > 0 && k.frame < 1) frameDur = k.frame;
     tracks = k.tracks || [];
     renderTracks();
     ready(k.duration);
