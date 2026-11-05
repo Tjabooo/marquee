@@ -5,6 +5,9 @@
 //   [{ "id": "2026-11-05", "date": "2026-11-05", "title": "…",
 //      "items": [{ "title": "…", "text": "…", "audience": "owner" (optional: only the owner sees it) }] }]
 //
+// "announce": false keeps an entry in the history (the What's new button) without ever popping it up,
+// for notes written after the fact about older updates.
+//
 // Each person's settings remember the newest update they've seen (seenUpdate). People who have never
 // seen one see the updates published since they joined, so a newcomer isn't shown the whole history.
 import fs from 'node:fs';
@@ -36,7 +39,7 @@ export function parseEntries(raw) {
       .filter((i) => i.title || i.text);
     if (!items.length) continue;
     seen.add(e.id);
-    out.push({ id: e.id, date: e.date, title: text(e.title, 120), items });
+    out.push({ id: e.id, date: e.date, title: text(e.title, 120), items, announce: e.announce !== false });
   }
   return out.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
 }
@@ -56,16 +59,17 @@ function entries() {
 // What this person may read: owner-only items are left out for everyone else.
 function visible(list, user) {
   return list
-    .map((e) => ({ ...e, items: e.items.filter((i) => i.audience === 'all' || user?.isOwner).map(({ title, text }) => ({ title, text })) }))
+    .map(({ announce, ...e }) => ({ ...e, items: e.items.filter((i) => i.audience === 'all' || user?.isOwner).map(({ title, text }) => ({ title, text })) }))
     .filter((e) => e.items.length);
 }
 
 export const allFor = (user) => visible(entries(), user);
+const announced = (list) => list.filter((e) => e.announce);
 export const isUpdateId = (id) => ID.test(String(id));
 
 // The updates this person hasn't seen yet, newest first.
 export function unseenFor(user, list = entries()) {
-  const mine = visible(list, user);
+  const mine = visible(announced(list), user);
   const seenId = user?.settings?.seenUpdate || '';
   const seenAt = mine.findIndex((e) => e.id === seenId);
   let unseen;
@@ -84,7 +88,7 @@ export function unseenFor(user, list = entries()) {
 // The status reply's part: newest update id, the unseen ones, and a build id that changes when the
 // web app does, so an open page can offer a reload after an update.
 export function statusFor(user, build) {
-  const list = visible(entries(), user);
+  const list = visible(announced(entries()), user);
   return { latest: list[0]?.id || null, unseen: unseenFor(user), build };
 }
 

@@ -76,5 +76,236 @@
         "audience": "owner"
       }
     ]
+  },
+  {
+    "id": "2026-11-04",
+    "date": "2026-11-04",
+    "title": "Episode pictures and a tidier library",
+    "announce": false,
+    "items": [
+      {
+        "title": "A picture for every episode",
+        "text": "Episodes now show a still from the episode itself in the season list, Continue watching and Up next, so you can spot the one you want at a glance."
+      },
+      {
+        "title": "Delete a season or a whole show",
+        "text": "A show's page can remove one season or the whole show in one go, instead of episode by episode."
+      },
+      {
+        "title": "Ready to play sooner",
+        "text": "New downloads are prepared for playing about twice as fast, and Firefox gets its own copy straight away instead of when you press Play."
+      },
+      {
+        "title": "Tidier subtitles",
+        "text": "Subtitle lines no longer crowd into each other, and long lines stop wrapping too early in Firefox."
+      },
+      {
+        "title": "Steadier TV casting",
+        "text": "Play on TV keeps playing the file it started with, even if the library changes underneath it."
+      },
+      {
+        "title": "Notes on your phone",
+        "text": "Notes fit small screens now: easy-to-tap actions with undo, the keyboard no longer covers what you're typing, and images open full screen.",
+        "audience": "owner"
+      },
+      {
+        "title": "Search inside images",
+        "text": "Text in note images (screenshots, receipts, posters) is read automatically, so a search finds them too.",
+        "audience": "owner"
+      },
+      {
+        "title": "Notes and clips in Discord",
+        "text": "A shared note shows as a preview card in Discord with its images or video. Shared clips open in Marquee's own player, at full quality.",
+        "audience": "owner"
+      },
+      {
+        "title": "Better clip editing",
+        "text": "Cut several parts out of a clip in one edit, and leave out audio tracks you don't want, like a noisy mic.",
+        "audience": "owner"
+      },
+      {
+        "title": "House: Sharing and Screen Time",
+        "text": "House → Sharing shows what streams and encodes cost the server right now. Screen Time shows how long each computer at home has been used, and on what.",
+        "audience": "owner"
+      }
+    ]
+  },
+  {
+    "id": "2026-11-03",
+    "date": "2026-11-03",
+    "title": "One-press downloads",
+    "announce": false,
+    "items": [
+      {
+        "title": "Download in one press",
+        "text": "Download picks the best release for you from your quality setting, size limit and audio language. For a show, choose the season and press Download Season."
+      },
+      {
+        "title": "Episodes in order",
+        "text": "Episode one downloads first and at full speed, so you can start watching while the rest of the season finishes."
+      },
+      {
+        "title": "1440p",
+        "text": "Between 1080p and 4K, there's now a 1440p choice for sharp pictures without 4K's size."
+      },
+      {
+        "title": "One library",
+        "text": "Downloads show on the title's own card in your library, episode by episode, as soon as each one is ready."
+      },
+      {
+        "title": "A library that keeps itself current",
+        "text": "New downloads and changes appear in the library on their own, and when an episode ends, Marquee offers the next one."
+      },
+      {
+        "title": "Notes",
+        "text": "A shared Notes tab for messages, links, photos and videos. Photos and videos uploaded from a phone stay private to Marquee.",
+        "audience": "owner"
+      },
+      {
+        "title": "Rename clips",
+        "text": "Give a clip a proper name instead of the recorder's timestamp.",
+        "audience": "owner"
+      }
+    ]
+  },
+  {
+    "id": "2026-11-02",
+    "date": "2026-11-02",
+    "title": "Your own Marquee",
+    "announce": false,
+    "items": [
+      {
+        "title": "Your own account",
+        "text": "Everyone signs in to their own Marquee: your library, where you stopped and your settings are yours. If someone else already has a title on the server, add it to your library instead of downloading it again."
+      },
+      {
+        "title": "Settings",
+        "text": "A Settings tab for colour themes, default subtitles, preferred quality, the page Marquee opens on and how your library is sorted."
+      },
+      {
+        "title": "Watch Together",
+        "text": "Start a room from the player and send the link: playback stays in sync for everyone, and each person picks their own subtitles. Links show a preview in Discord."
+      },
+      {
+        "title": "Shows by season",
+        "text": "Shows appear once in your library with their seasons and episode names. When there's no good season download, Marquee gets it episode by episode."
+      },
+      {
+        "title": "Library clean-up",
+        "text": "Videos leave your library 7 days after they finish downloading unless you tap Keep, so old downloads don't pile up on the server."
+      },
+      {
+        "title": "Arrows on Discover",
+        "text": "Rows on Discover have arrows, so you can scroll them with a mouse."
+      },
+      {
+        "title": "House",
+        "text": "The House tab shows the server's disks, downloads and services, plus the computers at home. Wake the gaming PC and pick Linux or Windows, or restart it into the other.",
+        "audience": "owner"
+      },
+      {
+        "title": "Clips",
+        "text": "Game clips from the PC, grouped by game, with share links that play right inside Discord. Trim them without losing quality, or delete the ones you don't want.",
+        "audience": "owner"
+      },
+      {
+        "title": "Invite links",
+        "text": "Make a one-time invite link in Activity: the person enters their email and gets access, no dashboard needed.",
+        "audience": "owner"
+      }
+    ]
+  },
+  {
+    "id": "2026-11-01",
+    "date": "2026-11-01",
+    "title": "A player of our own",
+    "announce": false,
+    "items": [
+      {
+        "title": "New player controls",
+        "text": "A seek bar that shows how much has loaded and the time under your finger, volume that's remembered, and everything in one row. On phones, double-tap left or right to skip 10 seconds."
+      },
+      {
+        "title": "Subtitles that make room",
+        "text": "Subtitles are sized to the picture and move just far enough to clear the controls while they show. On an upright phone they sit in the empty space below the picture."
+      },
+      {
+        "title": "Keyboard shortcuts",
+        "text": "Space to pause, arrows to skip and change volume, F for fullscreen, C for subtitles and more. Press ? while watching to see them all."
+      },
+      {
+        "title": "Pause or remove downloads",
+        "text": "Downloads can be paused, resumed or deleted from their card."
+      },
+      {
+        "title": "Plays in Firefox",
+        "text": "Browsers that can't play HEVC video, like Firefox, get a copy they can play, made automatically."
+      }
+    ]
+  },
+  {
+    "id": "2026-10-09",
+    "date": "2026-10-09",
+    "title": "Subtitles in sync",
+    "announce": false,
+    "items": [
+      {
+        "title": "Subtitles fix themselves",
+        "text": "Subtitles are lined up with the audio automatically when they're out of sync."
+      },
+      {
+        "title": "Nudge subtitles",
+        "text": "If a line still shows up early or late, shift the subtitles in small steps from the player."
+      },
+      {
+        "title": "Safari and iPhone",
+        "text": "Videos now play in Safari on Mac, iPhone and iPad."
+      },
+      {
+        "title": "Theater mode",
+        "text": "In theater mode the player bar hides itself and the video sits in the middle of the screen."
+      },
+      {
+        "title": "One remote",
+        "text": "When you cast to a TV, the remote shows only on the device that started it."
+      },
+      {
+        "title": "Activity log",
+        "text": "The owner can see what happened on the server: who watched, downloaded and deleted what.",
+        "audience": "owner"
+      }
+    ]
+  },
+  {
+    "id": "2026-10-02",
+    "date": "2026-10-02",
+    "title": "Play on your TV",
+    "announce": false,
+    "items": [
+      {
+        "title": "AirPlay and Chromecast",
+        "text": "Send a film or episode to your TV at full quality."
+      },
+      {
+        "title": "Home TVs stay at home",
+        "text": "The TVs at home are only offered when you're on the home network."
+      },
+      {
+        "title": "Ready sooner",
+        "text": "New downloads are picked up for playing every 30 seconds instead of every two minutes."
+      }
+    ]
+  },
+  {
+    "id": "2026-09-30",
+    "date": "2026-09-30",
+    "title": "Marquee opens",
+    "announce": false,
+    "items": [
+      {
+        "title": "Welcome to Marquee",
+        "text": "Find films and shows, download them to the server and stream them in your browser, on any device."
+      }
+    ]
   }
 ]

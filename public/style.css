@@ -56,6 +56,41 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
   letter-spacing: -0.02em;
   color: var(--bulb);
 }
+/* wordmark on the left, the What's new button on the right (app.js: renderWhatsNewButton) */
+.top-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 4px 0 10px; }
+.top-row .wordmark { margin: 0; }
+.news-btn {
+  display: inline-flex; align-items: center; gap: 8px; flex: none;
+  height: 34px; padding: 0 13px 0 12px;
+  font-family: inherit; font-size: 13px; font-weight: 600; line-height: 1; color: var(--dust);
+  background: color-mix(in srgb, var(--curtain) 70%, transparent);
+  border: 1px solid var(--line); border-radius: 999px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background-color 0.15s;
+}
+.news-btn:hover { color: var(--paper); border-color: color-mix(in srgb, var(--bulb) 45%, var(--line)); }
+/* an unlit marquee bulb that lights up while there's an update you haven't seen */
+.news-bulb {
+  width: 8px; height: 8px; border-radius: 50%;
+  border: 1.5px solid color-mix(in srgb, var(--bulb) 55%, var(--dust));
+  transition: background-color 0.2s, box-shadow 0.2s;
+}
+.news-btn.has-new { color: var(--paper); border-color: color-mix(in srgb, var(--bulb) 60%, var(--line)); }
+.news-btn.has-new .news-bulb {
+  border-color: var(--bulb); background: var(--bulb);
+  box-shadow: 0 0 0 3px var(--bulb-dim), 0 0 12px var(--bulb-dim);
+  animation: news-glow 2.4s ease-in-out infinite;
+}
+.news-count {
+  min-width: 18px; height: 18px; padding: 0 5px; margin-right: -5px;
+  display: inline-grid; place-items: center;
+  font-size: 11px; font-weight: 800; color: var(--on-bulb);
+  background: var(--bulb); border-radius: 999px;
+}
+@keyframes news-glow { 50% { box-shadow: 0 0 0 4px var(--bulb-dim), 0 0 18px var(--bulb); } }
+@media (prefers-reduced-motion: reduce) { .news-btn.has-new .news-bulb { animation: none; } }
+@media (max-width: 340px) { .news-btn:not(.has-new) .news-label { display: none; } .news-btn { padding: 0 12px; } }
+
 .search { position: relative; display: flex; align-items: center; }
 .search-icon { position: absolute; left: 14px; color: var(--dust); pointer-events: none; }
 .search input {
@@ -1835,6 +1870,8 @@ button.st-col:hover .st-stack { filter: brightness(1.12); }
   background: linear-gradient(to bottom, transparent, var(--curtain) 35%);
 }
 .whats-new-done { flex: 1; }
+.whats-new-actions:has(.whats-new-all) { gap: 10px; }
+.whats-new-all { height: auto; min-height: 44px; flex: none; }
 .whats-new-open { min-height: 40px; white-space: nowrap; }
 .whats-new-open.has-new { color: var(--on-bulb); background: var(--bulb); border-color: var(--bulb); }
 @media (min-width: 700px) { .whats-new-done { flex: 0 0 auto; min-width: 160px; margin-left: auto; } }

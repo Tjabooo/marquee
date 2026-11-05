@@ -17,7 +17,9 @@ All notable changes to Marquee. Versions follow [Semantic Versioning](https://se
   and a **second subtitle language** shown above the first.
 - **What's new**: after an update, everyone sees its notes once in a sheet (written in `whats-new.json`,
   newest first; items can be marked `"audience": "owner"`). Settings → What's new lists past updates,
-  and a page left open through an update offers a reload.
+  and a page left open through an update offers a reload. A **What's new** button in the header opens
+  the full history any time and lights up while an update is unseen; older updates back to the first
+  version are listed there too (`"announce": false` keeps an entry out of the popup).
 - Stats for nerds in the player: press `I` (or right-click / long-press the picture) for a live
   panel with everything about the stream. From the server's ffprobe of the exact file being
   played: container, size, overall and per-stream bitrate, codec with profile and level, frame

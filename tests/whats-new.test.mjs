@@ -60,6 +60,31 @@ test('owner-only items are hidden from everyone else', () => {
   assert.deepEqual(owner.map((e) => e.id), ['owner-only', 'mixed']);
 });
 
+test('history written after the fact is listed but never pops up', () => {
+  const list = parseEntries([
+    { ...entry('past', '2026-02-01'), announce: false },
+    { ...entry('past2', '2026-04-15'), announce: false },
+    entry('now', '2026-04-10'),
+  ]);
+  const newcomer = user({}, Date.parse('2026-01-15'));
+  assert.deepEqual(unseenFor(newcomer, list).map((e) => e.id), ['now']);
+  assert.deepEqual(unseenFor(user({ seenUpdate: 'past' }), list).map((e) => e.id), ['now']);
+  assert.deepEqual(unseenFor(user({ seenUpdate: 'now' }), list), []);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'marquee-whats-new-'));
+  const file = path.join(dir, 'whats-new.json');
+  try {
+    initWhatsNew(file);
+    fs.writeFileSync(file, JSON.stringify([{ ...entry('past', '2026-02-01'), announce: false }, entry('now', '2026-04-10')]));
+    assert.equal(statusFor(user(), 'b1').latest, 'now');
+    const all = allFor(user());
+    assert.deepEqual(all.map((e) => e.id), ['now', 'past']);
+    assert.ok(all.every((e) => !('announce' in e)), 'the flag stays on the server');
+  } finally {
+    initWhatsNew(null);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('the file is read from disk and re-read when it changes', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'marquee-whats-new-'));
   const file = path.join(dir, 'whats-new.json');
@@ -88,6 +113,9 @@ test('the shipped whats-new.json is valid and nothing in it is dropped', () => {
   assert.ok(Array.isArray(raw) && raw.length > 0);
   assert.equal(parseEntries(raw).length, raw.length);
   for (const e of raw) for (const i of e.items) assert.ok(i.title && i.text, `${e.id}: every item needs a title and a text`);
+  // only the newest updates may pop up: everything older is history written after the fact
+  const firstAnnounced = raw.findLastIndex((e) => e.announce !== false);
+  assert.ok(raw.slice(0, firstAnnounced + 1).every((e) => e.announce !== false), 'a quiet history entry sits between announced ones');
 });
 
 test('the build id changes with the files', () => {

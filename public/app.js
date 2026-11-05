@@ -4613,10 +4613,29 @@ async function loadPeople() {
 // After an update, everyone sees its notes once (whats-new.json on the server, via /api/status). The
 // popup waits while a video plays or another sheet is open, and closing it marks the update as seen.
 // A page left open across an update offers a reload, since it still runs the old app.
-const whatsNewView = { open: false, retry: null, build: null, staleNoted: false };
+const whatsNewView = { open: false, retry: null, build: null, staleNoted: false, opener: null };
 const updateDate = (d) => new Date(`${d}T12:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: new Date().getFullYear() === Number(d.slice(0, 4)) ? undefined : 'numeric' });
+// The header's What's new button opens the whole history at any time, and lights up while an update
+// hasn't been seen yet.
+function renderWhatsNewButton() {
+  const btn = $('#whats-new-btn');
+  const wn = state.status?.whatsNew;
+  btn.hidden = !wn;
+  const unseen = wn?.unseen?.length || 0;
+  btn.classList.toggle('has-new', unseen > 0);
+  btn.querySelector('.news-count').hidden = !unseen;
+  btn.querySelector('.news-count').textContent = unseen;
+  btn.setAttribute('aria-label', unseen ? `What’s new: ${unseen} new ${unseen === 1 ? 'update' : 'updates'}` : 'What’s new: every update to Marquee');
+}
+$('#whats-new-btn').addEventListener('click', () => {
+  // unseen updates first, as the popup would show them; otherwise the full history
+  const wn = state.status?.whatsNew;
+  if (wn?.unseen?.length && !whatsNewView.open) { clearTimeout(whatsNewView.retry); openWhatsNew(wn.unseen, { latest: wn.latest }); }
+  else showUpdateHistory();
+});
 function maybeShowWhatsNew() {
   const wn = state.status?.whatsNew;
+  renderWhatsNewButton();
   if (!wn) return;
   whatsNewView.build ??= wn.build;
   const stale = Boolean(wn.build && whatsNewView.build !== wn.build);
@@ -4635,6 +4654,7 @@ function maybeShowWhatsNew() {
 function markUpdatesSeen(latest) {
   if (!latest || state.me?.settings?.seenUpdate === latest) return;
   if (state.status?.whatsNew) state.status.whatsNew.unseen = [];
+  renderWhatsNewButton();
   saveMe({ seenUpdate: latest }, null);
 }
 function updateEntry(e, heading = true) {
@@ -4647,8 +4667,10 @@ function updateEntry(e, heading = true) {
       h('div', {}, i.title && h('strong', {}, i.title), i.text && h('p', {}, i.text))))));
 }
 // updates: newest first. latest: the id to mark seen when the sheet closes (none for the history view).
-function openWhatsNew(updates, { latest = null, stale = false, history = false } = {}) {
-  const opener = document.activeElement;
+// replace: the sheet is already open (popup → All updates), so swap its content in place.
+function openWhatsNew(updates, { latest = null, stale = false, history = false, replace = false } = {}) {
+  const opener = replace ? whatsNewView.opener : document.activeElement;
+  whatsNewView.opener = opener;
   whatsNewView.open = true;
   const single = updates.length === 1 && !history;
   const done = h('button', { class: 'play-btn whats-new-done', type: 'button' }, stale ? 'Reload to update' : history ? 'Close' : 'Got it');
@@ -4656,24 +4678,30 @@ function openWhatsNew(updates, { latest = null, stale = false, history = false }
     if (stale) { markUpdatesSeen(latest); setTimeout(() => location.reload(), 150); return; }
     closeTopOverlay();
   });
+  // From the popup, the full history is one tap away (closing it marks these updates seen first).
+  const allBtn = h('button', { class: 'chip whats-new-all', type: 'button' }, 'All updates');
+  allBtn.addEventListener('click', () => { markUpdatesSeen(latest); showUpdateHistory({ replace: true }); });
   $('#picker-body').replaceChildren(h('div', { class: 'whats-new' },
     h('p', { class: 'whats-new-eyebrow' }, history ? 'Updates' : 'New in Marquee'),
     h('h2', { id: 'picker-title' }, history ? 'What’s new' : single ? updates[0].title || 'What’s new' : 'What’s new'),
     single && h('p', { class: 'picker-sub muted' }, updateDate(updates[0].date)),
     updates.length ? updates.map((e) => updateEntry(e, !single)) : h('p', { class: 'muted' }, 'No updates yet.'),
     stale && h('p', { class: 'set-hint whats-new-stale' }, 'This page is from before the update. Reload it to use what’s new.'),
-    h('div', { class: 'whats-new-actions' }, done)));
-  pushOverlay(showSheet($('#picker'), $('#picker-backdrop'), () => {
+    h('div', { class: 'whats-new-actions' }, !history && allBtn, done)));
+  const close = showSheet($('#picker'), $('#picker-backdrop'), () => {
     whatsNewView.open = false;
     markUpdatesSeen(latest);
     opener?.focus?.({ preventScroll: true });
-  }));
+  });
+  if (replace && overlayStack.length) overlayStack[overlayStack.length - 1] = close;
+  else pushOverlay(close);
   if (!history) done.focus({ preventScroll: true });
 }
-async function showUpdateHistory() {
+async function showUpdateHistory({ replace = false } = {}) {
   try {
     const { updates } = await api('/api/whats-new');
-    openWhatsNew(updates, { history: true, latest: updates[0]?.id || null });
+    if (replace && !whatsNewView.open) return; // closed while loading
+    openWhatsNew(updates, { history: true, latest: state.status?.whatsNew?.latest || null, replace });
   } catch (err) { toast(err.message); }
 }
 

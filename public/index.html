@@ -34,7 +34,12 @@
 <body>
   <header class="top">
     <div class="top-inner">
-      <h1 class="wordmark"><a href="/" id="home-link" aria-label="Marquee — Discover">Marquee</a></h1>
+      <div class="top-row">
+        <h1 class="wordmark"><a href="/" id="home-link" aria-label="Marquee — Discover">Marquee</a></h1>
+        <button type="button" class="news-btn" id="whats-new-btn" aria-haspopup="dialog" hidden>
+          <span class="news-bulb" aria-hidden="true"></span><span class="news-label">What’s new</span><span class="news-count" hidden></span>
+        </button>
+      </div>
       <form class="search" role="search" id="search-form">
         <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
         <label class="sr-only" for="q">Search</label>
