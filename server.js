@@ -2083,7 +2083,7 @@ async function sendPreview(res, file, sheet) {
   if (sheet == null) return sendJson(res, 200, await previews.index(file));
   const jpg = await previews.sheet(file, Number(sheet));
   if (!jpg) throw new HttpError(404, 'That preview isn’t ready yet.');
-  res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, max-age=604800' });
+  res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, max-age=2592000, immutable' });
   res.end(await fs.promises.readFile(jpg));
 }
 

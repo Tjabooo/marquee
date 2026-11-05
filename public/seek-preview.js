@@ -1,7 +1,22 @@
 // Timeline previews above the seek bar: the frame at the hovered (or dragged-to) time, cut from
 // the storyboard sheets the server makes in the background (previews.js). Shared by the app's
 // player and the shared clip page. Until part of a video's storyboard exists, only the time shows.
+// Once a video's index is in, its sheets download in the background (one at a time, low priority,
+// nearest the hovered spot first), so hovering shows a frame at once instead of waiting on the
+// network for each 25-frame stretch. A film's whole storyboard is about 3 MB.
 const POLL_MS = 4000;
+const WARM_DELAY_MS = 1500; // let the video's first bytes go first
+
+// Order to fetch sheets 0..count-1 in: the one at `from` first, then outward both ways.
+export function warmOrder(count, from = 0) {
+  const start = Math.min(Math.max(0, from | 0), Math.max(0, count - 1));
+  const out = [];
+  for (let d = 0; out.length < count; d++) {
+    if (start + d < count) out.push(start + d);
+    if (d && start - d >= 0) out.push(start - d);
+  }
+  return out;
+}
 
 // Index of the last frame at or before t (frames are keyframes, so a little before is right).
 export function frameAt(times, t) {
@@ -38,7 +53,10 @@ export function createSeekPreview(tip, onResize) {
   let poll = null;
   let lastT = null;
   let shownKey = '';
-  const sheets = new Map(); // url -> { img, ready }
+  let warmTimer = null;
+  let warming = false;
+  const sheets = new Map(); // url -> { img, ready, done (promise) }
+  const saveData = () => !!navigator.connection?.saveData;
 
   function stop() {
     gen++;
@@ -46,6 +64,34 @@ export function createSeekPreview(tip, onResize) {
     abort = null;
     clearTimeout(poll);
     poll = null;
+    clearTimeout(warmTimer);
+    warmTimer = null;
+    warming = false;
+  }
+
+  // Fetch the sheets that exist and aren't loaded yet, one after another. Runs again whenever a
+  // still-growing storyboard gets more sheets.
+  function warm(g, delay = 0) {
+    if (warmTimer || warming || saveData()) return;
+    warmTimer = setTimeout(async () => {
+      warmTimer = null;
+      if (g !== gen || !index) return;
+      warming = true;
+      const count = index.sheets || 0;
+      try {
+        const per = index.cols * index.rows;
+        const at = lastT != null ? Math.floor(Math.max(0, frameAt(index.times, lastT)) / per) : 0;
+        for (const n of warmOrder(count, at)) {
+          if (g !== gen) return;
+          await sheet(n, 'low').done;
+        }
+      } finally {
+        if (g === gen) {
+          warming = false;
+          if ((index?.sheets || 0) > count) warm(g); // more sheets appeared meanwhile
+        }
+      }
+    }, delay);
   }
 
   async function fetchIndex(g) {
@@ -60,22 +106,32 @@ export function createSeekPreview(tip, onResize) {
       if (data.failed) return;
       index = data;
       if (lastT != null && !tip.hidden) render(lastT);
+      warm(g, WARM_DELAY_MS);
       if (!data.done) poll = setTimeout(() => fetchIndex(g), POLL_MS);
     } catch { /* offline or aborted: keep what there is */ }
   }
 
-  function sheet(n) {
+  // priority 'low' is for background warming; a hovered sheet loads at the normal priority.
+  function sheet(n, priority) {
     const url = source.sheetUrl(n, index.key);
     let s = sheets.get(url);
     if (!s) {
       const img = new Image();
+      img.decoding = 'async';
+      if (priority) img.fetchPriority = priority;
       s = { img, ready: false };
       const g = gen;
-      img.onload = () => { s.ready = true; if (g === gen && lastT != null && !tip.hidden) { render(lastT); onResize?.(); } };
-      img.onerror = () => { sheets.delete(url); };
+      s.done = new Promise((resolve) => {
+        img.onload = () => {
+          s.ready = true;
+          resolve();
+          if (g === gen && lastT != null && !tip.hidden) { render(lastT); onResize?.(); }
+        };
+        img.onerror = () => { sheets.delete(url); resolve(); };
+      });
       img.src = url;
       sheets.set(url, s);
-      if (sheets.size > 80) sheets.delete(sheets.keys().next().value);
+      if (sheets.size > 400) sheets.delete(sheets.keys().next().value);
     }
     return { url, ...s };
   }
