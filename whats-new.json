@@ -1,5 +1,20 @@
 [
   {
+    "id": "2026-11-05-sheet-fixes",
+    "date": "2026-11-05",
+    "title": "Tidier sheets",
+    "items": [
+      {
+        "title": "Close stays in reach",
+        "text": "The ✕ on sheets like this one now stays in the corner while you scroll, instead of scrolling away with the text."
+      },
+      {
+        "title": "Cleaner bottom edge",
+        "text": "In What's new, text no longer peeks out below the Got it / Close button."
+      }
+    ]
+  },
+  {
     "id": "2026-11-05-faces-room",
     "date": "2026-11-05",
     "title": "Faces, and a new Watch Together",

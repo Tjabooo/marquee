@@ -378,7 +378,8 @@ main {
   background: color-mix(in srgb, var(--velvet) 70%, transparent);
   border: 0; border-radius: 50%;
 }
-.sheet-close { position: absolute; top: 12px; right: 12px; z-index: 2; }
+/* Sticky, so the close button stays put while a long sheet scrolls (it takes no room: the negative margin) */
+.sheet-close { position: sticky; top: 12px; z-index: 3; margin: 12px 12px -56px auto; }
 .sheet-hero { aspect-ratio: 16 / 9; background: var(--seat) center / cover no-repeat; }
 .sheet-hero.no-image { aspect-ratio: auto; height: 56px; }
 .sheet-content { padding: 18px var(--gutter) 0; }
@@ -1848,7 +1849,9 @@ button.st-col:hover .st-stack { filter: brightness(1.12); }
 }
 
 /* ---------- What's new (app.js: openWhatsNew) ---------- */
-.whats-new { padding-bottom: 18px; }
+.whats-new { padding-bottom: 0; }
+/* The sticky Got it / Close bar runs to the sheet's bottom edge, so nothing scrolls by underneath it */
+.sheet:has(.whats-new-actions) { padding-bottom: 0; }
 .whats-new-eyebrow {
   margin: 0 0 6px;
   font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
@@ -1873,7 +1876,7 @@ button.st-col:hover .st-stack { filter: brightness(1.12); }
 .whats-new-stale { margin-top: 14px; }
 .whats-new-actions {
   position: sticky; bottom: 0;
-  display: flex; padding: 16px 0 calc(4px + var(--safe-bottom));
+  display: flex; margin: 0 calc(-1 * var(--gutter)); padding: 18px var(--gutter) calc(20px + var(--safe-bottom));
   background: linear-gradient(to bottom, transparent, var(--curtain) 35%);
 }
 .whats-new-done { flex: 1; }
