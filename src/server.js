@@ -2119,7 +2119,7 @@ const server = http.createServer(async (req, res) => {
     if (!allowed) throw new HttpError(405, 'Method not allowed.');
     if (url.pathname.startsWith('/api/')) await handleApi(req, res, url);
     else if (url.pathname.startsWith('/play/')) await handlePlay(req, res, url);
-    // Public: shared clips, shared note previews and the Marquee invite card (bypassed in Cloudflare Access; see README)
+    // Public: shared clips, shared note previews and the Marquee invite card (bypassed in Cloudflare Access; see docs/remote-access.md)
     else if (url.pathname === '/c' || url.pathname.startsWith('/c/')) {
       if (!handleWatchPage(req, res, url, { rooms: watchRooms, artwork: watchArtwork })
         && !(await invites.handlePublic(req, res, url))

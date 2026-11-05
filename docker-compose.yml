@@ -1,5 +1,7 @@
 # Marquee with Docker Compose. Quick start:
 #   cp .env.example marquee.env      # then set TMDB_TOKEN and friends (not MEDIA_DIR/DATA_DIR/HOST/PORT)
+# Casting to TVs needs SERVER_IP=<this host's LAN address> in marquee.env, because the container's own
+# address isn't reachable from the TV; TV discovery (DLNA/Apple TV) needs network_mode: host.
 #   MEDIA_PATH=/path/to/media docker compose up -d
 # Optional services are profiles:  docker compose --profile qbittorrent up -d
 #   qbittorrent  qBittorrent next to Marquee (Web UI on port 8081)
@@ -28,8 +30,6 @@ services:
       HOST: 0.0.0.0
       PORT: "8080"
       TZ: ${TZ:-UTC}
-      # Requests from other containers (the compose network) carry no trusted identity by default.
-      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-127.0.0.1,::1}
     volumes:
       - ${MARQUEE_DATA:-./data}:/data
       - *media

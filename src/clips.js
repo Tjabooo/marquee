@@ -4,7 +4,7 @@
 //
 // Sharing gives a clip an unguessable link, /c/<token>. That page, its video and its thumbnail
 // are the only public things on the server: they work without Cloudflare Access once /c/ is
-// bypassed there (see README). The page is Marquee's player with only that clip in it, so anyone
+// bypassed there (see docs/remote-access.md). The page is Marquee's player with only that clip in it, so anyone
 // with the link can watch it (and nothing else); in Discord the link shows the clip's thumbnail.
 // The clips are AV1 with separate game / friends / mic tracks, which not every browser can play,
 // so sharing makes a full-resolution, near-lossless H.264 copy with the tracks mixed into one.
