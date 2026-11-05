@@ -389,30 +389,40 @@
 
     function now() { try { return av.getCurrentTime() / 1000; } catch (e) { return s.time; } }
     function showOsd(stay) {
+      var was = osd.classList.contains('show');
       osd.classList.add('show');
+      if (!was) paint();
       clearTimeout(osdTimer);
       if (!stay) osdTimer = setTimeout(function () { if (s.playing) osd.classList.remove('show'); }, 4000);
     }
+    // The web page sits on top of the video, and this TV's CPU is slow: touch the page only when something
+    // on it changes (the hidden OSD isn't updated, unchanged text isn't rewritten).
+    var osdBar = osd.querySelector('.osd-bar i'), osdPos = osd.querySelector('.pos'), osdDur = osd.querySelector('.dur'), osdState = osd.querySelector('.state');
+    function setText(el, text) { if (el.textContent !== text) el.textContent = text; }
     function paint() {
       var t = seekTarget != null ? seekTarget : s.time;
-      if (s.duration) {
-        osd.querySelector('.osd-bar i').style.width = (t / s.duration * 100).toFixed(2) + '%';
-        osd.querySelector('.dur').textContent = L.fmtTime(s.duration);
+      if (osd.classList.contains('show')) {
+        if (s.duration) {
+          var w = (t / s.duration * 100).toFixed(1) + '%';
+          if (osdBar.style.width !== w) osdBar.style.width = w;
+          setText(osdDur, L.fmtTime(s.duration));
+        }
+        setText(osdPos, L.fmtTime(t));
+        setText(osdState, s.playing || s.ended ? '' : 'Paused');
       }
-      osd.querySelector('.pos').textContent = L.fmtTime(t);
-      osd.querySelector('.state').textContent = s.playing ? '' : s.ended ? '' : 'Paused';
       if (s.cues) { var text = L.cueText(s.cues, s.time); if (subsEl.textContent !== text) subsEl.textContent = text; }
       var intro = !s.ended && L.introShowing(s.time, s.intro);
       if (intro && !s.introDone && s.playing && state.me && state.me.settings && state.me.settings.skipIntro === 'auto') { skipIntro(true); return; }
-      skipBtn.classList.toggle('show', intro);
-      skipBtn.classList.toggle('focus', intro && !menu.classList.contains('show'));
+      if (skipBtn.classList.contains('show') !== intro) skipBtn.classList.toggle('show', intro);
+      var skipFocus = intro && !menu.classList.contains('show');
+      if (skipBtn.classList.contains('focus') !== skipFocus) skipBtn.classList.toggle('focus', skipFocus);
       paintUpNext();
     }
     function nextUp() { return L.nextEpisode(f.id, state.library, state.shows); }
     function paintUpNext() {
       var next = nextUp();
       var on = Boolean(next && !s.dismissed && L.isNextTime(s.time, s.duration, s.creditsAt, s.ended));
-      upNext.classList.toggle('show', on);
+      if (upNext.classList.contains('show') !== on) upNext.classList.toggle('show', on);
       var counting = on && !s.busy && autoChain < L.AUTOPLAY_CHAIN;
       if (counting && s.autoLeft == null) startCountdown();
       else if (!on) stopCountdown();
