@@ -635,20 +635,31 @@ main {
   .seek-thumb { transform: scale(1); }
 }
 
-/* Feedback in the middle ("+10 s", "Volume 40%"), and the buffering ring around the play button */
+/* Feedback ("+10 s", "Volume 40%", sleep timer, a play/pause flash), and the buffering ring around
+   the play button. The feedback sits above the middle, clear of the 96px ring and the big play
+   button (shown when paused, and always with the touch controls), so neither covers the other.
+   --osd-lift = ring radius (48px) + a 14px gap + half the pill. */
 .player-osd {
-  position: absolute; z-index: 1; left: 50%; top: 50%;
+  --osd-h: 76px;
+  --osd-lift: calc(62px + var(--osd-h) / 2);
+  position: absolute; z-index: 1; left: 50%; top: calc(50% - var(--osd-lift));
   transform: translate(-50%, -50%);
   opacity: 0; pointer-events: none;
 }
 .player-osd.show { opacity: 1; animation: osd 0.7s ease-out forwards; }
 .player-osd > span {
   display: flex; align-items: center; justify-content: center;
-  min-width: 76px; height: 76px; padding: 0 22px;
+  min-width: var(--osd-h); height: var(--osd-h); padding: 0 22px;
   font: 700 20px/1 var(--display); font-variant-numeric: tabular-nums; white-space: nowrap;
-  color: var(--paper); background: rgba(0, 0, 0, 0.6); border-radius: 38px;
+  color: var(--paper); background: rgba(0, 0, 0, 0.6); border-radius: calc(var(--osd-h) / 2);
 }
 .player-osd svg { width: 32px; height: 32px; }
+/* phones (and any short window): a slimmer pill, so it also clears the top bar in landscape */
+@media (pointer: coarse), (max-height: 520px) {
+  .player-osd { --osd-h: 52px; }
+  .player-osd > span { padding: 0 18px; font-size: 17px; }
+  .player-osd svg { width: 24px; height: 24px; }
+}
 @keyframes osd {
   0% { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
   15%, 65% { opacity: 1; transform: translate(-50%, -50%) scale(1); }

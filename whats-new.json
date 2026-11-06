@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-06-player-feedback",
+    "date": "2026-11-06",
+    "title": "Player hints out of the way",
+    "items": [
+      {
+        "title": "Volume, sleep timer and skip hints",
+        "text": "The little messages in the player (volume, sleep timer, skips, night mode and so on) now show just above the middle of the picture, so they no longer cover the play button or the loading ring on your phone."
+      }
+    ]
+  },
+  {
     "id": "2026-11-06-agent-notify",
     "date": "2026-11-06",
     "title": "Agents can tap you on the shoulder",
