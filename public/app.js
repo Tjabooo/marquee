@@ -4614,6 +4614,7 @@ stage.addEventListener('dblclick', () => { if (lastPointer === 'mouse') toggleFu
 let osdTimer = null;
 function osd(content) {
   osdEl.replaceChildren(h('span', {}, content));
+  osdEl.classList.toggle('is-icon', typeof content !== 'string');
   osdEl.classList.remove('show');
   void osdEl.offsetWidth; // restart the animation
   osdEl.classList.add('show');

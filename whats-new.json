@@ -6,7 +6,7 @@
     "items": [
       {
         "title": "Volume, sleep timer and skip hints",
-        "text": "The little messages in the player (volume, sleep timer, skips, night mode and so on) now show just above the middle of the picture, so they no longer cover the play button or the loading ring on your phone."
+        "text": "The little messages in the player (volume, sleep timer, skips, night mode and so on) now show just above the middle of the picture, so they no longer cover the play button or the loading ring on your phone. The play/pause flash stays in the middle, on the play button."
       }
     ]
   },

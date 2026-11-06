@@ -77,6 +77,7 @@ let osdTimer = null;
 function osd(content) {
   const span = document.createElement('span');
   if (ICONS[content]) span.innerHTML = ICONS[content]; else span.textContent = content;
+  osdEl.classList.toggle('is-icon', !!ICONS[content]);
   osdEl.replaceChildren(span);
   osdEl.classList.remove('show');
   void osdEl.offsetWidth;

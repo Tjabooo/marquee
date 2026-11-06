@@ -636,7 +636,7 @@ main {
 }
 
 /* Feedback ("+10 s", "Volume 40%", sleep timer, a play/pause flash), and the buffering ring around
-   the play button. The feedback sits above the middle, clear of the 96px ring and the big play
+   the play button. Text feedback sits above the middle, clear of the 96px ring and the big play
    button (shown when paused, and always with the touch controls), so neither covers the other.
    --osd-lift = ring radius (48px) + a 14px gap + half the pill. */
 .player-osd {
@@ -647,6 +647,8 @@ main {
   opacity: 0; pointer-events: none;
 }
 .player-osd.show { opacity: 1; animation: osd 0.7s ease-out forwards; }
+/* the play/pause flash stays dead centre, on the big play button, so it never reads as a second one */
+.player-osd.is-icon { top: 50%; }
 .player-osd > span {
   display: flex; align-items: center; justify-content: center;
   min-width: var(--osd-h); height: var(--osd-h); padding: 0 22px;
