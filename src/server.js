@@ -2532,6 +2532,8 @@ async function handleApi(req, res, url) {
     const file = converter.preferConverted(await sourceFile(m[1], m[2]));
     const text = await subtitles.readSubtitle(file, m[3]);
     const vtt = m[4] === 'vtt';
+    // Only TVs ask for .srt (browsers get .vtt): shows whether a TV really picked the subtitles up.
+    if (!vtt && req.method === 'GET') console.log(`[cast] TV fetched ${m[3]} subtitles for ${path.basename(file)} (${String(req.headers['user-agent'] || 'no user agent').slice(0, 60)})`);
     res.writeHead(200, {
       'Content-Type': vtt ? 'text/vtt; charset=utf-8' : 'text/srt; charset=utf-8',
       'Cache-Control': 'no-cache',

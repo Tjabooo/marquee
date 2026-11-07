@@ -2317,6 +2317,19 @@ const jsonPost = (body) => ({ method: 'POST', headers: { 'content-type': 'applic
 const people = createPeople({ h, api, toast, me: () => state.me }); // faces and profile pictures (people.js)
 const social = createSocial({ h, api, jsonPost, toast, icon, people }); // likes, Popular, watch parties, Wrapped (social.js)
 
+// The subtitles the phone player would turn on by itself (see its subtitle setup), so a TV starts with
+// them too: the last used language when it's already saved for this video, else the one from Settings.
+// A saved empty choice means the viewer switched subtitles off.
+async function castSubFor(file) {
+  let pref = null;
+  try { pref = localStorage.getItem('subs:lang'); } catch { /* blocked */ }
+  const want = prefs().subLang;
+  if (pref === '' || (!pref && !want)) return null;
+  let langs;
+  try { langs = (await api(`/api/subs/langs?kind=${file.kind}&id=${encodeURIComponent(file.key)}`)).languages || []; } catch { return null; }
+  return langs.find((l) => l.code === pref && l.saved) || (want && langs.find((l) => l.code === want)) || null;
+}
+
 function openPicker(file, opener) {
   const restoreManager = pickerManagerSubview(opener);
   const name = [file.title, episodeLabel(file)].filter(Boolean).join(' ');
@@ -2401,7 +2414,14 @@ function openPicker(file, opener) {
     status.className = 'device-status';
     status.textContent = 'Starting on the TV…';
     try {
-      const { session } = await api('/api/cast/play', jsonPost({ deviceId: d.id, kind: file.kind, id: file.key }));
+      // Apple TV can't show subtitle files over AirPlay; smart TVs start with the player's default subtitles.
+      const sub = d.kind === 'airplay' ? null : await castSubFor(file);
+      if (sub) status.textContent = `Starting on the TV with ${sub.name} subtitles…`;
+      const play = (code) => api('/api/cast/play', jsonPost({ deviceId: d.id, kind: file.kind, id: file.key, ...(code ? { sub: code } : {}) }));
+      let result;
+      // Subtitles that can't be fetched shouldn't stop the video: start without them.
+      try { result = await play(sub?.code); } catch (err) { if (!sub) throw err; result = await play(null); }
+      const { session } = result;
       state.sessions = [session, ...state.sessions.filter((s) => s.deviceId !== session.deviceId)];
       renderNowbar();
       openRemote(session, { replace: true });

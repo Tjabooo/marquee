@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-07-tv-subtitles",
+    "date": "2026-11-07",
+    "title": "Subtitles on the TV",
+    "items": [
+      {
+        "title": "Play on TV keeps your subtitles",
+        "text": "Play on TV now starts with the same subtitles the player would turn on for you (your last language, or the one in Settings), so you don't have to pick them again in the TV remote. If they can't be fetched, the video starts without them. Apple TV still can't show subtitle files over AirPlay."
+      }
+    ]
+  },
+  {
     "id": "2026-11-06-player-feedback",
     "date": "2026-11-06",
     "title": "Player hints out of the way",
