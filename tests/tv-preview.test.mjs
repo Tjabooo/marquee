@@ -37,3 +37,18 @@ test('TV Preview keeps its render budget deliberately small', () => {
   assert.match(js, /items\.slice\(0, 8\)/);
   assert.match(js, /data\.rows \|\| \[\]\)\.slice\(0, 6\)/);
 });
+
+
+test('TV reconnect keeps the current position and never plays from zero after a failed restore seek', () => {
+  for (const path of ['public/tv/tv.js', 'public/tv-preview/tv.js']) {
+    const js = read(path);
+    assert.doesNotMatch(js, /av\.seekTo\(Math\.floor\(at \* 1000\), go, go\)/,
+      path + ': a failed reconnect seek must not fall through to play from 0:00');
+    assert.match(js, /var live = av\.getCurrentTime\(\) \/ 1000;/,
+      path + ': reconnect should snapshot AVPlay\'s last live position before closing');
+    assert.match(js, /s\.time = at;\s*save\(true\);\s*spinner\.textContent = 'Reconnecting…'/,
+      path + ': reconnect should persist the snapshot before reopening the stream');
+    assert.match(js, /av\.seekTo\(Math\.floor\(at \* 1000\), go, function \(e\) \{[\s\S]*if \(!reopen\(\)\) fail\('Couldn’t restore your playback position\./,
+      path + ': a failed restore seek should retry/fail instead of starting over');
+  }
+});
