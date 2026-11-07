@@ -2,7 +2,7 @@
 // It keeps the stable /tv client untouched while adding lightweight Discover + smart downloads.
 // Remote-control navigation, the TV's own player (AVPlay: MKV, HEVC, surround),
 // and Skip intro / Up next on the screen itself.
-// Written for the TV's browser engine (Samsung 2020 = Chrome 69): no ?. or ??, no newer built-ins.
+// Written for the TV's browser engine (Samsung 2020 = Chrome 69): no optional chaining, nullish coalescing, or newer built-ins.
 (function () {
   'use strict';
   var L = window.MarqueeTvLogic;

@@ -892,8 +892,11 @@ async function makeRoom(job) {
   if (job?.fix) fs.mkdirSync(outDir, { recursive: true });
   const busy = new Set(activeJobs().flatMap((j) => [fixPath(j.file), h264Path(j.file)]).filter(Boolean).map((f) => path.basename(f)));
   // Background browser copies never push others out: the next scan would queue the evicted ones again.
+  // They still have to COUNT toward the cap, though. Otherwise a background H.264 job can pretend the
+  // cache is empty, push it over the limit, and make the next scan delete a different copy that then
+  // gets queued for re-encoding. Busy copies also count, but cannot be removed.
   const mayEvict = !job || !job.fix || job.force || job.prepare;
-  const copies = mayEvict ? cachedCopies().filter((c) => !busy.has(c.name)) : [];
+  const copies = cachedCopies().map((c) => ({ ...c, evictable: mayEvict && !busy.has(c.name) }));
   const free = job ? await freeBytes(outDir) : null;
   const { names, fits } = pickEvictions(copies, {
     need: job ? outputEstimate(job) : 0,

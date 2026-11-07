@@ -18,7 +18,7 @@ export function sameDrive(a, b) {
 }
 
 // Which cached copies to delete so a new file of `need` bytes fits.
-//   entries:   [{ name, size, used }] (used = ms timestamp of the last time it was watched or made)
+//   entries:   [{ name, size, used, evictable? }] (used = ms timestamp; evictable=false still counts toward the cap)
 //   maxBytes:  the folder's cap (0 = none); `need` counts against it only when inFolder
 //   free:      free bytes on the output's drive (null = unknown); minFree must stay free after `need`
 //   sameDrive: the folder is on the output's drive, so deleting here frees space there
@@ -33,6 +33,7 @@ export function pickEvictions(entries, { need = 0, inFolder = true, maxBytes = 0
   for (const e of [...entries].sort((a, b) => a.used - b.used)) {
     if (capOk() && (freeOk() || !same)) break;
     if (e.used >= keepSince) break; // sorted: everything after this was used recently too
+    if (e.evictable === false) continue; // still occupies space; it just cannot be removed for this job
     names.push(e.name);
     total -= e.size;
     if (same && left != null) left += e.size;
