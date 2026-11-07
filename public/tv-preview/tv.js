@@ -215,7 +215,7 @@
     el.appendChild(top);
     el.appendChild(rowsEl);
     var rows = [];   // { el, track, items: [{ el, open }], index }
-    var r = 0;       // focused row; -1 = Switch account, -2 = Discover
+    var r = 0, topIndex = 0; // -1 = top controls; 0 Discover, 1 Switch account
 
     function build() {
       var data = L.homeRows(state.library, state.shows, state.progress);
@@ -258,8 +258,8 @@
         open: function () { playAsked(f); } };
     }
     function paint() {
-      discoverBtn.classList.toggle('focus', r === -2);
-      top.querySelector('.switch').classList.toggle('focus', r === -1);
+      discoverBtn.classList.toggle('focus', r === -1 && topIndex === 0);
+      top.querySelector('.switch').classList.toggle('focus', r === -1 && topIndex === 1);
       rows.forEach(function (row, i) {
         row.items.forEach(function (it, j) { it.el.classList.toggle('focus', i === r && j === row.index); });
         // Keep the focused card in view: the row slides so it sits second from the left.
@@ -278,13 +278,15 @@
       refresh: function () { loadLibrary().then(function () { build(); paint(); }).catch(function () {}); },
       key: function (code) {
         var row = rows[r];
-        if (code === KEY.UP) { if (r > -2) r--; paint(); return true; }
+        if (code === KEY.UP) { if (r > -1) r--; paint(); return true; }
         if (code === KEY.DOWN) { if (r < rows.length - 1) r++; paint(); return true; }
+        if (code === KEY.LEFT && r === -1) { topIndex = 0; paint(); return true; }
+        if (code === KEY.RIGHT && r === -1) { topIndex = 1; paint(); return true; }
         if (code === KEY.LEFT && row) { row.index = Math.max(0, row.index - 1); paint(); return true; }
         if (code === KEY.RIGHT && row) { row.index = Math.min(row.items.length - 1, row.index + 1); paint(); return true; }
         if (code === KEY.ENTER) {
-          if (r === -2) { discoverScreen(); return true; }
-          if (r === -1) { localStorage.removeItem(TOKEN_KEY); history = []; screen = null; pairScreen(true); return true; }
+          if (r === -1 && topIndex === 0) { discoverScreen(); return true; }
+          if (r === -1 && topIndex === 1) { localStorage.removeItem(TOKEN_KEY); history = []; screen = null; pairScreen(true); return true; }
           if (row) row.items[row.index].open();
           return true;
         }
