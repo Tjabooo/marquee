@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Builds the side-by-side Marquee Preview Samsung TV app and optionally puts it on the TV.\n# Different Tizen IDs keep the stable Marquee app installed as a fallback.
+# Builds the side-by-side Marquee Preview Samsung TV app and optionally puts it on the TV.
+# Different Tizen IDs keep the stable Marquee app installed as a fallback.
 #
 #   MARQUEE_URL=http://192.168.1.10:8080 tv/tizen-preview/build.sh            # just the .wgt in tv/tizen-preview/dist
 #   MARQUEE_URL=... TV=192.168.1.30 tv/tizen-preview/build.sh --install       # build, install and start it
