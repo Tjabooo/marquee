@@ -482,7 +482,7 @@
     function togglePause(want) {
       var pause = want != null ? want : s.playing;
       try { if (pause) av.pause(); else av.play(); } catch (e) { return; }
-      s.playing = !pause;
+      s.playing = !pause; movedAt = Date.now();
       countPlayed();
       if (pause) save(true);
       showOsd(pause); paint();
@@ -596,6 +596,47 @@
       spinner.textContent = 'This video can’t play on the TV. ' + (message || '');
       spinner.classList.add('error');
     }
+    // AVPlay on older Tizen can sit in "Loading…" forever after a dropped connection. If buffering or the
+    // play position stalls for 12 s, the stream is reopened where it stopped (up to 5 times in a row).
+    var streamUrl = null, bufferingSince = 0, movedAt = 0, lastPlayMs = -1, retries = 0, reopening = false;
+    function openStream(at) {
+      av.open(streamUrl);
+      movedAt = Date.now(); bufferingSince = 0;
+        av.setDisplayRect(0, 0, 1920, 1080);
+        try { av.setDisplayMethod('PLAYER_DISPLAY_MODE_LETTER_BOX'); } catch (e) { /* older firmware */ }
+        av.setListener({
+          onbufferingstart: function () { spinner.textContent = 'Loading…'; spinner.classList.add('show'); bufferingSince = Date.now(); },
+          onbufferingcomplete: function () { spinner.classList.remove('show'); bufferingSince = 0; retries = 0; },
+          oncurrentplaytime: function (ms) { if (seekTarget == null) s.time = ms / 1000; if (ms !== lastPlayMs) { lastPlayMs = ms; movedAt = Date.now(); } },
+          onstreamcompleted: function () {
+            s.ended = true; s.playing = false; countPlayed(); save(true);
+            if (nextUp() && !s.dismissed) { cardFocus = 0; paint(); } else leavePlayer();
+          },
+          onerror: function (e) { if (!reopen()) fail(String(e)); },
+          onevent: function () {},
+        });
+        av.prepareAsync(function () {
+          if (s.closed) return;
+          s.duration = av.getDuration() / 1000;
+          var go = function () { try { av.play(); s.playing = true; s.playTick = Date.now(); spinner.classList.remove('show'); showOsd(); paint(); } catch (e) { fail(e.message); } };
+          if (at > 5) { s.time = at; av.seekTo(Math.floor(at * 1000), go, go); } else go();
+        }, function (e) { if (!reopen()) fail(String(e && e.name || e)); });
+    }
+    function reopen() {
+      if (s.closed || reopening || !streamUrl || retries >= 5) return false;
+      retries++; reopening = true;
+      var at = s.time;
+      spinner.textContent = 'Reconnecting…'; spinner.classList.add('show');
+      try { av.stop(); } catch (e) { /* already */ }
+      try { av.close(); } catch (e) { /* already */ }
+      setTimeout(function () { reopening = false; if (!s.closed) { try { openStream(at); } catch (e) { fail(e.message); } } }, 1000);
+      return true;
+    }
+    function watchStall() {
+      if (reopening || s.ended || seekTarget != null) return;
+      var t = Date.now();
+      if ((bufferingSince && t - bufferingSince > 12000) || (s.playing && t - movedAt > 12000)) reopen();
+    }
     function begin() {
       document.body.insertBefore(obj, document.body.firstChild);
       document.body.classList.add('playing');
@@ -603,32 +644,15 @@
       // The MP4 copy when there is one (always TV-safe audio: the TV can't decode DTS), else the original.
       api('/api/play-link?kind=lib&id=' + encodeURIComponent(f.id) + '&variant=browser-hevc').then(function (link) {
         if (s.closed) return;
-        av.open(SERVER + link.url);
-        av.setDisplayRect(0, 0, 1920, 1080);
-        try { av.setDisplayMethod('PLAYER_DISPLAY_MODE_LETTER_BOX'); } catch (e) { /* older firmware */ }
-        av.setListener({
-          onbufferingstart: function () { spinner.textContent = 'Loading…'; spinner.classList.add('show'); },
-          onbufferingcomplete: function () { spinner.classList.remove('show'); },
-          oncurrentplaytime: function (ms) { if (seekTarget == null) s.time = ms / 1000; },
-          onstreamcompleted: function () {
-            s.ended = true; s.playing = false; countPlayed(); save(true);
-            if (nextUp() && !s.dismissed) { cardFocus = 0; paint(); } else leavePlayer();
-          },
-          onerror: function (e) { fail(String(e)); },
-          onevent: function () {},
-        });
-        av.prepareAsync(function () {
-          if (s.closed) return;
-          s.duration = av.getDuration() / 1000;
-          var go = function () { try { av.play(); s.playing = true; s.playTick = Date.now(); spinner.classList.remove('show'); showOsd(); paint(); } catch (e) { fail(e.message); } };
-          if (startAt > 5) { s.time = startAt; av.seekTo(Math.floor(startAt * 1000), go, go); } else go();
-        }, function (e) { fail(String(e && e.name || e)); });
+        streamUrl = SERVER + link.url;
+        openStream(startAt);
       }).catch(function (err) { fail(err.message); });
       tick = setInterval(function () {
         if (s.closed) return;
         if (s.playing && seekTarget == null) s.time = now();
         paint();
         if (s.playing) save(false);
+        watchStall();
       }, 500);
       var base = '/api/media/lib/' + encodeURIComponent(f.id);
       api(base + '/intro').then(function (d) { if (d.intro && d.intro.end - d.intro.start >= 5) s.intro = d.intro; }).catch(function () {});
