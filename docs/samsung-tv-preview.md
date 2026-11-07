@@ -83,15 +83,20 @@ A normal consumer TV does not accept a raw `.wgt` copied over USB; use the devel
 Open **Marquee Preview** from Apps. Pair it just like the stable TV app. Preview has separate app storage, so pairing
 it does not sign out or alter stable Marquee.
 
-On the Preview home screen, press **Up** once to reach the top controls:
+The Preview home screen shows Continue watching, Shows, Films and then one row per genre you own something in.
+Press **Up** to reach the top controls:
 
-- **Discover** opens lightweight server-curated rows.
-- Choose a film to Download immediately.
-- Choose a show, pick a season, then Download.
+- **Search** opens an on-screen keyboard (a USB/Bluetooth keyboard and the remote's number keys type too). Your own
+  titles show up at once; TMDB results follow when you stop typing.
+- **Discover** opens server-curated rows. **Films / Shows / All** tabs sit at the top; the focused title's backdrop
+  and description fill the top half. Rows keep loading as you move right (up to 60 cards) and end in **See all**,
+  a full grid. Below them: a row of genres (each opens a grid with Popular / Top rated / Newest) and one row per genre.
+- Choose a film to Download immediately, or Play it if it's already yours.
+- Choose a show, pick a season, then Download (or Open it if it's already yours).
 - **Quality** defaults to the person's existing Marquee download settings and can be overridden for that request.
 
-The TV never performs media searching or transfer work itself. It only renders a limited number of cards and sends
-the request to Marquee; the server handles the download job.
+The TV never performs media searching or transfer work itself. It only renders cards near the screen (posters load
+lazily, rows and grids stop at a cap) and sends the request to Marquee; the server handles TMDB and the download job.
 
 ## Rollback / fallback
 

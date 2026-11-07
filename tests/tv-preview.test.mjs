@@ -25,7 +25,10 @@ test('TV Preview client parses as old-browser JavaScript and uses server-side Di
   const shell = read('tv/tizen-preview/shell.js');
   assert.doesNotThrow(() => new vm.Script(js));
   assert.doesNotThrow(() => new vm.Script(shell));
-  assert.match(js, /\/api\/discover\/home\?type=all/);
+  assert.match(js, /\/api\/discover\/home\?type=/);
+  assert.match(js, /\/api\/discover\/list\?key=/);
+  assert.match(js, /\/api\/discover\/genre\?type=/);
+  assert.match(js, /\/api\/search\?q=/);
   assert.match(js, /\/api\/downloads\/smart/);
   assert.match(js, /\/api\/tv\//);
   assert.doesNotMatch(js, /\?\./, 'Chrome 69 preview client must not use optional chaining');
@@ -34,10 +37,32 @@ test('TV Preview client parses as old-browser JavaScript and uses server-side Di
 
 test('TV Preview keeps its render budget deliberately small', () => {
   const js = read('public/tv-preview/tv.js');
-  assert.match(js, /items\.slice\(0, 8\)/);
-  assert.match(js, /data\.rows \|\| \[\]\)\.slice\(0, 6\)/);
+  // Rows and grids grow as you scroll, but stop at a cap, and posters load only near the screen.
+  assert.match(js, /var ROW_MAX = 60\b/);
+  assert.match(js, /GRID_MAX = 300\b/);
+  assert.match(js, /function lazy\(src\)/);
+  assert.doesNotMatch(js, /items\.forEach\(function \(it, j\) \{ it\.el\.classList\.toggle/, 'a key press must not restyle every card');
 });
 
+test('TV Preview logic: library genre rows and search keys', () => {
+  const sandbox = {};
+  vm.runInNewContext(read('public/tv-preview/logic.js'), sandbox);
+  const L = sandbox.MarqueeTvLogic;
+  const genres = [{ name: 'Action', movie: 28, tv: 10759 }, { name: 'Comedy', movie: 35, tv: 35 }, { name: 'Horror', movie: 27, tv: null }];
+  const library = [
+    { id: 'a', tmdbId: 1, genres: [28], addedAt: 1 },
+    { id: 'a2', tmdbId: 1, genres: [28], addedAt: 5 },       // second copy of the same film: listed once
+    { id: 'b', tmdbId: 2, genres: [28, 35], addedAt: 3 },
+    { id: 'e1', show: 'tv-9', season: 1, episode: 1, addedAt: 2 },
+  ];
+  const shows = [{ id: 'tv-9', tmdbId: 9, genres: [10759] }, { id: 'tv-10', tmdbId: 10, genres: [35] }]; // tv-10: not in this library
+  const rows = L.genreRows(library, shows, genres);
+  assert.deepEqual(JSON.parse(JSON.stringify(rows.map((r) => [r.name, r.titles.map((t) => (t.show ? t.show.id : t.film.id))]))),
+    [['Action', ['b', 'tv-9', 'a']], ['Comedy', ['b']]]);
+  assert.equal(L.searchKey('Spider-Man: No Way Home'), 'spidermannowayhome');
+  assert.equal(L.searchKey('Amélie'), 'amelie');
+  assert.ok(L.searchKey('Spider-Man').includes(L.searchKey('spider man')));
+});
 
 test('TV reconnect keeps the current position and never plays from zero after a failed restore seek', () => {
   for (const path of ['public/tv/tv.js', 'public/tv-preview/tv.js']) {

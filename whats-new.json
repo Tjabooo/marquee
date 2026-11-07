@@ -1,5 +1,22 @@
 [
   {
+    "id": "2026-11-07-tv-preview-browse",
+    "date": "2026-11-07",
+    "title": "Browse and search on the TV (Preview)",
+    "items": [
+      {
+        "audience": "owner",
+        "title": "A bigger Discover in Marquee Preview",
+        "text": "In the Marquee Preview TV app, Discover rows now keep loading as you move along them, end in See all (a full grid), and are followed by a row of genres and one row per genre. Films / Shows tabs at the top narrow it down, and the title you're on fills the top of the screen with its description. Genre pages can be sorted by Popular, Top rated or Newest."
+      },
+      {
+        "audience": "owner",
+        "title": "Search and genres on the TV",
+        "text": "Marquee Preview has a Search screen with an on-screen keyboard (a real keyboard works too): your own titles show up at once, everything else from TMDB a moment later. Your library on the TV now also has a row for each genre you own something in."
+      }
+    ]
+  },
+  {
     "id": "2026-11-07-tv-subtitles",
     "date": "2026-11-07",
     "title": "Subtitles on the TV",

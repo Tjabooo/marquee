@@ -89,6 +89,33 @@
     return t;
   }
 
+  // The library by genre: one row per genre that has something in it, the biggest first, newest titles
+  // first inside. Films match by their TMDB film genre, shows by the show genre (TMDB merges a few for
+  // shows, e.g. "Action & Adventure", so one show can sit in both Action and Adventure).
+  function genreRows(library, shows, genres) {
+    var showIds = {}, showAdded = {}, films = [], seenFilm = {};
+    library.forEach(function (f) {
+      if (f.show && f.season != null) { showIds[f.show] = true; showAdded[f.show] = Math.max(showAdded[f.show] || 0, f.addedAt || f.added || 0); }
+      if (f.season != null || !f.genres || !f.genres.length) return;
+      var k = f.tmdbId ? 'm' + f.tmdbId : f.id;
+      if (!seenFilm[k]) { seenFilm[k] = true; films.push(f); }
+    });
+    function has(list, id) { return Boolean(id && list && list.indexOf(id) >= 0); }
+    var rows = [];
+    (genres || []).forEach(function (g) {
+      var titles = [];
+      shows.forEach(function (s) { if (showIds[s.id] && has(s.genres, g.tv)) titles.push({ show: s, added: showAdded[s.id] }); });
+      films.forEach(function (f) { if (has(f.genres, g.movie)) titles.push({ film: f, added: f.addedAt || f.added || 0 }); });
+      if (titles.length) rows.push({ name: g.name, titles: titles.sort(function (a, b) { return b.added - a.added; }) });
+    });
+    return rows.sort(function (a, b) { return b.titles.length - a.titles.length || (a.name < b.name ? -1 : 1); });
+  }
+
+  // Search matching: case, accents, spaces and punctuation don't count ("spider man" finds "Spider-Man").
+  function searchKey(s) {
+    return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '');
+  }
+
   // One show's downloaded episodes by season, and the episode to start on: the one in progress, else
   // the one after the last you finished, else the first.
   function showSeasons(library, showId) {
@@ -143,7 +170,7 @@
     AUTOPLAY_SECONDS: AUTOPLAY_SECONDS, AUTOPLAY_CHAIN: AUTOPLAY_CHAIN, DONE_SECONDS: DONE_SECONDS,
     nextEpisode: nextEpisode, nextPromptAt: nextPromptAt, isNextTime: isNextTime, introShowing: introShowing,
     fmtTime: fmtTime, episodeLabel: episodeLabel, minutesLeft: minutesLeft, progressRef: progressRef, resumable: resumable,
-    titleKey: titleKey, homeRows: homeRows, showSeasons: showSeasons, startEpisode: startEpisode, parseVtt: parseVtt, cueText: cueText,
+    titleKey: titleKey, homeRows: homeRows, genreRows: genreRows, searchKey: searchKey, showSeasons: showSeasons, startEpisode: startEpisode, parseVtt: parseVtt, cueText: cueText,
   };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.MarqueeTvLogic = api;

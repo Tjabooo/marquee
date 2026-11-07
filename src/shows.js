@@ -21,7 +21,7 @@ const MISS_TTL = DAY;
 const DETAILS_TTL = 7 * DAY;
 
 let file = null;
-let cache = { names: {}, shows: {}, films: {}, filmFiles: {}, filmDownloads: {}, showDownloads: {} };
+let cache = { names: {}, shows: {}, films: {}, filmFiles: {}, filmDownloads: {}, showDownloads: {}, genres: {} };
 const pending = new Map();             // in-flight lookups, so a name is never looked up twice at once
 let saveTimer = null;
 
@@ -29,7 +29,7 @@ export function initShows({ dataDir }) {
   file = path.join(dataDir, '.marquee-shows.json');
   try {
     const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
-    cache = { names: saved.names || {}, shows: saved.shows || {}, films: saved.films || {}, filmFiles: saved.filmFiles || {}, filmDownloads: saved.filmDownloads || {}, showDownloads: saved.showDownloads || {} };
+    cache = { names: saved.names || {}, shows: saved.shows || {}, films: saved.films || {}, filmFiles: saved.filmFiles || {}, filmDownloads: saved.filmDownloads || {}, showDownloads: saved.showDownloads || {}, genres: saved.genres || {} };
   } catch { /* first run */ }
 }
 
@@ -92,6 +92,7 @@ function loadDetails(id, seasons, tmdb) {
     let s = cache.shows[id];
     if (!fresh) {
       const d = await tmdb(`/tv/${id}`);
+      rememberGenres('tv', id, d);
       s = {
         at: Date.now(),
         id,
@@ -121,6 +122,31 @@ function loadDetails(id, seasons, tmdb) {
   });
 }
 
+// ---------- genres ----------
+// TMDB genre IDs per title ("movie:603" -> [28, 878]), for sorting the library by genre. Taken from any
+// TMDB answer that carries them (search results: genre_ids, details: genres); older cache entries are
+// filled in the background, a few per library request.
+function rememberGenres(type, id, d) {
+  const ids = Array.isArray(d?.genre_ids) ? d.genre_ids : Array.isArray(d?.genres) ? d.genres.map((g) => g?.id) : null;
+  if (!id || !ids) return;
+  cache.genres[`${type}:${id}`] = ids.filter((g) => Number.isInteger(g));
+  save();
+}
+export const genresOf = (type, id) => (id ? cache.genres[`${type}:${id}`] || null : null);
+const GENRE_BATCH = 12;
+function backfillGenres(type, ids, tmdb) {
+  const missing = [...new Set(ids.filter((id) => id && !cache.genres[`${type}:${id}`]))].slice(0, GENRE_BATCH);
+  return Promise.allSettled(missing.map((id) => once(`genres:${type}:${id}`, async () => {
+    try {
+      rememberGenres(type, id, await tmdb(`/${type}/${id}`));
+    } catch (error) {
+      // A title TMDB no longer has gets no genres instead of being asked for again on every load.
+      if (/\b404\b/.test(error?.message || '') || error?.status === 404) rememberGenres(type, id, { genres: [] });
+      throw error;
+    }
+  })));
+}
+
 // items: library items with { id, title, year, season, episode, added }.
 // Returns { shows, showOf } where showOf maps item id -> { show, episodeName }. Waits at most `wait`
 // ms for TMDB: whatever isn't resolved yet is grouped by name now and merged on a later call.
@@ -148,6 +174,8 @@ export async function groupShows(items, tmdb, { wait = 2500 } = {}) {
         .catch(() => null));
     }
   }
+  // Genres for shows looked up before genres were cached.
+  if (tmdb) work.push(backfillGenres('tv', [...byName.values()].map((g) => cache.names[`${g.key}|${g.year || ''}`]?.id), tmdb));
   if (work.length) {
     await Promise.race([Promise.allSettled(work), new Promise((r) => setTimeout(r, wait))]);
   }
@@ -206,6 +234,7 @@ export async function groupShows(items, tmdb, { wait = 2500 } = {}) {
       year: d?.year || [...grp.years][0] || null,
       overview: d?.overview || '',
       rating: d?.rating || null,
+      genres: genresOf('tv', grp.tmdbId),
       poster: d?.poster || null,
       backdrop: d?.backdrop || null,
       seasons,
@@ -253,6 +282,7 @@ const filmDetails = (pick) => ({
 // An explicit choice belongs to the file, not every film with the same title and year.
 export function identifyFilm(key, details) {
   if (!key || !details?.id) return;
+  rememberGenres('movie', details.id, details);
   cache.filmFiles[key] = { ...filmDetails(details), explicit: true };
   save();
 }
@@ -315,6 +345,7 @@ function lookupFilm(title, year, tmdb) {
     // Popularity isn't identity. Ask for a choice if two films share this title/year.
     const ambiguous = possible.length > 1;
     const pick = !ambiguous && possible[0];
+    for (const r of possible) rememberGenres('movie', r.id, r);
     cache.films[ck] = { at: Date.now(), identityVersion: FILM_IDENTITY_VERSION, id: null,
       ...(pick ? filmDetails(pick) : {}), ambiguous,
       candidates: ambiguous ? possible.map(filmDetails) : [],
@@ -330,6 +361,7 @@ export async function filmInfo(items, tmdb, { wait = 2500 } = {}) {
   const films = items.filter((i) => i.season == null && i.title);
   if (tmdb && films.length) {
     const work = films.filter((f) => !cache.filmFiles[f.mediaKey]).map((f) => lookupFilm(f.title, f.year, tmdb).catch(() => null));
+    work.push(backfillGenres('movie', films.map((f) => knownFilm(f.mediaKey, f.title, f.year)?.id), tmdb));
     await Promise.race([Promise.allSettled(work), new Promise((r) => setTimeout(r, wait))]);
   }
   const out = new Map();
@@ -337,6 +369,7 @@ export async function filmInfo(items, tmdb, { wait = 2500 } = {}) {
     const hit = knownFilm(f.mediaKey, f.title, f.year);
     if (hit?.id || hit?.ambiguous) out.set(f.id, {
       tmdbId: hit.id, filmTitle: hit.title, poster: hit.poster, backdrop: hit.backdrop, overview: hit.overview, rating: hit.rating,
+      genres: genresOf('movie', hit.id),
       movieAmbiguous: Boolean(hit.ambiguous), filmCandidates: hit.candidates || [],
     });
   }

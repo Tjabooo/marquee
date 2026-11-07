@@ -12,7 +12,7 @@
   var KEY = { LEFT: 37, UP: 38, RIGHT: 39, DOWN: 40, ENTER: 13, BACK: 10009, BACKSPACE: 8, ESC: 27,
     PLAYPAUSE: 10252, PLAY: 415, PAUSE: 19, STOP: 413, FF: 417, RW: 412 };
   var app = document.getElementById('app');
-  var state = { me: null, library: [], shows: [], progress: {} };
+  var state = { me: null, library: [], shows: [], progress: {}, genres: [] };
   var screen = null;
   var history = [];
   var autoChain = 0;
@@ -99,7 +99,7 @@
     autoChain = 0; // someone is there: Up next may chain again
     var code = e.keyCode;
     if (code === KEY.BACKSPACE || code === KEY.ESC) code = KEY.BACK;
-    if (screen && screen.key && screen.key(code)) { e.preventDefault(); return; }
+    if (screen && screen.key && screen.key(code, e)) { e.preventDefault(); return; }
     if (code === KEY.BACK) { e.preventDefault(); back(); }
   });
 
@@ -122,7 +122,7 @@
         return pairScreen(me && me.id != null, 'This TV was signed out. Sign it in again.');
       }
       state.me = me;
-      return loadLibrary().then(homeScreen);
+      return Promise.all([loadLibrary(), loadGenres()]).then(homeScreen);
     }).catch(function (err) {
       if (err.status === 401) { localStorage.removeItem(TOKEN_KEY); return pairScreen(false); }
       app.innerHTML = '';
@@ -194,7 +194,324 @@
     });
   }
 
-  // ---------- home: Continue watching, Shows, Films ----------
+  // ---------- genres ----------
+  // One merged list from the server: { name, movie: TMDB film genre ID, tv: TMDB show genre ID }.
+  function loadGenres() {
+    return api('/api/discover/genres').then(function (d) { state.genres = d.genres || []; })
+      .catch(function () { state.genres = []; });
+  }
+  function genreNames(type, ids) {
+    var out = [];
+    (ids || []).forEach(function (id) {
+      state.genres.forEach(function (g) { if ((type === 'tv' ? g.tv : g.movie) === id && out.indexOf(g.name) < 0) out.push(g.name); });
+    });
+    return out;
+  }
+  function genreUrl(g, type, sort, page) {
+    return '/api/discover/genre?type=' + type + (g.movie && type !== 'tv' ? '&movie=' + g.movie : '') +
+      (g.tv && type !== 'movie' ? '&tv=' + g.tv : '') + '&sort=' + sort + '&page=' + page;
+  }
+
+  // ---------- cards ----------
+  // Posters load only when their card comes near the screen, so long rows and grids stay cheap on the TV.
+  function lazy(src) {
+    var i = h('img', { alt: '', decoding: 'async' });
+    var woke = false;
+    return { el: i, wake: function () {
+      if (woke) return;
+      woke = true;
+      if (!src) { i.className = 'is-empty'; return; }
+      i.onerror = function () { i.removeAttribute('src'); i.className = 'is-empty'; };
+      i.src = src;
+    } };
+  }
+  function badge() { return h('span', { class: 'tv-badge', text: 'In library' }); }
+  function titleSub(t) { return [t.year, t.type === 'tv' ? 'Series' : 'Film'].filter(Boolean).join(' · '); }
+
+  // A film or show from TMDB (Discover, search). OK opens its page.
+  function titleCard(t) {
+    var pic = lazy(t.poster);
+    return { key: t.type + ':' + t.id, t: t, wake: pic.wake,
+      el: h('div', { class: 'card tile' }, h('div', { class: 'art' }, pic.el, libraryEntry(t) ? badge() : null),
+        h('div', { class: 'name', text: t.title }), h('div', { class: 'sub', text: titleSub(t) })),
+      open: function () { discoverTitle(t); } };
+  }
+  // Library cards: 'poster' on the home screen, 'tile' (with the In library badge) in search.
+  function showCard(s, cls) {
+    var pic = lazy(s.poster);
+    return { key: s.tmdbId ? 'tv:' + s.tmdbId : s.id, wake: pic.wake,
+      el: h('div', { class: 'card ' + (cls || 'poster') }, h('div', { class: 'art' }, pic.el, cls === 'tile' ? badge() : null),
+        h('div', { class: 'name', text: s.title }), cls === 'tile' ? h('div', { class: 'sub', text: titleSub({ year: s.year, type: 'tv' }) }) : null),
+      open: function () { showPage(s); } };
+  }
+  function filmCard(f, cls) {
+    var pic = lazy(f.poster || f.backdrop);
+    return { key: f.tmdbId ? 'movie:' + f.tmdbId : f.id, wake: pic.wake,
+      el: h('div', { class: 'card ' + (cls || 'poster') }, h('div', { class: 'art' }, pic.el, cls === 'tile' ? badge() : null),
+        h('div', { class: 'name', text: f.filmTitle || f.title }), h('div', { class: 'sub', text: f.year ? String(f.year) : '' })),
+      open: function () { playAsked(f); } };
+  }
+  function continueCard(f) {
+    var p = state.progress[L.progressRef(f)];
+    var showInfo = showOf(f);
+    var pct = Math.min(100, p.time / p.duration * 100);
+    var pic = lazy(f.season != null ? bigger(f.still) || (showInfo && showInfo.backdrop) : f.backdrop || f.poster);
+    return { key: f.id, wake: pic.wake,
+      el: h('div', { class: 'card wide' },
+        h('div', { class: 'art' }, pic.el, h('div', { class: 'bar' }, h('i', { style: 'width:' + pct.toFixed(1) + '%' }))),
+        h('div', { class: 'name', text: showInfo ? showInfo.title : f.filmTitle || f.title }),
+        h('div', { class: 'sub', text: [L.episodeLabel(f), f.episodeName, L.minutesLeft(p)].filter(Boolean).join(' · ') })),
+      open: function () { play(f, p.time); } };
+  }
+
+  // ---------- rows of cards (home and Discover) ----------
+  // A row can grow while you move along it (fetch(page) -> { cards, last }) up to ROW_MAX cards, end in a
+  // "See all" card, or load its first page only when it comes near the screen (lazy). A key press touches
+  // only the focused card and the focused row.
+  var ROW_MAX = 60, CARD_GAP = 32, ROW_WIDTH = 1920 - 2 * 96;
+  function makeRow(o) {
+    var row = { kind: o.kind || 'poster', items: [], index: 0, first: 0, page: 1, busy: false, seen: {},
+      fetch: o.fetch || null, done: !o.fetch, pending: Boolean(o.lazy), skip: false, seeAll: o.seeAll || null, end: null };
+    row.track = h('div', { class: 'track' });
+    row.note = row.pending ? h('div', { class: 'row-note', text: 'Loading…' }) : null;
+    row.el = h('section', { class: 'row row-' + row.kind + (row.pending ? ' is-pending' : '') }, h('h2', { text: o.title }),
+      h('div', { class: 'viewport' }, row.note, row.track));
+    if (!row.pending) addEnd(row);
+    if (o.items) addCards(row, o.items);
+    return row;
+  }
+  function addEnd(row) {
+    if (!row.seeAll || row.end) return;
+    row.end = { el: h('div', { class: 'card see-all ' + (row.kind === 'tile' ? 'tile' : 'poster') }, h('div', { class: 'art' }, h('span', { text: 'See all' }))),
+      open: row.seeAll };
+    row.track.appendChild(row.end.el);
+    row.items.push(row.end);
+  }
+  function addCards(row, cards) {
+    var count = row.items.length - (row.end ? 1 : 0);
+    cards.forEach(function (c) {
+      if (count >= ROW_MAX || (c.key && row.seen[c.key])) return;
+      if (c.key) row.seen[c.key] = true;
+      if (row.end) { row.track.insertBefore(c.el, row.end.el); row.items.splice(row.items.length - 1, 0, c); }
+      else { row.track.appendChild(c.el); row.items.push(c); }
+      count++;
+    });
+    if (count >= ROW_MAX) row.done = true;
+  }
+  function pageOf(d, page) {
+    return { cards: (d.results || []).map(titleCard), last: (d.page || page) >= (d.totalPages || 1) };
+  }
+
+  // Up/Down between rows, Left/Right along one. `top`: where the focused row sits in the rows box.
+  function rowsNav(rowsEl, top, onFocus) {
+    var nav = { rows: [], r: 0, lit: null, on: true };
+    nav.find = function (from, dir) {
+      for (var i = from; i >= 0 && i < nav.rows.length; i += dir) if (!nav.rows[i].skip) return i;
+      return -1;
+    };
+    nav.set = function (rows) {
+      nav.rows = rows; nav.lit = null;
+      rowsEl.innerHTML = '';
+      rows.forEach(function (row) { rowsEl.appendChild(row.el); });
+      nav.r = Math.max(0, nav.find(0, 1));
+    };
+    nav.current = function () { var row = nav.rows[nav.r]; return row && !row.skip && row.items[row.index] || null; };
+    nav.move = function (dir) {
+      var i = nav.find(nav.r + dir, dir);
+      if (i < 0) return false;
+      nav.r = i; nav.paint(true);
+      return true;
+    };
+    nav.side = function (dir) {
+      var row = nav.rows[nav.r];
+      if (!row || !row.items.length) return;
+      row.index = Math.max(0, Math.min(row.items.length - 1, row.index + dir));
+      nav.paint(true);
+    };
+    function slide(row) {
+      if (!row.items.length) return;
+      if (!row.step) { var w = row.items[0].el.offsetWidth; if (!w) return; row.step = w + CARD_GAP; }
+      var visible = Math.max(1, Math.floor(ROW_WIDTH / row.step));
+      var first = Math.max(0, Math.min(row.index - 1, row.items.length - visible));
+      if (first !== row.first || !row.slid) {
+        row.first = first; row.slid = true;
+        row.track.style.transform = 'translateX(' + (-first * row.step) + 'px)';
+      }
+    }
+    function wakeRow(row) {
+      var n = Math.ceil(ROW_WIDTH / (row.step || 200)) + 2;
+      for (var j = row.first; j < Math.min(row.items.length, row.first + n); j++) if (row.items[j].wake) row.items[j].wake();
+    }
+    function settle() {
+      if (nav.rows[nav.r] && nav.rows[nav.r].skip) {
+        var i = nav.find(nav.r, 1);
+        if (i < 0) i = nav.find(nav.r, -1);
+        if (i >= 0) nav.r = i;
+      }
+      nav.paint(nav.on);
+    }
+    function loadRow(row) {
+      row.pending = false; row.busy = true;
+      row.fetch(1).then(function (res) {
+        row.busy = false;
+        if (row.note && row.note.parentNode) row.note.parentNode.removeChild(row.note);
+        row.el.classList.remove('is-pending');
+        addEnd(row);
+        addCards(row, res.cards);
+        if (res.last) row.done = true;
+        if (row.items.length <= (row.end ? 1 : 0)) { row.skip = true; row.el.style.display = 'none'; }
+        settle();
+      }).catch(function () { row.busy = false; row.skip = true; row.el.style.display = 'none'; settle(); });
+    }
+    function more(row) {
+      var count = row.items.length - (row.end ? 1 : 0);
+      if (row.done || row.busy || !row.fetch || row.index < count - 8) return;
+      row.busy = true;
+      row.fetch(row.page + 1).then(function (res) {
+        row.busy = false; row.page++;
+        var before = row.items.length;
+        addCards(row, res.cards);
+        if (res.last || row.items.length === before) row.done = true;
+        if (row === nav.rows[nav.r]) nav.paint(nav.on); else wakeRow(row);
+      }).catch(function () { row.busy = false; row.done = true; });
+    }
+    nav.paint = function (on) {
+      nav.on = on !== false;
+      var row = nav.rows[nav.r];
+      var card = nav.on && row && !row.skip ? row.items[row.index] : null;
+      var el = card ? card.el : null;
+      if (nav.lit !== el) {
+        if (nav.lit) nav.lit.classList.remove('focus');
+        nav.lit = el;
+        if (el) el.classList.add('focus');
+      }
+      if (row) slide(row);
+      rowsEl.style.transform = 'translateY(' + (row && nav.on ? -Math.max(0, row.el.offsetTop - top) : 0) + 'px)';
+      for (var i = Math.max(0, nav.r - 1); i < Math.min(nav.rows.length, nav.r + 3); i++) {
+        var near = nav.rows[i];
+        if (near.pending) loadRow(near);
+        if (!near.skip) wakeRow(near);
+      }
+      if (row && !row.skip) more(row);
+      if (card && onFocus) onFocus(card);
+    };
+    return nav;
+  }
+
+  // ---------- grids (See all, genres, search results) ----------
+  var GRID_STEP = 196 + 20, GRID_MAX = 300;
+  function gridView(cols, onNeedMore) {
+    var g = { cols: cols, cards: [], i: 0, lit: null, seen: {}, el: h('div', { class: 'grid', style: 'width:' + cols * GRID_STEP + 'px' }) };
+    g.clear = function () { g.cards = []; g.seen = {}; g.i = 0; g.lit = null; g.el.innerHTML = ''; g.el.style.transform = ''; };
+    g.add = function (cards) {
+      cards.forEach(function (c) {
+        if (c.key && g.seen[c.key]) return;
+        if (c.key) g.seen[c.key] = true;
+        g.cards.push(c); g.el.appendChild(c.el);
+      });
+    };
+    g.current = function () { return g.cards[g.i] || null; };
+    // false at an edge, so the screen can move focus elsewhere
+    g.move = function (code) {
+      var n = g.cards.length, i = g.i, col = i % cols;
+      if (code === KEY.LEFT) { if (col === 0) return false; i--; }
+      else if (code === KEY.RIGHT) { if (col === cols - 1 || i + 1 >= n) return false; i++; }
+      else if (code === KEY.UP) { if (i < cols) return false; i -= cols; }
+      else if (code === KEY.DOWN) { if (Math.floor(i / cols) >= Math.floor((n - 1) / cols)) return false; i = Math.min(n - 1, i + cols); }
+      else return false;
+      g.i = i;
+      return true;
+    };
+    g.paint = function (on) {
+      var c = on !== false ? g.cards[g.i] : null, el = c ? c.el : null;
+      if (g.lit !== el) {
+        if (g.lit) g.lit.classList.remove('focus');
+        g.lit = el;
+        if (el) el.classList.add('focus');
+      }
+      var row = Math.floor(g.i / cols), lastRow = Math.floor((g.cards.length - 1) / cols);
+      var anchor = g.cards[Math.max(0, row - 1) * cols];
+      var y = anchor && row > 0 ? anchor.el.offsetTop - g.cards[0].el.offsetTop : 0;
+      g.el.style.transform = 'translateY(' + (-y) + 'px)';
+      for (var k = Math.max(0, (row - 1) * cols); k < Math.min(g.cards.length, (row + 4) * cols); k++) if (g.cards[k].wake) g.cards[k].wake();
+      if (onNeedMore && g.cards.length && row >= lastRow - 2) onNeedMore();
+    };
+    return g;
+  }
+
+  var TYPES = [['all', 'All'], ['movie', 'Films'], ['tv', 'Shows']];
+  var SORTS = [['popular', 'Popular'], ['rating', 'Top rated'], ['newest', 'Newest']];
+  // o: { title, fetch(page, type, sort) -> Promise<{ cards, last }>, type, types: bool, sorts: bool }
+  function gridScreen(o) {
+    var type = o.type || 'all', sort = 'popular', seq = 0, page = 0, last = false, busy = false;
+    var chips = [];
+    if (o.types) TYPES.forEach(function (t) { chips.push({ kind: 'type', value: t[0], el: h('button', { class: 'tab', text: t[1] }) }); });
+    if (o.sorts) SORTS.forEach(function (s, i) { chips.push({ kind: 'sort', value: s[0], el: h('button', { class: 'tab' + (i === 0 && chips.length ? ' gap' : ''), text: s[1] }) }); });
+    var note = h('div', { class: 'grid-note' });
+    var grid = gridView(8, more);
+    var el = h('div', { class: 'screen grid-screen' },
+      h('header', { class: 'grid-head' }, h('h1', { text: o.title }),
+        chips.length ? h('div', { class: 'chips' }, chips.map(function (c) { return c.el; })) : null),
+      h('div', { class: 'grid-viewport' + (chips.length ? '' : ' no-chips') }, note, grid.el));
+    var atTop = false, ci = 0;
+    function paint() {
+      chips.forEach(function (c, i) {
+        c.el.classList.toggle('active', c.kind === 'type' ? c.value === type : c.value === sort);
+        c.el.classList.toggle('focus', atTop && i === ci);
+      });
+      grid.paint(!atTop);
+    }
+    function reload() { seq++; page = 0; last = false; busy = false; grid.clear(); note.textContent = 'Loading…'; more(); }
+    function more() {
+      if (busy || last) return;
+      busy = true;
+      var my = seq;
+      o.fetch(page + 1, type, sort).then(function (res) {
+        if (my !== seq) return;
+        busy = false; page++;
+        var before = grid.cards.length;
+        grid.add(res.cards);
+        if (res.last || grid.cards.length === before || grid.cards.length >= GRID_MAX) last = true;
+        note.textContent = grid.cards.length ? '' : 'Nothing here yet.';
+        if (!grid.cards.length && chips.length) atTop = true;
+        paint();
+      }).catch(function (err) { if (my !== seq) return; busy = false; last = true; note.textContent = err.message; });
+    }
+    show({ el: el, focus: paint, key: function (code) {
+      if (atTop) {
+        if (code === KEY.LEFT) { ci = Math.max(0, ci - 1); paint(); return true; }
+        if (code === KEY.RIGHT) { ci = Math.min(chips.length - 1, ci + 1); paint(); return true; }
+        if (code === KEY.DOWN) { if (grid.cards.length) atTop = false; paint(); return true; }
+        if (code === KEY.ENTER) {
+          var c = chips[ci];
+          if (c.kind === 'type') type = c.value; else sort = c.value;
+          reload(); paint();
+          return true;
+        }
+        return code === KEY.UP;
+      }
+      if (code === KEY.ENTER) { var card = grid.current(); if (card) card.open(); return true; }
+      if (code === KEY.UP || code === KEY.DOWN || code === KEY.LEFT || code === KEY.RIGHT) {
+        if (!grid.move(code) && code === KEY.UP && chips.length) atTop = true;
+        paint();
+        return true;
+      }
+      return false;
+    } }, true);
+    reload();
+  }
+  function genreGrid(g, type) {
+    var both = Boolean(g.movie && g.tv);
+    gridScreen({ title: g.name, type: both ? type : g.movie ? 'movie' : 'tv', types: both, sorts: true,
+      fetch: function (page, t, sort) { return api(genreUrl(g, t, sort, page)).then(function (d) { return pageOf(d, page); }); } });
+  }
+  function listFetch(key) {
+    return function (page) {
+      return api('/api/discover/list?key=' + encodeURIComponent(key) + '&page=' + page).then(function (d) { return pageOf(d, page); });
+    };
+  }
+
+  // ---------- home: Continue watching, Shows, Films, then the library by genre ----------
   // A library the owner shares between people (Settings -> People) shows everyone's titles here.
   function sharedNote() {
     var mates = (state.me && state.me.sharedWith || []).map(function (m) { return m.name; });
@@ -206,197 +523,338 @@
   function homeScreen() {
     var el = h('div', { class: 'screen home' });
     var rowsEl = h('div', { class: 'rows' });
-    var discoverBtn = h('button', { class: 'discover-link focusable', text: 'Discover' });
+    var tops = [h('button', { class: 'top-link', text: 'Search' }), h('button', { class: 'top-link', text: 'Discover' }),
+      h('button', { class: 'switch', text: 'Switch account' })];
     var top = h('header', { class: 'topbar' }, h('div', { class: 'brandline' },
         h('div', { class: 'wordmark', text: 'Marquee' }), h('span', { class: 'preview-label', text: 'Preview' })),
-      h('div', { class: 'top-actions' }, discoverBtn,
-        h('div', { class: 'who' }, h('span', { text: state.me && state.me.name || '' }),
-          sharedNote(), h('button', { class: 'switch focusable', text: 'Switch account' }))));
+      h('div', { class: 'top-actions' }, tops[0], tops[1],
+        h('div', { class: 'who' }, h('span', { text: state.me && state.me.name || '' }), sharedNote(), tops[2])));
     el.appendChild(top);
     el.appendChild(rowsEl);
-    var rows = [];   // { el, track, items: [{ el, open }], index }
-    var r = 0, topIndex = 0; // -1 = top controls; 0 Discover, 1 Switch account
+    var nav = rowsNav(rowsEl, 40);
+    var atTop = false, ti = 1, empty = false;
 
     function build() {
+      // Coming back from the player rebuilds the rows: keep the row and the card you were on.
+      var was = {}, wasRow = nav.rows[nav.r] && nav.rows[nav.r].title;
+      nav.rows.forEach(function (row) { was[row.title] = row.index; });
       var data = L.homeRows(state.library, state.shows, state.progress);
-      rows = [];
-      rowsEl.innerHTML = '';
-      if (data.cont.length) rows.push(makeRow('Continue watching', 'wide', data.cont.map(continueCard)));
-      if (data.shows.length) rows.push(makeRow('Shows', 'poster', data.shows.map(showCard)));
-      if (data.films.length) rows.push(makeRow('Films', 'poster', data.films.map(filmCard)));
-      if (!rows.length) {
+      var rows = [];
+      function add(title, kind, items) { var row = makeRow({ title: title, kind: kind, items: items }); row.title = title; rows.push(row); }
+      if (data.cont.length) add('Continue watching', 'wide', data.cont.map(continueCard));
+      if (data.shows.length) add('Shows', 'poster', data.shows.map(function (s) { return showCard(s); }));
+      if (data.films.length) add('Films', 'poster', data.films.map(function (f) { return filmCard(f); }));
+      L.genreRows(state.library, state.shows, state.genres).forEach(function (g) {
+        add(g.name, 'poster', g.titles.map(function (x) { return x.show ? showCard(x.show) : filmCard(x.film); }));
+      });
+      nav.set(rows);
+      rows.forEach(function (row, i) {
+        if (was[row.title] != null) row.index = Math.min(was[row.title], row.items.length - 1);
+        if (row.title === wasRow) nav.r = i;
+      });
+      empty = !rows.length;
+      if (empty) {
         rowsEl.appendChild(h('div', { class: 'empty' }, h('h2', { text: 'Your library is empty' }),
-          h('p', { text: 'Open Discover above to find something to download.' })));
-        r = -1;
+          h('p', { text: 'Open Discover or Search above to find something to download.' })));
+        atTop = true;
       }
-      rows.forEach(function (row) { rowsEl.appendChild(row.el); });
-      r = Math.min(Math.max(r, rows.length ? 0 : -1), rows.length - 1);
-    }
-    function makeRow(title, kind, items) {
-      var track = h('div', { class: 'track' });
-      items.forEach(function (it) { track.appendChild(it.el); });
-      return { el: h('section', { class: 'row row-' + kind }, h('h2', { text: title }), h('div', { class: 'viewport' }, track)), track: track, items: items, index: 0, kind: kind };
-    }
-    function continueCard(f) {
-      var p = state.progress[L.progressRef(f)];
-      var showInfo = showOf(f);
-      var pct = Math.min(100, p.time / p.duration * 100);
-      return { el: h('div', { class: 'card wide' },
-        h('div', { class: 'art' }, img(f.season != null ? bigger(f.still) || (showInfo && showInfo.backdrop) : f.backdrop || f.poster),
-          h('div', { class: 'bar' }, h('i', { style: 'width:' + pct.toFixed(1) + '%' }))),
-        h('div', { class: 'name', text: showInfo ? showInfo.title : f.filmTitle || f.title }),
-        h('div', { class: 'sub', text: [L.episodeLabel(f), f.episodeName, L.minutesLeft(p)].filter(Boolean).join(' · ') })),
-      open: function () { play(f, p.time); } };
-    }
-    function showCard(s) {
-      return { el: h('div', { class: 'card poster' }, h('div', { class: 'art' }, img(s.poster)), h('div', { class: 'name', text: s.title })),
-        open: function () { showPage(s); } };
-    }
-    function filmCard(f) {
-      return { el: h('div', { class: 'card poster' }, h('div', { class: 'art' }, img(f.poster || f.backdrop)),
-        h('div', { class: 'name', text: f.filmTitle || f.title }), h('div', { class: 'sub', text: f.year ? String(f.year) : '' })),
-        open: function () { playAsked(f); } };
     }
     function paint() {
-      discoverBtn.classList.toggle('focus', r === -1 && topIndex === 0);
-      top.querySelector('.switch').classList.toggle('focus', r === -1 && topIndex === 1);
-      rows.forEach(function (row, i) {
-        row.items.forEach(function (it, j) { it.el.classList.toggle('focus', i === r && j === row.index); });
-        // Keep the focused card in view: the row slides so it sits second from the left.
-        var card = row.items[0] && row.items[0].el;
-        var step = card ? card.offsetWidth + 32 : 0;
-        var visible = Math.max(1, Math.floor((1920 - 160) / (step || 1)));
-        var first = Math.max(0, Math.min(row.index - 1, row.items.length - visible));
-        row.track.style.transform = 'translateX(' + (-first * step) + 'px)';
-      });
-      var focused = rows[r];
-      rowsEl.style.transform = 'translateY(' + (focused ? -Math.max(0, focused.el.offsetTop - 40) : 0) + 'px)';
+      tops.forEach(function (b, i) { b.classList.toggle('focus', atTop && i === ti); });
+      nav.paint(!atTop);
     }
     build();
     show({ el: el,
       focus: paint,
-      refresh: function () { loadLibrary().then(function () { build(); paint(); }).catch(function () {}); },
+      refresh: function () {
+        Promise.all([loadLibrary(), state.genres.length ? null : loadGenres()]).then(function () { build(); paint(); }).catch(function () {});
+      },
       key: function (code) {
-        var row = rows[r];
-        if (code === KEY.UP) { if (r > -1) r--; paint(); return true; }
-        if (code === KEY.DOWN) { if (r < rows.length - 1) r++; paint(); return true; }
-        if (code === KEY.LEFT && r === -1) { topIndex = 0; paint(); return true; }
-        if (code === KEY.RIGHT && r === -1) { topIndex = 1; paint(); return true; }
-        if (code === KEY.LEFT && row) { row.index = Math.max(0, row.index - 1); paint(); return true; }
-        if (code === KEY.RIGHT && row) { row.index = Math.min(row.items.length - 1, row.index + 1); paint(); return true; }
-        if (code === KEY.ENTER) {
-          if (r === -1 && topIndex === 0) { discoverScreen(); return true; }
-          if (r === -1 && topIndex === 1) { localStorage.removeItem(TOKEN_KEY); history = []; screen = null; pairScreen(true); return true; }
-          if (row) row.items[row.index].open();
-          return true;
+        if (atTop) {
+          if (code === KEY.LEFT) { ti = Math.max(0, ti - 1); paint(); return true; }
+          if (code === KEY.RIGHT) { ti = Math.min(tops.length - 1, ti + 1); paint(); return true; }
+          if (code === KEY.DOWN) { if (!empty) atTop = false; paint(); return true; }
+          if (code === KEY.ENTER) {
+            if (ti === 0) searchScreen();
+            else if (ti === 1) discoverScreen();
+            else { localStorage.removeItem(TOKEN_KEY); history = []; screen = null; pairScreen(true); }
+            return true;
+          }
+          return code === KEY.UP;
         }
+        if (code === KEY.UP) { if (!nav.move(-1)) { atTop = true; paint(); } return true; }
+        if (code === KEY.DOWN) { nav.move(1); return true; }
+        if (code === KEY.LEFT || code === KEY.RIGHT) { nav.side(code === KEY.LEFT ? -1 : 1); return true; }
+        if (code === KEY.ENTER) { var c = nav.current(); if (c) c.open(); return true; }
         return false;
       } });
   }
+
   // ---------- Discover (preview only) ----------
-  // The TV only renders a small slice of each server-curated row. TMDB lookup, torrent search,
-  // release selection and qBittorrent all stay on the server so the 2020 TV does very little work.
-  function titleInLibrary(t) {
-    var i, id = Number(t.id);
-    if (t.type === 'movie') {
-      for (i = 0; i < state.library.length; i++) {
-        if (state.library[i].season == null && Number(state.library[i].tmdbId) === id) return true;
-      }
-      return false;
-    }
-    for (i = 0; i < state.shows.length; i++) {
-      if (Number(state.shows[i].tmdbId) === id || state.shows[i].id === 'tv-' + id) return true;
-    }
-    return false;
+  // Curated rows that keep loading as you move along them, a row of genres, then one row per genre
+  // (each loads when it comes near the screen). TMDB, torrent search, release choice and qBittorrent all
+  // stay on the server; the 2020 TV only draws cards near the screen.
+  // What this person owns, by TMDB ID (rebuilt when the library reloads): badges, Play/Open, search.
+  var ownedCache = null, ownedFor = null;
+  function owned() {
+    if (ownedCache && ownedFor === state.library) return ownedCache;
+    var films = {}, shows = {}, showIds = {};
+    state.library.forEach(function (f) {
+      if (f.season == null) { if (f.tmdbId && !films[f.tmdbId]) films[f.tmdbId] = f; }
+      else if (f.show) showIds[f.show] = true;
+    });
+    state.shows.forEach(function (s) {
+      if (!showIds[s.id]) return;
+      if (s.tmdbId) shows[s.tmdbId] = s;
+      var m = /^tv-(\d+)$/.exec(String(s.id));
+      if (m) shows[m[1]] = s;
+    });
+    ownedFor = state.library;
+    ownedCache = { films: films, shows: shows, showIds: showIds };
+    return ownedCache;
+  }
+  function libraryEntry(t) {
+    var o = owned();
+    if (t.type === 'movie') return o.films[t.id] ? { film: o.films[t.id] } : null;
+    return o.shows[t.id] ? { show: o.shows[t.id] } : null;
   }
 
   function discoverScreen() {
-    var el = h('div', { class: 'screen home discover-screen' });
+    var type = 'all', seq = 0, atTop = false, ti = 1;
+    var heroArt = h('img', { alt: '', decoding: 'async', class: 'is-empty' });
+    heroArt.onerror = function () { heroArt.removeAttribute('src'); heroArt.className = 'is-empty'; };
+    var heroTitle = h('h1'), heroMeta = h('div', { class: 'hero-meta' }), heroText = h('p', { class: 'hero-overview' });
+    var tabs = [h('button', { class: 'top-link search-tab', text: 'Search' })]
+      .concat(TYPES.map(function (t) { return h('button', { class: 'tab', text: t[1] }); }));
     var rowsEl = h('div', { class: 'rows' });
-    var top = h('header', { class: 'topbar' },
-      h('div', { class: 'brandline' }, h('div', { class: 'wordmark', text: 'Discover' }), h('span', { class: 'preview-label', text: 'Preview' })),
-      h('div', { class: 'discover-hint', text: 'Back: Library · OK: Details' }));
-    el.appendChild(top); el.appendChild(rowsEl);
-    var rows = [], r = 0, alive = true;
-
-    function makeRow(title, items) {
-      var track = h('div', { class: 'track' });
-      var cards = items.slice(0, 8).map(function (t) {
-        var local = titleInLibrary(t);
-        var card = h('div', { class: 'card poster discover-card' },
-          h('div', { class: 'art' }, img(t.poster), local ? h('span', { class: 'tv-badge', text: 'In library' }) : null),
-          h('div', { class: 'name', text: t.title }),
-          h('div', { class: 'sub', text: [t.year, t.type === 'tv' ? 'Series' : 'Film'].filter(Boolean).join(' · ') }));
-        return { el: card, open: function () { discoverTitle(t); } };
-      });
-      cards.forEach(function (c) { track.appendChild(c.el); });
-      return { el: h('section', { class: 'row row-poster' }, h('h2', { text: title }), h('div', { class: 'viewport' }, track)),
-        track: track, items: cards, index: 0 };
+    var el = h('div', { class: 'screen discover-screen' },
+      h('div', { class: 'hero' }, h('div', { class: 'hero-art' }, heroArt), h('div', { class: 'hero-copy' }, heroTitle, heroMeta, heroText)),
+      h('header', { class: 'topbar' },
+        h('div', { class: 'brandline' }, h('div', { class: 'wordmark', text: 'Discover' }), h('span', { class: 'preview-label', text: 'Preview' })),
+        h('div', { class: 'top-actions tabs' }, tabs)),
+      h('div', { class: 'rows-viewport' }, rowsEl));
+    // The big picture and text follow the focused card, a moment after it settles (images are slow here).
+    var heroTimer = null, heroKey = null;
+    function setHero(t, key) {
+      heroKey = key;
+      heroTitle.textContent = t.title;
+      heroMeta.textContent = [t.year, t.type === 'tv' ? 'Series' : 'Film', t.rating ? '★ ' + t.rating : null]
+        .concat(genreNames(t.type, t.genres).slice(0, 3)).filter(Boolean).join('  ·  ');
+      heroText.textContent = t.overview || '';
+      if (t.backdrop) { heroArt.className = ''; if (heroArt.getAttribute('src') !== t.backdrop) heroArt.src = t.backdrop; }
+      else { heroArt.removeAttribute('src'); heroArt.className = 'is-empty'; }
     }
-    function build(data) {
-      rows = (data.rows || []).slice(0, 6).map(function (row) { return makeRow(row.title, row.items || []); })
-        .filter(function (row) { return row.items.length; });
-      rowsEl.innerHTML = '';
-      if (!rows.length) {
-        rowsEl.appendChild(h('div', { class: 'empty' }, h('h2', { text: 'Nothing to discover right now' }),
-          h('p', { text: 'Check that TMDB is configured on the Marquee server.' })));
-        r = -1; return;
-      }
-      rows.forEach(function (row) { rowsEl.appendChild(row.el); });
-      r = Math.max(0, Math.min(r, rows.length - 1));
-      paint();
+    var nav = rowsNav(rowsEl, 0, function (card) {
+      if (!card.t || card.key === heroKey) return;
+      clearTimeout(heroTimer);
+      heroTimer = setTimeout(function () { setHero(card.t, card.key); }, 220);
+    });
+
+    function genreCard(g, i) {
+      return { key: 'genre:' + g.name, el: h('div', { class: 'card genre g' + (i % 6) }, h('div', { class: 'art' }, h('span', { text: g.name }))),
+        open: function () { genreGrid(g, type); } };
+    }
+    function load() {
+      var my = ++seq;
+      nav.set([]);
+      rowsEl.appendChild(h('div', { class: 'empty discover-loading' }, h('h2', { text: 'Loading Discover…' })));
+      Promise.all([
+        api('/api/discover/home?type=' + type).catch(function (err) { return { rows: [], error: err }; }),
+        state.genres.length ? null : loadGenres(),
+      ]).then(function (r) {
+        if (my !== seq) return;
+        var data = r[0];
+        var rows = (data.rows || []).map(function (row) {
+          return makeRow({ title: row.title, kind: 'tile', items: (row.items || []).map(titleCard), fetch: listFetch(row.key),
+            seeAll: function () { gridScreen({ title: row.title, fetch: listFetch(row.key) }); } });
+        });
+        var gs = state.genres.filter(function (g) { return type === 'all' || (type === 'movie' ? g.movie : g.tv); });
+        if (gs.length) {
+          rows.push(makeRow({ title: 'Browse by genre', kind: 'genre', items: gs.map(genreCard) }));
+          gs.forEach(function (g) {
+            rows.push(makeRow({ title: g.name, kind: 'tile', lazy: true,
+              fetch: function (page) { return api(genreUrl(g, type, 'popular', page)).then(function (d) { return pageOf(d, page); }); },
+              seeAll: function () { genreGrid(g, type); } }));
+          });
+        }
+        if (!data.rows || !data.rows.length) {
+          rowsEl.innerHTML = '';
+          rowsEl.appendChild(h('div', { class: 'empty' }, h('h2', { text: data.error ? 'Discover is unavailable' : 'Nothing to discover right now' }),
+            h('p', { text: data.error ? data.error.message : 'Check that TMDB is configured on the Marquee server.' })));
+          atTop = true; paint();
+          return;
+        }
+        nav.set(rows);
+        var first = rows[0].items[0];
+        if (first && first.t) setHero(first.t, first.key);
+        paint();
+      });
     }
     function paint() {
-      rows.forEach(function (row, i) {
-        row.items.forEach(function (it, j) { it.el.classList.toggle('focus', i === r && j === row.index); });
-        var card = row.items[0] && row.items[0].el;
-        var step = card ? card.offsetWidth + 32 : 0;
-        var visible = Math.max(1, Math.floor((1920 - 160) / (step || 1)));
-        var first = Math.max(0, Math.min(row.index - 1, row.items.length - visible));
-        row.track.style.transform = 'translateX(' + (-first * step) + 'px)';
+      tabs.forEach(function (b, i) {
+        b.classList.toggle('focus', atTop && i === ti);
+        if (i > 0) b.classList.toggle('active', TYPES[i - 1][0] === type);
       });
-      var focused = rows[r];
-      rowsEl.style.transform = 'translateY(' + (focused ? -Math.max(0, focused.el.offsetTop - 40) : 0) + 'px)';
+      nav.paint(!atTop);
     }
-    function loadDiscover() {
-      rowsEl.innerHTML = '';
-      rowsEl.appendChild(h('div', { class: 'empty discover-loading' }, h('h2', { text: 'Loading Discover…' })));
-      api('/api/discover/home?type=all').then(function (data) { if (alive) build(data); })
-        .catch(function (err) {
-          if (!alive) return;
-          rowsEl.innerHTML = '';
-          rowsEl.appendChild(h('div', { class: 'empty' }, h('h2', { text: 'Discover is unavailable' }), h('p', { text: err.message })));
-          r = -1;
-        });
-    }
-    show({ el: el, focus: paint, refresh: loadDiscover,
-      leave: function () { alive = false; },
+    show({ el: el, focus: paint, refresh: paint,
+      leave: function () { clearTimeout(heroTimer); seq++; },
       key: function (code) {
-        var row = rows[r];
-        if (code === KEY.UP && r > 0) { r--; paint(); return true; }
-        if (code === KEY.DOWN && r < rows.length - 1) { r++; paint(); return true; }
-        if (code === KEY.LEFT && row) { row.index = Math.max(0, row.index - 1); paint(); return true; }
-        if (code === KEY.RIGHT && row) { row.index = Math.min(row.items.length - 1, row.index + 1); paint(); return true; }
-        if (code === KEY.ENTER && row && row.items[row.index]) { row.items[row.index].open(); return true; }
+        if (atTop) {
+          if (code === KEY.LEFT) { ti = Math.max(0, ti - 1); paint(); return true; }
+          if (code === KEY.RIGHT) { ti = Math.min(tabs.length - 1, ti + 1); paint(); return true; }
+          if (code === KEY.DOWN) { if (nav.current()) atTop = false; paint(); return true; }
+          if (code === KEY.ENTER) {
+            if (ti === 0) { searchScreen(); return true; }
+            if (TYPES[ti - 1][0] !== type) { type = TYPES[ti - 1][0]; load(); }
+            return true;
+          }
+          return code === KEY.UP;
+        }
+        if (code === KEY.UP) { if (!nav.move(-1)) { atTop = true; ti = 1 + TYPES.map(function (t) { return t[0]; }).indexOf(type); paint(); } return true; }
+        if (code === KEY.DOWN) { nav.move(1); return true; }
+        if (code === KEY.LEFT || code === KEY.RIGHT) { nav.side(code === KEY.LEFT ? -1 : 1); return true; }
+        if (code === KEY.ENTER) { var c = nav.current(); if (c) c.open(); return true; }
         return false;
       } }, true);
-    loadDiscover();
+    load();
   }
 
+  // ---------- Search ----------
+  // An on-screen keyboard for the remote (a USB/Bluetooth keyboard and the remote's number keys type too).
+  // Your library answers at once; TMDB (via the server) once you stop typing.
+  var KEYBOARD = 'abcdefghijklmnopqrstuvwxyz1234567890'.split('');
+  function libraryMatches(query) {
+    var q = L.searchKey(query);
+    if (!q) return [];
+    var out = [], seen = {};
+    state.shows.forEach(function (s) {
+      if (owned().showIds[s.id] && L.searchKey(s.title).indexOf(q) >= 0) out.push(showCard(s, 'tile'));
+    });
+    state.library.forEach(function (f) {
+      if (f.season != null) return;
+      var k = f.tmdbId || f.id;
+      if (seen[k] || L.searchKey(f.filmTitle || f.title).indexOf(q) < 0) return;
+      seen[k] = true;
+      out.push(filmCard(f, 'tile'));
+    });
+    return out.slice(0, 20);
+  }
+
+  function searchScreen() {
+    var q = '', zone = 'keys', kx = 0, ky = 0, seq = 0, timer = null, lit = null;
+    var keyEls = KEYBOARD.map(function (c) { return h('div', { class: 'key', text: c }); });
+    var bottom = [h('div', { class: 'key wide', text: 'Space' }), h('div', { class: 'key wide', text: '⌫' }), h('div', { class: 'key wide', text: 'Clear' })];
+    var field = h('div', { class: 'search-field is-empty' });
+    var label = h('div', { class: 'search-label' });
+    var note = h('div', { class: 'grid-note' });
+    var grid = gridView(5, null);
+    var el = h('div', { class: 'screen search' },
+      h('header', { class: 'topbar' },
+        h('div', { class: 'brandline' }, h('div', { class: 'wordmark', text: 'Search' }), h('span', { class: 'preview-label', text: 'Preview' })),
+        h('div', { class: 'discover-hint', text: 'OK: type · Right: results · Back: close' })),
+      h('div', { class: 'search-left' }, field, h('div', { class: 'keys' }, keyEls, bottom)),
+      h('div', { class: 'search-right' }, label, h('div', { class: 'grid-viewport' }, note, grid.el)));
+
+    function keyAt() { return ky < 6 ? keyEls[ky * 6 + kx] : bottom[Math.floor(kx / 2)]; }
+    function paint() {
+      var want = zone === 'keys' ? keyAt() : null;
+      if (lit !== want) { if (lit) lit.classList.remove('focus'); lit = want; if (want) want.classList.add('focus'); }
+      grid.paint(zone === 'results');
+    }
+    function setQuery(v) {
+      q = v;
+      field.textContent = q;
+      field.classList.toggle('is-empty', !q);
+      clearTimeout(timer);
+      timer = setTimeout(run, 450);
+    }
+    function type(c) { if (q.length < 60 && !(c === ' ' && (!q || q.charAt(q.length - 1) === ' '))) setQuery(q + c); }
+    function press() {
+      if (ky < 6) type(KEYBOARD[ky * 6 + kx]);
+      else if (kx < 2) type(' ');
+      else if (kx < 4) setQuery(q.slice(0, -1));
+      else setQuery('');
+    }
+    function results(cards, text) {
+      grid.clear(); grid.add(cards);
+      label.textContent = text;
+      note.textContent = '';
+      if (zone === 'results' && !grid.cards.length) zone = 'keys';
+      paint();
+    }
+    function run() {
+      var my = ++seq, query = q.replace(/^\s+|\s+$/g, '');
+      if (!query) {
+        label.textContent = 'Trending this week';
+        api('/api/discover/list?key=trending-all&page=1')
+          .then(function (d) { if (my === seq) results((d.results || []).map(titleCard), 'Trending this week'); })
+          .catch(function () { if (my === seq) results([], 'Type to search films and shows'); });
+        return;
+      }
+      var local = libraryMatches(query);
+      if (query.length < 2) { results(local, local.length ? 'In your library' : 'Keep typing…'); return; }
+      results(local, 'Searching for “' + query + '”…');
+      api('/api/search?q=' + encodeURIComponent(query)).then(function (d) {
+        if (my !== seq) return;
+        var all = local.concat((d.results || []).map(titleCard));
+        results(all, all.length ? 'Results for “' + query + '”' : 'Nothing found for “' + query + '”');
+      }).catch(function (err) {
+        if (my !== seq) return;
+        results(local, err.message);
+      });
+    }
+    show({ el: el, focus: paint, refresh: paint,
+      leave: function () { clearTimeout(timer); seq++; },
+      key: function (code, e) {
+        // A real keyboard: letters and digits type, Backspace erases (Back still closes when there's nothing to erase).
+        if (e && e.keyCode === 8 && q) { setQuery(q.slice(0, -1)); return true; }
+        if (e && e.key && e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) { type(e.key.toLowerCase()); return true; }
+        if (zone === 'keys') {
+          if (code === KEY.LEFT) kx = ky === 6 ? Math.max(0, (Math.floor(kx / 2) - 1) * 2) : Math.max(0, kx - 1);
+          else if (code === KEY.RIGHT) {
+            if (ky === 6 ? kx >= 4 : kx === 5) { if (grid.cards.length) { zone = 'results'; grid.i = Math.min(grid.i, grid.cards.length - 1); } }
+            else kx = ky === 6 ? (Math.floor(kx / 2) + 1) * 2 : kx + 1;
+          }
+          else if (code === KEY.UP) { if (ky > 0) ky--; }
+          else if (code === KEY.DOWN) { if (ky < 6) ky++; }
+          else if (code === KEY.ENTER) press();
+          else return false;
+          paint();
+          return true;
+        }
+        if (code === KEY.ENTER) { var c = grid.current(); if (c) c.open(); return true; }
+        if (code === KEY.LEFT && grid.i % grid.cols === 0) { zone = 'keys'; paint(); return true; }
+        if (code === KEY.UP || code === KEY.DOWN || code === KEY.LEFT || code === KEY.RIGHT) { grid.move(code); paint(); return true; }
+        return false;
+      } }, true);
+    run();
+  }
+
+  // ---------- a title's page: play it if it's yours, or download it ----------
   function discoverTitle(t) {
     var quality = null, qualities = [null, '2160p', '1440p', '1080p', '720p'];
     var seasons = [], si = 0, zone = t.type === 'tv' ? 'seasons' : 'actions', ai = 0;
     var alive = true, busy = false, pollTimer = null;
+    var lib = libraryEntry(t);
     var backdrop = h('div', { class: 'discover-backdrop' }, img(t.backdrop || t.poster));
     var title = h('h1', { text: t.title });
-    var meta = h('div', { class: 'discover-meta', text: [t.year, t.type === 'tv' ? 'Series' : 'Film', t.rating ? '★ ' + t.rating : null].filter(Boolean).join(' · ') });
+    var meta = h('div', { class: 'discover-meta', text: [t.year, t.type === 'tv' ? 'Series' : 'Film', t.rating ? '★ ' + t.rating : null]
+      .concat(genreNames(t.type, t.genres)).filter(Boolean).join(' · ') });
     var overview = h('p', { class: 'discover-overview', text: t.overview || 'No description available.' });
     var seasonBox = h('div', { class: 'discover-seasons' });
-    var status = h('div', { class: 'download-status', text: titleInLibrary(t) ? 'Already in your library. Smart Download will avoid duplicates.' : '' });
-    var downloadBtn = h('button', { class: 'title-action primary', text: state.me && state.me.canDownload === false ? 'Downloads disabled' : 'Download' });
+    var status = h('div', { class: 'download-status', text: lib ? 'Already in your library. Smart Download will avoid duplicates.' : '' });
+    var downloadBtn = h('button', { class: 'title-action' + (lib ? '' : ' primary'), text: state.me && state.me.canDownload === false ? 'Downloads disabled' : 'Download' });
     var qualityBtn = h('button', { class: 'title-action', text: '' });
-    var actions = h('div', { class: 'title-actions' }, downloadBtn, qualityBtn);
-    var panel = h('div', { class: 'discover-panel' }, h('div', { class: 'discover-copy' }, title, meta, overview, seasonBox, actions, status));
+    var actions = [];
+    if (lib) actions.push({ el: h('button', { class: 'title-action primary', text: lib.film ? 'Play' : 'Open' }),
+      act: function () { if (lib.film) playAsked(lib.film); else showPage(lib.show); } });
+    actions.push({ el: downloadBtn, act: download });
+    actions.push({ el: qualityBtn, act: function () { cycleQuality(1); }, quality: true });
+    // Seasons pick what Download gets; for a show you already have, Open comes first.
+    if (lib) zone = 'actions';
+    var panel = h('div', { class: 'discover-panel' }, h('div', { class: 'discover-copy' }, title, meta, overview, seasonBox,
+      h('div', { class: 'title-actions' }, actions.map(function (a) { return a.el; })), status));
     var el = h('div', { class: 'screen discover-title' }, backdrop, panel);
 
     function savedQuality() {
@@ -414,15 +872,14 @@
       }
       seasonBox.appendChild(h('div', { class: 'season-label', text: 'Season' }));
       var track = h('div', { class: 'season-track' });
-      seasons.forEach(function (s, i) {
+      seasons.forEach(function (s) {
         track.appendChild(h('div', { class: 'season-chip' + (s.upcoming ? ' upcoming' : ''), text: String(s.number) }));
       });
       seasonBox.appendChild(h('div', { class: 'season-viewport' }, track));
     }
     function paint() {
       qualityBtn.textContent = qualityText();
-      downloadBtn.classList.toggle('focus', zone === 'actions' && ai === 0);
-      qualityBtn.classList.toggle('focus', zone === 'actions' && ai === 1);
+      actions.forEach(function (a, i) { a.el.classList.toggle('focus', zone === 'actions' && ai === i); });
       if (t.type === 'tv' && seasons.length) {
         var chips = seasonBox.querySelectorAll('.season-chip');
         [].forEach.call(chips, function (chip, i) { chip.classList.toggle('focus', zone === 'seasons' && i === si); chip.classList.toggle('active', i === si); });
@@ -474,14 +931,14 @@
         if (zone === 'seasons') {
           if (code === KEY.LEFT && si > 0) { si--; paint(); return true; }
           if (code === KEY.RIGHT && si < seasons.length - 1) { si++; paint(); return true; }
-          if (code === KEY.DOWN || code === KEY.ENTER) { zone = 'actions'; ai = 0; paint(); return true; }
+          if (code === KEY.DOWN || code === KEY.ENTER) { zone = 'actions'; ai = lib ? 1 : 0; paint(); return true; }
           return code === KEY.UP || code === KEY.LEFT || code === KEY.RIGHT;
         }
         if (code === KEY.UP && t.type === 'tv' && seasons.length) { zone = 'seasons'; paint(); return true; }
         if (code === KEY.LEFT) { ai = Math.max(0, ai - 1); paint(); return true; }
-        if (code === KEY.RIGHT) { ai = Math.min(1, ai + 1); paint(); return true; }
-        if (code === KEY.ENTER) { if (ai === 0) download(); else cycleQuality(1); return true; }
-        if (code === KEY.DOWN && ai === 1) { cycleQuality(1); return true; }
+        if (code === KEY.RIGHT) { ai = Math.min(actions.length - 1, ai + 1); paint(); return true; }
+        if (code === KEY.ENTER) { actions[ai].act(); return true; }
+        if (code === KEY.DOWN && actions[ai].quality) { cycleQuality(1); return true; }
         return false;
       } }, true);
 
