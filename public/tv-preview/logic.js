@@ -1,0 +1,150 @@
+// Marquee on a TV (tv/tizen): the parts of the TV app that are plain logic, kept apart so tests can run them.
+// Written for the TV's browser engine (Samsung 2020 = Chrome 69): no ?. or ??, no newer built-ins.
+(function (root) {
+  'use strict';
+
+  var AUTOPLAY_SECONDS = 10;
+  var AUTOPLAY_CHAIN = 3; // episodes in a row the countdown may start before it waits for a person
+  var DONE_SECONDS = 90;  // this close to the end counts as watched (same as the phone player)
+
+  function posInt(n) { return typeof n === 'number' && isFinite(n) && n > 0 && Math.floor(n) === n; }
+  function usableEpisode(f) {
+    return Boolean(f && f.id && f.show && posInt(f.season) && posInt(f.episode) && !f.converting && f.done !== false);
+  }
+
+  // Same rule as the phone (public/player-next.js): the next episode of this person's own library,
+  // the first of the next season only when TMDB says this was the season's last. Never skips one.
+  function nextEpisode(currentId, library, shows) {
+    var current = null, i;
+    for (i = 0; i < library.length; i++) if (library[i].id === currentId) { current = library[i]; break; }
+    if (!usableEpisode(current)) return null;
+    var episodes = library.filter(function (f) { return usableEpisode(f) && f.show === current.show; });
+    function choose(season, episode) {
+      return episodes.filter(function (f) { return f.season === season && f.episode === episode; })
+        .sort(function (a, b) { return String(a.file || '').localeCompare(String(b.file || '')) || String(a.id).localeCompare(String(b.id)); })[0] || null;
+    }
+    var next = choose(current.season, current.episode + 1);
+    if (next) return next;
+    var show = null;
+    for (i = 0; i < shows.length; i++) if (shows[i].id === current.show) show = shows[i];
+    var season = show && (show.seasons || []).filter(function (s) { return s.number === current.season; })[0];
+    var total = season && season.total;
+    return posInt(total) && current.episode === total ? choose(current.season + 1, 1) : null;
+  }
+
+  // Up next starts with the credits (an ending chapter or the credits music, from the server), never
+  // at a guessed time: with no credits start known it waits for the end of the file.
+  function nextPromptAt(duration, creditsAt) {
+    if (!(duration > 0)) return null;
+    return typeof creditsAt === 'number' && creditsAt > duration / 2 && creditsAt < duration ? creditsAt : null;
+  }
+  function isNextTime(time, duration, creditsAt, ended) {
+    if (ended) return true;
+    var at = nextPromptAt(duration, creditsAt);
+    return at !== null && time >= at;
+  }
+  function introShowing(time, intro) {
+    return Boolean(intro) && time >= intro.start - 0.25 && time < intro.end - 1;
+  }
+
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function fmtTime(sec) {
+    sec = Math.max(0, Math.floor(sec || 0));
+    var h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60;
+    return h ? h + ':' + pad2(m) + ':' + pad2(s) : m + ':' + pad2(s);
+  }
+  function episodeLabel(f) {
+    return f && f.season != null && f.episode != null ? 'S' + pad2(f.season) + ' E' + pad2(f.episode) : '';
+  }
+  function minutesLeft(p) { return Math.max(1, Math.ceil((p.duration - p.time) / 60)) + ' min left'; }
+
+  // Resume points are synced by media key, which stays the same when the MP4 copy replaces the original.
+  function progressRef(f) { return f.mediaKey ? 'm:' + f.mediaKey : 'l:' + f.id; }
+  function resumable(p) { return Boolean(p && p.time > 30 && p.duration > 0 && p.duration - p.time > DONE_SECONDS); }
+
+  // "movie:603" / "tv:1399", for Wrapped and Popular on Marquee (same as public/social.js titleKeyOf).
+  function titleKey(f) {
+    var show = /^tv-(\d+)$/.exec(String(f.show || ''));
+    if (show) return 'tv:' + show[1];
+    if (f.tmdbId && f.season == null) return 'movie:' + f.tmdbId;
+    return undefined;
+  }
+
+  // The home screen: what you were watching (newest first), then shows, then films.
+  function homeRows(library, shows, progress) {
+    var cont = library.filter(function (f) { return resumable(progress[progressRef(f)]) && !f.converting; })
+      .sort(function (a, b) { return (progress[progressRef(b)].at || 0) - (progress[progressRef(a)].at || 0); })
+      .slice(0, 20);
+    var showIds = {};
+    library.forEach(function (f) { if (f.show && f.season != null) showIds[f.show] = true; });
+    var showList = shows.filter(function (s) { return showIds[s.id]; })
+      .sort(function (a, b) { return latestAdded(library, b.id) - latestAdded(library, a.id); });
+    var films = library.filter(function (f) { return f.season == null; })
+      .sort(function (a, b) { return (b.addedAt || b.added || 0) - (a.addedAt || a.added || 0); });
+    return { cont: cont, shows: showList, films: films };
+  }
+  function latestAdded(library, showId) {
+    var t = 0;
+    library.forEach(function (f) { if (f.show === showId) t = Math.max(t, f.addedAt || f.added || 0); });
+    return t;
+  }
+
+  // One show's downloaded episodes by season, and the episode to start on: the one in progress, else
+  // the one after the last you finished, else the first.
+  function showSeasons(library, showId) {
+    var bySeason = {};
+    library.forEach(function (f) {
+      if (f.show !== showId || f.season == null) return;
+      (bySeason[f.season] = bySeason[f.season] || []).push(f);
+    });
+    return Object.keys(bySeason).map(Number).sort(function (a, b) { return a - b; }).map(function (n) {
+      return { number: n, episodes: bySeason[n].sort(function (a, b) { return (a.episode || 0) - (b.episode || 0) || String(a.file || '').localeCompare(String(b.file || '')); }) };
+    });
+  }
+  function startEpisode(seasons, progress, watched) {
+    var all = [];
+    seasons.forEach(function (s) { all = all.concat(s.episodes); });
+    var i;
+    for (i = 0; i < all.length; i++) if (resumable(progress[progressRef(all[i])])) return all[i];
+    var last = -1;
+    for (i = 0; i < all.length; i++) if (watched && watched[progressRef(all[i])]) last = i;
+    return all[Math.min(last + 1, all.length - 1)] || null;
+  }
+
+  // WebVTT from /api/subs/file/…vtt: cues with start/end in seconds and plain text (tags dropped).
+  function parseVtt(text) {
+    var cues = [];
+    var blocks = String(text || '').replace(/\r/g, '').split(/\n{2,}/);
+    var time = /(?:(\d+):)?(\d{1,2}):(\d{2})[.,](\d{3})\s*-->\s*(?:(\d+):)?(\d{1,2}):(\d{2})[.,](\d{3})/;
+    blocks.forEach(function (block) {
+      var lines = block.split('\n');
+      for (var i = 0; i < lines.length; i++) {
+        var m = time.exec(lines[i]);
+        if (!m) continue;
+        var start = (+m[1] || 0) * 3600 + (+m[2]) * 60 + (+m[3]) + (+m[4]) / 1000;
+        var end = (+m[5] || 0) * 3600 + (+m[6]) * 60 + (+m[7]) + (+m[8]) / 1000;
+        var body = lines.slice(i + 1).join('\n').replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ').trim();
+        if (body && end > start) cues.push({ start: start, end: end, text: body });
+        break;
+      }
+    });
+    return cues.sort(function (a, b) { return a.start - b.start; });
+  }
+  // Text showing at `t` (overlapping cues are joined), by binary search on start times.
+  function cueText(cues, t) {
+    var lo = 0, hi = cues.length;
+    while (lo < hi) { var mid = (lo + hi) >> 1; if (cues[mid].start <= t) lo = mid + 1; else hi = mid; }
+    var out = [];
+    for (var i = lo - 1; i >= 0 && i >= lo - 8; i--) if (cues[i].end > t) out.unshift(cues[i].text);
+    return out.join('\n');
+  }
+
+  var api = {
+    AUTOPLAY_SECONDS: AUTOPLAY_SECONDS, AUTOPLAY_CHAIN: AUTOPLAY_CHAIN, DONE_SECONDS: DONE_SECONDS,
+    nextEpisode: nextEpisode, nextPromptAt: nextPromptAt, isNextTime: isNextTime, introShowing: introShowing,
+    fmtTime: fmtTime, episodeLabel: episodeLabel, minutesLeft: minutesLeft, progressRef: progressRef, resumable: resumable,
+    titleKey: titleKey, homeRows: homeRows, showSeasons: showSeasons, startEpisode: startEpisode, parseVtt: parseVtt, cueText: cueText,
+  };
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  else root.MarqueeTvLogic = api;
+})(this);
