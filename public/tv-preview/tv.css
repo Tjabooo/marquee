@@ -165,8 +165,8 @@ img.is-empty { visibility: hidden; }
 .discover-loading { margin-top: 80px; }
 .tv-badge { position: absolute; left: 12px; bottom: 12px; padding: 6px 10px; border-radius: 8px; background: rgba(31,16,25,.92); color: var(--bulb); font-size: 18px; font-weight: 700; }
 .discover-backdrop { position: absolute; right: 0; top: 0; width: 1320px; height: 820px; opacity: .32; }
-.discover-backdrop::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, var(--velvet) 0%, rgba(31,16,25,.2) 58%, rgba(31,16,25,.05) 100%), linear-gradient(0deg, var(--velvet) 0%, rgba(31,16,25,0) 62%); }
-.discover-panel { position: absolute; inset: 0; padding: 118px var(--edge); }
+.discover-backdrop::after { content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: linear-gradient(90deg, var(--velvet) 0%, rgba(31,16,25,.2) 58%, rgba(31,16,25,.05) 100%), linear-gradient(0deg, var(--velvet) 0%, rgba(31,16,25,0) 62%); }
+.discover-panel { position: absolute; top: 0; right: 0; bottom: 0; left: 0; padding: 118px var(--edge); }
 .discover-copy { position: relative; width: 1040px; }
 .discover-copy h1 { margin: 0 0 14px; font-size: 72px; line-height: 1.02; letter-spacing: -.02em; }
 .discover-meta { color: var(--bulb); font-size: 26px; font-weight: 700; }
