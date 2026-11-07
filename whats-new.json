@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-08-stuck-episodes",
+    "date": "2026-11-08",
+    "title": "Stuck episodes no longer block a season",
+    "items": [
+      {
+        "title": "Seasons keep downloading",
+        "text": "When a few episodes of a season can't find anyone to download from, the rest of the season now carries on instead of waiting behind them. A whole-season download also goes ahead of single episodes it already includes."
+      }
+    ]
+  },
+  {
     "id": "2026-11-07-anime",
     "date": "2026-11-07",
     "title": "Much better anime",

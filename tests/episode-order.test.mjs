@@ -23,11 +23,24 @@ test('separate episode torrents run one at a time, earliest first, and resume in
   assert.deepEqual(after.start, ['b']); assert.deepEqual(after.stop, []);
 });
 
-test('a stalled episode lets the next one run alongside it, at most three', () => {
+test('stalled episodes never hold up the season: three keep trying, the next healthy one runs', () => {
   const stalled = (hash, ep) => single(hash, ep, { state: 'stalledDL' });
-  const plan = planEpisodeOrder({ season: 1, torrents: [stalled('a', 1), stalled('b', 2), stalled('c', 3), single('d', 4), single('e', 5)] });
-  assert.deepEqual(plan.running.map((r) => r.episode), [1, 2, 3]);
-  assert.deepEqual(plan.stop.sort(), ['d', 'e']);
+  const plan = planEpisodeOrder({ season: 1, torrents: [stalled('a', 1), stalled('b', 2), stalled('c', 3), stalled('x', 4), single('d', 5), single('e', 6)] });
+  assert.deepEqual(plan.running.map((r) => r.episode), [1, 2, 3, 5]);
+  assert.deepEqual(plan.stop.sort(), ['e', 'x']);
+  // x was stopped after stalling: it stays stopped instead of taking d's turn
+  const held = new Set(['x', 'e']);
+  const next = planEpisodeOrder({ season: 1, torrents: [stalled('a', 1), stalled('b', 2), stalled('c', 3), single('x', 4, { state: 'stoppedDL', wasStalled: true }), single('d', 5), single('e', 6, { state: 'stoppedDL' })] }, held);
+  assert.deepEqual(next.running.map((r) => r.episode), [1, 2, 3, 5]); assert.deepEqual(next.start, []);
+});
+
+test('a season batch runs past stalled leftovers and goes before a separate torrent of the same episode', () => {
+  // Black Clover: three stalled single episodes from an earlier try, a 170-episode batch, old held singles
+  const stalled = (hash, ep) => single(hash, ep, { state: 'stalledDL' });
+  const pack = { hash: 'p', name: 'Show.S01.1080p', state: 'stoppedDL', progress: 0, files: [file(0, 5), file(1, 6), file(2, 7)] };
+  const plan = planEpisodeOrder({ season: 1, torrents: [stalled('a', 1), stalled('b', 3), stalled('c', 4), single('s5', 5, { state: 'stoppedDL' }), pack] }, new Set(['p', 's5']));
+  assert.deepEqual(plan.running.map((r) => r.hash), ['a', 'b', 'c', 'p']);
+  assert.deepEqual(plan.start, ['p']); assert.deepEqual(plan.priorities, [{ hash: 'p', ids: [0], priority: TOP }]);
 });
 
 test('torrents paused by the person or failed are left alone', () => {

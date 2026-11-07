@@ -1146,6 +1146,10 @@ function releaseEpisodeOrder(hash) {
   if (episodeOrder.delete(String(hash).toLowerCase())) saveEpisodeOrder();
 }
 let orderBusy = false;
+// When each ordered torrent was last seen stalled: one Marquee stopped keeps counting as stalled for a
+// while (episode-order.js), then gets another try.
+const lastStalled = new Map();
+const STALL_MEMORY = 30 * 60e3;
 async function episodeOrderRound() {
   if (!QBIT_URL || !episodeOrder.size || orderBusy) return;
   orderBusy = true;
@@ -1167,12 +1171,16 @@ async function episodeOrderRound() {
           invalidateLibrary();
         }
       }
+      const hashKey = t.hash.toLowerCase();
+      if (/^(stalledDL|metaDL|forcedMetaDL)$/.test(t.state || '')) lastStalled.set(hashKey, Date.now());
+      const wasStalled = Date.now() - (lastStalled.get(hashKey) || 0) < STALL_MEMORY;
       const group = `${entry.key}|${entry.season}`;
       if (!groups.has(group)) groups.set(group, { season: entry.season, ctx: anime.contextForTitle(entry.key), torrents: [] });
-      groups.get(group).torrents.push({ hash: t.hash.toLowerCase(), name: t.name, state: t.state, progress: t.progress,
+      groups.get(group).torrents.push({ hash: hashKey, name: t.name, state: t.state, progress: t.progress, wasStalled,
         files: files.map((f, i) => ({ index: f.index ?? i, name: f.name, progress: f.progress, priority: f.priority })) });
     }
     if (finishedEpisodeFiles.size > 5000) finishedEpisodeFiles.clear();
+    for (const hash of lastStalled.keys()) if (!episodeOrder.has(hash)) lastStalled.delete(hash);
     const held = new Set([...episodeOrder].filter(([, e]) => e.held).map(([hash]) => hash));
     for (const group of groups.values()) {
       const plan = planEpisodeOrder(group, held);
