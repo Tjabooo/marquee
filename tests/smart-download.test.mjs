@@ -2,14 +2,11 @@
 // off, missing-only fallback and plain-language outcomes.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs/promises';
-import vm from 'node:vm';
 import { pickBest, languageFit } from '../src/recommend.js';
 import { parseTpb } from '../src/torrents.js';
 import { startSmartJob, smartJob } from '../src/smart-download.js';
 
-const server = await fs.readFile(new URL('../src/server.js', import.meta.url), 'utf8');
-const parseName = vm.runInNewContext(server.slice(server.indexOf('const EPISODE_PATTERNS'), server.indexOf('// A file\'s name info')) + '\nparseName');
+import { parseName } from '../src/release-name.js';
 const GB = 1024 ** 3;
 let n = 0;
 const results = (rows) => parseTpb(rows.map(([name, seeders, size = 2 * GB]) => ({

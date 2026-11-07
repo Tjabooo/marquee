@@ -69,6 +69,8 @@ See [remote-access.md](remote-access.md) for how accounts work and how to publis
 | `CONTENT_FILTER_WORDS` | | Extra words or phrases the filter blocks, comma-separated. |
 | `TPB_API` | `https://apibay.org` | The Pirate Bay API base. |
 | `X1337_URL` | built-in list | 1337x mirrors, comma-separated, tried in order. |
+| `NYAA_URL` | `https://nyaa.si` | Nyaa, searched alongside the others for anime. `off` leaves it out. |
+| `ANILIST_URL` | `https://graphql.anilist.co` | AniList API: anime names and how their seasons line up with TMDB's. |
 | `FLARESOLVERR_URL` | | FlareSolverr address, e.g. `http://localhost:8191`, for when every 1337x mirror is behind a Cloudflare check. |
 
 ## Subtitles

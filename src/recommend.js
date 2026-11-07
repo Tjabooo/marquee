@@ -18,6 +18,7 @@
 // episode from Settings, and the free space on the media disk.
 import { showKey } from './shows.js';
 import { sameShow } from './season.js';
+import { GOOD_GROUPS, animeGroup } from './anime.js';
 
 const HEALTHY = 5;
 const ALIVE = 2;
@@ -69,6 +70,10 @@ function score(r, want, kind) {
   if (/\b(hc|hardsub|korsub|hcsubs?)\b/i.test(r.name)) s -= 2;
   if (/\b(dv|dovi|dolby ?vision)\b/i.test(r.name) && !/\bhdr(10)?\b/i.test(r.name)) s -= 1;
   if (want.audioLang) s += (languageFit(r.name, want.audioLang) - 1) * 0.8;
+  if (r.remake) s -= 0.5;                                     // Nyaa: a re-upload of someone else's release
+  // 10-bit H.264 ("Hi10P", common in older anime) plays on almost no TV or phone without re-encoding.
+  if (/\b(hi10p?|10.?bits?)\b/i.test(r.name) && /\b(x264|h\.?264|avc)\b/i.test(r.name) && !/\b(x265|hevc|av1)\b/i.test(r.name)) s -= 0.7;
+  if (want.anime && GOOD_GROUPS.has(animeGroup(r.name))) s += 0.3;
   const size = perItemSize(r, want, kind);
   if (size) {
     const unit = kind === 'movie' ? 1 : 0.15; // an episode is roughly a seventh of a film
@@ -81,9 +86,13 @@ function score(r, want, kind) {
 }
 
 // The size that counts against limits: a film's whole size, a pack's size per episode.
-const perItemSize = (r, want, kind) => (kind === 'pack' && want.episodes > 0 && r.size ? r.size / want.episodes : r.size || 0);
+// Anime packs say how many episodes they hold (packEpisodes, anime.js): "(01-170)" is 170 of them.
+const perItemSize = (r, want, kind) => (kind === 'pack' && r.packEpisodes > 0 && r.size ? r.size / r.packEpisodes
+  : kind === 'pack' && want.episodes > 0 && r.size ? r.size / want.episodes : r.size || 0);
 // The space a download really takes: a pack with owned episodes deselected only downloads the rest.
-const diskSize = (r, want) => (want.type === 'tv' && want.episodes > 0 && want.missing > 0 && r.size
+// Anime packs: only the episodes of this season it covers (the rest are switched off too).
+const diskSize = (r, want) => (r.packEpisodes > 0 && r.size ? r.size / r.packEpisodes * Math.min(r.covers || r.packEpisodes, want.missing || r.covers || r.packEpisodes)
+  : want.type === 'tv' && want.episodes > 0 && want.missing > 0 && r.size
   ? r.size * Math.min(1, want.missing / want.episodes) : r.size || 0);
 
 // results: torrents.searchTorrents() results. want: { type: 'movie' | 'tv' | 'episode', title, year?,
@@ -101,9 +110,11 @@ export function pickBest(results, want, parseName) {
     const packs = exact.length ? exact : live.filter((r) => keyOf(r)?.startsWith(key) && COUNTRIES.has(keyOf(r).slice(key.length)));
     return choose(packs, want, 'pack');
   }
+  // Other names of the film (anime: the romanised title, "Kimi no Na wa." for "Your Name.").
+  const keys = new Set([key, ...(want.aliases || [])]);
   return choose(live.filter((r) => {
     const p = parseName(r.name, { file: false });
-    return p.season == null && showKey(p.title) === key && (!want.year || !p.year || Math.abs(p.year - want.year) <= 1);
+    return p.season == null && keys.has(showKey(p.title)) && (!want.year || !p.year || Math.abs(p.year - want.year) <= 1);
   }), want, 'movie');
 }
 
@@ -135,7 +146,7 @@ function limits(fits, want, kind) {
   return { fits, why };
 }
 
-function choose(found, want, kind, minAlive = ALIVE) {
+export function choose(found, want, kind, minAlive = ALIVE) {
   const none = kind === 'pack' ? 'No complete season pack clearly matches.' : 'No release clearly matches this title.';
   const limited = limits(found, want, kind);
   let fits = limited.fits;

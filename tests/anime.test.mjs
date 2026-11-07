@@ -1,0 +1,202 @@
+// Anime support: fansub names, AniList seasons placed on TMDB's, Nyaa results, batches in smart
+// downloads and library numbering. Names below are real Nyaa release names (November 2026).
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { parseAnimeName, alignEntries, resolve, episodesInSeason, seasonPacks, packQueries, episodeQueriesAnime, isAnimeDetails } from '../src/anime.js';
+import { parseName } from '../src/release-name.js';
+import { episodesIn } from '../src/season.js';
+import { parseNyaa } from '../src/torrents.js';
+import { showKey } from '../src/shows.js';
+import { startSmartJob, smartJob } from '../src/smart-download.js';
+
+// A context as anime.buildContext makes it, without the network.
+function ctxOf({ id = 1, title, keys, seasons, entries = [] }) {
+  let start = 1;
+  const s = seasons.map((count, i) => { const out = { n: i + 1, count, start }; start += count; return out; });
+  const e = alignEntries(s, entries.map(([titles, episodes]) => ({ titles, keys: titles.map(showKey), episodes })));
+  e.forEach((x, i) => { if (i > 0) x.keys = x.keys.filter((k) => !keys.map(showKey).includes(k)); });
+  return { v: 2, type: 'tv', id, title, year: 2020, keys: keys.map(showKey), queryTitles: [keys[0]], seasons: s, entries: e };
+}
+const frieren = ctxOf({ title: 'Frieren: Beyond Journey\'s End', keys: ['Sousou no Frieren', 'Frieren: Beyond Journey\'s End'],
+  seasons: [38], entries: [[['Sousou no Frieren'], 28], [['Sousou no Frieren 2nd Season'], 10]] });
+const clover = ctxOf({ title: 'Black Clover', keys: ['Black Clover'], seasons: [170, 26], entries: [[['Black Clover'], 170], [['Black Clover 2nd Season'], null]] });
+const jjk = ctxOf({ title: 'JUJUTSU KAISEN', keys: ['Jujutsu Kaisen'], seasons: [59],
+  entries: [[['Jujutsu Kaisen'], 24], [['Jujutsu Kaisen 2nd Season'], 23], [['Jujutsu Kaisen: Shimetsu Kaiyuu - Zenpen'], 12]] });
+const slayer = ctxOf({ title: 'Demon Slayer: Kimetsu no Yaiba', keys: ['Kimetsu no Yaiba', 'Demon Slayer: Kimetsu no Yaiba'], seasons: [26, 7, 11, 11, 8],
+  entries: [[['Kimetsu no Yaiba'], 26], [['Kimetsu no Yaiba: Yuukaku-hen'], 11], [['Kimetsu no Yaiba: Katanakaji no Sato-hen'], 11], [['Kimetsu no Yaiba: Hashira Geiko-hen'], 8]] });
+const onePiece = ctxOf({ title: 'One Piece', keys: ['One Piece'], seasons: [61, 16, 14, 39], entries: [[['One Piece'], null]] });
+const place = (name, ctx) => resolve(parseAnimeName(name, { file: true }), ctx)?.map((x) => `S${x.season}E${x.episode}`).join(',') ?? null;
+
+test('fansub names: groups, absolute numbers, season markers, batches and ranges', () => {
+  const p = (n) => { const x = parseAnimeName(n); return x && [x.title, x.seasons?.join('+') ?? null, x.episodes ? (x.episodes.length > 2 ? `${x.episodes[0]}..${x.episodes.at(-1)}` : x.episodes.join(',')) : null]; };
+  assert.deepEqual(p('[SubsPlease] Black Clover - 176 (1080p) [DC022518].mkv'), ['Black Clover', null, '176']);
+  assert.deepEqual(p('[SubsPlease] Sousou no Frieren S2 - 03 (1080p) [7556A22B].mkv'), ['Sousou no Frieren', '2', '3']);
+  assert.deepEqual(p('[Erai-raws] Black Clover 2nd Season - 06 [1080p CR WEB-DL AVC AAC][MultiSub][D4FA28BC]'), ['Black Clover', '2', '6']);
+  assert.deepEqual(p('[SubsPlease] Black Clover (01-170) (1080p) [Batch]'), ['Black Clover', null, '1..170']);
+  assert.deepEqual(p('[Erai-raws] Black Clover (TV) - 001 ~ 170 [1080p][BATCH][Multiple Subtitle] [ENG]'), ['Black Clover', null, '1..170']);
+  assert.deepEqual(p('[HorribleSubs] Black Clover 01 - 60 [720p] [Batch]'), ['Black Clover', null, '1..60']);
+  assert.deepEqual(p('[Judas] Jujutsu Kaisen (Season 2) [1080p][HEVC x265 10bit][Dual-Audio][Multi-Subs] (Batch)'), ['Jujutsu Kaisen', '2', null]);
+  assert.deepEqual(p('[Judas] Black Clover (Seasons 1-4 + Extras) [BD 1080p][HEVC x265 10bit] (Batch)'), ['Black Clover', '1+2+3+4', null]);
+  assert.deepEqual(p('[Trix] Kimetsu no Yaiba S01-05 [Dual Audio] (BD 1080p AV1) - Demon Slayer VOSTFR (Batch)'), ['Kimetsu no Yaiba', '1+2+3+4+5', null]);
+  assert.deepEqual(p('[Anime Time] One Piece (0001-1071+Movies+Specials) [BD+CR] [Dual Audio] [Batch]'), ['One Piece', null, '1..1071']);
+  assert.deepEqual(p('[ToonsHub] One Piece EP1158 1080p CR WEB-DL DUAL AAC2.0 H.264 (Dual-Audio, Multi-Subs)'), ['One Piece', null, '1158']);
+  assert.deepEqual(p('SPY.x.FAMILY.S02.1080p.BluRay.Dual-Audio.Opus.5.1.x265-YURASUKA (SPYxFAMILY 2nd Season)'), ['SPY x FAMILY', '2', null]);
+  assert.deepEqual(p('[ASW] 86 - Eighty Six - 05 [1080p HEVC]'), ['86 - Eighty Six', null, '5']);
+  assert.deepEqual(p('Mob Psycho 100 III - 05 (1080p)'), ['Mob Psycho 100 III', null, '5']);
+  assert.equal(parseAnimeName('[SubsPlease] Frieren - 05.5 (1080p) [ABCDEF12].mkv').special, true, 'recaps are not episodes');
+  assert.equal(parseAnimeName('[Erai-raws] Mugyutto! Black Clover - 01 ~ 08 [1080p][BATCH]').title, 'Mugyutto! Black Clover');
+  assert.equal(parseAnimeName('Dune.2021.1080p.BluRay.x264'), null, 'films stay films');
+});
+
+test('parseName: anime episodes without SxxEyy, group tags never part of a title', () => {
+  assert.deepEqual(parseName('[SubsPlease] Black Clover - 176 (1080p) [DC022518].mkv'), { title: 'Black Clover', year: null, season: 1, episode: 176, absolute: true, anime: true });
+  assert.deepEqual(parseName('[SubsPlease] Sousou no Frieren S2 - 03 (1080p) [7556A22B].mkv'), { title: 'Sousou no Frieren', year: null, season: 2, episode: 3, absolute: false, anime: true });
+  assert.equal(parseName('[Judas] Black Clover - S02E06 [1080p][HEVC x265 10bit].mkv').title, 'Black Clover');
+  assert.equal(parseName('[SubsPlease] Kimetsu no Yaiba Movie 1 - Mugenjou-hen - Akaza Sairai (1080p) [E0B0972D].mkv').season, null);
+  assert.equal(parseName('Rocky - 4 (1986).mkv').season, null, 'a lone low number is no episode');
+  assert.deepEqual(parseName('Severance.S02E03.1080p.mkv'), { title: 'Severance', year: null, season: 2, episode: 3 });
+});
+
+test('AniList seasons are placed on TMDB’s count, skipping TMDB seasons AniList doesn’t have', () => {
+  assert.deepEqual(frieren.entries.map((e) => e.from), [1, 29]);
+  assert.deepEqual(clover.entries.map((e) => e.from), [1, 171]);
+  assert.deepEqual(jjk.entries.map((e) => e.from), [1, 25, 48]);
+  // TMDB: 26, Mugen Train arc (7), 11, 11, 8. AniList skips the Mugen Train TV arc.
+  assert.deepEqual(slayer.entries.map((e) => e.from), [1, 34, 45, 56]);
+  assert.deepEqual(onePiece.entries.map((e) => e.from), [1]);
+});
+
+test('every naming convention lands on TMDB’s season and episode', () => {
+  assert.equal(place('[SubsPlease] Sousou no Frieren S2 - 03 (1080p) [7556A22B].mkv', frieren), 'S1E31');
+  assert.equal(place('[Erai-raws] Sousou no Frieren 2nd Season - 10 [1080p][5A357DEE].mkv', frieren), 'S1E38');
+  assert.equal(place('[SubsPlease] Sousou no Frieren - 05 (1080p) [ABCDEF12].mkv', frieren), 'S1E5');
+  assert.equal(place('Frieren - Beyond Journey\'s End - 07 [1080p].mkv', frieren), 'S1E7');
+  assert.equal(place('[SubsPlease] Black Clover - 176 (1080p) [DC022518].mkv', clover), 'S2E6');
+  assert.equal(place('[Erai-raws] Black Clover 2nd Season - 06 [1080p][D4FA28BC].mkv', clover), 'S2E6');
+  assert.equal(place('[Judas] Black Clover - S02E06 [1080p].mkv', clover), 'S2E6');
+  assert.equal(place('[SubsPlease] Black Clover - 012 (1080p) [ABCDEF12].mkv', clover), 'S1E12');
+  assert.equal(place('[ToonsHub] Jujutsu Kaisen S03E10 1080p NF WEB-DL AAC2.0 H.264 (Multi-Subs).mkv', jjk), 'S1E57');
+  assert.equal(place('[SubsPlease] Jujutsu Kaisen - 56 (1080p) [0F106B43].mkv', jjk), 'S1E56');
+  assert.equal(place('[X] Kimetsu no Yaiba - Yuukaku-hen - 05 [1080p].mkv', slayer), 'S3E5');
+  assert.equal(place('[Judas] Kimetsu no Yaiba - S05E02 [1080p].mkv', slayer), 'S5E2');
+  assert.equal(place('[SubsPlease] One Piece - 1179 (1080p) [A02F35FE].mkv', onePiece), null, 'beyond TMDB’s known episodes by far');
+  assert.equal(place('[SubsPlease] One Piece - 80 (1080p) [A02F35FE].mkv', onePiece), 'S3E3');
+  assert.equal(place('[Erai-raws] Mugyutto! Black Clover - 03 [1080p].mkv', clover), null, 'another show');
+  assert.equal(place('05.mkv', frieren), 'S1E5', 'a bare number in the show’s folder');
+  assert.deepEqual(episodesIn('[SubsPlease] Black Clover - 176 (1080p) [DC022518].mkv', 2, clover), [6]);
+  assert.deepEqual(episodesIn('[SubsPlease] Black Clover - 176 (1080p) [DC022518].mkv', 1, clover), []);
+  assert.deepEqual(episodesInSeason('[Judas] Jujutsu Kaisen (Season 2) [1080p] (Batch)', 1, jjk), Array.from({ length: 23 }, (_, i) => 25 + i));
+});
+
+test('without a context: what the name says, season 1 when it names none', () => {
+  assert.deepEqual(episodesIn('[SubsPlease] Dandadan - 05 (1080p) [ABCDEF12].mkv', 1), [5]);
+  assert.deepEqual(episodesIn('[SubsPlease] Dandadan S2 - 05 (1080p) [ABCDEF12].mkv', 2), [5]);
+  assert.deepEqual(episodesIn('Severance.S02E03.1080p.mkv', 2), [3]);
+});
+
+test('batches per TMDB season: coverage, size per episode, untrustworthy multi-season sets left out', () => {
+  const r = (name, size = 100) => ({ name, seeders: 50, size, quality: '1080p' });
+  const packs = seasonPacks([
+    r('[SubsPlease] Black Clover (01-170) (1080p) [Batch]'),
+    r('[Judas] Black Clover (Seasons 1-4 + Extras) [BD 1080p] (Batch)'),     // BD seasons ≠ TMDB’s
+    r('[HorribleSubs] Black Clover 01 - 60 [720p] [Batch]'),
+    r('[Erai-raws] Mugyutto! Black Clover - 01 ~ 08 [1080p][BATCH]'),
+    r('[SubsPlease] Black Clover - 176 (1080p) [DC022518].mkv'),
+  ], clover, 1);
+  assert.deepEqual(packs.map((p) => [p.name.slice(0, 26), p.covers, p.packEpisodes]), [
+    ['[SubsPlease] Black Clover ', 170, 170], ['[HorribleSubs] Black Clove', 60, 60]]);
+  const s2 = seasonPacks([r('[SubsPlease] Sousou no Frieren S2 (01-10) (1080p) [Batch]'), r('[SubsPlease] Sousou no Frieren (01-28) (1080p) [Batch]')], frieren, 1);
+  assert.deepEqual(s2.map((p) => p.coveredEpisodes.at(-1)), [38, 28]);
+  assert.deepEqual(seasonPacks([r('[Trix] Kimetsu no Yaiba S01-05 [Dual Audio] (BD 1080p AV1) (Batch)')], slayer, 5)[0].covers, 8);
+  // "Season 1" of Frieren is the Japanese season 1 (28), not all of TMDB's season 1 (38).
+  assert.equal(seasonPacks([r('[Judas] Sousou no Frieren (Season 01) [BD 1080p][HEVC x265 10bit] (Batch)')], frieren, 1)[0].covers, 28);
+});
+
+test('search queries use the romanised name, absolute and per-season numbers', () => {
+  assert.deepEqual(packQueries(frieren, 1).slice(0, 2), ['Sousou no Frieren batch', 'Sousou no Frieren']);
+  const q = episodeQueriesAnime(frieren, 1, 31);
+  assert.ok(q.includes('Sousou no Frieren 31') && q.includes('Sousou no Frieren 03') && q.includes('Sousou no Frieren S2 03'), q.join(' | '));
+});
+
+test('TMDB details: Japanese animation counts as anime, other animation doesn’t', () => {
+  assert.equal(isAnimeDetails({ genres: [{ id: 16 }], original_language: 'ja', origin_country: ['JP'] }), true);
+  assert.equal(isAnimeDetails({ genres: [{ id: 16 }], original_language: 'en', origin_country: ['US'] }), false);
+  assert.equal(isAnimeDetails({ genres: [{ id: 18 }], original_language: 'ja' }), false);
+});
+
+test('Nyaa search page: seeders, size, trusted and remakes', () => {
+  const row = (cls, id, name, size, s, l) => `<tr class="${cls}"><td><a href="/?c=1_2" title="Anime - English-translated"></a></td>
+    <td colspan="2"><a href="/view/${id}" title="${name}">${name}</a></td>
+    <td class="text-center"><a href="/download/${id}.torrent"></a><a href="magnet:?xt=urn:btih:${String(id).padStart(40, 'a')}&amp;dn=x&amp;tr=http%3A%2F%2Fnyaa.tracker.wf%3A7777%2Fannounce"></a></td>
+    <td class="text-center">${size}</td><td class="text-center" data-timestamp="1794063708">2026-11-07 15:01</td>
+    <td class="text-center">${s}</td><td class="text-center">${l}</td><td class="text-center">999</td></tr>`;
+  const html = `<table class="torrent-list"><tbody>${row('success', 1, '[SubsPlease] Black Clover (01-170) (1080p) [Batch]', '233.2 GiB', 412, 30)}${row('danger', 2, 'Black Clover - 01 &amp; more', '1.4 GiB', 3, 1)}</tbody></table>`;
+  const [a, b] = parseNyaa(html);
+  assert.equal(a.name, '[SubsPlease] Black Clover (01-170) (1080p) [Batch]');
+  assert.equal(a.seeders, 412); assert.equal(a.leechers, 30); assert.equal(a.trusted, true); assert.equal(a.quality, '1080p');
+  assert.equal(Math.round(a.size / 1024 ** 3), 233);
+  assert.match(a.magnet, /^magnet:\?xt=urn:btih:a+1&dn=x&tr=/);
+  assert.equal(b.name, 'Black Clover - 01 & more'); assert.equal(b.remake, true); assert.equal(b.trusted, false);
+});
+
+// ---------- the Download command ----------
+const GB = 1024 ** 3;
+const wait = async (id) => {
+  for (let i = 0; i < 400 && smartJob(id).state === 'running'; i++) await new Promise((r) => setTimeout(r, 5));
+  return smartJob(id);
+};
+let hashN = 0;
+const nyaa = (name, seeders, size) => ({ source: 'nyaa', name, seeders, size, quality: /1080p/.test(name) ? '1080p' : /720p/.test(name) ? '720p' : null,
+  tags: [], cam: false, magnet: `magnet:?xt=urn:btih:${(++hashN).toString(16).padStart(40, '0')}` });
+function deps(catalogue, extra = {}) {
+  const added = [], queries = [];
+  return {
+    added, queries,
+    deps: {
+      parseName,
+      searchTorrents: async (q) => { queries.push(q); return { results: catalogue.filter((r) => q.toLowerCase().split(' ').filter((w) => w !== 'batch').every((w) => r.name.toLowerCase().includes(w))) }; },
+      addDownload: async ({ name }) => { added.push(name); return { hash: String(added.length), existing: false }; },
+      seasonEpisodes: async () => ({ title: extra.title, episodes: Array.from({ length: extra.aired }, (_, i) => ({ episode: i + 1, aired: true })) }),
+      haveEpisodes: async () => Object.assign(new Set(extra.have || []), { queued: new Set() }),
+      ...extra.deps,
+    },
+  };
+}
+
+test('Black Clover season 1: one 170-episode batch instead of 170 torrents', async () => {
+  const cat = [
+    nyaa('[SubsPlease] Black Clover (01-170) (1080p) [Batch]', 412, 233 * GB),
+    nyaa('[Erai-raws] Black Clover (TV) - 001 ~ 170 [720p][BATCH][Multiple Subtitle]', 90, 120 * GB),
+    nyaa('[Judas] Black Clover (Seasons 1-4 + Extras) [BD 1080p][HEVC x265 10bit] (Batch)', 1207, 58 * GB),
+    nyaa('[SubsPlease] Black Clover - 176 (1080p) [DC022518].mkv', 2784, 1.4 * GB),
+  ];
+  const { deps: d, added } = deps(cat, { title: 'Black Clover', aired: 170 });
+  const job = await wait(startSmartJob({ type: 'tv', title: 'Black Clover', season: 1, anime: clover, want: { profile: 'balanced' }, requester: 'bc1' }, d));
+  assert.deepEqual(added, ['[SubsPlease] Black Clover (01-170) (1080p) [Batch]']);
+  assert.equal(job.outcome, 'started');
+  assert.equal(job.added[0].episodes.length, 170);
+});
+
+test('Frieren (TMDB: one season of 38): the season 1 batch, then the season 2 batch', async () => {
+  const cat = [
+    nyaa('[SubsPlease] Sousou no Frieren (01-28) (1080p) [Batch]', 800, 40 * GB),
+    nyaa('[SubsPlease] Sousou no Frieren S2 (01-10) (1080p) [Batch]', 300, 14 * GB),
+    nyaa('[SubsPlease] Sousou no Frieren S2 - 03 (1080p) [7556A22B].mkv', 900, 1.4 * GB),
+  ];
+  const { deps: d, added } = deps(cat, { title: 'Frieren: Beyond Journey\'s End', aired: 38 });
+  const job = await wait(startSmartJob({ type: 'tv', title: 'Frieren: Beyond Journey\'s End', season: 1, anime: frieren, want: { profile: 'balanced' }, requester: 'fr1' }, d));
+  assert.deepEqual(added, ['[SubsPlease] Sousou no Frieren (01-28) (1080p) [Batch]', '[SubsPlease] Sousou no Frieren S2 (01-10) (1080p) [Batch]']);
+  assert.equal(job.outcome, 'started');
+});
+
+test('single anime episodes are found by absolute or per-season number, never a batch or another show', async () => {
+  const cat = [
+    nyaa('[SubsPlease] Black Clover - 176 (1080p) [DC022518].mkv', 2784, 1.4 * GB),
+    nyaa('[Erai-raws] Black Clover 2nd Season - 05 [1080p CR WEB-DL AVC AAC][MultiSub][C8D18DEA]', 400, 1.3 * GB),
+    nyaa('[Erai-raws] Mugyutto! Black Clover - 06 [1080p]', 900, 0.2 * GB),
+  ];
+  const { deps: d, added } = deps(cat, { title: 'Black Clover', aired: 6, have: [1, 2, 3, 4] });
+  const job = await wait(startSmartJob({ type: 'tv', title: 'Black Clover', season: 2, anime: clover, want: { profile: 'balanced' }, requester: 'bc2' }, d));
+  assert.deepEqual(added, ['[Erai-raws] Black Clover 2nd Season - 05 [1080p CR WEB-DL AVC AAC][MultiSub][C8D18DEA]', '[SubsPlease] Black Clover - 176 (1080p) [DC022518].mkv']);
+  assert.equal(job.outcome, 'started');
+});

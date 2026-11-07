@@ -2324,9 +2324,11 @@ async function castSubFor(file) {
   let pref = null;
   try { pref = localStorage.getItem('subs:lang'); } catch { /* blocked */ }
   const want = prefs().subLang;
-  if (pref === '' || (!pref && !want)) return null;
-  let langs;
-  try { langs = (await api(`/api/subs/langs?kind=${file.kind}&id=${encodeURIComponent(file.key)}`)).languages || []; } catch { return null; }
+  if (pref === '') return null;
+  let data;
+  try { data = await api(`/api/subs/langs?kind=${file.kind}&id=${encodeURIComponent(file.key)}`); } catch { return null; }
+  const langs = data.languages || [];
+  if (!pref && !want) return (data.anime && langs.find((l) => l.code === 'en' && l.saved)) || null; // anime: its English subtitles
   return langs.find((l) => l.code === pref && l.saved) || (want && langs.find((l) => l.code === want)) || null;
 }
 
@@ -2575,7 +2577,7 @@ async function openDeleteMany({ files, what, label, onDone }, opener) {
 }
 
 // ---------- torrent search ----------
-const SOURCE_NAMES = { tpb: 'The Pirate Bay', '1337x': '1337x' };
+const SOURCE_NAMES = { tpb: 'The Pirate Bay', '1337x': '1337x', nyaa: 'Nyaa' };
 const QUALITY_FILTERS = [['all', 'All'], ['2160p', '4K'], ['1440p', '1440p'], ['1080p', '1080p'], ['720p', '720p']];
 
 // navigator.clipboard requires HTTPS; fall back to execCommand on plain HTTP.
@@ -2604,7 +2606,7 @@ async function sendToQbit(link, extra = {}) {
   toast('Added to Library');
 }
 
-// The release list: search 1337x and The Pirate Bay and pick one yourself. It sits inside a title's
+// The release list: search 1337x, The Pirate Bay and Nyaa and pick one yourself. It sits inside a title's
 // Advanced options, and in the Find torrents sheet for anything that isn't a known film or show.
 function torrentBrowser({ query = '', type = 'all', movieId = null, tvId = null, canonicalTitle = null, strict = false } = {}) {
   let results = [];
@@ -2666,13 +2668,15 @@ function torrentBrowser({ query = '', type = 'all', movieId = null, tvId = null,
     const q = input.value.trim();
     ctrl?.abort();
     if (/^magnet:\?/i.test(q)) return addPastedMagnet(q);
-    if (q.length < 2) { results = []; list.replaceChildren(); info.textContent = 'Type a title to search 1337x and The Pirate Bay.'; return; }
+    if (q.length < 2) { results = []; list.replaceChildren(); info.textContent = 'Type a title to search 1337x, The Pirate Bay and Nyaa (anime).'; return; }
     ctrl = new AbortController();
     const { signal } = ctrl;
-    info.textContent = 'Searching 1337x and The Pirate Bay…';
+    info.textContent = 'Searching 1337x, The Pirate Bay and Nyaa…';
     list.replaceChildren(...Array.from({ length: 5 }, () => h('li', { class: 'row tor skeleton-row', 'aria-hidden': 'true' })));
     try {
-      const data = await api(`/api/torrents/search?q=${encodeURIComponent(q)}&type=${type}${strict && q === query ? '&strict=1' : ''}`, { signal });
+      // The title's TMDB id lets the server search anime by its romanised name too (Nyaa).
+      const title = tvId ? `&tv=${tvId}` : movieId ? `&movie=${movieId}` : '';
+      const data = await api(`/api/torrents/search?q=${encodeURIComponent(q)}&type=${type}${strict && q === query ? '&strict=1' : ''}${title}`, { signal });
       results = data.results;
       renderList(data.problems);
       loadSubLangs(q);
@@ -2785,7 +2789,7 @@ function torrentBrowser({ query = '', type = 'all', movieId = null, tvId = null,
   return {
     el,
     abort: () => ctrl?.abort(),
-    start: () => { if (query) run(); else { info.textContent = 'Type a title to search 1337x and The Pirate Bay.'; input.focus(); } },
+    start: () => { if (query) run(); else { info.textContent = 'Type a title to search 1337x, The Pirate Bay and Nyaa (anime).'; input.focus(); } },
   };
 }
 
@@ -4025,7 +4029,9 @@ async function setupPlayerSubs(f, session) {
   let pref = null;
   try { pref = localStorage.getItem('subs:lang'); } catch { /* blocked */ }
   const want = prefs().subLang;
-  const saved = ccLangs.find((l) => l.code === pref && l.saved) || (want && pref !== '' && ccLangs.find((l) => l.code === want));
+  const saved = ccLangs.find((l) => l.code === pref && l.saved) || (want && pref !== '' && ccLangs.find((l) => l.code === want))
+    // Anime (Japanese audio) for someone who never picked subtitles: the English ones it came with.
+    || (data.anime && pref == null && !want && ccLangs.find((l) => l.code === 'en' && l.saved));
   if (!saved) return;
   await pickPlayerSub(f, session, saved, { quiet: true });
   // The second language comes back too, but only when it's already saved here (no download quota).

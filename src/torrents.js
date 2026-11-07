@@ -1,10 +1,12 @@
-// Torrent search across The Pirate Bay (apibay JSON API) and 1337x (HTML).
-// Sources are queried in parallel; results from a working source are returned even if the other fails.
+// Torrent search across The Pirate Bay (apibay JSON API), 1337x (HTML) and Nyaa (anime, HTML).
+// Sources are queried in parallel; results from a working source are returned even if the others fail.
 
 const TPB_API = (process.env.TPB_API || 'https://apibay.org').replace(/\/+$/, '');
 // 1337x mirrors, tried in order.
 const X1337_MIRRORS = (process.env.X1337_URL || 'https://1337x.to,https://1337x.st,https://x1337x.ws,https://x1337x.eu,https://x1337x.se')
   .split(',').map((u) => u.trim().replace(/\/+$/, '')).filter((u) => /^https?:\/\//i.test(u));
+// Nyaa: where anime is released (fansub groups, batches). NYAA_URL=off leaves it out.
+const NYAA_URL = /^(off|no|false|0)$/i.test(process.env.NYAA_URL || '') ? '' : (process.env.NYAA_URL || 'https://nyaa.si').replace(/\/+$/, '');
 const FLARESOLVERR_URL = (process.env.FLARESOLVERR_URL || '').replace(/\/+$/, '');
 const ENABLED = (process.env.TORRENTS || 'on').toLowerCase() !== 'off';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36';
@@ -75,8 +77,8 @@ function parseSize(text) {
 function describe(name) {
   const quality = /\b(2160p|4k|uhd)\b/i.test(name) ? '2160p'
     : /\b(1440p|qhd|2560\s*[x×]\s*1440)\b/i.test(name) ? '1440p'
-    : /\b1080p\b/i.test(name) ? '1080p'
-    : /\b720p\b/i.test(name) ? '720p'
+    : /\b1080p\b|\b1920\s*[x×]\s*10[78]\d\b/i.test(name) ? '1080p'
+    : /\b720p\b|\b1280\s*[x×]\s*720\b/i.test(name) ? '720p'
     : /\b(480p|dvdrip|xvid|sd)\b/i.test(name) ? 'SD' : null;
   const tags = [];
   if (/\b(x265|h\.?265|hevc)\b/i.test(name)) tags.push('HEVC');
@@ -237,6 +239,51 @@ export async function magnetFor1337x(ref) {
   return magnet;
 }
 
+// ---------- Nyaa ----------
+// The search page (sorted by seeders; its RSS feed ignores sorting). Rows: category, name, links
+// (torrent + magnet), size, date, seeders, leechers, downloads. Row class "success" = trusted
+// uploader, "danger" = a remake (re-upload of someone else's release).
+export function parseNyaa(html) {
+  const out = [];
+  for (const row of String(html).split(/<tr\b/i).slice(1)) {
+    const cls = /^[^>]*class="([^"]*)"/i.exec(row)?.[1] || '';
+    const category = /href="\/\?c=(\d_\d)"/i.exec(row)?.[1] || '';
+    const link = /<a href="\/view\/(\d+)"[^>]*title="([^"]+)"/i.exec(row);
+    const magnet = /href="(magnet:\?xt=urn:btih:[^"]+)"/i.exec(row)?.[1];
+    if (!link || !magnet) continue;
+    const cells = [...row.matchAll(/<td class="text-center"[^>]*>([^<]*)<\/td>/gi)].map((m) => m[1].trim());
+    const stamp = Number(/data-timestamp="(\d+)"/i.exec(row)?.[1]) || null;
+    const name = decode(link[2]);
+    // cells: size, date, seeders, leechers, downloads (the link cell has no plain text)
+    const size = cells.find((c) => /\d\s*(?:[KMGT]i?B|Bytes)$/i.test(c));
+    const nums = cells.filter((c) => /^\d+$/.test(c)).map(Number);
+    out.push({
+      source: 'nyaa',
+      id: `nyaa:${link[1]}`,
+      name,
+      seeders: nums[0] || 0,
+      leechers: nums[1] || 0,
+      size: parseSize(size),
+      added: stamp ? stamp * 1000 : null,
+      addedText: null,
+      uploader: null,
+      trusted: /\bsuccess\b/.test(cls),
+      remake: /\bdanger\b/.test(cls),
+      category,
+      magnet: decode(magnet),
+      ...describe(name),
+    });
+  }
+  return out;
+}
+
+async function searchNyaa(q) {
+  // 1_2: anime, English-translated (subtitled, dual audio and dubs).
+  const html = await get(`${NYAA_URL}/?f=0&c=1_2&q=${encodeURIComponent(q)}&s=seeders&o=desc`, 'Nyaa');
+  if (!/torrent-list|No results found/i.test(html)) throw new Error('Nyaa sent back a page it doesn’t normally show.');
+  return parseNyaa(html);
+}
+
 // ---------- combined search ----------
 // Adult releases (by category or by name, see content-filter.js) are left out unless `adult` is true.
 const withoutAdult = (data) => ({ ...data, results: data.results.filter((r) => !r.adult && !adultReason(r.name)) });
@@ -257,6 +304,7 @@ async function searchAll(rawQuery, rawType) {
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.data;
 
   const sources = [['The Pirate Bay', searchTpb(q, type)], ['1337x', search1337x(q, type)]];
+  if (NYAA_URL) sources.push(['Nyaa', searchNyaa(q)]);
   const settled = await Promise.allSettled(sources.map((s) => s[1]));
   const results = [];
   const problems = [];
@@ -265,7 +313,7 @@ async function searchAll(rawQuery, rawType) {
     else problems.push(`${sources[i][0]}: ${s.reason?.message || 'failed'}`);
   });
   if (!results.length && problems.length === sources.length) {
-    throw new TorrentError(502, `Neither site answered. ${problems.join(' ')}`);
+    throw new TorrentError(502, `None of the torrent sites answered. ${problems.join(' ')}`);
   }
 
   // Deduplicate by name, keeping the entry with more seeders.

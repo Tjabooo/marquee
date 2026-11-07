@@ -13,10 +13,16 @@
 //
 // Recovery is bounded: a failed search is retried once, a release qBittorrent rejected is not
 // picked again for six hours, and an episode never falls back to another show or another season.
+//
+// Anime (spec.anime: an anime.js context): Nyaa batches like "(01-170)" or "(Season 2) (Batch)" count
+// as season packs, several when TMDB lumps seasons together (Frieren's season 1 = two batches), and
+// names are matched by every known title and placed on TMDB's numbering ("Black Clover - 176" is
+// TMDB's season 2 episode 6). Packs' other seasons are switched off like owned episodes.
 import crypto from 'node:crypto';
 import { showKey } from './shows.js';
 import { sameShow, episodesIn, episodeQueries } from './season.js';
-import { pickBest, pickEpisode } from './recommend.js';
+import { pickBest, pickEpisode, choose } from './recommend.js';
+import { seasonPacks, packQueries, episodeQueriesAnime } from './anime.js';
 
 const jobs = new Map();          // id -> job
 const JOB_TTL = 60 * 60 * 1000;
@@ -36,11 +42,11 @@ export function smartJob(id, { userId, owner = false } = {}) {
   return view;
 }
 
-// spec: { type: 'movie' | 'tv', title, year?, originalTitle?, season?, episodes? (only these),
+// spec: { type: 'movie' | 'tv', title, year?, originalTitle?, season?, episodes? (only these), anime? (context),
 //   want: { profile, prefer, quality, maxBytes, audioLang }, subs?, requester? }
 // deps: { parseName, searchTorrents, magnetFor1337x, addDownload, wantSubtitles?, log?, sleep?,
-//   filmHave?(), freeBytes?(type), seasonEpisodes?(title, year, season), haveEpisodes?(key, season),
-//   trimPack?(link, season, owned), removePack?(link), inOrder?(added, season) (episodes in order) }
+//   filmHave?(), freeBytes?(type), seasonEpisodes?(title, year, season), haveEpisodes?(key, season, ctx),
+//   trimPack?(link, season, owned, ctx), removePack?(link), inOrder?(added, season) (episodes in order) }
 export function startSmartJob(spec, deps) {
   for (const [id, j] of jobs) if (j.state !== 'running' && Date.now() - j.started > JOB_TTL) jobs.delete(id);
   const key = showKey(spec.title);
@@ -90,14 +96,25 @@ async function add(r, mediaType, spec, deps) {
 
 const done = (job, outcome, message) => { job.state = 'done'; job.outcome = outcome; job.message = message; job.step = null; };
 
+// spec.anime may still be on its way (AniList is slow): a promise, waited for here, never fatal.
+async function animeOf(job, spec) {
+  if (!spec.anime?.then) return spec.anime || null;
+  job.step = 'Looking up the anime…';
+  spec.anime = await spec.anime.catch(() => null);
+  job.step = 'Finding a download…';
+  return spec.anime;
+}
+
 async function runFilm(job, spec, deps) {
+  await animeOf(job, spec);
   const have = await deps.filmHave?.();
   if (have === 'library') return done(job, 'have', 'Already in your library.');
   if (have === 'server') return done(job, 'have', 'It was already on the server, so it’s in your library now.');
   if (have === 'downloading') return done(job, 'queued', 'Already downloading.');
   const freeBytes = await deps.freeBytes?.('movie');
-  const want = { ...spec.want, type: 'movie', title: spec.title, year: spec.year, freeBytes };
-  const queries = [...new Set([[spec.title, spec.year].filter(Boolean).join(' '), spec.originalTitle && [spec.originalTitle, spec.year].filter(Boolean).join(' '), spec.title].filter(Boolean))];
+  const want = { ...spec.want, type: 'movie', title: spec.title, year: spec.year, freeBytes, anime: Boolean(spec.anime), aliases: spec.anime?.keys || [] };
+  const names = [spec.title, spec.originalTitle, ...(spec.anime?.queryTitles || [])].filter(Boolean);
+  const queries = [...new Set([...names.map((t) => [t, spec.year].filter(Boolean).join(' ')), spec.title, ...(spec.anime?.queryTitles || [])])];
   let results = [], best = { pick: null, why: null }, failures = 0;
   for (const query of queries) {
     try { results = [...results, ...await search(query, 'movie', deps)]; } catch (e) { if (e.status === 503) throw e; failures++; continue; }
@@ -115,6 +132,7 @@ async function runFilm(job, spec, deps) {
 }
 
 async function runSeason(job, spec, deps) {
+  await animeOf(job, spec);
   const { season, only } = spec;
   const plan = deps.seasonEpisodes ? await deps.seasonEpisodes(spec.title, spec.year, season) : null;
   if (plan?.title) job.title = plan.title;
@@ -127,7 +145,8 @@ async function runSeason(job, spec, deps) {
   const wanted = only ? only.filter((e) => !aired || aired.includes(e)) : aired;
   job.total = aired ? aired.length : null;
   job.step = 'Checking which episodes you have…';
-  const have = (await deps.haveEpisodes?.(showKey(job.title), season)) || new Set();
+  const ctx = spec.anime || null;
+  const have = (await deps.haveEpisodes?.(showKey(job.title), season, ctx)) || new Set();
   const queued = have.queued || new Set();
   job.have = (wanted || [...have]).filter((e) => have.has(e) && !queued.has(e));
   job.queued = (wanted || [...queued]).filter((e) => queued.has(e));
@@ -136,12 +155,52 @@ async function runSeason(job, spec, deps) {
     return done(job, job.queued.length ? 'queued' : 'have', job.queued.length ? 'Remaining episodes are downloading.' : 'This season is ready to watch.');
   }
   let freeBytes = await deps.freeBytes?.('tv');
-  const want = { ...spec.want, title: job.title, season };
+  const want = { ...spec.want, title: job.title, season, anime: Boolean(ctx) };
   const covered = new Set();
   let packWhy = null;
 
+  // ---- anime: batches, as many as it takes to cover the season ----
+  if (ctx && !only && (!missing || missing.length >= PACK_FROM)) {
+    job.step = 'Looking for a batch…';
+    let results = [];
+    for (const query of packQueries(ctx, season).slice(0, 5)) {
+      try { results = [...results, ...await search(query, 'all', deps)]; } catch (e) { if (e.status === 503) throw e; }
+    }
+    for (let round = 0; round < 3; round++) {
+      const left = (missing || aired || []).filter((e) => !covered.has(e));
+      if (round > 0 && left.length < PACK_FROM) break; // (no TMDB list: one batch is all there is to go on)
+      const packs = seasonPacks(results.filter(usable).filter((r) => !r.cam && r.seeders >= 2), ctx, season, left.length ? left : null);
+      if (!packs.length) { if (!round) packWhy = 'No batch of this season clearly matches.'; break; }
+      const most = Math.max(...packs.map((p) => p.covers));
+      if (round > 0 && most < PACK_FROM) break;
+      const pool = packs.filter((p) => p.covers >= most * 0.9);
+      const tidy = pool.filter((p) => p.extra <= p.covers); // this season's worth, not the whole series
+      const best = choose(tidy.length ? tidy : pool, { ...want, type: 'tv', episodes: aired?.length || 0, missing: left.length, freeBytes }, 'pack');
+      if (!best.pick) { if (!round) packWhy = best.why; break; }
+      job.step = 'Starting download…';
+      try {
+        const added = await add(best.pick, 'tv', spec, deps);
+        deps.inOrder?.(added, season);
+        const owned = new Set([...have, ...covered]);
+        const trim = added.existing ? null : await deps.trimPack?.(added.link, season, owned, ctx);
+        const packEps = (trim?.covered ? [...trim.covered] : best.pick.coveredEpisodes).filter((e) => !owned.has(e));
+        if (trim?.covered && !packEps.length) { await deps.removePack?.(added.link); break; }
+        packEps.forEach((e) => covered.add(e));
+        job.added.push({ pack: true, name: best.pick.name, quality: best.pick.quality, episodes: packEps.sort((a, b) => a - b),
+          skipped: trim?.skipped || 0, size: best.pick.size || null });
+        if (Number.isFinite(freeBytes) && best.pick.size) freeBytes -= best.pick.size / best.pick.packEpisodes * packEps.length;
+        results = results.filter((r) => r !== best.pick && r.name !== best.pick.name);
+      } catch (e) {
+        if (e.status === 503) throw e;
+        packWhy = e.message || String(e);
+        break;
+      }
+    }
+    if (!missing && covered.size) return finish(job, deps, packWhy);
+  }
+
   // ---- a season pack, with what's already here switched off ----
-  if (!only && (!missing || missing.length >= PACK_FROM || missing.length === aired.length)) {
+  if (!ctx && !only && (!missing || missing.length >= PACK_FROM || missing.length === aired.length)) {
     job.step = 'Looking for a season pack…';
     const titles = [job.title, ...(showKey(job.title) === 'house' ? ['House MD'] : showKey(job.title) === 'housemd' ? ['House'] : [])];
     let results = [], best = { pick: null, why: null };
@@ -185,7 +244,7 @@ async function runSeason(job, spec, deps) {
     if (covered.has(ep)) continue;
     if (!missing && have.has(ep)) continue;
     job.step = `Looking for episode ${ep}${job.total ? ` of ${job.total}` : ''}…`;
-    const found = await findEpisode(job.title, season, ep, { ...want, freeBytes }, deps);
+    const found = await findEpisode(job.title, season, ep, { ...want, freeBytes }, deps, ctx);
     if (!found.pick) {
       job.unavailable.push({ episode: ep, reason: found.why });
       if (!missing && ++missesInARow >= 2) { job.unavailable.splice(-2); break; } // two misses in a row: past the last episode
@@ -195,7 +254,7 @@ async function runSeason(job, spec, deps) {
     try {
       const added = await add(found.pick, 'tv', spec, deps);
       deps.inOrder?.(added, season);
-      const eps = episodesIn(found.pick.name, season);
+      const eps = episodesIn(found.pick.name, season, ctx);
       eps.forEach((e) => covered.add(e));
       job.added.push({ episode: ep, episodes: eps, name: found.pick.name, quality: found.pick.quality, seeders: found.pick.seeders, size: found.pick.size || null });
       if (Number.isFinite(freeBytes) && found.pick.size) freeBytes -= found.pick.size;
@@ -227,12 +286,15 @@ function finish(job, deps, packWhy) {
 const NOTHING = 'Nothing found.';
 // One episode: the exact SxxExx search, then other numbering styles and known title aliases, in the
 // TV category and then everywhere. Only releases of this show, season and episode count.
-async function findEpisode(title, season, episode, want, deps) {
-  const fitsFor = (results) => results.filter((r) => usable(r)
-    && sameShow(deps.parseName(r.name).title, title) && episodesIn(r.name, season).includes(episode));
+async function findEpisode(title, season, episode, want, deps, ctx = null) {
+  // Anime: the title check is the context's (any known name), and numbering is placed on TMDB's.
+  const fitsFor = (results) => results.filter((r) => usable(r) && (ctx
+    ? ((eps) => eps.includes(episode) && eps.length <= 3)(episodesIn(r.name, season, ctx)) // not a whole batch
+    : sameShow(deps.parseName(r.name).title, title) && episodesIn(r.name, season).includes(episode)));
   let fits = [], error = null;
-  for (const query of episodeQueries(title, season, episode)) {
-    for (const type of ['tv', 'all']) {
+  const queries = ctx ? episodeQueriesAnime(ctx, season, episode).slice(0, 5) : episodeQueries(title, season, episode);
+  for (const query of queries) {
+    for (const type of ctx ? ['all'] : ['tv', 'all']) {
       try { fits = fitsFor(await search(query, type, deps)); } catch (e) { if (e.status === 503) throw e; error = e; continue; }
       if (fits.length) break;
     }

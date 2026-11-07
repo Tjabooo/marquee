@@ -24,6 +24,8 @@ import * as invites from './invites.js';
 import * as shows from './shows.js';
 import * as season from './season.js';
 import { matchesRelease } from './release-match.js';
+import { parseName } from './release-name.js';
+import * as anime from './anime.js';
 import { downloadDestination, downloadFilePath } from './download-paths.js';
 import { fetchTorrentFile, TorrentFetchError } from './torrent-fetch.js';
 import { filterMode, filterApplies, firstAdult, torrentFileNames, BLOCKED_MESSAGE } from './content-filter.js';
@@ -181,6 +183,7 @@ startPlaybackGuard({
   stateFile: path.join(DATA_DIR, '.marquee-playback.json'),
 });
 shows.initShows({ dataDir: DATA_DIR });
+anime.initAnime({ dataDir: DATA_DIR });
 initCredits({ dataDir: DATA_DIR });
 // What's new (whats-new.js): update notes everyone sees once, and an id for the web app being served.
 whatsNew.initWhatsNew(path.join(APP_DIR, 'whats-new.json'));
@@ -222,35 +225,57 @@ class HttpError extends Error {
 }
 
 
-// ---------- file-name parsing ----------
-// "The.Matrix.1999.1080p.BluRay.x264.mkv" -> { title: "The Matrix", year: 1999 }
-// "Severance.S02E03.1080p.mkv"           -> { title: "Severance", season: 2, episode: 3 }
-// Also "S01E01E02" (first episode counts), "1x05" and "Season 1 Episode 5". A name that starts with
-// the episode ("S01E05.1080p.mkv") gets an empty title; the library takes the folder's name then.
-const EPISODE_PATTERNS = [
-  /\bS(\d{1,2})\s?E(\d{1,3})(?=\b|E\d)/i,
-  /\bSeason\s?(\d{1,2})\s?Episode\s?(\d{1,3})\b/i,
-  /\b(\d{1,2})x(\d{2,3})\b/i,
-];
-function parseName(raw, { file = true, allowEmpty = false } = {}) {
-  let name = (file ? raw.replace(/\.[a-z0-9]{2,4}$/i, '') : raw).replace(/[._]+/g, ' ');
-  const ep = EPISODE_PATTERNS.map((re) => name.match(re)).find(Boolean);
-  // The last year-like number wins: "Blade Runner 2049 2017" -> 2017.
-  const year = [...name.matchAll(/[\s(\[]((?:19|20)\d{2})(?=[\s)\]]|$)/g)].at(-1);
-  const cutAt = [ep?.index, year?.index,
-    name.search(/\b(2160p|1440p|qhd|2560\s*[x×]\s*1440|1080p|720p|480p|4k|uhd|bluray|brrip|web[- ]?dl|webrip|hdtv|dvdrip|x26[45]|h ?26[45]|hevc|remux)\b/i)]
-    .filter((i) => i !== undefined && i > 0);
-  const bare = ep?.index === 0;
-  let title = bare ? '' : cutAt.length ? name.slice(0, Math.min(...cutAt)) : name;
-  title = title.replace(/[\s\-([]+$/g, '').replace(/\s+/g, ' ').trim() || (bare && allowEmpty ? '' : name.trim());
-  return {
-    title,
-    year: year ? Number(year[1]) : null,
-    season: ep ? Number(ep[1]) : null,
-    episode: ep ? Number(ep[2]) : null,
-  };
+// Manual release search for an anime title (?tv= / ?movie= TMDB id): its context, or null.
+async function animeContextForSearch(params) {
+  const type = params.get('tv') ? 'tv' : params.get('movie') ? 'movie' : null;
+  const id = Number(params.get(type || ''));
+  if (!type || !Number.isSafeInteger(id) || id <= 0 || !(TMDB_TOKEN || TMDB_KEY)) return null;
+  const have = anime.contextFor(type, id);
+  if (have) return have;
+  try {
+    const details = await tmdb(`/${type}/${id}`);
+    if (!anime.isAnimeDetails(details)) return null;
+    // At most a few seconds: the context keeps building for the next search.
+    const built = anime.buildContext(type, id, tmdb, { details });
+    built.catch(() => {});
+    return await Promise.race([built, new Promise((ok) => setTimeout(() => ok(null), 4000))]);
+  } catch { return null; }
+}
+// "Frieren: Beyond Journey's End S01E31" -> "Sousou no Frieren 31"; a season or title search -> the name.
+function animeQuery(query, ctx) {
+  const main = ctx.queryTitles[0];
+  if (!main || shows.showKey(main) === shows.showKey(query)) return null;
+  const ep = /\bS(\d{1,2})\s?E(\d{1,4})\b/i.exec(query);
+  const s = ep && ctx.seasons.find((x) => x.n === Number(ep[1]));
+  return ep ? `${main} ${String(s ? s.start + Number(ep[2]) - 1 : Number(ep[2])).padStart(2, '0')}` : main;
+}
+// A release of this anime (any of its names), and of the season/episode the query names.
+function animeMatches(query, name, ctx) {
+  const list = anime.resolve(anime.parseAnimeName(name), ctx);
+  const parsed = anime.parseAnimeName(name);
+  const ours = list || (parsed && ctx.keys.includes(shows.showKey(parsed.title))) || ctx.keys.includes(shows.showKey(parseName(name, { file: false }).title));
+  if (!ours) return false;
+  const ep = /\bS(\d{1,2})\s?E(\d{1,4})\b/i.exec(query);
+  const sn = !ep && /\b(?:S|season\s*)(\d{1,2})\s*$/i.exec(query);
+  if (ep) return Boolean(list?.some((x) => x.season === Number(ep[1]) && x.episode === Number(ep[2])));
+  if (sn) return Boolean(list?.some((x) => x.season === Number(sn[1])));
+  return true;
 }
 
+// ---------- file-name parsing (release-name.js) ----------
+// Anime shows in the library get an anime context (anime.js) in the background, once; the next scan
+// then places their files on TMDB's seasons ("Black Clover - 176" -> S02E06) under TMDB's name.
+const animeLearning = new Set();
+function learnAnime(showList) {
+  for (const sh of showList) {
+    if (!sh.anime || !sh.tmdbId || anime.contextFor('tv', sh.tmdbId) || animeLearning.has(sh.tmdbId)) continue;
+    animeLearning.add(sh.tmdbId);
+    anime.buildContext('tv', sh.tmdbId, tmdb)
+      .then(() => invalidateLibrary())
+      .catch((e) => console.warn(`[anime] ${sh.title}: ${e.message}`))
+      .finally(() => setTimeout(() => animeLearning.delete(sh.tmdbId), 60 * 60 * 1000));
+  }
+}
 // A file's name info; "The Bear/Season 2/S02E05.mkv" takes the show's name from the nearest folder
 // that has one (inside MEDIA_DIR or a download folder: never higher than three levels up).
 function parseFile(full) {
@@ -263,6 +288,12 @@ function parseFile(full) {
     }
   }
   if (!parsed.title) parsed.title = path.basename(full).replace(/\.[a-z0-9]{2,4}$/i, '').replace(/[._]+/g, ' ').trim();
+  // Anime: "Black Clover - 176" / "Sousou no Frieren S2 - 03" on TMDB's seasons (Black Clover S02E06,
+  // Frieren S01E31), under TMDB's name, once the show's anime context is cached (anime.js).
+  if (parsed.anime || (parsed.season != null && parsed.episode != null)) {
+    const placed = anime.placeFile(parsed, path.basename(full));
+    if (placed) Object.assign(parsed, placed);
+  }
   return parsed;
 }
 
@@ -590,6 +621,7 @@ async function libraryView(user) {
     shows.groupShows(items, tmdbOn ? tmdb : null),
     shows.filmInfo(items.map((i) => ({ ...i, mediaKey: accounts.mediaKey(i.full) })), tmdbOn ? tmdb : null),
   ]);
+  if (tmdbOn) learnAnime(showList);
   // `items` is this person's library, with when each video gets deleted. `server` is everything
   // else on the server (no word on whose it is), so search can offer to add it instead of downloading
   // it again.
@@ -740,6 +772,9 @@ function downloadAvailable(t, f, { fresh = false } = {}) {
 function torrentIdentity(name) {
   const parsed = parseName(name, { file: false });
   if (parsed.season != null) return parsed;
+  // Anime batches: "[SubsPlease] Black Clover (01-170) (1080p) [Batch]" is Black Clover (season 1).
+  const a = anime.parseAnimeName(name);
+  if (a?.title && !a.movie && (a.batch || a.seasons)) return { ...parsed, title: a.title, season: a.seasons?.length === 1 ? a.seasons[0] : a.seasons ? null : 1 };
   const pack = /\b(?:S(\d{1,2})|season[\s._-]*(\d{1,2}))\b/i.exec(name.replace(/[._]+/g, ' '));
   return pack ? { ...parsed, title: parseName(name.slice(0, pack.index), { file: false }).title, season: Number(pack[1] || pack[2]) } : parsed;
 }
@@ -841,13 +876,15 @@ async function addDownloadNow({ link, file, user = null, name = '', film = null,
 // Episodes of a show's season that are already here: in the library, or in qBittorrent (an episode,
 // or a season pack, which counts as every episode). Episodes already on the server go straight into
 // `user`'s library instead of being downloaded twice.
-async function haveEpisodes(key, seasonNo, user = null) {
+async function haveEpisodes(key, seasonNo, user = null, ctx = null) {
   const have = new Set();
   const queued = new Set(); // in `have` because a download has them, not yet playable
   have.queued = queued;
   let list = [];
   try { list = await qbit('/api/v2/torrents/info'); } catch { /* qBittorrent down: library only */ }
   const relevant = list.filter((t) => {
+    // Anime: a torrent Marquee downloaded for this show, or any name the context places in this season.
+    if (ctx && (shows.showDownload(t.hash)?.id === ctx.id || season.episodesIn(t.name, seasonNo, ctx).length)) return true;
     const identity = torrentIdentity(t.name);
     return identity.season === seasonNo && season.sameShow(identity.title, key);
   });
@@ -865,7 +902,7 @@ async function haveEpisodes(key, seasonNo, user = null) {
         const failed = /^(missingFiles|error|unknown)$/.test(t.state || '');
         // Selected queued files count, but a completed/missing download must prove its files exist.
         if (!ready && (failed || t.progress >= 1)) continue;
-        for (const ep of season.episodesIn(f.name, seasonNo)) { have.add(ep); if (!ready) queued.add(ep); covered = true; }
+        for (const ep of season.episodesIn(path.basename(f.name.replace(/\\/g, '/')), seasonNo, ctx)) { have.add(ep); if (!ready) queued.add(ep); covered = true; }
       }
       if (covered && user) {
         accounts.recordTorrent(t.hash, torrentOwner(t), t.name);
@@ -875,11 +912,14 @@ async function haveEpisodes(key, seasonNo, user = null) {
   }
   const library = await libraryVisibleItems(await scanLibrary(), user || accounts.ownerUser());
   for (const i of library || []) {
-    if (i.season !== seasonNo || i.episode == null || !season.sameShow(i.title, key)) continue;
+    if (ctx ? i.episode == null || !(season.sameShow(i.title, key) || ctx.keys.includes(shows.showKey(i.title)))
+      : i.season !== seasonNo || i.episode == null || !season.sameShow(i.title, key)) continue;
     const managedState = managed.get(path.resolve(i.full).toLowerCase());
     // A partial file may already be visible in MEDIA_DIR; never adopt it as a playable episode.
     if (managedState === false || (managedState == null && relevant.some((t) => isInside(i.full, t.content_path || path.join(t.save_path || '', t.name))))) continue;
-    for (const ep of season.episodesIn(i.file, seasonNo)) { have.add(ep); queued.delete(ep); }
+    const eps = ctx ? (i.season === seasonNo && i.title === ctx.title ? [i.episode] : season.episodesIn(i.file, seasonNo, ctx)) : season.episodesIn(i.file, seasonNo);
+    if (ctx && !eps.length) continue;
+    for (const ep of eps) { have.add(ep); queued.delete(ep); }
     if (user) accounts.addEntry(user.id, accounts.mediaKey(i.full), 'added');
   }
   return have;
@@ -909,8 +949,13 @@ async function startSmartFor(user, body) {
     ? [...new Set(body.episodes.map(Number).filter((e) => Number.isInteger(e) && e > 0 && e < 1000))].slice(0, 200) : null;
   const film = type === 'movie' ? details : null, show = type === 'tv' ? details : null;
   const subs = subtitles.subtitlesConfigured() && user.settings?.subLang ? [user.settings.subLang] : [];
+  // Anime: every known name and how its seasons line up with TMDB's (anime.js). Without AniList it
+  // still has TMDB's names; a failure only means the plain search below.
+  const animeCtx = anime.isAnimeDetails(details)
+    ? anime.buildContext(type, tmdbId, tmdb, { details }).catch((e) => { console.warn(`[anime] ${title}: ${e.message}`); return null; })
+    : null; // a promise: the job waits for it, the Download button doesn't
   const id = smart.startSmartJob({
-    type, title, year, season: seasonNo, episodes: episodes?.length ? episodes : null, requester: user.id, subs,
+    type, title, year, season: seasonNo, episodes: episodes?.length ? episodes : null, requester: user.id, subs, anime: animeCtx,
     originalTitle: original && original !== title && /^[\p{Script=Latin}\d\s\p{P}]+$/u.test(original) ? original : null,
     want: downloadWant(user, body),
   }, {
@@ -919,8 +964,8 @@ async function startSmartFor(user, body) {
     wantSubtitles: (link, list, name) => { subtitles.wantSubtitles(link, list, name); setTimeout(checkSubtitleWants, 30_000); },
     filmHave: () => filmHave(tmdbId, user), freeBytes: freeBytesFor,
     seasonEpisodes: (t, y, n) => shows.seasonEpisodes(t, y, n, tmdb),
-    haveEpisodes: (key, n) => haveEpisodes(key, n, user),
-    trimPack: (link, n, owned) => trimSeasonPack(link, n, owned), removePack: removeNewPack,
+    haveEpisodes: (key, n, ctx) => haveEpisodes(key, n, user, ctx),
+    trimPack: (link, n, owned, ctx) => trimSeasonPack(link, n, owned, { ctx }), removePack: removeNewPack,
     inOrder: ({ hash, existing }, n) => { if (!existing) orderEpisodes(hash, shows.showKey(title), n); },
     log: (msg) => console.log(msg),
   });
@@ -1019,7 +1064,8 @@ async function filmHave(tmdbId, user) {
 
 // A season pack that was just added: wait (bounded) for its file list, switch off the episodes
 // already here and report the episodes it really contains. null when the file list never came.
-async function trimSeasonPack(link, seasonNo, owned, { timeout = 45000 } = {}) {
+// Anime (ctx): files of other seasons are switched off too (a "(01-170)" batch for one TMDB season).
+async function trimSeasonPack(link, seasonNo, owned, { timeout = 45000, ctx = null } = {}) {
   const hash = accounts.magnetHash(link);
   if (!hash) return null;
   let files = [];
@@ -1033,6 +1079,13 @@ async function trimSeasonPack(link, seasonNo, owned, { timeout = 45000 } = {}) {
   files.forEach((f, i) => {
     if (!isVideo(f.name)) return;
     const name = f.name.replace(/\\/g, '/');
+    if (ctx) {
+      const eps = season.episodesIn(path.basename(name), seasonNo, ctx);
+      if (!eps.length) { if (anime.resolve(anime.parseAnimeName(path.basename(name), { file: true }), ctx)) skip.push(f.index ?? i); return; }
+      if (eps.every((e) => owned.has(e))) skip.push(f.index ?? i);
+      else eps.forEach((e) => covered.add(e));
+      return;
+    }
     const fileSeason = parseName(path.basename(name)).season;
     if (fileSeason != null && fileSeason !== seasonNo) return;
     const eps = season.episodesIn(path.basename(name), seasonNo);
@@ -1115,7 +1168,7 @@ async function episodeOrderRound() {
         }
       }
       const group = `${entry.key}|${entry.season}`;
-      if (!groups.has(group)) groups.set(group, { season: entry.season, torrents: [] });
+      if (!groups.has(group)) groups.set(group, { season: entry.season, ctx: anime.contextForTitle(entry.key), torrents: [] });
       groups.get(group).torrents.push({ hash: t.hash.toLowerCase(), name: t.name, state: t.state, progress: t.progress,
         files: files.map((f, i) => ({ index: f.index ?? i, name: f.name, progress: f.progress, priority: f.priority })) });
     }
@@ -2523,9 +2576,20 @@ async function handleApi(req, res, url) {
   // ---- torrent search ----
   if (p === '/api/torrents/search') {
     const query = url.searchParams.get('q');
-    const found = await torrents.searchTorrents(query, url.searchParams.get('type'), { adult: !filterApplies(user) });
+    const adult = !filterApplies(user);
+    const ctx = await animeContextForSearch(url.searchParams);
+    let found = await torrents.searchTorrents(query, url.searchParams.get('type'), { adult });
+    // Anime: also under its romanised name ("Sousou no Frieren" for "Frieren: Beyond Journey's End").
+    const romaji = ctx && animeQuery(query, ctx);
+    if (romaji) {
+      const more = await torrents.searchTorrents(romaji, 'all', { adult }).catch(() => null);
+      if (more) {
+        const seen = new Set(found.results.map((r) => r.magnet || r.ref || r.name));
+        found = { ...found, results: [...found.results, ...more.results.filter((r) => !seen.has(r.magnet || r.ref || r.name))].sort((a, b) => b.seeders - a.seeders) };
+      }
+    }
     return sendJson(res, 200, url.searchParams.get('strict') === '1'
-      ? { ...found, results: found.results.filter((r) => matchesRelease(query, r.name, parseName)) } : found);
+      ? { ...found, results: found.results.filter((r) => matchesRelease(query, r.name, parseName) || (ctx && animeMatches(query, r.name, ctx))) } : found);
   }
   if (p === '/api/torrents/magnet') {
     return sendJson(res, 200, { magnet: await torrents.magnetFor1337x(url.searchParams.get('ref')) });
@@ -2621,7 +2685,9 @@ async function handleApi(req, res, url) {
     const kind = url.searchParams.get('kind');
     if (kind) {
       const file = converter.preferConverted(await sourceFile(kind, url.searchParams.get('id')));
-      return sendJson(res, 200, await subtitles.languagesForFile(file, infoFor(file)));
+      const info = infoFor(file);
+      // anime: Japanese audio, so the player turns on English subtitles for people who never chose any.
+      return sendJson(res, 200, { ...await subtitles.languagesForFile(file, info), anime: Boolean(info?.title && anime.contextForTitle(info.title)) });
     }
     // Not downloaded yet (torrent search): look up by title.
     const q = (url.searchParams.get('q') || '').trim().slice(0, 100);

@@ -16,7 +16,7 @@ const PAUSED = /^(paused|stopped)/;
 const FAILED = /^(error|missingFiles|unknown)$/;
 const MAX_RUNNING = 3;
 
-// group: { season, torrents: [{ hash, name, state, progress, files: [{ index, name, progress, priority }] }] }
+// group: { season, ctx? (anime context: names placed on TMDB's numbering), torrents: [{ hash, name, state, progress, files: [{ index, name, progress, priority }] }] }
 // held: Set of hashes Marquee stopped itself. Returns the changes to make:
 // { priorities: [{ hash, ids, priority }], stop: [hash], start: [hash], running: [{ hash, episode }] }
 export function planEpisodeOrder(group, held = new Set()) {
@@ -26,13 +26,13 @@ export function planEpisodeOrder(group, held = new Set()) {
     if (FAILED.test(t.state || '')) continue;
     if (PAUSED.test(t.state || '') && !held.has(t.hash)) continue; // paused by the person: theirs
     const videos = (t.files || []).filter((f) => f.priority !== 0 && VIDEO.test(f.name) && !/\bsample\b/i.test(f.name))
-      .map((f) => ({ f, eps: episodesIn(path.basename(String(f.name).replace(/\\/g, '/')), group.season) }))
+      .map((f) => ({ f, eps: episodesIn(path.basename(String(f.name).replace(/\\/g, '/')), group.season, group.ctx) }))
       .filter((v) => v.eps.length);
     if (videos.length > 1) {
       packs.set(t.hash, t);
       for (const { f, eps } of videos) units.push({ hash: t.hash, file: f, episode: Math.min(...eps), done: f.progress >= 1, stalled: STALLED.test(t.state || '') });
     } else {
-      const eps = videos[0]?.eps || episodesIn(t.name, group.season);
+      const eps = videos[0]?.eps || episodesIn(t.name, group.season, group.ctx);
       if (!eps.length) continue;
       units.push({ hash: t.hash, episode: Math.min(...eps), done: t.progress >= 1, stalled: STALLED.test(t.state || '') });
     }

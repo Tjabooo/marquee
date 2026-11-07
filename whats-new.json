@@ -1,5 +1,24 @@
 [
   {
+    "id": "2026-11-07-anime",
+    "date": "2026-11-07",
+    "title": "Much better anime",
+    "items": [
+      {
+        "title": "Anime downloads from Nyaa",
+        "text": "Marquee now also searches Nyaa, where anime is released. Download Season on an anime picks a whole batch (one download for a season, even 170 episodes) instead of one torrent per episode, and finds single episodes whichever way they're numbered: \"Black Clover - 176\", \"Black Clover 2nd Season - 06\" and \"S02E06\" are all the same episode now."
+      },
+      {
+        "title": "Anime seasons line up",
+        "text": "Anime that TMDB counts differently (Frieren's two seasons are one on TMDB, Jujutsu Kaisen's three seasons too) lands on the right season and episode in your library, under its proper name, and Marquee knows which episodes you already have so nothing downloads twice."
+      },
+      {
+        "title": "Subtitles on by default",
+        "text": "If you've never picked subtitles, anime turns on the English subtitles it came with, so Japanese audio isn't left untranslated. Pick another language or Off in the player and that sticks as before."
+      }
+    ]
+  },
+  {
     "id": "2026-11-07-jellyfin",
     "date": "2026-11-07",
     "title": "Marquee in Jellyfin",

@@ -16,7 +16,12 @@ Docker, and installs as a web app on your phone's home screen.
 
 - **Discover and search** with posters and details from TMDB; titles already on the server are marked.
 - **One-press downloads** through qBittorrent: films pick a suitable release, shows download a season
-  in episode order and skip what you already have. Torrent search covers The Pirate Bay and 1337x.
+  in episode order and skip what you already have. Torrent search covers The Pirate Bay, 1337x and
+  Nyaa.
+- **Anime that just works**: fansub names ("[SubsPlease] Sousou no Frieren S2 - 03"), numbering from
+  the first episode ("Black Clover - 176") and seasons TMDB merges or splits are matched to TMDB's
+  seasons through AniList. A season downloads as one batch instead of a torrent per episode, and the
+  English subtitles anime comes with turn on by themselves.
 - **Plays everywhere**: automatic MP4 copies for iPhone and Apple TV, browser-safe audio for Dolby/DTS,
   H.264 copies of HEVC for Firefox, timeline previews, Up next with credits detection.
 - **Subtitles** from OpenSubtitles, with their timing checked and fixed against the audio. Two

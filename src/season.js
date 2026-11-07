@@ -1,6 +1,7 @@
 // Season and episode identity, shared by smart downloads (smart-download.js), manual torrent search
 // and the Library: which show a release is, and which episodes of a season it covers.
 import { showKey } from './shows.js';
+import { episodesInSeason } from './anime.js';
 
 // "South Park S18", "South Park season 18", "south.park.s18.complete" -> { title, year, season }
 export function parseSeasonQuery(q) {
@@ -15,8 +16,17 @@ export function parseSeasonQuery(q) {
 }
 
 // Episodes a release name covers: "S18E01" -> [1], "S18E01E02" / "S18E01-E03" -> [1, 2(, 3)].
-export function episodesIn(name, season) {
+// Anime names too ("Show - 05", "Show S2 - 03", "Show (01-12) [Batch]"). With an anime context
+// (anime.js) every name is placed on TMDB's numbering: for Frieren (TMDB: one season of 38),
+// "Sousou no Frieren S2 - 03" is season 1 episode 31.
+export function episodesIn(name, season, ctx = null) {
   if (!Number.isInteger(season) || season < 0 || season > 99) return [];
+  if (ctx) return episodesInSeason(name, season, ctx);
+  const standard = standardEpisodes(name, season);
+  return standard.length || /\bS\d{1,2}\s?E\d/i.test(name) ? standard : episodesInSeason(name, season, null);
+}
+
+function standardEpisodes(name, season) {
   const normalized = String(name).replace(/[._]+/g, ' ');
   const x = new RegExp(`\\b0?${season}x(\\d{1,3})(?!\\d)`, 'i').exec(normalized);
   if (x) return [Number(x[1])];
