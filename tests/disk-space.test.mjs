@@ -30,6 +30,18 @@ test('copies watched recently are kept, and the job waits', () => {
   assert.deepEqual(r, { names: ['old.mp4'], fits: false });
 });
 
+test('non-evictable copies still count toward the cache cap', () => {
+  const protectedCopies = copies.map((e) => ({ ...e, evictable: false }));
+  const r = pickEvictions(protectedCopies, { need: 15 * GB, maxBytes: 40 * GB, free: 500 * GB });
+  assert.deepEqual(r, { names: [], fits: false }, 'background work must wait instead of pretending the cache is empty');
+});
+
+test('a busy copy counts toward the cap while other old copies may still make room', () => {
+  const mixed = copies.map((e) => ({ ...e, evictable: e.name !== 'old.mp4' }));
+  const r = pickEvictions(mixed, { need: 15 * GB, maxBytes: 40 * GB, free: 500 * GB });
+  assert.deepEqual(r, { names: ['mid.mp4'], fits: true });
+});
+
 test('deleting copies on another drive does not count as freeing space', () => {
   const r = pickEvictions(copies, { need: 10 * GB, free: 15 * GB, minFree: 20 * GB, sameDrive: false });
   assert.deepEqual(r, { names: [], fits: false });
