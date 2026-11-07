@@ -6152,6 +6152,7 @@ async function makeInvite(btn) {
   try {
     const inv = await api('/api/access/invite', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ note }) });
     state.newInvite = inv.url;
+    state.inviteNote = '';
     await copyWithToast(inv.url, 'Invite link copied: send it to them');
   } catch (err) { toast(err.message); }
   await loadActivity();
@@ -6196,7 +6197,8 @@ function peopleSection(q) {
   if (state.access && !a.configured) {
     out.push(h('p', { class: 'muted' }, 'Set CF_API_TOKEN, CF_ACCOUNT_ID and CF_ACCESS_LIST_ID in .env to invite people from here (see docs/remote-access.md in the Marquee folder).'));
   } else if (state.access) {
-    const noteInput = h('input', { id: 'invite-note', class: 'invite-note', type: 'text', maxlength: '60', placeholder: 'Who’s it for?' });
+    const noteInput = h('input', { id: 'invite-note', class: 'invite-note', type: 'text', maxlength: '60', placeholder: 'Who’s it for?', value: state.inviteNote || '',
+      oninput: (e) => { state.inviteNote = e.currentTarget.value; } });
     out.push(h('div', { class: 'invite-new' }, noteInput,
       h('button', { class: 'retry', onclick: (e) => makeInvite(e.currentTarget) }, 'Invite someone')));
     out.push(h('p', { class: 'muted invite-hint' }, 'Makes a one-time link (valid 7 days). They enter their email and can sign in from then on.'));
@@ -6292,7 +6294,8 @@ function foldGroup(key, tag, cls, title, count, kids, forceOpen = false) {
 }
 
 function renderActivity() {
-  if ($('#activity-body .person-name .clip-rename-form')) return;
+  // Rebuilding mid-typing would throw away the box being typed in (invite note, rename).
+  if ($('#activity-body .person-name .clip-rename-form') || editingIn('#activity-body')) return;
   const body = $('#activity-body');
   if (state.activityError) { body.replaceChildren(notice('Couldn’t get activity', state.activityError)); return; }
   if (!state.activity) return;
