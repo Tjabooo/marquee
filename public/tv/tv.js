@@ -606,8 +606,11 @@
         try { av.setDisplayMethod('PLAYER_DISPLAY_MODE_LETTER_BOX'); } catch (e) { /* older firmware */ }
         av.setListener({
           onbufferingstart: function () { spinner.textContent = 'Loading…'; spinner.classList.add('show'); bufferingSince = Date.now(); },
-          onbufferingcomplete: function () { spinner.classList.remove('show'); bufferingSince = 0; retries = 0; },
-          oncurrentplaytime: function (ms) { if (seekTarget == null) s.time = ms / 1000; if (ms !== lastPlayMs) { lastPlayMs = ms; movedAt = Date.now(); } },
+          onbufferingcomplete: function () { spinner.classList.remove('show'); bufferingSince = 0; },
+          oncurrentplaytime: function (ms) {
+            if (seekTarget == null) s.time = ms / 1000;
+            if (ms !== lastPlayMs) { lastPlayMs = ms; movedAt = Date.now(); if (ms > 1000) retries = 0; }
+          },
           onstreamcompleted: function () {
             s.ended = true; s.playing = false; countPlayed(); save(true);
             if (nextUp() && !s.dismissed) { cardFocus = 0; paint(); } else leavePlayer();
@@ -619,13 +622,24 @@
           if (s.closed) return;
           s.duration = av.getDuration() / 1000;
           var go = function () { try { av.play(); s.playing = true; s.playTick = Date.now(); spinner.classList.remove('show'); showOsd(); paint(); } catch (e) { fail(e.message); } };
-          if (at > 5) { s.time = at; av.seekTo(Math.floor(at * 1000), go, go); } else go();
+          if (at > 5) {
+            s.time = at;
+            av.seekTo(Math.floor(at * 1000), go, function (e) {
+              if (!reopen()) fail('Couldn’t restore your playback position. ' + String(e && e.name || e || ''));
+            });
+          } else go();
         }, function (e) { if (!reopen()) fail(String(e && e.name || e)); });
     }
     function reopen() {
       if (s.closed || reopening || !streamUrl || retries >= 5) return false;
       retries++; reopening = true;
       var at = s.time;
+      try {
+        var live = av.getCurrentTime() / 1000;
+        if (live > 5 || at <= 5) at = live;
+      } catch (e) { /* keep the last reported position */ }
+      s.time = at;
+      save(true);
       spinner.textContent = 'Reconnecting…'; spinner.classList.add('show');
       try { av.stop(); } catch (e) { /* already */ }
       try { av.close(); } catch (e) { /* already */ }
