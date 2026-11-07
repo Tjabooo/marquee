@@ -3729,6 +3729,7 @@ async function onWireless(on) {
   if (!session) return;
   if (on) cancelAudioIntent(session);
   renderAudioControls();
+  renderQualityMenu();
   const note = $('#player-note');
   if (on) {
     note.textContent = 'Playing on your TV. The controls here work as a remote.';
@@ -4109,8 +4110,11 @@ const browserPlays = (codec) => Boolean(CODEC_MIME[codec] && video.canPlayType(`
 // Extra codecs this browser can decode, reported to the server.
 const playsHevc = () => Boolean(video.canPlayType('video/mp4; codecs="hvc1.1.6.L93.B0"'));
 // Browsers that play HEVC get the original HEVC video; the rest get the H.264 browser copy when there is one.
-function browserVariant() { return playsHevc() ? 'browser-hevc' : 'browser'; }
-const extraPlayable = () => [...Object.keys(CODEC_MIME).filter(browserPlays), playsHevc() && 'hevc'].filter(Boolean).join(',');
+const baseVariant = () => (playsHevc() ? 'browser-hevc' : 'browser');
+// While the phone-quality stream plays, follow-up links (audio choice, back from AirPlay) stay on it.
+const phoneQuality = (session = current) => (session?.quality === '1080' || session?.quality === '720' ? session.quality : null);
+function browserVariant() { const q = phoneQuality(); return q ? `phone${q}` : baseVariant(); }
+const extraPlayable = () => [...Object.keys(CODEC_MIME).filter(browserPlays), playsHevc() && 'hevc', phoneQuality() && 'phone'].filter(Boolean).join(',');
 
 // ---- audio selection ----
 const audioBtn = $('#sync-btn');
@@ -4542,6 +4546,7 @@ nightBtn.addEventListener('click', (e) => {
   const open = nightMenu.hidden;
   closeCcMenu();
   closeAudioMenu();
+  closeQualityMenu();
   renderNightMenu();
   if (nightBtn.hidden) return;
   nightMenu.hidden = !open;
@@ -4557,6 +4562,109 @@ nightMenu.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeNightMenu(); nightBtn.focus(); }
 });
 document.addEventListener('click', (e) => { if (!nightMenu.hidden && !nightMenu.contains(e.target)) closeNightMenu(); });
+
+// ---- quality (phones) ----
+// Big files (4K, very high bitrates) stutter on phones and eat mobile data. The server can stream a
+// lighter 1080p or 720p version made live from the file (HLS, phone-stream.js); the file itself stays as
+// it is. Auto picks it on phones for files too heavy for one. Needs a browser that plays HLS itself
+// (Safari, Chrome on Android); elsewhere the menu isn't shown and the file plays as before.
+const qualityBtn = $('#quality-btn');
+const qualityMenu = $('#quality-menu');
+const QUALITY_PREFS = ['auto', 'original', '1080', '720'];
+let qualityPref = 'auto';
+try { const saved = localStorage.getItem('player:quality'); if (QUALITY_PREFS.includes(saved)) qualityPref = saved; } catch { /* blocked */ }
+const playsHls = () => Boolean(video.canPlayType('application/vnd.apple.mpegurl'));
+const touchScreen = () => matchMedia('(pointer: coarse)').matches;
+const phoneScreen = () => touchScreen() && Math.min(screen.width, screen.height) <= 600;
+// What to ask the server for when playback starts: "auto" only means something on a phone.
+function wantedQuality() {
+  if (!playsHls()) return 'original';
+  if (qualityPref === 'auto') return phoneScreen() ? 'auto' : 'original';
+  return qualityPref;
+}
+const qualityAvailable = (session = current) => Boolean(session && !plainMedia(session) && playsHls() && touchScreen() && !audioCasting());
+const heightName = (h) => (!h ? '' : h >= 2000 ? '4K' : h >= 1400 ? '1440p' : h >= 1000 ? '1080p' : h >= 700 ? '720p' : 'SD');
+function closeQualityMenu() { qualityMenu.hidden = true; qualityBtn.setAttribute('aria-expanded', 'false'); }
+
+function renderQualityMenu() {
+  const session = current;
+  qualityBtn.hidden = !qualityAvailable(session);
+  if (qualityBtn.hidden) { closeQualityMenu(); return; }
+  const phone = phoneQuality(session);
+  const source = heightName(session.sourceHeight);
+  const playing = phone ? `${phone}p, made live from the ${source || 'original'} file` : `Original${source ? ` (${source})` : ''}`;
+  const choices = [
+    ['auto', 'Auto', phoneScreen() ? 'Lighter stream when a file is too big for a phone' : 'The original file on this screen'],
+    ['original', 'Original', 'Full quality, the file as it is'],
+    ['1080', '1080p', 'Smooth on phones and mobile data'],
+    ['720', '720p', 'Data saver'],
+  ];
+  const focused = qualityMenu.contains(document.activeElement) ? document.activeElement?.dataset?.choice : null;
+  qualityMenu.replaceChildren(
+    h('p', { class: 'audio-title' }, 'Quality'),
+    ...choices.map(([v, label, note]) => h('button', { type: 'button', role: 'menuitemradio', class: 'cc-item night-item', tabindex: '-1',
+      'data-choice': v, 'aria-checked': String(qualityPref === v), onclick: () => setQuality(v) },
+    h('span', {}, label, h('small', {}, note)))),
+    h('p', { class: 'cc-message', role: 'status' }, session.qualityBusy ? 'Switching…' : `Playing: ${playing}`),
+  );
+  if (focused && !qualityMenu.hidden) qualityMenu.querySelector(`[data-choice="${focused}"]`)?.focus({ preventScroll: true });
+  const badge = $('#quality-badge');
+  badge.textContent = phone || (session.sourceHeight >= 2000 ? '4K' : 'HD');
+  badge.style.fontSize = badge.textContent.length > 3 ? '6px' : '';
+  qualityBtn.classList.toggle('is-on', Boolean(phone));
+  qualityBtn.setAttribute('aria-label', `Quality: ${playing}`);
+}
+
+// Saves the choice for next time and switches the playing video over at the same spot.
+async function setQuality(pref) {
+  if (!QUALITY_PREFS.includes(pref)) return;
+  qualityPref = pref;
+  try { localStorage.setItem('player:quality', pref); } catch { /* blocked */ }
+  const session = current;
+  if (!session || !qualityAvailable(session)) { renderQualityMenu(); return; }
+  session.qualityBusy = true;
+  renderQualityMenu();
+  try {
+    const link = await api(party ? `${party.base}/play-link?clientId=${encodeURIComponent(watchClient)}&variant=${baseVariant()}&quality=${wantedQuality()}`
+      : `/api/play-link?kind=${session.kind}&id=${encodeURIComponent(mediaId(session))}&variant=${baseVariant()}&quality=${wantedQuality()}`, { signal: session.abort.signal });
+    if (current !== session) return;
+    session.sourceHeight = link.sourceHeight || session.sourceHeight;
+    if ((link.quality || 'original') === (session.quality || 'original')) return;
+    // The audio choices belong to the file being streamed: start over with its default track.
+    resetAudioSelection(session);
+    session.audio = null;
+    session.quality = link.quality || 'original';
+    session.browserName = link.name;
+    swapSource(link.url, () => watchAudio(session, session));
+    osd(phoneQuality(session) ? `${session.quality}p` : 'Original quality');
+  } catch (error) {
+    if (current === session && error.name !== 'AbortError') toast(error.message || 'Couldn’t change the quality.');
+  } finally {
+    if (current === session) { session.qualityBusy = false; renderQualityMenu(); }
+  }
+}
+
+qualityBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const open = qualityMenu.hidden;
+  closeCcMenu();
+  closeAudioMenu();
+  closeNightMenu();
+  renderQualityMenu();
+  if (qualityBtn.hidden) return;
+  qualityMenu.hidden = !open;
+  qualityBtn.setAttribute('aria-expanded', String(open));
+  if (open) (qualityMenu.querySelector('[aria-checked="true"]') || qualityMenu.querySelector('button'))?.focus();
+});
+qualityMenu.addEventListener('keydown', (e) => {
+  const items = [...qualityMenu.querySelectorAll('button')];
+  const index = items.indexOf(document.activeElement);
+  const target = e.key === 'Home' ? 0 : e.key === 'End' ? items.length - 1
+    : e.key === 'ArrowDown' ? (index + 1) % items.length : e.key === 'ArrowUp' ? (index - 1 + items.length) % items.length : null;
+  if (target != null && items.length) { e.preventDefault(); items[target].focus(); }
+  if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeQualityMenu(); qualityBtn.focus(); }
+});
+document.addEventListener('click', (e) => { if (!qualityMenu.hidden && !qualityMenu.contains(e.target)) closeQualityMenu(); });
 
 // ---- controls ----
 // Marquee's own controls instead of the browser's, so they look the same everywhere, work from
@@ -4582,7 +4690,7 @@ const osdEl = $('#player-osd');
 const spinner = $('#player-spinner');
 const helpEl = $('#player-help');
 
-const menuOpen = () => !ccMenu.hidden || !audioMenu.hidden || !nightMenu.hidden || !helpEl.hidden || (watchPanelOpen && !roomDocked());
+const menuOpen = () => !ccMenu.hidden || !audioMenu.hidden || !nightMenu.hidden || !qualityMenu.hidden || !helpEl.hidden || (watchPanelOpen && !roomDocked());
 let lastPointer = 'mouse';
 let overControls = false;
 let uiTimer = null;
@@ -5042,6 +5150,8 @@ function resetPlayerMedia() {
   closeAudioMenu();
   audioBtn.hidden = true;
   closeNightMenu();
+  closeQualityMenu();
+  qualityBtn.hidden = true;
   helpEl.hidden = true;
   endSeek(false);
   audioWatch = null;
@@ -5059,8 +5169,9 @@ function resetPlayerMedia() {
 }
 
 async function preparePlayerSource(f, watchSession, signal) {
-  const link = await api(watchSession ? `${watchSession.base}/play-link?clientId=${encodeURIComponent(watchClient)}&variant=${browserVariant()}`
-    : `/api/play-link?kind=${f.kind}&id=${encodeURIComponent(mediaId(f))}&variant=${browserVariant()}`, { signal });
+  const ask = `variant=${baseVariant()}&quality=${wantedQuality()}`;
+  const link = await api(watchSession ? `${watchSession.base}/play-link?clientId=${encodeURIComponent(watchClient)}&${ask}`
+    : `/api/play-link?kind=${f.kind}&id=${encodeURIComponent(mediaId(f))}&${ask}`, { signal });
   const response = await fetch(link.url, { headers: { Range: 'bytes=0-0' }, signal });
   if (!response.ok) {
     let message = `The server responded with ${response.status}.`;
@@ -5121,6 +5232,9 @@ async function loadPlayerMedia(f, opts = {}) {
   }
   if (current !== session) return;
   session.browserName = link.name;
+  session.quality = link.quality || 'original';
+  session.sourceHeight = link.sourceHeight || null;
+  renderQualityMenu();
   setPlayerSource(link.url, session, () => {
     if (party) { party.sync(); return; }
     const saved = savedProgress(session);

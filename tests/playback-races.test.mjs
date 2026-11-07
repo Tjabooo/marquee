@@ -85,7 +85,7 @@ function casting() {
   const button = { hidden: false, classList: { remove() {} } };
   const context = vm.createContext({ current: { kind: 'lib', browserName: 'browser.mp4' }, party: null,
     castGeneration: 0, onTvVersion: false, hasAirPlay: true, hasRemotePlayback: false,
-    cancelAudioIntent() {}, renderAudioControls() {}, refreshAudioMetadata() {}, mediaId: () => 'example',
+    cancelAudioIntent() {}, renderAudioControls() {}, renderQualityMenu() {}, refreshAudioMetadata() {}, mediaId: () => 'example',
     $: () => ({ textContent: '', hidden: false }), airplayBtn: button,
     api: () => { const request = deferred(); requests.push(request); return request.promise; },
     swapSource: url => swaps.push(url),

@@ -140,7 +140,7 @@ function probe(file) {
   });
 }
 
-function capabilities() {
+export function capabilities() {
   const list = (flag) => new Promise((resolve) => execFile(FFMPEG, ['-hide_banner', flag], { timeout: 15000, maxBuffer: 8 * 1024 * 1024, windowsHide: true },
     (error, stdout) => resolve(error ? '' : String(stdout))));
   return Promise.all([list('-encoders'), list('-filters')]).then(([enc, filt]) => ({

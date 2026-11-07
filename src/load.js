@@ -208,6 +208,7 @@ export function describeJob(cmd, args, area) {
     convert: thumb ? 'Thumbnail' : args.includes('-vn') || /\.(m4a|aac|srt)$/i.test(output || '') ? 'Audio / subtitle track' : 'Conversion',
     'note-share': thumb ? 'Note preview image' : 'Note preview video',
     travel: 'Phone copy',
+    phone: 'Phone-quality stream',
     subsync: exe === 'ffmpeg' ? 'Subtitle sync (audio)' : 'Subtitle sync',
     ocr: 'Image text (OCR)',
     previews: 'Timeline previews',

@@ -50,6 +50,7 @@ import { createAuth, signInPage, safeNext } from './auth.js';
 import { checkConfig } from './config-check.js';
 import { raiseServer } from './priority.js';
 import { startPlaybackGuard } from './playback-guard.js';
+import { PhoneStreams, segmentIndex, isHeavy, probe as probePhone } from './phone-stream.js';
 
 import { APP_DIR, DATA_DIR, CACHE_DIR, PUBLIC_DIR, dataDirProblem, ensureDataDir } from './paths.js';
 
@@ -1296,7 +1297,12 @@ const signPlay = (kind, id, variant, exp) => crypto.createHmac('sha256', streamS
 // copy exists); "browser-hevc" = the same for a browser that plays HEVC, which keeps the HEVC file;
 // "tv" = original audio for TVs.
 const BROWSER_VARIANTS = ['browser', 'browser-hevc'];
+// "phone1080" / "phone720" (+ "-a<stream>" for a chosen audio track): a live, lighter HLS stream made from
+// the best file there is (phone-stream.js). The file itself is never changed.
+const PHONE_VARIANT = /^phone(1080|720)(?:-a(\d{1,5}))?$/;
+const phoneStreams = new PhoneStreams({ dir: path.join(CACHE_DIR, 'phone') });
 async function streamFile(kind, id, variant) {
+  if (PHONE_VARIANT.test(variant)) return streamFile(kind, id, 'browser-hevc');
   const selected = variant.match(/^(browser(?:-hevc)?)-a(\d+)-([a-f0-9]{24})$/);
   if (selected) {
     const base = await streamFile(kind, id, selected[1]);
@@ -1316,9 +1322,50 @@ async function streamFile(kind, id, variant) {
   throw new HttpError(400, 'Unknown media type.');
 }
 
-async function playLink(kind, id, variant, audio = null, audioSource = null, retry = false) {
-  if (![...BROWSER_VARIANTS, 'tv'].includes(variant)) throw new HttpError(400, 'Unknown variant.');
+// quality (phones): "auto" = the phone stream when the video is too heavy for a phone (above 1080p or a very
+// high bitrate) or its picture won't play in this browser; "1080" / "720" = always; else the file as is.
+async function phoneChoice(kind, id, variant, quality) {
+  if (!BROWSER_VARIANTS.includes(variant) || !['auto', '1080', '720'].includes(quality)) return variant;
+  if (quality !== 'auto') return `phone${quality}`;
+  try {
+    const info = await probePhone(await streamFile(kind, id, 'browser-hevc'));
+    if (isHeavy(info)) return 'phone1080';
+    const vid = await converter.probeVideo(await streamFile(kind, id, variant));
+    if (vid && !converter.videoBrowserSafe(vid, { hevc: variant === 'browser-hevc' })) return 'phone1080';
+  } catch { /* unreadable: the normal link says why */ }
+  return variant;
+}
+
+async function phoneLink(kind, id, variant, audio, audioSource) {
+  const file = await streamFile(kind, id, variant);
+  if (!fs.existsSync(file)) throw new HttpError(404, 'That file is no longer on the server.');
+  let selection = {};
+  if (audio !== null && audio !== undefined) {
+    if (!/^\d{1,5}$/.test(String(audio))) throw new HttpError(400, 'Invalid audio selection.');
+    if (audioSource !== converter.audioSourceKey(file)) throw new HttpError(409, 'Audio tracks changed. Open Audio and choose the language again.');
+    const track = Number(audio);
+    if (!(await converter.probeAudio(file))?.some((t) => t.index === track)) throw new HttpError(400, 'That audio track is not available.');
+    variant = `${variant.replace(/-a\d+$/, '')}-a${track}`;
+    selection = { ready: true, track, audioSource };
+  }
+  const exp = Math.floor(Date.now() / 1000) + PLAY_LINK_HOURS * 3600;
+  return {
+    ...selection,
+    url: `/play/${kind}/${id}/${variant}/${exp}/${signPlay(kind, id, variant, exp)}/index.m3u8`,
+    name: path.basename(file), ext: 'm3u8', quality: PHONE_VARIANT.exec(variant)[1],
+  };
+}
+
+async function playLink(kind, id, variant, audio = null, audioSource = null, retry = false, quality = null) {
   if (!/^[A-Za-z0-9_-]+$/.test(id)) throw new HttpError(400, 'Invalid file.');
+  if (audio === null && quality) {
+    // The player's quality menu names the original's resolution ("made live from the 4K file").
+    const link = await playLink(kind, id, await phoneChoice(kind, id, variant, quality), null, null, retry);
+    try { link.sourceHeight = (await probePhone(await streamFile(kind, id, 'browser-hevc'))).height || null; } catch { /* unknown */ }
+    return link;
+  }
+  if (PHONE_VARIANT.test(variant)) return phoneLink(kind, id, variant, audio, audioSource);
+  if (![...BROWSER_VARIANTS, 'tv'].includes(variant)) throw new HttpError(400, 'Unknown variant.');
   let file = await streamFile(kind, id, variant);
   let selection = {};
   if (audio !== null) {
@@ -1338,6 +1385,7 @@ async function playLink(kind, id, variant, audio = null, audioSource = null, ret
     url: `/play/${kind}/${id}/${variant}/${exp}/${signPlay(kind, id, variant, exp)}/${encodeURIComponent(name)}`,
     name,
     ext: path.extname(name).slice(1).toLowerCase(),
+    quality: 'original',
   };
 }
 
@@ -1378,7 +1426,7 @@ async function convertStatusFor(user, plays) {
 
 // The file a signed /play/ path names, once its signature checks out (expiry is the caller's business).
 function verifiedPlayPath(pathname) {
-  const m = pathname.match(/^\/play\/(lib|dl)\/([A-Za-z0-9_-]+)\/(browser(?:-hevc)?(?:-a\d+-[a-f0-9]{24})?|tv)\/(\d+)\/([A-Za-z0-9_-]+)(?:\/[^/]*)?$/);
+  const m = pathname.match(/^\/play\/(lib|dl)\/([A-Za-z0-9_-]+)\/(browser(?:-hevc)?(?:-a\d+-[a-f0-9]{24})?|tv|phone(?:1080|720)(?:-a\d{1,5})?)\/(\d+)\/([A-Za-z0-9_-]+)(?:\/[^/]*)?$/);
   if (!m) throw new HttpError(404, 'Not found.');
   const [, kind, id, variant, exp, sig] = m;
   const expected = signPlay(kind, id, variant, exp);
@@ -1391,8 +1439,43 @@ function verifiedPlayPath(pathname) {
 async function handlePlay(req, res, url) {
   const { kind, id, variant, exp } = verifiedPlayPath(url.pathname);
   if (exp < Date.now() / 1000) throw new HttpError(410, 'This link has expired. Start playback again.');
+  if (PHONE_VARIANT.test(variant)) return sendPhonePiece(req, res, url, { kind, id, variant });
   // Library files name their stream for House → Sharing (cheap); downloads keep the file's own name.
   return sendVideo(req, res, await streamFile(kind, id, variant), { label: kind === 'lib' ? streamLabel(librarySource(id)) : null });
+}
+
+// The phone stream's playlist (index.m3u8) or one of its 4-second pieces (s00012.ts). One session per
+// play link: the signature is its key.
+async function sendPhonePiece(req, res, url, { kind, id, variant }) {
+  const parts = url.pathname.split('/');
+  const name = parts.pop();
+  const sig = parts.pop();
+  const [, quality, audio] = PHONE_VARIANT.exec(variant);
+  const file = await streamFile(kind, id, variant);
+  const label = `${kind === 'lib' ? streamLabel(librarySource(id)) : streamLabel(file)} · ${quality}p`;
+  let session;
+  try { session = await phoneStreams.open(sig, { file, quality, audioIndex: audio == null ? null : Number(audio), label }); }
+  catch (e) { throw new HttpError(e.status || 500, e.message); }
+  converter.noteServed(file); // keep a cached copy being streamed out of the cache cleanup
+  const headers = { 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' };
+  if (name === 'index.m3u8') {
+    const body = phoneStreams.playlist(session);
+    res.writeHead(200, { ...headers, 'Content-Type': 'application/vnd.apple.mpegurl', 'Content-Length': Buffer.byteLength(body) });
+    return res.end(req.method === 'HEAD' ? undefined : body);
+  }
+  const n = segmentIndex(name);
+  if (n == null) throw new HttpError(404, 'Not found.');
+  let piece;
+  try { piece = await phoneStreams.segment(session, n); }
+  catch (e) { throw new HttpError(e.status || 500, e.message); }
+  const size = (await fs.promises.stat(piece)).size;
+  res.writeHead(200, { ...headers, 'Content-Type': 'video/mp2t', 'Content-Length': size });
+  if (req.method === 'HEAD') return res.end();
+  // One stream per session in House → Sharing (keyed by its folder, which has no bitrate of its own).
+  const meter = trackStream(req, session.dir, size, label);
+  const read = fs.createReadStream(piece, { highWaterMark: STREAM_READ_BYTES });
+  read.on('data', (chunk) => meter.add(chunk.length));
+  pipeline(read, res, () => meter.done());
 }
 
 // Stats for nerds: what ffprobe says about the exact file the player streams (its src path), and
@@ -1410,7 +1493,9 @@ async function streamInfo(req, src) {
     const source = await sourceFile(link.kind, link.id);
     const first = converter.originalFor(source) || source;
     const selected = link.variant.match(/^browser-a(\d+)-/);
-    served = link.variant === 'tv' ? 'TV version (original audio)'
+    const phone = PHONE_VARIANT.exec(link.variant);
+    served = phone ? `Phone quality: ${phone[1]}p H.264, made live from this file`
+      : link.variant === 'tv' ? 'TV version (original audio)'
       : selected ? `Single-audio copy (audio track ${Number(selected[1])})`
         : file === first ? 'Original file' : 'Browser copy';
     if (first !== file && fs.existsSync(first)) original = first;
@@ -1844,7 +1929,11 @@ async function handleApi(req, res, url) {
     const client = String(url.searchParams.get('clientId') || '');
     const room = watchRooms.room(token);
     watchRooms.member(room, user, client);
-    if (action === 'play-link') return sendJson(res, 200, await playLink(room.media.kind, room.media.id, url.searchParams.get('variant') === 'browser-hevc' ? 'browser-hevc' : 'browser'));
+    if (action === 'play-link') {
+      const asked = String(url.searchParams.get('variant') || '');
+      const variant = asked === 'browser-hevc' || /^phone(1080|720)$/.test(asked) ? asked : 'browser';
+      return sendJson(res, 200, await playLink(room.media.kind, room.media.id, variant, null, null, false, url.searchParams.get('quality')));
+    }
     if (action === 'events' && req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store, no-transform',
         'CDN-Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
@@ -2424,7 +2513,7 @@ async function handleApi(req, res, url) {
   // ---- casting ----
   if (p === '/api/play-link') {
     const q = url.searchParams;
-    const link = await playLink(q.get('kind') || '', q.get('id') || '', q.get('variant') || 'browser', q.get('audio'), q.get('audioSource'), q.get('audioRetry') === '1');
+    const link = await playLink(q.get('kind') || '', q.get('id') || '', q.get('variant') || 'browser', q.get('audio'), q.get('audioSource'), q.get('audioRetry') === '1', q.get('quality'));
     // Named from the library/download file: browsers often stream a cached copy named by a hash.
     if (link.url && q.get('audio') === null) activity.record(req, 'play', titleOf(await sourceFile(q.get('kind'), q.get('id'))), { quietMs: 3 * 3600 * 1000 });
     return sendJson(res, link.ready === false ? 202 : 200, link);
@@ -2580,11 +2669,22 @@ async function handleApi(req, res, url) {
     const source = await sourceFile(m[1], m[2]);
     // Extra codecs the client reports it can decode (e.g. Edge with Dolby, Chrome with HEVC).
     const plays = new Set((url.searchParams.get('plays') || '').split(',').filter(Boolean));
-    const served = converter.preferConverted(source, { browser: true, hevc: plays.has('hevc') });
+    // "phone": the player streams the phone version, which is made from the HEVC-capable pick and always
+    // plays (H.264 + AAC, timed by ffmpeg), so nothing needs converting; track indexes refer to that file.
+    const phone = plays.has('phone');
+    const served = converter.preferConverted(source, { browser: true, hevc: phone || plays.has('hevc') });
     let tracks = null;
     let vid = null;
     try { [tracks, vid] = await Promise.all([converter.probeAudio(served), converter.probeVideo(served)]); } catch { /* unreadable: say nothing */ }
     if (!tracks) return sendJson(res, 200, { known: false });
+    if (phone) {
+      return sendJson(res, 200, {
+        known: true, codec: 'aac', tracks, browserSafe: true, aligned: true, phone: true,
+        audioSource: converter.audioSourceKey(served), defaultAudio: tracks[0]?.index ?? null,
+        videoSafe: true, videoCodec: 'H.264', fixable: false, job: null, percent: null, error: null,
+        sync: { shift: 0, applied: 0 },
+      });
+    }
     const videoSafe = converter.videoBrowserSafe(vid, { hevc: plays.has('hevc') });
     const main = tracks[0]?.codec || null;
     const browserSafe = !main || converter.BROWSER_AUDIO.has(main) || plays.has(main);

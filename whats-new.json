@@ -1,5 +1,20 @@
 [
   {
+    "id": "2026-11-07-phone-quality",
+    "date": "2026-11-07",
+    "title": "Smooth 4K on phones",
+    "items": [
+      {
+        "title": "A lighter stream for big files on your phone",
+        "text": "4K films and other very large files used to stutter on phones. Now, on a phone, Marquee plays them as a lighter 1080p stream made on the fly, so they start fast and play smoothly, also on mobile data. The original file on the server stays exactly as it is."
+      },
+      {
+        "title": "Pick the quality yourself",
+        "text": "The new quality button in the player (on phones and tablets) lets you choose Auto, Original, 1080p or 720p (a data saver). Your choice is remembered, and switching keeps your place in the video."
+      }
+    ]
+  },
+  {
     "id": "2026-11-07-tv-preview-browse",
     "date": "2026-11-07",
     "title": "Browse and search on the TV (Preview)",
