@@ -17,7 +17,7 @@ import path from 'node:path';
 import { showKey } from './shows.js';
 
 const ANILIST = process.env.ANILIST_URL || 'https://graphql.anilist.co';
-const VERSION = 2;
+const VERSION = 3;
 const DAY = 24 * 60 * 60 * 1000;
 const LATIN = /^[\p{Script=Latin}\p{N}\p{P}\p{S}\s]+$/u;
 
@@ -234,13 +234,22 @@ async function anilistChain(names, year, keys, type) {
   return chain.map(({ relations, ...m }) => m);
 }
 
-// TMDB's seasons as ranges of one absolute count: [{ n, count, start }] (specials left out).
+// TMDB's seasons as ranges of one absolute count: [{ n, count, start, first, year }] (specials left
+// out). first: TMDB's number for the season's first episode, 1 unless TMDB counts on across seasons
+// (One Piece: season 21 is episodes 892-1088); year: when the season began.
 function tmdbSeasons(d) {
   let start = 1;
   return (d.seasons || []).filter((s) => s.season_number > 0 && s.episode_count > 0)
     .sort((a, b) => a.season_number - b.season_number)
-    .map((s) => { const out = { n: s.season_number, count: s.episode_count, start }; start += s.episode_count; return out; });
+    .map((s) => {
+      const out = { n: s.season_number, count: s.episode_count, start, first: 1, year: Number(String(s.air_date || '').slice(0, 4)) || null };
+      start += s.episode_count;
+      return out;
+    });
 }
+// TMDB's episode number <-> the absolute count, within season s.
+const tmdbEpisode = (s, abs) => abs - s.start + (s.first || 1);
+const absoluteOf = (s, episode) => s.start + episode - (s.first || 1);
 
 // Places AniList's seasons on TMDB's absolute count. A season that fits in what's left of a TMDB
 // season goes there; one that spans several whole TMDB seasons (One Piece) starts at the first; a
@@ -304,6 +313,15 @@ export async function buildContext(type, id, tmdb, { details = null } = {}) {
     try { chain = await anilistChain([...new Set([...romaji, name, original].filter((t) => t && LATIN.test(t)))], year, keysOf(baseTitles), type); }
     catch { anilistOk = false; }
     const seasons = type === 'tv' ? tmdbSeasons(full) : [];
+    // Does TMDB number on across seasons? Its last season's first episode tells (one request).
+    const last = seasons.at(-1);
+    if (last && last.start > 1) {
+      try {
+        const sd = await tmdb(`/tv/${id}/season/${last.n}`);
+        const firstNo = Math.min(...(sd.episodes || []).map((e) => e.episode_number).filter((x) => Number.isInteger(x) && x > 0));
+        if (firstNo === last.start) seasons.forEach((x) => { x.first = x.start; });
+      } catch { /* optional: numbered per season */ }
+    }
     const firstTitles = chain[0] ? titlesOf(chain[0]) : [];
     let keys = keysOf([...baseTitles, ...firstTitles]);
     const entries = type === 'tv' ? alignEntries(seasons, chain.map((m) => ({
@@ -352,9 +370,9 @@ function whichPart(parsed, ctx) {
 export function fromAbsolute(ctx, abs) {
   if (!Number.isInteger(abs) || abs < 1) return null;
   const s = ctx.seasons.find((x) => abs >= x.start && abs < x.start + x.count) || null;
-  if (s) return { season: s.n, episode: abs - s.start + 1 };
+  if (s) return { season: s.n, episode: tmdbEpisode(s, abs) };
   const last = ctx.seasons.at(-1);
-  if (last && abs >= last.start + last.count && abs < last.start + last.count + 60) return { season: last.n, episode: abs - last.start + 1 };
+  if (last && abs >= last.start + last.count && abs < last.start + last.count + 60) return { season: last.n, episode: tmdbEpisode(last, abs) };
   if (!ctx.seasons.length) return { season: 1, episode: abs };
   return null;
 }
@@ -391,7 +409,9 @@ export function resolve(parsed, ctx) {
       const t = seasonRange(ctx, n);
       const named = namedSeason(ctx, n);
       for (const e of parsed.episodes) {
-        if (t && e <= t.count) out.push({ season: n, episode: e });
+        const first = t?.first || 1;
+        if (t && e >= first && e < first + t.count) out.push({ season: n, episode: e }); // TMDB's own number
+        else if (t && e <= t.count) add(t.start + e - 1); // counted within the season
         else if (!t && named && e <= named.count) add(named.start + e - 1);
         else add(e); // numbered from the first episode after all
       }
@@ -415,7 +435,14 @@ export function resolve(parsed, ctx) {
   } else if (parsed.batch && ctx.seasons.length === 1) {
     for (let i = 0; i < ctx.seasons[0].count; i++) add(1 + i);
   }
-  return out.length ? out : null;
+  if (!out.length) return null;
+  // A year in the name must be the show's or the season's: "One Piece (2023) Season 1" is the
+  // live-action series, not the 1999 anime.
+  if (parsed.year && ctx.year) {
+    const years = new Set([ctx.year, ...out.map((x) => seasonRange(ctx, x.season)?.year).filter(Boolean)]);
+    if (![...years].some((y) => Math.abs(y - parsed.year) <= 1)) return null;
+  }
+  return out;
 }
 
 // Episodes of TMDB season `season` a name covers (season.js episodesIn for anime).
@@ -447,7 +474,7 @@ export function packQueries(ctx, season) {
 }
 export function episodeQueriesAnime(ctx, season, episode) {
   const range = seasonRange(ctx, season);
-  const abs = range ? range.start + episode - 1 : episode;
+  const abs = range ? absoluteOf(range, episode) : episode;
   const idx = ctx.entries.reduce((best, e, i) => (e.from && e.from <= abs ? i : best), -1);
   const entry = idx >= 0 ? ctx.entries[idx] : null;
   const rel = entry ? abs - entry.from + 1 : episode;

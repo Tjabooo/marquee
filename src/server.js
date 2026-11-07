@@ -946,7 +946,8 @@ async function startSmartFor(user, body) {
   const seasonNo = type === 'tv' ? Number(body.season) : null;
   if (type === 'tv' && (!Number.isInteger(seasonNo) || seasonNo < 1 || seasonNo > 99)) throw new HttpError(400, 'Which season?');
   const episodes = type === 'tv' && Array.isArray(body.episodes)
-    ? [...new Set(body.episodes.map(Number).filter((e) => Number.isInteger(e) && e > 0 && e < 1000))].slice(0, 200) : null;
+    ? [...new Set(body.episodes.map(Number).filter((e) => Number.isInteger(e) && e > 0 && e < 5000))].slice(0, 1500) : null;
+  const range = Boolean(body.range && episodes?.length > 1); // "Episodes 150–200": batches may serve it
   const film = type === 'movie' ? details : null, show = type === 'tv' ? details : null;
   const subs = subtitles.subtitlesConfigured() && user.settings?.subLang ? [user.settings.subLang] : [];
   // Anime: every known name and how its seasons line up with TMDB's (anime.js). Without AniList it
@@ -955,7 +956,7 @@ async function startSmartFor(user, body) {
     ? anime.buildContext(type, tmdbId, tmdb, { details }).catch((e) => { console.warn(`[anime] ${title}: ${e.message}`); return null; })
     : null; // a promise: the job waits for it, the Download button doesn't
   const id = smart.startSmartJob({
-    type, title, year, season: seasonNo, episodes: episodes?.length ? episodes : null, requester: user.id, subs, anime: animeCtx,
+    type, title, year, season: seasonNo, episodes: episodes?.length ? episodes : null, range, requester: user.id, subs, anime: animeCtx,
     originalTitle: original && original !== title && /^[\p{Script=Latin}\d\s\p{P}]+$/u.test(original) ? original : null,
     want: downloadWant(user, body),
   }, {
@@ -2426,11 +2427,18 @@ async function handleApi(req, res, url) {
   if ((m = p.match(/^\/api\/tv\/(\d+)\/seasons$/))) {
     const d = await cachedTmdb(`/tv/${m[1]}`, {}, 6 * 3600 * 1000);
     const today = new Date().toISOString().slice(0, 10);
+    // Anime: where each season's numbering starts (One Piece's season 21 is episodes 892-1088), for
+    // the Download panel's episode range. The context is cached; building it waits a few seconds at most.
+    const ctx = anime.isAnimeDetails(d) ? await Promise.race([
+      anime.buildContext('tv', Number(m[1]), tmdb, { details: d }).catch(() => null),
+      new Promise((ok) => setTimeout(ok, 8000, null)),
+    ]) : null;
     return sendJson(res, 200, {
       seasons: (d.seasons || []).filter((x) => x.season_number > 0).map((x) => ({
         number: x.season_number,
         name: x.name || `Season ${x.season_number}`,
         episodes: x.episode_count || null,
+        first: ctx?.seasons?.find((c) => c.n === x.season_number)?.first || 1,
         upcoming: !x.air_date || x.air_date > today,
       })),
     });

@@ -10,12 +10,13 @@ import { showKey } from '../src/shows.js';
 import { startSmartJob, smartJob } from '../src/smart-download.js';
 
 // A context as anime.buildContext makes it, without the network.
-function ctxOf({ id = 1, title, keys, seasons, entries = [] }) {
+// continuous: TMDB numbers on across seasons (One Piece); years: when each season began.
+function ctxOf({ id = 1, title, keys, seasons, entries = [], continuous = false, year = 2020, years = [] }) {
   let start = 1;
-  const s = seasons.map((count, i) => { const out = { n: i + 1, count, start }; start += count; return out; });
+  const s = seasons.map((count, i) => { const out = { n: i + 1, count, start, first: continuous ? start : 1, year: years[i] ?? null }; start += count; return out; });
   const e = alignEntries(s, entries.map(([titles, episodes]) => ({ titles, keys: titles.map(showKey), episodes })));
   e.forEach((x, i) => { if (i > 0) x.keys = x.keys.filter((k) => !keys.map(showKey).includes(k)); });
-  return { v: 2, type: 'tv', id, title, year: 2020, keys: keys.map(showKey), queryTitles: [keys[0]], seasons: s, entries: e };
+  return { v: 3, type: 'tv', id, title, year, keys: keys.map(showKey), queryTitles: [keys[0]], seasons: s, entries: e };
 }
 const frieren = ctxOf({ title: 'Frieren: Beyond Journey\'s End', keys: ['Sousou no Frieren', 'Frieren: Beyond Journey\'s End'],
   seasons: [38], entries: [[['Sousou no Frieren'], 28], [['Sousou no Frieren 2nd Season'], 10]] });
@@ -156,7 +157,7 @@ function deps(catalogue, extra = {}) {
       parseName,
       searchTorrents: async (q) => { queries.push(q); return { results: catalogue.filter((r) => q.toLowerCase().split(' ').filter((w) => w !== 'batch').every((w) => r.name.toLowerCase().includes(w))) }; },
       addDownload: async ({ name }) => { added.push(name); return { hash: String(added.length), existing: false }; },
-      seasonEpisodes: async () => ({ title: extra.title, episodes: Array.from({ length: extra.aired }, (_, i) => ({ episode: i + 1, aired: true })) }),
+      seasonEpisodes: async () => ({ title: extra.title, episodes: Array.from({ length: extra.aired }, (_, i) => ({ episode: (extra.first || 1) + i, aired: true })) }),
       haveEpisodes: async () => Object.assign(new Set(extra.have || []), { queued: new Set() }),
       ...extra.deps,
     },
@@ -199,4 +200,77 @@ test('single anime episodes are found by absolute or per-season number, never a 
   const job = await wait(startSmartJob({ type: 'tv', title: 'Black Clover', season: 2, anime: clover, want: { profile: 'balanced' }, requester: 'bc2' }, d));
   assert.deepEqual(added, ['[Erai-raws] Black Clover 2nd Season - 05 [1080p CR WEB-DL AVC AAC][MultiSub][C8D18DEA]', '[SubsPlease] Black Clover - 176 (1080p) [DC022518].mkv']);
   assert.equal(job.outcome, 'started');
+});
+
+// One Piece as TMDB really has it: 23 seasons numbered on from one to the next (season 21 = 892-1088),
+// and a live-action series of the same name from 2023.
+const OP_SEASONS = [61, 16, 14, 39, 13, 52, 33, 35, 73, 45, 26, 14, 101, 58, 62, 50, 56, 55, 74, 14, 197, 67, 25];
+const onePieceReal = ctxOf({ title: 'One Piece', keys: ['One Piece'], seasons: OP_SEASONS, entries: [[['One Piece'], null]], continuous: true,
+  year: 1999, years: [1999, 2001, 2001, 2001, 2002, 2002, 2003, 2004, 2004, 2006, 2007, 2007, 2008, 2009, 2010, 2011, 2013, 2014, 2016, 2016, 2019, 2023, 2025] });
+
+test('One Piece: TMDB’s continuous numbering, absolute fansub numbers and season-style names agree', () => {
+  assert.equal(place('[SubsPlease] One Piece - 1085 (1080p) [A02F35FE].mkv', onePieceReal), 'S21E1085');
+  assert.equal(place('[SubsPlease] One Piece - 892 (1080p) [A02F35FE].mkv', onePieceReal), 'S21E892');
+  assert.equal(place('[SubsPlease] One Piece - 61 (1080p) [A02F35FE].mkv', onePieceReal), 'S1E61');
+  assert.equal(place('[SubsPlease] One Piece - 62 (1080p) [A02F35FE].mkv', onePieceReal), 'S2E62');
+  assert.equal(place('One.Piece.S21E1085.1080p.WEB.x264.mkv', onePieceReal), 'S21E1085', 'TMDB’s own number');
+  assert.equal(place('One.Piece.S21E05.1080p.WEB.x264.mkv', onePieceReal), 'S21E896', 'counted within the season');
+  assert.deepEqual(episodesInSeason('[Erai-raws] One Piece - 1001 ~ 1010 [1080p][Multiple Subtitle]', 21, onePieceReal, { file: false }),
+    [1001, 1002, 1003, 1004, 1005, 1006, 1007, 1008, 1009, 1010]);
+  assert.ok(episodeQueriesAnime(onePieceReal, 21, 1085).includes('One Piece 1085'));
+});
+
+test('a year that is neither the show’s nor the season’s is another show (One Piece live action)', () => {
+  assert.equal(place('One Piece (2023) Season 1 S01 (1080p NF WEB-DL x265 HEVC 10bit EAC3 Atmos 5.1 Garshasp) [QxR]', onePieceReal), null);
+  assert.equal(place('[Judas] One Piece (1999) - 1085 [1080p].mkv', onePieceReal), 'S21E1085');
+  assert.equal(place('[ASW] One Piece (2023) - 1085 [1080p].mkv', onePieceReal), null, 'season 21 began in 2019');
+  assert.equal(place('[ASW] One Piece (2023) - 1090 [1080p].mkv', onePieceReal), 'S22E1090', 'season 22 began in 2023');
+});
+
+test('One Piece season 1: the anime’s batch, never the live-action season', async () => {
+  const cat = [
+    nyaa('One Piece (2023) Season 1 S01 (1080p NF WEB-DL x265 HEVC 10bit EAC3 Atmos 5.1 Garshasp) [QxR]', 900, 12 * GB),
+    nyaa('[Erai-raws] One Piece - 001 ~ 061 [1080p][BATCH][Multiple Subtitle]', 40, 30 * GB),
+  ];
+  const { deps: d, added } = deps(cat, { title: 'One Piece', aired: 61 });
+  const job = await wait(startSmartJob({ type: 'tv', title: 'One Piece', season: 1, anime: onePieceReal, want: { profile: 'balanced' }, requester: 'op1' }, d));
+  assert.deepEqual(added, ['[Erai-raws] One Piece - 001 ~ 061 [1080p][BATCH][Multiple Subtitle]']);
+  assert.equal(job.added[0].episodes.length, 61);
+});
+
+test('an episode range (Black Clover 150-170) takes the batch with everything else switched off', async () => {
+  const cat = [
+    nyaa('[SubsPlease] Black Clover (01-170) (1080p) [Batch]', 412, 233 * GB),
+    ...Array.from({ length: 21 }, (_, i) => nyaa(`[SubsPlease] Black Clover - ${150 + i} (1080p) [AB${i}].mkv`, 50, 1.4 * GB)),
+  ];
+  const trims = [];
+  const { deps: d, added } = deps(cat, { title: 'Black Clover', aired: 170, have: [152],
+    deps: { trimPack: async (link, season, owned) => { trims.push(owned); return null; } } });
+  const range = Array.from({ length: 21 }, (_, i) => 150 + i);
+  const job = await wait(startSmartJob({ type: 'tv', title: 'Black Clover', season: 1, episodes: range, range: true, anime: clover, want: { profile: 'balanced' }, requester: 'bcr' }, d));
+  assert.deepEqual(added, ['[SubsPlease] Black Clover (01-170) (1080p) [Batch]']);
+  assert.equal(trims[0].has(1) && trims[0].has(149) && trims[0].has(152), true, 'outside the range and owned: switched off');
+  assert.equal(trims[0].has(150), false);
+  assert.deepEqual(job.added[0].episodes, range.filter((e) => e !== 152));
+  assert.equal(job.outcome, 'started');
+});
+
+test('retrying unavailable episodes (no range) still goes episode by episode', async () => {
+  const cat = [
+    nyaa('[SubsPlease] Black Clover (01-170) (1080p) [Batch]', 412, 233 * GB),
+    ...[10, 11, 12].map((e) => nyaa(`[SubsPlease] Black Clover - ${e} (1080p) [CD${e}].mkv`, 50, 1.4 * GB)),
+  ];
+  const { deps: d, added } = deps(cat, { title: 'Black Clover', aired: 170 });
+  await wait(startSmartJob({ type: 'tv', title: 'Black Clover', season: 1, episodes: [10, 11, 12], anime: clover, want: { profile: 'balanced' }, requester: 'bcu' }, d));
+  assert.equal(added.length, 3);
+  assert.ok(added.every((n) => !/Batch/.test(n)));
+});
+
+test('One Piece season 21 (episodes 892-1088 on TMDB): a 892-1088 batch covers it', async () => {
+  const cat = [nyaa('[Erai-raws] One Piece - 892 ~ 1088 [1080p][BATCH][Multiple Subtitle]', 120, 200 * GB)];
+  const { deps: d, added } = deps(cat, { title: 'One Piece', aired: 197, first: 892 });
+  const job = await wait(startSmartJob({ type: 'tv', title: 'One Piece', season: 21, anime: onePieceReal, want: { profile: 'balanced' }, requester: 'op21' }, d));
+  assert.deepEqual(added, ['[Erai-raws] One Piece - 892 ~ 1088 [1080p][BATCH][Multiple Subtitle]']);
+  assert.equal(job.added[0].episodes.length, 197);
+  assert.equal(job.added[0].episodes[0], 892);
 });

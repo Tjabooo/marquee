@@ -220,6 +220,8 @@ export async function groupShows(items, tmdb, { wait = 2500 } = {}) {
         name: sd?.name || (n === 0 ? 'Specials' : `Season ${n}`),
         poster: sd?.poster || d?.poster || null,
         total: sd?.total || null,                               // episodes in the season on TMDB
+        // TMDB's first episode number: 1, or where numbering carries on from the season before (One Piece)
+        first: firstEpisode(d?.episodes?.[n]),
         count: new Set(eps.map((i) => i.episode)).size,          // episodes on the server
         // Every TMDB episode's name and still, so rows for episodes not on the server get them too.
         episodes: d?.episodes?.[n] || {},
@@ -250,6 +252,12 @@ export async function groupShows(items, tmdb, { wait = 2500 } = {}) {
 
 // A season's episodes from TMDB for downloading it episode by episode: [{ episode, name, aired }]
 // (aired false for episodes with a future or unknown air date). null when TMDB doesn't know the show.
+// The lowest episode number TMDB gives a season (1 unless it numbers on across seasons).
+function firstEpisode(episodes) {
+  const numbers = Object.keys(episodes || {}).map(Number).filter((x) => x > 0);
+  return numbers.length ? Math.min(...numbers) : 1;
+}
+
 export async function seasonEpisodes(title, year, season, tmdb) {
   const key = showKey(title);
   if (!key || !tmdb) return null;

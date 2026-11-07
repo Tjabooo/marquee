@@ -42,7 +42,8 @@ export function smartJob(id, { userId, owner = false } = {}) {
   return view;
 }
 
-// spec: { type: 'movie' | 'tv', title, year?, originalTitle?, season?, episodes? (only these), anime? (context),
+// spec: { type: 'movie' | 'tv', title, year?, originalTitle?, season?, episodes? (only these), range? (episodes is a
+//   chosen range: batches may serve it), anime? (context),
 //   want: { profile, prefer, quality, maxBytes, audioLang }, subs?, requester? }
 // deps: { parseName, searchTorrents, magnetFor1337x, addDownload, wantSubtitles?, log?, sleep?,
 //   filmHave?(), freeBytes?(type), seasonEpisodes?(title, year, season), haveEpisodes?(key, season, ctx),
@@ -152,15 +153,21 @@ async function runSeason(job, spec, deps) {
   job.queued = (wanted || [...queued]).filter((e) => queued.has(e));
   const missing = wanted ? wanted.filter((e) => !have.has(e)) : null;
   if (missing && !missing.length) {
-    return done(job, job.queued.length ? 'queued' : 'have', job.queued.length ? 'Remaining episodes are downloading.' : 'This season is ready to watch.');
+    return done(job, job.queued.length ? 'queued' : 'have', job.queued.length ? 'Remaining episodes are downloading.'
+      : only && only.length > 1 ? 'These episodes are ready to watch.' : only ? 'This episode is ready to watch.' : 'This season is ready to watch.');
   }
+  // A chosen range (episodes 150-200 of a long anime season): a batch still serves it, with the
+  // episodes outside the range switched off like ones you already have.
+  const outside = only && aired ? aired.filter((e) => !only.includes(e)) : [];
+  const ranged = Boolean(spec.range && only && missing && missing.length >= PACK_FROM && aired);
+  const inRange = (e) => !only || only.includes(e);
   let freeBytes = await deps.freeBytes?.('tv');
   const want = { ...spec.want, title: job.title, season, anime: Boolean(ctx) };
   const covered = new Set();
   let packWhy = null;
 
   // ---- anime: batches, as many as it takes to cover the season ----
-  if (ctx && !only && (!missing || missing.length >= PACK_FROM)) {
+  if (ctx && (ranged || (!only && (!missing || missing.length >= PACK_FROM)))) {
     job.step = 'Looking for a batch…';
     let results = [];
     for (const query of packQueries(ctx, season).slice(0, 5)) {
@@ -181,9 +188,9 @@ async function runSeason(job, spec, deps) {
       try {
         const added = await add(best.pick, 'tv', spec, deps);
         deps.inOrder?.(added, season);
-        const owned = new Set([...have, ...covered]);
+        const owned = new Set([...have, ...covered, ...outside]);
         const trim = added.existing ? null : await deps.trimPack?.(added.link, season, owned, ctx);
-        const packEps = (trim?.covered ? [...trim.covered] : best.pick.coveredEpisodes).filter((e) => !owned.has(e));
+        const packEps = (trim?.covered ? [...trim.covered] : best.pick.coveredEpisodes).filter((e) => !owned.has(e) && inRange(e));
         if (trim?.covered && !packEps.length) { await deps.removePack?.(added.link); break; }
         packEps.forEach((e) => covered.add(e));
         job.added.push({ pack: true, name: best.pick.name, quality: best.pick.quality, episodes: packEps.sort((a, b) => a - b),
@@ -200,7 +207,7 @@ async function runSeason(job, spec, deps) {
   }
 
   // ---- a season pack, with what's already here switched off ----
-  if (!ctx && !only && (!missing || missing.length >= PACK_FROM || missing.length === aired.length)) {
+  if (!ctx && (ranged || (!only && (!missing || missing.length >= PACK_FROM || missing.length === aired.length)))) {
     job.step = 'Looking for a season pack…';
     const titles = [job.title, ...(showKey(job.title) === 'house' ? ['House MD'] : showKey(job.title) === 'housemd' ? ['House'] : [])];
     let results = [], best = { pick: null, why: null };
@@ -216,9 +223,9 @@ async function runSeason(job, spec, deps) {
         const added = await add(best.pick, 'tv', spec, deps);
         deps.inOrder?.(added, season);
         // The pack's file list: which episodes it really has. Unknown (no metadata yet) counts as all.
-        const owned = new Set([...have]);
+        const owned = new Set([...have, ...outside]);
         const trim = added.existing ? null : await deps.trimPack?.(added.link, season, owned);
-        const packEps = trim?.covered ? [...trim.covered].filter((e) => !owned.has(e)) : (missing || []);
+        const packEps = trim?.covered ? [...trim.covered].filter((e) => !owned.has(e) && inRange(e)) : (missing || []);
         if (trim?.covered && !packEps.length) {
           await deps.removePack?.(added.link); // nothing new in it: not worth keeping
           packWhy = 'The season pack had no episodes you’re missing.';

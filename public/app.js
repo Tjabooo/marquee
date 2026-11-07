@@ -1332,7 +1332,7 @@ function renderShow() {
     const rows = ready.map(f => ({ number: f.episode, node: (() => { const row = fileRow(libraryFile(f)); row.classList.add('episode-row'); row.prepend(thumb(f.episode, f.still)); $('.row-title', row).textContent = epTitle(f.episode, f.episodeName); $('.row-title', row).title = f.file; return row; })() }));
     const tvId = { id: show.tmdbId ?? null, title: show.title, type: 'tv' }; // episodeDownload decides Add / Download / nothing
     for (const {d,ep} of byEpisode.values()) rows.push({ number: ep.episode, node: h('li', { class: 'row episode-row pending-episode', 'data-transfer-hash': d.hash, 'data-episode-number': ep.episode, 'data-episode-season': ep.season }, thumb(ep.episode), h('div', { class: 'row-text' }, h('div', { class: 'row-title' }, epTitle(ep.episode)), h('div', { class: 'row-meta episode-transfer-state' }, ep.available ? 'Ready in download details' : `${transferState(d)}${Number.isFinite(ep.progress) ? ` · ${Math.floor(ep.progress*100)}%` : ''}`)), h('button', { class: 'chip', onclick: e => openTransferDetails({ ...entry, transfers: [d] }, e.currentTarget) }, 'Details')) });
-    if (Number.isInteger(open.total) && open.total > 0 && open.total <= 1000) for (let number = 1; number <= open.total; number++) if (!rows.some(row => row.number === number)) rows.push({ number, node: h('li', { class: 'row episode-row missing-episode' }, thumb(number), h('div', { class: 'row-text' }, h('div', { class: 'row-title' }, epTitle(number)), h('div', { class: 'row-meta' }, 'Not in library')), tvId && episodeDownload(tvId, open.number, number)) });
+    if (Number.isInteger(open.total) && open.total > 0 && open.total <= 1000) for (let number = open.first || 1; number < (open.first || 1) + open.total; number++) if (!rows.some(row => row.number === number)) rows.push({ number, node: h('li', { class: 'row episode-row missing-episode' }, thumb(number), h('div', { class: 'row-text' }, h('div', { class: 'row-title' }, epTitle(number)), h('div', { class: 'row-meta' }, 'Not in library')), tvId && episodeDownload(tvId, open.number, number)) });
     content = [!single && h('button', { class: 'chip season-back', onclick: () => pick(null) }, icon('back'), 'All seasons'), h('h3', {}, open.name),
       h('div', { class: 'season-summary' }, h('p', { class: 'muted' }, `${open.total ? `${episodeCount(ready)} of ${open.total}` : episodeCount(ready)} episodes ready`),
         ready.length > 0 && h('button', { type: 'button', class: 'chip delete-many travel-season', onclick: e => openTravelSeason(ready, `${show.title} · ${open.name}`, e.currentTarget) }, icon('phone'), 'Season to phone'), deleteSeason),
@@ -2168,10 +2168,12 @@ function filmActions(t) {
 }
 
 // Shows: one Download button opens the panel; the season and quality chosen stay while it's open.
-const showPanels = new Map(); // tmdb id -> { open, season, profile, exact, last: { [season]: command key } }
+// Long seasons (Black Clover's 170, One Piece's 197) can download a range of episodes instead.
+const showPanels = new Map(); // tmdb id -> { open, season, profile, exact, last: { [season]: command key }, ranges: { [season]: { on, from, to } } }
+const RANGE_FROM = 40; // episodes in a season before the panel offers a range
 function showDownload(t, { season = null } = {}) {
   let ps = showPanels.get(t.id);
-  if (!ps) { ps = { open: false, season, profile: savedProfile(), exact: '', last: {} }; showPanels.set(t.id, ps); }
+  if (!ps) { ps = { open: false, season, profile: savedProfile(), exact: '', last: {}, ranges: {} }; showPanels.set(t.id, ps); }
   else if (season != null && !ps.touched) ps.season = season;
   const panelId = `dl-panel-${t.id}`;
   const toggle = h('button', { type: 'button', class: 'play-btn action-btn stroke-icon', 'aria-expanded': String(ps.open), 'aria-controls': panelId }, icon('download'), h('span', {}, 'Download'));
@@ -2180,6 +2182,14 @@ function showDownload(t, { season = null } = {}) {
   profileSel.value = ps.profile;
   const avail = h('p', { class: 'dl-avail' });
   const note = h('p', { class: 'dl-note' });
+  // Episodes: the whole season, or a range of it ("150 to 200") when the season is long.
+  const scopeSel = h('select', { class: 'sub-select', id: `${panelId}-scope` },
+    h('option', { value: 'all' }, 'Whole season'), h('option', { value: 'range' }, 'Choose a range'));
+  const numInput = (id, label) => h('input', { type: 'number', class: 'dl-num', id, inputmode: 'numeric', step: '1', 'aria-label': label });
+  const fromIn = numInput(`${panelId}-from`, 'First episode'), toIn = numInput(`${panelId}-to`, 'Last episode');
+  const rangeRow = h('div', { class: 'dl-field dl-range' }, h('label', { for: fromIn.id }, 'From – to'),
+    h('div', { class: 'dl-range-boxes' }, fromIn, h('span', { class: 'dl-range-dash', 'aria-hidden': 'true' }, '–'), toIn));
+  const scopeField = h('div', { class: 'dl-field dl-scope' }, h('label', { for: scopeSel.id }, 'Episodes'), scopeSel);
   const submit = h('button', { type: 'button', class: 'play-btn dl-submit' }, h('span', {}, 'Download Season'));
   const quiet = h('p', { class: 'dl-quiet' });
   const status = h('p', { class: 'dl-status', role: 'status' });
@@ -2187,7 +2197,7 @@ function showDownload(t, { season = null } = {}) {
   const panel = h('div', { class: 'dl-panel', id: panelId, hidden: !ps.open },
     h('div', { class: 'dl-fields' },
       h('div', { class: 'dl-field' }, h('label', { for: seasonSel.id }, 'Season'), seasonSel),
-      h('div', { class: 'dl-field' }, h('label', { for: profileSel.id }, 'Quality'), profileSel)),
+      h('div', { class: 'dl-field' }, h('label', { for: profileSel.id }, 'Quality'), profileSel), scopeField, rangeRow),
     note, avail, submit, quiet, h('div', { class: 'dl-result' }, status, retry),
     advancedOptions(`tv-${t.id}`, {
       exact: ps.exact, onExact: (v) => { ps.exact = v; },
@@ -2218,18 +2228,38 @@ function showDownload(t, { season = null } = {}) {
   });
   seasonSel.addEventListener('change', () => { ps.season = Number(seasonSel.value); ps.touched = true; addError = ''; panel._update(); });
   profileSel.addEventListener('change', () => { ps.profile = profileSel.value; });
-  const body = (episodes = null) => ({ type: 'tv', tmdbId: t.id, season: ps.season, profile: ps.profile,
-    ...(ps.exact ? { quality: ps.exact } : {}), ...(episodes?.length ? { episodes } : {}) });
-  const run = (episodes) => {
+  // The season's range state, its TMDB numbering (first..last) and the episodes it asks for.
+  const seasonInfo = () => seasons?.find((x) => x.number === ps.season) || null;
+  const longSeason = () => (seasonInfo()?.episodes || 0) >= RANGE_FROM;
+  const bounds = () => { const se = seasonInfo(), first = se?.first || 1; return { first, last: first + (se?.episodes || 1) - 1 }; };
+  const rangeOf = () => {
+    const { first, last } = bounds();
+    return (ps.ranges[ps.season] ||= { on: false, from: first, to: Math.min(last, first + 49) });
+  };
+  const rangeList = () => {
+    const r = rangeOf(), { first, last } = bounds();
+    const from = Math.max(first, Math.min(r.from, r.to)), to = Math.min(last, Math.max(r.from, r.to));
+    return Number.isInteger(from) && Number.isInteger(to) && from <= to ? Array.from({ length: to - from + 1 }, (_, i) => from + i) : [];
+  };
+  const ranged = () => longSeason() && rangeOf().on;
+  scopeSel.addEventListener('change', () => { rangeOf().on = scopeSel.value === 'range'; panel._update(); if (rangeOf().on) fromIn.focus(); });
+  for (const [input, k] of [[fromIn, 'from'], [toIn, 'to']]) {
+    input.addEventListener('input', () => { const v = Number(input.value); if (Number.isInteger(v)) { rangeOf()[k] = v; panel._update(); } });
+    input.addEventListener('change', () => { input.value = String(rangeOf()[k]); }); // an empty box goes back to the last number
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit.click(); });
+  }
+  const body = (episodes = null, range = false) => ({ type: 'tv', tmdbId: t.id, season: ps.season, profile: ps.profile,
+    ...(ps.exact ? { quality: ps.exact } : {}), ...(episodes?.length ? { episodes } : {}), ...(range ? { range: true } : {}) });
+  const run = (episodes, range = false) => {
     if (submit.getAttribute('aria-disabled') === 'true' || !ps.season) return;
-    const b = body(episodes);
+    const b = body(episodes, range);
     ps.last[ps.season] = commandKey(b);
     runDownloadCommand(b);
   };
   let adding = false, addError = '';
   submit.addEventListener('click', async () => {
     addError = '';
-    if (!submit._add) return run(null);
+    if (!submit._add) return ranged() ? (rangeList().length ? run(rangeList(), true) : null) : run(null);
     if (submit.getAttribute('aria-disabled') === 'true') return;
     adding = true; panel._update();
     try { await addFromServer(submit._add); } catch (err) { addError = err.message; } finally { adding = false; panel._update(); }
@@ -2238,6 +2268,20 @@ function showDownload(t, { season = null } = {}) {
   panel._update = () => {
     const n = ps.season, se = seasons?.find((x) => x.number === n);
     const cmd = downloadCommands.get(ps.last[n]);
+    // Episode range: offered for long seasons; the boxes keep to the season's numbers.
+    const canRange = longSeason() && !submit._add;
+    scopeField.hidden = !canRange;
+    const useRange = canRange && rangeOf().on;
+    rangeRow.hidden = !useRange;
+    const picked = useRange ? rangeList() : null;
+    if (canRange) {
+      const r = rangeOf(), { first, last } = bounds();
+      scopeSel.value = r.on ? 'range' : 'all';
+      for (const [input, v] of [[fromIn, r.from], [toIn, r.to]]) {
+        input.min = String(first); input.max = String(last);
+        if (document.activeElement !== input) input.value = String(v);
+      }
+    }
     const s = titleState(t);
     const ready = new Set(s.ready.filter((f) => f.season === n && f.episode != null).map((f) => f.episode));
     const server = new Set(s.onServer.filter((f) => f.season === n && f.episode != null && !ready.has(f.episode)).map((f) => f.episode));
@@ -2258,9 +2302,12 @@ function showDownload(t, { season = null } = {}) {
     submit.hidden = Boolean(complete || covered) && !locked;
     quiet.textContent = complete ? 'This season is ready to watch' : covered ? 'Remaining episodes are downloading' : '';
     quiet.hidden = !submit.hidden;
-    submit.firstChild.textContent = locked ? commandStep(cmd, true) : submit._add ? (adding ? 'Adding…' : `Add Season ${n} to library`) : `Download Season ${n ?? ''}`.trim();
-    submit.setAttribute('aria-disabled', String(locked || adding || !n));
+    const rangeText = picked?.length ? (picked.length === 1 ? `Download Episode ${picked[0]}` : `Download Episodes ${picked[0]}–${picked.at(-1)}`) : 'Choose episodes';
+    submit.firstChild.textContent = locked ? commandStep(cmd, true) : submit._add ? (adding ? 'Adding…' : `Add Season ${n} to library`)
+      : useRange ? rangeText : `Download Season ${n ?? ''}`.trim();
+    submit.setAttribute('aria-disabled', String(locked || adding || !n || Boolean(useRange && !picked.length)));
     note.textContent = submit._add ? 'Someone already has this season here. Adding it makes no copy, so it’s ready to watch right away.'
+      : useRange ? `${plural(picked.length, 'episode')} of ${bounds().first}–${bounds().last}. A season batch still serves a range: episodes outside it are skipped.`
       : 'Smart selection chooses a suitable season download and skips episodes you already have.';
     const addMode = serverOnlyEpisodes(s).length > 0; // the show's button: add what's here before downloading more
     if (toggle._mode !== addMode) {
@@ -2269,6 +2316,7 @@ function showDownload(t, { season = null } = {}) {
     }
     seasonSel.disabled = locked || !seasons?.length;
     profileSel.disabled = locked;
+    scopeSel.disabled = fromIn.disabled = toIn.disabled = locked;
     panel.setAttribute('aria-busy', String(locked));
     const result = commandResult(cmd);
     const text = addError || result?.text || '';

@@ -1,5 +1,20 @@
 [
   {
+    "id": "2026-11-08-episode-ranges",
+    "date": "2026-11-08",
+    "title": "Download a range of episodes",
+    "items": [
+      {
+        "title": "Episodes 150 to 200",
+        "text": "Long seasons (40 episodes or more, like Black Clover or One Piece) now have an Episodes choice in the Download panel. Pick \"Choose a range\", type the first and last episode, and only those download. A whole-season batch can still be used: the episodes outside your range are simply skipped."
+      },
+      {
+        "title": "One Piece numbering",
+        "text": "One Piece's episodes keep their real numbers (Wano is episodes 892 to 1088), so downloads, the library and the episode list all agree. Searches no longer mix up the anime with the 2023 live-action series."
+      }
+    ]
+  },
+  {
     "id": "2026-11-08-stuck-episodes",
     "date": "2026-11-08",
     "title": "Stuck episodes no longer block a season",
