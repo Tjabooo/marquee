@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Side-by-side Marquee TV Preview. Different package/application IDs mean it never replaces stable Marquee. -->
+<widget xmlns="http://www.w3.org/ns/widgets" xmlns:tizen="http://tizen.org/ns/widgets" id="http://github.com/Tjabooo/marquee/tv-preview" version="@VERSION@" viewmodes="maximized">
+  <tizen:application id="MrqTvPrv01.MarqueePreview" package="MrqTvPrv01" required_version="2.3"/>
+  <content src="index.html"/>
+  <name>Marquee Preview</name>
+  <icon src="icon.png"/>
+  <access origin="*" subdomains="true"/>
+  <tizen:content-security-policy>default-src * data: blob: 'unsafe-inline'</tizen:content-security-policy>
+  <tizen:privilege name="http://tizen.org/privilege/internet"/>
+  <tizen:privilege name="http://tizen.org/privilege/tv.inputdevice"/>
+  <tizen:privilege name="http://developer.samsung.com/privilege/avplay"/>
+  <tizen:profile name="tv-samsung"/>
+  <tizen:setting screen-orientation="landscape" context-menu="disable" background-support="disable" encryption="disable" install-location="auto" hwkey-event="enable"/>
+</widget>
