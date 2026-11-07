@@ -33,12 +33,13 @@ export function createTvPairing({ now = () => Date.now() } = {}) {
     for (const [who, f] of fails) if (t - f.first > FAIL_WINDOW_MS) fails.delete(who);
   }
 
-  function start() {
+  // label: what the device calls itself (shown when approving; the TV app sends none).
+  function start({ label = null } = {}) {
     sweep();
     while (pending.size >= MAX_PENDING) pending.delete(pending.keys().next().value);
     let code;
     do code = randomCode(); while (pending.has(code));
-    const entry = { code, poll: crypto.randomBytes(24).toString('base64url'), created: now(), grant: null, taken: false };
+    const entry = { code, label, poll: crypto.randomBytes(24).toString('base64url'), created: now(), grant: null, taken: false };
     pending.set(code, entry);
     return { code, poll: entry.poll, expiresIn: Math.round(PAIR_TTL_MS / 1000) };
   }
@@ -52,8 +53,8 @@ export function createTvPairing({ now = () => Date.now() } = {}) {
     return { state: 'approved', grant: entry.grant };
   }
 
-  // grant: () => { token, name } made only once the code is known to be right.
-  function approve(who, code, makeGrant) {
+  // grant: (entry) => { token, name } made only once the code is known to be right.
+  function approve(who, code, makeGrant, { notFound } = {}) {
     sweep();
     const f = fails.get(who);
     if (f && f.count >= MAX_FAILS) {
@@ -62,10 +63,10 @@ export function createTvPairing({ now = () => Date.now() } = {}) {
     const entry = pending.get(normalCode(code));
     if (!entry || entry.grant) {
       fails.set(who, { count: (f?.count || 0) + 1, first: f?.first || now() });
-      throw Object.assign(new Error('That code isn’t showing on any TV. Check the code on the TV and try again.'), { status: 404 });
+      throw Object.assign(new Error(notFound || 'That code isn’t showing on any TV. Check the code on the TV and try again.'), { status: 404 });
     }
     fails.delete(who);
-    entry.grant = makeGrant();
+    entry.grant = makeGrant(entry);
     return { ok: true };
   }
 

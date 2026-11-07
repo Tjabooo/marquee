@@ -85,7 +85,9 @@ Marquee logs which mode it uses at startup (`Accounts: ...`).
 
 `/c/...` is reachable without signing in by design, and you must exclude it from Access (see
 below): it serves only clips you chose to share, link previews of notes you shared (clicking one
-leads to the protected app), open invite links, and the Marquee preview card. `/api/house/*` and
+leads to the protected app), open invite links, the Marquee preview card, and the Jellyfin plugin's
+API under `/c/jf/` (every call there needs a connected server's key or a link signed for one video;
+see [jellyfin.md](jellyfin.md)). `/api/house/*` and
 `/api/screentime` accept requests only with `HOUSE_TOKEN` / `SCREENTIME_TOKEN`, and House reports
 are refused when they come through Cloudflare.
 

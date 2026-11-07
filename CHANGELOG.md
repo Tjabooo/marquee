@@ -6,6 +6,13 @@ All notable changes to Marquee. Versions follow [Semantic Versioning](https://se
 
 ### Added
 
+- **Jellyfin.** The [Marquee plugin for Jellyfin](https://github.com/Tjabooo/jellyfin-plugin-marquee)
+  shows someone's library in their own Jellyfin server. It pairs with a code entered under
+  Settings → Jellyfin, reads `/c/jf/v1/library`, streams through per-video HMAC-signed links,
+  copies saved subtitles and reports progress to Continue watching. Keys are stored hashed in
+  `jellyfin_links` (`.marquee.db`); disconnecting there, removing the person, or from the plugin
+  revokes the key and every link made with it. See docs/jellyfin.md.
+
 - **Agents can ask for your attention.** `POST /api/agent/notify` (House token, home network only) sends the
   owner one notification; switch it off under Settings › Notifications › Agents.
 

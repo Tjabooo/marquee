@@ -16,6 +16,7 @@ import * as subsync from './subsync.js';
 import * as activity from './activity.js';
 import * as house from './house.js';
 import { createTvPairing } from './tv.js';
+import { createJellyfin } from './jellyfin.js';
 import * as load from './load.js';
 import * as screenTime from './screentime.js';
 import * as clips from './clips.js';
@@ -46,7 +47,7 @@ import { Previews } from './previews.js';
 import { TravelStore, QUALITIES as TRAVEL_QUALITIES, travelName, estimateBytes, validQuality } from './travel.js';
 import { isHomeRequest, describeRequest } from './network.js';
 import { createTrust } from './trust.js';
-import { createAuth, signInPage, safeNext } from './auth.js';
+import { createAuth, signInPage, safeNext, clientAddress } from './auth.js';
 import { checkConfig } from './config-check.js';
 import { raiseServer } from './priority.js';
 import { startPlaybackGuard } from './playback-guard.js';
@@ -112,6 +113,19 @@ function notify(userIds, kind, message) {
 }
 const auth = createAuth({ dataDir: DATA_DIR });
 const tvPairing = createTvPairing();
+// The Jellyfin plugin (jellyfin.js, jellyfin/): someone's own Jellyfin server showing their Marquee library.
+const jellyfin = createJellyfin({
+  dataDir: DATA_DIR,
+  version: VERSION,
+  libraryFor: jellyfinLibrary,
+  resolveItem: jellyfinItem,
+  sendVideo, sendJson, readJson, clientAddress,
+  userById: accounts.userById,
+  saveProgress: accounts.saveProgress,
+  progressOf: accounts.progressOf,
+  readSubtitle: subtitles.readSubtitle,
+  displayName: (user) => user.name || accounts.displayNameFor(user.email) || 'Home network',
+});
 watchRooms.attachStore(social.partyStore); // planned watch parties survive restarts
 const personName = (id) => accounts.userById(id)?.name || 'Someone';
 const avatarOf = (id) => accounts.userById(id)?.avatar || null;
@@ -564,6 +578,67 @@ async function qbit(endpoint) {
   }
   return data;
 }
+// One person's library as the Library tab (and the Jellyfin plugin) sees it.
+async function libraryView(user) {
+  const items = await libraryVisibleItems(await scanLibrary(), user);
+  if (!items) throw new HttpError(503, 'No media folder is set up. Add MEDIA_DIR to .env and restart.');
+  // A video whose MP4 copy is being made can't be played yet (the player disables Play).
+  const converting = converter.convertingFile();
+  // Episodes are grouped into shows and seasons (TMDB posters and episode names when it answers in time).
+  const tmdbOn = Boolean(TMDB_TOKEN || TMDB_KEY);
+  const [{ shows: showList, showOf }, filmOf] = await Promise.all([
+    shows.groupShows(items, tmdbOn ? tmdb : null),
+    shows.filmInfo(items.map((i) => ({ ...i, mediaKey: accounts.mediaKey(i.full) })), tmdbOn ? tmdb : null),
+  ]);
+  // `items` is this person's library, with when each video gets deleted. `server` is everything
+  // else on the server (no word on whose it is), so search can offer to add it instead of downloading
+  // it again.
+  const mine = accounts.libraryOf(user.id);
+  const autoDelete = accounts.serverSettings().retentionDays > 0;
+  const own = [];
+  const server = [];
+  for (const { full, ...rest } of items) {
+    const mediaKey = accounts.mediaKey(full);
+    const entry = mediaKey && mine.get(mediaKey);
+    const base = { ...rest, mediaKey, ...showOf.get(rest.id), ...filmOf.get(rest.id) };
+    if (!entry) { server.push(base); continue; }
+    own.push({
+      ...base,
+      converting: Boolean(converting) && converting === full && converter.needsConversion(full),
+      source: entry.source,
+      addedAt: entry.addedAt,
+      expiresAt: autoDelete ? entry.expiresAt : null,
+      extensions: entry.extensions,
+    });
+  }
+  const myShows = new Set([...own, ...server].map((i) => i.show).filter(Boolean));
+  return { items: own, server, shows: showList.filter((s) => myShows.has(s.id)) };
+}
+
+// The Jellyfin plugin's view: the Library tab's items plus the subtitles saved beside each video.
+async function jellyfinLibrary(user) {
+  const { items, shows: showList } = await libraryView(user);
+  for (const item of items) {
+    try { item.subtitleLangs = [...subtitles.localLanguages(libraryPath(item.id))].sort(); } catch { item.subtitleLangs = []; }
+  }
+  return { items, shows: showList };
+}
+
+// A video a Jellyfin .strm points at, if it's still in this person's library. A file converted since
+// the plugin's last sync is found again under its MP4 name (same media key).
+async function jellyfinItem(user, id) {
+  let full;
+  try { full = librarySource(id); } catch { throw new HttpError(404, 'Not found.'); }
+  const key = accounts.mediaKey(full);
+  if (!key || !accounts.hasEntry(user.id, key)) throw new HttpError(404, 'That video isn’t in your Marquee library any more.');
+  if (!fs.existsSync(full)) {
+    const twin = (await scanLibrary())?.find((i) => accounts.mediaKey(i.full) === key);
+    if (!twin) throw new HttpError(404, 'That file is no longer on the server.');
+    full = twin.full;
+  }
+  return { stream: converter.preferConverted(full), label: streamLabel(full) };
+}
+
 async function libraryVisibleItems(items, user) {
   if (!QBIT_URL || !items) return items;
   const mine = accounts.libraryOf(user.id);
@@ -1999,6 +2074,7 @@ async function handleApi(req, res, url) {
     watchRooms.renameUser(next);
     return sendJson(res, 200, { me: { ...accounts.publicUser(next), via: req.auth.via } });
   }
+  if (p.startsWith('/api/jellyfin') && await jellyfin.handleApi(req, res, p, user)) return;
   if (p === '/api/tv/pair/approve' && req.method === 'POST') {
     const body = await readJson(req, 4096);
     const email = req.auth.via === 'home' ? null : req.auth.email;
@@ -2198,7 +2274,7 @@ async function handleApi(req, res, url) {
       const { email } = await readJson(req);
       const left = await invites.removeMember(email, activity.adminEmails());
       const gone = accounts.listUsers().find((u) => u.email && u.email === String(email || '').trim().toLowerCase());
-      if (gone) push.forgetUser(gone.id); // their devices stop getting notifications
+      if (gone) { push.forgetUser(gone.id); jellyfin.store.removeUser(gone.id); } // their devices stop getting notifications, their Jellyfin servers lose access
       activity.record(req, 'revoke', String(email || '').toLowerCase());
       return sendJson(res, 200, { members: left });
     }
@@ -2350,41 +2426,7 @@ async function handleApi(req, res, url) {
     const data = await tmdb('/search/multi', { query: q, include_adult: 'false' });
     return sendJson(res, 200, { results: data.results.filter(onlyScreen).map((x) => mapTitle(x)) });
   }
-  if (p === '/api/library') {
-    const items = await libraryVisibleItems(await scanLibrary(), user);
-    if (!items) throw new HttpError(503, 'No media folder is set up. Add MEDIA_DIR to .env and restart.');
-    // A video whose MP4 copy is being made can't be played yet (the player disables Play).
-    const converting = converter.convertingFile();
-    // Episodes are grouped into shows and seasons (TMDB posters and episode names when it answers in time).
-    const tmdbOn = Boolean(TMDB_TOKEN || TMDB_KEY);
-    const [{ shows: showList, showOf }, filmOf] = await Promise.all([
-      shows.groupShows(items, tmdbOn ? tmdb : null),
-      shows.filmInfo(items.map((i) => ({ ...i, mediaKey: accounts.mediaKey(i.full) })), tmdbOn ? tmdb : null),
-    ]);
-    // `items` is this person's library, with when each video gets deleted. `server` is everything
-    // else on the server (no word on whose it is), so search can offer to add it instead of downloading
-    // it again.
-    const mine = accounts.libraryOf(user.id);
-    const autoDelete = accounts.serverSettings().retentionDays > 0;
-    const own = [];
-    const server = [];
-    for (const { full, ...rest } of items) {
-      const mediaKey = accounts.mediaKey(full);
-      const entry = mediaKey && mine.get(mediaKey);
-      const base = { ...rest, mediaKey, ...showOf.get(rest.id), ...filmOf.get(rest.id) };
-      if (!entry) { server.push(base); continue; }
-      own.push({
-        ...base,
-        converting: Boolean(converting) && converting === full && converter.needsConversion(full),
-        source: entry.source,
-        addedAt: entry.addedAt,
-        expiresAt: autoDelete ? entry.expiresAt : null,
-        extensions: entry.extensions,
-      });
-    }
-    const myShows = new Set([...own, ...server].map((i) => i.show).filter(Boolean));
-    return sendJson(res, 200, { items: own, server, shows: showList.filter((s) => myShows.has(s.id)) });
-  }
+  if (p === '/api/library') return sendJson(res, 200, await libraryView(user));
   // Add videos already on the server to your library (no copy is made).
   if (p === '/api/library/identify') {
     if (!user.isOwner) throw new HttpError(403, 'Only the server’s owner can change a film’s identity.');
@@ -2951,13 +2993,15 @@ const server = http.createServer(async (req, res) => {
         || /^\/api\/admin\/notes(?:\/import|\/\d+(?:\/(?:trash|restore|share|unshare))?)?$/.test(url.pathname)
         || /^\/api\/admin\/notes\/uploads(?:\/[a-f0-9]{32}(?:\/(?:finish|cancel))?)?$/.test(url.pathname)
         || /^\/api\/watch(?:\/plan|\/[A-Za-z0-9_-]{24}\/(join|heartbeat|control|leave|invite|chat|react|schedule|cancel))?$/.test(url.pathname)
-        || url.pathname === '/api/social/rate' || /^\/api\/tv\/pair\/(start|approve)$/.test(url.pathname)));
+        || url.pathname === '/api/social/rate' || /^\/api\/tv\/pair\/(start|approve)$/.test(url.pathname)
+        || /^\/c\/jf\/v1\/(pair\/start|progress|disconnect)$/.test(url.pathname) || /^\/api\/jellyfin\/(approve|[\w-]+\/remove)$/.test(url.pathname)));
     if (!allowed) throw new HttpError(405, 'Method not allowed.');
     if (url.pathname.startsWith('/api/')) await handleApi(req, res, url);
     else if (url.pathname.startsWith('/play/')) await handlePlay(req, res, url);
     // Public: shared clips, shared note previews and the Marquee invite card (bypassed in Cloudflare Access; see docs/remote-access.md)
     else if (url.pathname === '/c' || url.pathname.startsWith('/c/')) {
-      if (!handleWatchPage(req, res, url, { rooms: watchRooms, artwork: watchArtwork })
+      if (url.pathname.startsWith('/c/jf/')) { if (!(await jellyfin.handlePublic(req, res, url))) throw new HttpError(404, 'Not found.'); }
+      else if (!handleWatchPage(req, res, url, { rooms: watchRooms, artwork: watchArtwork })
         && !(await invites.handlePublic(req, res, url))
         && !(await noteShare.handlePublic(req, res, url, { notes, media: sharedMedia, sendVideo, nameFor: (email) => accounts.displayNameFor(email) })) && !(await clips.handlePublic(req, res, url, { sendVideo, previews }))) throw new HttpError(404, 'Not found.');
     }

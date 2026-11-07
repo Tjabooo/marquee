@@ -26,6 +26,8 @@ Docker, and installs as a web app on your phone's home screen.
 - **Bedtime**: night mode evens out loud scenes and lifts voices; a sleep timer pauses after a set
   time or at the end of the episode.
 - **Casting** to DLNA smart TVs and Apple TV, with a full-screen remote.
+- **Jellyfin**: the [Marquee plugin](https://github.com/Tjabooo/jellyfin-plugin-marquee) shows your
+  library in your own Jellyfin, in every Jellyfin app, with progress kept in sync.
 - **Watch Together** rooms with synced playback.
 - **Notifications** on phones and computers (Web Push, nothing to sign up for): downloads ready, new
   episodes and Watch Together invites, each switchable.
@@ -128,6 +130,7 @@ To report a vulnerability, see [SECURITY.md](SECURITY.md).
 - [Configuration reference](docs/configuration.md)
 - [Integrations](docs/integrations.md): TMDB, qBittorrent, OpenSubtitles, ffmpeg, TVs, House, Clips, Invites
 - [Remote access and security](docs/remote-access.md)
+- [Jellyfin](docs/jellyfin.md): your library in your own Jellyfin
 - [Hardware acceleration](docs/hardware-acceleration.md)
 - [How it works](docs/architecture.md), including the HTTP API
 - [Troubleshooting](docs/troubleshooting.md)

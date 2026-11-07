@@ -2428,3 +2428,9 @@ html.wrapped-on { overflow: hidden; }
 }
 .tv-code-note:empty { display: none; }
 .tv-code-note { margin: 0; max-width: 28ch; }
+/* Settings → Jellyfin: connected servers */
+.jf-links { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 6px; }
+.jf-link { display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: 10px; }
+.jf-link-name { font-weight: 600; overflow-wrap: anywhere; }
+.jf-link-seen { grid-column: 1; grid-row: 2; margin: 0; }
+.jf-link .chip { grid-column: 2; grid-row: 1 / span 2; }

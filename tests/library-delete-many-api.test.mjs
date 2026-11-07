@@ -67,7 +67,7 @@ async function fixture(t, { authenticated = false, missingMedia = false, inspect
   for (const name of await fs.readdir(root)) if (name.endsWith('.js') || name === 'package.json') await fs.copyFile(path.join(root, name), path.join(app, name));
   await fs.cp(path.join(root, 'src'), path.join(app, 'src'), { recursive: true });
   let source = await fs.readFile(path.join(app, 'src', 'server.js'), 'utf8');
-  if (inspectCandidates) source = source.replace("  if (p === '/api/library') {", "  if (p === '/api/test-candidates') return sendJson(res, 200, { items: await conversionCandidates() });\n  if (p === '/api/library') {");
+  if (inspectCandidates) source = source.replace("  if (p === '/api/library') return", "  if (p === '/api/test-candidates') return sendJson(res, 200, { items: await conversionCandidates() });\n  if (p === '/api/library') return");
   await fs.writeFile(path.join(app, 'src', 'server.js'), source.replace('https://api.themoviedb.org/3', mockBase));
   await fs.cp(path.join(root, 'public'), path.join(app, 'public'), { recursive: true });
   const child = spawn(process.execPath, ['server.js'], { cwd: app, env: {

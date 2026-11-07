@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-07-jellyfin",
+    "date": "2026-11-07",
+    "title": "Marquee in Jellyfin",
+    "items": [
+      {
+        "title": "Watch your library in Jellyfin",
+        "text": "Got your own Jellyfin? Install the Marquee plugin there, open its settings and enter the code it shows under Settings → Jellyfin here. Your films and shows then appear in every Jellyfin app, and what you watch there shows up in Continue watching here too."
+      }
+    ]
+  },
+  {
     "id": "2026-11-07-phone-quality",
     "date": "2026-11-07",
     "title": "Smooth 4K on phones",

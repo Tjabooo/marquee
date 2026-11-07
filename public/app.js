@@ -5796,6 +5796,7 @@ function renderSettings() {
   out.push(settingsRow('Open Marquee on', null,
     segmented([['discover', 'Discover'], ['library', 'Library']], p.startView === 'downloads' ? 'library' : p.startView || 'discover', (v) => saveMe({ startView: v }).then(renderSettings), 'Open Marquee on')));
   out.push(tvSignInRow());
+  out.push(jellyfinRow());
   out.push(settingsRow('Library order', null,
     segmented([['newest', 'Newest'], ['expiring', 'Leaving soonest'], ['title', 'A–Z']], p.librarySort || 'newest', (v) => saveMe({ librarySort: v }).then(renderSettings), 'Library order')));
   out.push(...notificationSettings());
@@ -5847,6 +5848,47 @@ function tvSignInRow() {
   } }, input, go);
   return settingsRow('Sign in a TV', 'Open the Marquee app on the TV and enter the code it shows. The TV then sees your library.',
     h('div', { class: 'tv-code-wrap' }, form, note));
+}
+
+// Your library in your own Jellyfin (the Marquee plugin; jellyfin.js on the server). The plugin's
+// settings page shows a code; entering it here connects that Jellyfin server to your library.
+const jellyfinView = { links: null, loading: null };
+function loadJellyfin() {
+  jellyfinView.loading ??= api('/api/jellyfin')
+    .then((d) => { jellyfinView.links = d.links; })
+    .catch(() => { jellyfinView.links = jellyfinView.links || []; })
+    .finally(() => { jellyfinView.loading = null; if (state.view === 'settings') renderSettings(); });
+  return jellyfinView.loading;
+}
+function jellyfinRow() {
+  if (!jellyfinView.links && !jellyfinView.loading) loadJellyfin();
+  const input = h('input', { type: 'text', class: 'invite-note tv-code', maxlength: '7', placeholder: 'Code', 'aria-label': 'Code shown in Jellyfin',
+    autocomplete: 'off', autocapitalize: 'characters', spellcheck: 'false', enterkeyhint: 'done' });
+  const go = h('button', { type: 'submit', class: 'chip' }, 'Connect');
+  const note = h('p', { class: 'set-hint tv-code-note', role: 'status' });
+  const form = h('form', { class: 'tv-code-form', onsubmit: async (e) => {
+    e.preventDefault();
+    const code = input.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (code.length < 6) { note.textContent = 'The code in Jellyfin has 6 letters and numbers.'; input.focus(); return; }
+    go.disabled = true; note.textContent = 'Connecting…';
+    try {
+      const r = await api('/api/jellyfin/approve', jsonPost({ code }));
+      jellyfinView.links = r.links;
+      toast('Jellyfin is connected. Your library shows up there after its first sync.');
+      renderSettings();
+    } catch (err) { note.textContent = err.message; go.disabled = false; }
+  } }, input, go);
+  const list = (jellyfinView.links || []).map((l) => h('li', { class: 'jf-link' },
+    h('span', { class: 'jf-link-name' }, l.name),
+    h('span', { class: 'set-hint jf-link-seen' }, `Last synced ${fmtAgo(l.lastSeen) || 'just now'}`),
+    h('button', { type: 'button', class: 'chip', 'aria-label': `Disconnect ${l.name}`, onclick: async (e) => {
+      e.currentTarget.disabled = true;
+      try { jellyfinView.links = (await api(`/api/jellyfin/${l.id}/remove`, jsonPost({}))).links; toast(`${l.name} is disconnected`); }
+      catch (err) { toast(err.message); }
+      renderSettings();
+    } }, 'Disconnect')));
+  return settingsRow('Jellyfin', 'Watch your library in your own Jellyfin: install the Marquee plugin there, open its settings and enter the code it shows.',
+    h('div', { class: 'tv-code-wrap' }, form, note, list.length > 0 && h('ul', { class: 'jf-links' }, ...list)));
 }
 
 // ---------- notifications (notifications.js, sw.js; push.js on the server) ----------
