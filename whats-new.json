@@ -1,5 +1,20 @@
 [
   {
+    "id": "2026-11-08-tv-downloads",
+    "date": "2026-11-08",
+    "title": "See your downloads on the TV",
+    "items": [
+      {
+        "title": "On its way, in the library",
+        "text": "Something you add on the TV now shows in your library straight away, in an On its way row with how far along it is. It moves to Films or Shows when it's ready."
+      },
+      {
+        "title": "Go to library",
+        "text": "After you add a title on the TV, a Go to library button takes you straight to it."
+      }
+    ]
+  },
+  {
     "id": "2026-11-08-download-alerts",
     "date": "2026-11-08",
     "title": "Fewer notifications",

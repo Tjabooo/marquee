@@ -57,3 +57,29 @@ test('TV: subtitles parse from WebVTT and show at the right time', () => {
   assert.equal(L.titleKey({ show: 'tv-42', season: 1 }), 'tv:42');
   assert.equal(L.titleKey({ tmdbId: '7', season: null }), 'movie:7');
 });
+
+test('TV: downloads on their way join up per title and leave once they are ready', () => {
+  const films = L.pendingTitles([
+    { hash: 'a', mediaType: 'movie', tmdbId: 7, canonicalTitle: 'Dune', progress: 0.25, size: 100, state: 'downloading', done: false, added: 5, poster: '/p.jpg' },
+    { hash: 'b', mediaType: 'movie', tmdbId: 8, canonicalTitle: 'Other person', progress: 0.5, size: 100, state: 'downloading', done: false, mine: false },
+    { hash: 'c', mediaType: 'movie', tmdbId: 9, canonicalTitle: 'Finished', progress: 1, size: 100, state: 'uploading', done: true, ready: true, libraryIds: ['x'] },
+    { hash: 'd', mediaType: 'tv', showId: 'tv-3', tmdbId: 3, canonicalTitle: 'House', progress: 0.5, size: 100, state: 'stalledDL', done: false, added: 9 },
+    { hash: 'e', mediaType: 'tv', showId: 'tv-3', tmdbId: 3, canonicalTitle: 'House', progress: 1, size: 300, state: 'downloading', done: false, added: 2 },
+    { hash: 'f', mediaType: 'movie', tmdbId: 10, canonicalTitle: 'Stuck', progress: 1, size: 100, state: 'uploading', done: true, ready: true, converting: true, libraryIds: ['y'], added: 1 },
+  ]);
+  assert.deepEqual(plain(films.map((p) => p.key)), ['tv:tv-3', 'movie:7', 'movie:10']);
+  assert.equal(films[0].progress, 0.875);
+  assert.equal(films[1].progress, 0.25);
+  assert.equal(films[1].word, 'On its way');
+  assert.equal(films[2].word, 'Preparing playback');
+  assert.equal(L.pendingTitles(undefined).length, 0);
+});
+
+test('TV: a transfer that is stuck or paused says so', () => {
+  const word = (state) => L.pendingTitles([{ hash: 'a', tmdbId: 1, mediaType: 'movie', state, progress: 0.1, size: 1, done: false }])[0].word;
+  assert.equal(word('stalledDL'), 'Waiting for a source');
+  assert.equal(word('pausedDL'), 'Paused');
+  assert.equal(word('metaDL'), 'Starting');
+  assert.equal(word('queuedDL'), 'In line');
+  assert.equal(word('error'), 'Needs attention');
+});

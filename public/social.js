@@ -27,12 +27,12 @@ export function namesText(names, total = names.length) {
 
 export function likedText({ mine, likedBy = [] }) {
   if (!likedBy.length) return mine === 1 ? T('You liked this') : '';
-  return T('Liked by {0}{1}', mine === 1 ? 'you, ' : '', namesText(likedBy));
+  return T('Liked by {0}{1}', mine === 1 ? T('you, ') : '', namesText(likedBy));
 }
 
 // "in 3 h 12 min", "in 4:59", "now"
 export function countdownText(ms) {
-  if (ms <= 0) return 'now';
+  if (ms <= 0) return T('now');
   const s = Math.ceil(ms / 1000);
   if (s < 3600) return T('in {0}:{1}', Math.floor(s / 60), String(s % 60).padStart(2, '0'));
   const hours = Math.floor(s / 3600), min = Math.floor((s % 3600) / 60);
@@ -178,7 +178,7 @@ export function createSocial({ h, api, jsonPost, toast, icon, people }) {
       const tick = () => { when.textContent = p.started ? T('Started') : `${countdownText(p.startsAt - Date.now())} · ${startLabel(p.startsAt)}`; };
       tick();
       when.tick = tick;
-      const here = p.faces?.length ? T('{0} {1} in the room', namesText(p.faces.map((f) => f.name)), p.faces.length === 1 ? 'is' : 'are') : '';
+      const here = p.faces?.length ? T('{0} {1} in the room', namesText(p.faces.map((f) => f.name)), p.faces.length === 1 ? T('is') : T('are')) : '';
       return h('li', { class: 'party-card' },
         face({ name: p.host, avatar: p.hostAvatar }, { size: 44, cls: 'party-host' }),
         h('div', { class: 'party-text' }, h('strong', {}, label(p.media)), when,
@@ -248,13 +248,13 @@ export function createSocial({ h, api, jsonPost, toast, icon, people }) {
     slide('wr-a', h('p', { class: 'wr-kicker' }, T('Marquee Wrapped {0}', w.year)), big(T('{0}here\'s your year', name ? `${name}, ` : '')),
       small(T('Tap to continue')));
     slide('wr-b', h('p', { class: 'wr-kicker' }, T('You watched')), big(fmtHours(w.seconds)),
-      small(T('{0} {1}: {2} {3} and {4} {5}, on {6} {7}.', w.titles, w.titles === 1 ? 'title' : 'titles', w.films, w.films === 1 ? 'film' : 'films', w.episodes, w.episodes === 1 ? 'episode' : 'episodes', w.activeDays, w.activeDays === 1 ? 'day' : 'days')),
+      small(T('{0} {1}: {2} {3} and {4} {5}, on {6} {7}.', w.titles, w.titles === 1 ? T('title') : T('titles'), w.films, w.films === 1 ? T('film') : T('films'), w.episodes, w.episodes === 1 ? T('episode') : T('episodes'), w.activeDays, w.activeDays === 1 ? T('day') : T('days'))),
       w.people > 1 && small(w.rank === 1 ? T('More than anyone else on Marquee ({0} people watched).', w.people) : T('Number {0} of the {1} people who watched here.', w.rank, w.people)));
     if (w.top?.length) slide('wr-c', h('p', { class: 'wr-kicker' }, T('Your top titles')),
       h('ol', { class: 'wr-list' }, w.top.map((t) => h('li', {}, h('span', {}, t.title),
         h('small', {}, t.tv && t.episodes ? `${t.episodes} ${t.episodes === 1 ? T('episode') : T('episodes')} · ${fmtHours(t.seconds)}` : fmtHours(t.seconds))))));
     if (w.topShow) slide('wr-d', h('p', { class: 'wr-kicker' }, T('Your show of the year')), big(w.topShow.title),
-      small(`${w.topShow.episodes} ${w.topShow.episodes === 1 ? 'episode' : 'episodes'}, ${fmtHours(w.topShow.seconds)}.`));
+      small(`${w.topShow.episodes} ${w.topShow.episodes === 1 ? T('episode') : T('episodes')}, ${fmtHours(w.topShow.seconds)}.`));
     const busy = new Date(`${w.busiestDay.day}T12:00:00`).toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' });
     const max = Math.max(...w.months, 1);
     slide('wr-e', h('p', { class: 'wr-kicker' }, T('When you watched')), big(w.busiestMonth),

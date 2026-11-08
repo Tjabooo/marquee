@@ -1878,7 +1878,7 @@ async function sendPhonePiece(req, res, url, { kind, id, variant }) {
 // about the original release when the player gets a browser copy of it.
 async function streamInfo(req, src) {
   let file;
-  let served = 'Original file';
+  let served = translate('Original file');
   let original = null;
   let expires = null;
   let m;
@@ -1890,10 +1890,10 @@ async function streamInfo(req, src) {
     const first = converter.originalFor(source) || source;
     const selected = link.variant.match(/^browser-a(\d+)-/);
     const phone = PHONE_VARIANT.exec(link.variant);
-    served = phone ? `Phone quality: ${phone[1]}p H.264, made live from this file`
+    served = phone ? translate(`Phone quality: ${phone[1]}p H.264, made live from this file`)
       : link.variant === 'tv' ? 'TV version (original audio)'
       : selected ? `Single-audio copy (audio track ${Number(selected[1])})`
-        : file === first ? 'Original file' : 'Browser copy';
+        : translate(file === first ? 'Original file' : 'Browser copy');
     if (first !== file && fs.existsSync(first)) original = first;
   } else if ((m = src.match(/^\/api\/clips\/([\w-]{16})\/video$/))) {
     if (!activity.isAdmin(req)) throw new HttpError(403, 'Only the server’s owner can see clips.');
@@ -2176,7 +2176,7 @@ function announceArrivals(hash, arrived, claimants) {
     if (shown.size === 1 && infos[0].season != null && follows.get(userId)?.has([...shown][0])) {
       const name = pushTitle(infos[0].title);
       notify([userId], 'episode', { title: files.length === 1 ? `New episode of ${name}` : `${files.length} new episodes of ${name}`,
-        body: `${files.length === 1 ? `${titleOf(files[0])} is` : 'They’re'} in your library. Tap to watch.`, url: '/#library', tag: `download-${hash.toLowerCase()}` });
+        body: files.length === 1 ? `${titleOf(files[0])} is in your library. Tap to watch.` : 'They’re in your library. Tap to watch.', url: '/#library', tag: `download-${hash.toLowerCase()}` });
       continue;
     }
     let title;
@@ -2214,7 +2214,8 @@ function announceArrivals(hash, arrived, claimants) {
     const name = pushTitle(eps[0].info.title);
     notify(people, 'episode', {
       title: eps.length === 1 ? `New episode of ${name}` : `${eps.length} new episodes of ${name}`,
-      body: `${eps.length === 1 ? label(eps[0].info) : `${label(eps[0].info)} to ${label(eps.at(-1).info)}`} just arrived on Marquee. Find it on the show’s page to add it to your library.`,
+      body: eps.length === 1 ? `${label(eps[0].info)} just arrived on Marquee. Find it on the show’s page to add it to your library.`
+        : `${label(eps[0].info)} to ${label(eps.at(-1).info)} just arrived on Marquee. Find them on the show’s page to add them to your library.`,
       url: '/', tag: `episode-${k}`.slice(0, 64),
     });
   }
@@ -2589,6 +2590,9 @@ async function handleApi(req, res, url) {
     if (!activity.isAdmin(req)) throw new HttpError(403, 'Only the server’s owner can see the house.');
     const report = await house.houseReport();
     if (Array.isArray(report?.server?.services)) report.server = { ...report.server, services: report.server.services.map((x) => ({ ...x, detail: translate(x.detail) })) };
+    // "Server: FlareSolverr: no answer at …" ends in a service's own detail line.
+    const speakIssue = (line) => { const whole = translate(line); return whole !== line ? whole : line.replace(/^(.*: )(.*)$/, (m, head, tail) => head + translate(tail)); };
+    if (Array.isArray(report?.issues)) report.issues = report.issues.map(speakIssue);
     return sendJson(res, 200, report);
   }
   if (p === '/api/house/screentime') {
@@ -3284,7 +3288,7 @@ async function sendPreview(res, file, sheet) {
 }
 
 // Messages meant to be read, on their way out in the viewer's language.
-const SPOKEN_FIELDS = ['error', 'message', 'note', 'hint', 'reason', 'warning'];
+const SPOKEN_FIELDS = ['error', 'message', 'note', 'hint', 'reason', 'warning', 'step'];
 function spoken(body) {
   if (currentLanguage() === 'en' || !body || typeof body !== 'object' || Array.isArray(body)) return body;
   const out = { ...body };

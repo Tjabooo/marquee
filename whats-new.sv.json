@@ -1,4 +1,17 @@
 {
+  "2026-11-08-tv-downloads": {
+    "title": "Se dina nedladdningar på TV:n",
+    "items": {
+      "On its way, in the library": {
+        "title": "På väg, i biblioteket",
+        "text": "Det du lägger till på TV:n syns nu direkt i biblioteket, på en rad som heter På väg och visar hur långt det har kommit. Det flyttas till Filmer eller Serier när det är klart."
+      },
+      "Go to library": {
+        "title": "Till biblioteket",
+        "text": "När du har lagt till en titel på TV:n tar knappen Till biblioteket dig direkt dit."
+      }
+    }
+  },
   "2026-11-08-download-alerts": {
     "title": "Färre aviseringar",
     "items": {
@@ -13,7 +26,7 @@
     "items": {
       "Choose your language": {
         "title": "Välj ditt språk",
-        "text": "Marquee talar nu engelska och svenska. Välj under Inställningar → Språk så gäller det överallt: menyer, spelaren, meddelanden och aviseringar, på alla enheter du loggar in på. Beskrivningar och genrer följer med, medan titlar behåller sina namn."
+        "text": "Marquee finns nu på engelska och svenska. Välj under Inställningar → Språk så gäller det överallt: menyer, spelaren, meddelanden och aviseringar, på alla enheter du loggar in på. Beskrivningar och genrer följer också språket, medan titlar behåller sina namn."
       },
       "One TV app, in Swedish": {
         "title": "En TV-app, på svenska",
@@ -26,7 +39,7 @@
     "items": {
       "Subtitles written by people come first": {
         "title": "Undertexter skrivna av människor kommer först",
-        "text": "Marquee väljer nu alltid undertexter skrivna av människor när de finns. När det bara finns en maskinöversättning står det ”maskinöversatt” vid språket så att du vet vad du får, och den byts ut automatiskt när människors undertexter dyker upp."
+        "text": "Marquee väljer nu alltid undertexter skrivna av människor när de finns. När det bara finns en maskinöversättning står det ”maskinöversatt” vid språket så att du vet vad du får, och den byts ut automatiskt när det dyker upp undertexter skrivna av människor."
       }
     }
   },
@@ -70,11 +83,11 @@
     "items": {
       "Versions instead of double cards": {
         "title": "Versioner i stället för dubbla kort",
-        "text": "Om en film eller ett avsnitt finns här i två kvaliteter, till exempel 4K och 1080p, visas den nu som en titel i stället för två. Ett kvalitetsval på filmens sida, säsongens sida och i spelarens kvalitetsmeny väljer vilken som spelas. Var du är följer med mellan dem, på webbplatsen, TV-apparater och Jellyfin. Telefoner börjar med den lättare versionen om du inte väljer en annan, och ditt val sparas på varje enhet."
+        "text": "Om en film eller ett avsnitt finns här i två kvaliteter, till exempel 4K och 1080p, visas den nu som en titel i stället för två. Ett kvalitetsval på filmens sida, säsongens sida och i spelarens kvalitetsmeny väljer vilken som spelas. Du behåller din plats mellan versionerna, på webbplatsen, TV-apparater och i Jellyfin. Telefoner börjar med den lättare versionen om du inte väljer en annan, och ditt val sparas på varje enhet."
       },
       "No more accidental second copies": {
         "title": "Inga fler oavsiktliga dubbletter",
-        "text": "Att ladda ner en film eller ett avsnitt du redan har i samma kvalitet nekas, och du får se vad som redan finns. Utgåvor i en kvalitet du har markeras i listan. En annan kvalitet går bra: den blir en version. Ett säsongspaket laddar bara ner avsnitten du inte redan har i den kvaliteten."
+        "text": "Du kan inte längre ladda ner en film eller ett avsnitt du redan har i samma kvalitet, och du får se vad som redan finns. Utgåvor i en kvalitet du har markeras i listan. En annan kvalitet går bra: den blir en version. Ett säsongspaket laddar bara ner avsnitten du inte redan har i den kvaliteten."
       }
     }
   },
@@ -87,7 +100,7 @@
       },
       "Upgrade quality": {
         "title": "Uppgradera kvalitet",
-        "text": "Har du en säsong som ser dålig ut? Öppna Ladda ner på serien, välj säsongen och tryck på Uppgradera kvalitet. Marquee letar efter en klart bättre utgåva, laddar ner den och byter ut varje avsnitt så snart det nya är klart. Var du var i varje avsnitt följer med. Finns inget bättre får du veta det."
+        "text": "Har du en säsong som ser dålig ut? Öppna Ladda ner på serien, välj säsongen och tryck på Uppgradera kvalitet. Marquee letar efter en klart bättre utgåva, laddar ner den och byter ut varje avsnitt så snart det nya är klart. Du behåller din plats i varje avsnitt. Finns inget bättre får du veta det."
       }
     }
   },
@@ -96,7 +109,7 @@
     "items": {
       "Names and I/l mix-ups fixed": {
         "title": "Namn och I/l-förväxlingar fixade",
-        "text": "Vissa utgåvor har undertexter som lästs av från skivan av en dator, så namn och förkortningar blir gemener (”cuddy”, ”nicu”) och I och l byter plats (”ls there”, ”l'm”). Marquee fixar nu det här i engelska undertexter medan du tittar, på webbplatsen, TV-apparater och vid casting. Den lär sig hur namn stavas från andra undertexter i biblioteket, så den blir bättre när biblioteket växer."
+        "text": "Vissa utgåvor har undertexter som lästs av från skivan av en dator, så namn och förkortningar får små bokstäver (”cuddy”, ”nicu”) och I och l byter plats (”ls there”, ”l'm”). Marquee fixar nu det här i engelska undertexter medan du tittar, på webbplatsen, TV-apparater och vid casting. Den lär sig hur namn stavas från andra undertexter i biblioteket, så den blir bättre när biblioteket växer."
       }
     }
   },
@@ -117,7 +130,7 @@
     "title": "Fastnade avsnitt blockerar inte längre en säsong",
     "items": {
       "Seasons keep downloading": {
-        "title": "Säsonger fortsätter laddas ner",
+        "title": "Säsonger fortsätter att laddas ner",
         "text": "När några avsnitt i en säsong inte hittar någon att ladda ner från fortsätter resten av säsongen i stället för att vänta bakom dem. En nedladdning av en hel säsong går också före enskilda avsnitt den redan innehåller."
       }
     }
@@ -126,11 +139,11 @@
     "title": "Mycket bättre anime",
     "items": {
       "Anime downloads from Nyaa": {
-        "title": "Anime-nedladdningar från Nyaa",
+        "title": "Animenedladdningar från Nyaa",
         "text": "Marquee söker nu också på Nyaa, där anime släpps. Ladda ner säsong på en anime väljer ett helt paket (en nedladdning för en säsong, även 170 avsnitt) i stället för en torrent per avsnitt, och hittar enskilda avsnitt hur de än är numrerade: ”Black Clover - 176”, ”Black Clover 2nd Season - 06” och ”S02E06” är nu samma avsnitt."
       },
       "Anime seasons line up": {
-        "title": "Anime-säsonger stämmer",
+        "title": "Animesäsonger stämmer",
         "text": "Anime som TMDB räknar annorlunda (Frierens två säsonger är en på TMDB, Jujutsu Kaisens tre säsonger också) hamnar på rätt säsong och avsnitt i ditt bibliotek, under sitt rätta namn, och Marquee vet vilka avsnitt du redan har så att inget laddas ner två gånger."
       },
       "Subtitles on by default": {
@@ -149,7 +162,7 @@
     }
   },
   "2026-11-07-phone-quality": {
-    "title": "Mjuk 4K på telefoner",
+    "title": "4K som flyter på telefoner",
     "items": {
       "A lighter stream for big files on your phone": {
         "title": "En lättare ström för stora filer på telefonen",
@@ -166,7 +179,7 @@
     "items": {
       "A bigger Discover in Marquee Preview": {
         "title": "Ett större Upptäck i Marquee Preview",
-        "text": "I TV-appen Marquee Preview fortsätter raderna i Upptäck nu att laddas medan du rör dig längs dem, slutar i Visa alla (ett helt rutnät) och följs av en rad med genrer och en rad per genre. Flikarna Filmer / Serier högst upp smalnar av, och titeln du står på fyller skärmens övre del med sin beskrivning. Genresidor kan sorteras efter Populärt, Högst betyg eller Nyast."
+        "text": "I TV-appen Marquee Preview fortsätter raderna i Upptäck nu att laddas medan du rör dig längs dem, slutar i Visa alla (ett helt rutnät) och följs av en rad med genrer och en rad per genre. Flikarna Filmer / Serier högst upp begränsar urvalet, och titeln du står på fyller skärmens övre del med sin beskrivning. Genresidor kan sorteras efter Populärt, Högst betyg eller Nyast."
       },
       "Search and genres on the TV": {
         "title": "Sök och genrer på TV:n",
@@ -184,11 +197,11 @@
     }
   },
   "2026-11-06-player-feedback": {
-    "title": "Spelarens tips ur vägen",
+    "title": "Spelarens meddelanden ur vägen",
     "items": {
       "Volume, sleep timer and skip hints": {
         "title": "Volym, insomningstimer och hopp",
-        "text": "De små meddelandena i spelaren (volym, insomningstimer, hopp, nattläge och så vidare) visas nu strax ovanför bildens mitt, så de inte längre täcker spelaknappen eller laddningsringen på telefonen. Blinket för spela/pausa stannar i mitten, på spelaknappen."
+        "text": "De små meddelandena i spelaren (volym, insomningstimer, hopp, nattläge och så vidare) visas nu strax ovanför bildens mitt, så de inte längre täcker spelaknappen eller laddningsringen på telefonen. Blinkningen för spela/pausa stannar i mitten, på spelaknappen."
       }
     }
   },
@@ -197,7 +210,7 @@
     "items": {
       "Notifications from your agents": {
         "title": "Aviseringar från dina agenter",
-        "text": "Ett skript eller en AI-agent på dina datorer hemma kan nu skicka en avisering när den behöver dig. Den använder Huset-token och fungerar bara från hemnätverket. Stäng av under Inställningar › Aviseringar › Agenter."
+        "text": "Ett skript eller en AI-agent på dina datorer hemma kan nu skicka en avisering när den behöver dig. Den använder Huset-token och fungerar bara från hemnätverket. Stäng av det under Inställningar › Aviseringar › Agenter."
       }
     }
   },
@@ -219,11 +232,11 @@
     "items": {
       "One library for the household": {
         "title": "Ett bibliotek för hushållet",
-        "text": "Ägaren kan nu låta flera personer dela ett bibliotek. Alla i det ser samma filmer och serier, även på TV:n, och alla kan lägga till, behålla eller ta bort titlar. Var du är i det du ser är ditt eget."
+        "text": "Ägaren kan nu låta flera personer dela ett bibliotek. Alla i det ser samma filmer och serier, även på TV:n, och alla kan lägga till, behålla eller ta bort titlar. Din tittarhistorik är din egen."
       },
       "Set it in People": {
         "title": "Ställ in det i Personer",
-        "text": "Inställningar → Personer har ett biblioteksval för varje person: Eget bibliotek, eller dela med någon (går du med någon som redan delar går du med i hela gruppen)."
+        "text": "Inställningar → Personer har ett biblioteksval för varje person: Eget bibliotek, eller dela med någon (väljer du någon som redan delar går du med i hela gruppen)."
       }
     }
   },
@@ -237,7 +250,7 @@
     }
   },
   "2026-11-05-convert-lanes": {
-    "title": "Redo att spela tidigare",
+    "title": "Klart att spela tidigare",
     "items": {
       "Two conversions at once": {
         "title": "Två konverteringar samtidigt",
@@ -262,7 +275,7 @@
     "title": "Tydligare konverteringsrad",
     "items": {
       "Says what it's converting for": {
-        "title": "Säger vad den konverterar för",
+        "title": "Säger vad konverteringen är till för",
         "text": "Vissa nya filmer får en andra engångskopia som spelas i alla webbläsare. Raden högst upp i biblioteket säger nu det, så det ser inte längre ut som att samma film konverteras två gånger. Du kan titta medan den körs."
       }
     }
@@ -312,7 +325,7 @@
       },
       "Cleaner bottom edge": {
         "title": "Renare nederkant",
-        "text": "I Nyheter sticker text inte längre fram under knappen Uppfattat / Stäng."
+        "text": "I Nyheter sticker text inte längre fram under knappen Okej / Stäng."
       }
     }
   },
@@ -321,7 +334,7 @@
     "items": {
       "Add your picture": {
         "title": "Lägg till din bild",
-        "text": "Inställningar: tryck på cirkeln bredvid ditt namn för att lägga till en profilbild. Dra den på plats, zooma, spara. Den visas där ditt namn gör det: Gillad av, Populärt på Marquee, tittarkvällar, rumschatt och Wrapped."
+        "text": "Inställningar: tryck på cirkeln bredvid ditt namn för att lägga till en profilbild. Dra den på plats, zooma, spara. Den visas där ditt namn syns: Gillad av, Populärt på Marquee, tittarkvällar, rumschatt och Wrapped."
       },
       "Watch Together, redone": {
         "title": "Titta tillsammans, omgjort",
@@ -347,7 +360,7 @@
     "items": {
       "Marquee Setup for Windows": {
         "title": "Marquee Setup för Windows",
-        "text": "Att installera Marquee på Windows kräver inte längre en terminal. Marquee Setup (på Start-menyn, eller MarqueeSetup.exe från utgivningssidan) tar dig genom bibliotek, nätverk, inloggning, tjänster och start vid uppstart, och kontrollerar dina nycklar och portar längs vägen."
+        "text": "Att installera Marquee på Windows kräver inte längre en terminal. Marquee Setup (i Start-menyn, eller MarqueeSetup.exe från utgivningssidan) tar dig genom bibliotek, nätverk, inloggning, tjänster och automatisk start, och kontrollerar dina nycklar och portar längs vägen."
       },
       "Game clips as an add-on": {
         "title": "Spelklipp som tillägg",
@@ -368,7 +381,7 @@
     "title": "Ladda ner till telefonen",
     "items": {
       "Take it with you": {
-        "title": "Ta den med dig",
+        "title": "Ta med dig den",
         "text": "Ska du någonstans utan wifi? Öppna en film eller ett avsnitt och tryck på Till telefonen (telefonknappen på avsnittsraderna). Marquee gör en liten kopia (Liten 480p, cirka 450 MB per timme, eller Standard 720p) som spelas i telefonens egen videospelare med inbyggda undertexter. Eller ladda ner filen i full kvalitet."
       },
       "A whole season": {
@@ -420,7 +433,7 @@
     "items": {
       "Your own password": {
         "title": "Ditt eget lösenord",
-        "text": "Marquee kan nu logga in dig själv. Om ägaren skapat ett konto åt dig ser du en inloggningssida när du inte är hemma, och i Inställningar kan du byta lösenord eller logga ut."
+        "text": "Marquee kan nu sköta inloggningen själv. Om ägaren skapat ett konto åt dig ser du en inloggningssida när du inte är hemma, och i Inställningar kan du byta lösenord eller logga ut."
       },
       "Safer from other websites": {
         "title": "Säkrare mot andra webbplatser",
@@ -461,12 +474,12 @@
         "text": "Tryck på Spara på valfri film eller serie för att ha den i raden Sparad till senare högst upp i Upptäck."
       },
       "Download when it's out": {
-        "title": "Hämta när den är ute",
-        "text": "Sparat en film som inte är ute än? Kryssa i ”Lägg till när det finns en bra kopia” så hämtas den av sig själv när den släpps, aldrig en biofilmning."
+        "title": "Ladda ner när den är ute",
+        "text": "Sparat en film som inte är ute än? Kryssa i ”Lägg till när det finns en bra kopia” så laddas den ner av sig själv när den släpps, aldrig som bioinspelning."
       },
       "Follow a show": {
         "title": "Följ en serie",
-        "text": "Tryck på Följ på en serie så hämtas varje nytt avsnitt av sig självt när det har sänts. Avsnitt du redan har hämtas inte igen, och äldre avsnitt lämnas i fred."
+        "text": "Tryck på Följ på en serie så laddas varje nytt avsnitt ner av sig självt när det har sänts. Avsnitt du redan har laddas inte ner igen, och äldre avsnitt lämnas i fred."
       },
       "New and Coming up": {
         "title": "Nytt och På gång",
@@ -479,11 +492,11 @@
     "items": {
       "Skip the opening titles": {
         "title": "Hoppa över förtexterna",
-        "text": "En Hoppa över intro-knapp visas nu medan en series förtexter spelas (eller tryck på S). Marquee hittar signaturmelodin genom att jämföra ett avsnitt med sina grannar, så det fungerar även efter en lång inledning."
+        "text": "En Hoppa över intro-knapp visas nu medan en series förtexter spelas (eller tryck på S). Marquee hittar signaturmelodin genom att jämföra ett avsnitt med avsnitten runt omkring, så det fungerar även efter en lång inledning."
       },
       "Or skip them automatically": {
         "title": "Eller hoppa över dem automatiskt",
-        "text": "Inställningar → Tittande → Intron kan hoppa över förtexter av sig själv. Spola tillbaka in i dem så spelas de som vanligt."
+        "text": "Inställningar → Uppspelning → Intron kan hoppa över förtexter av sig själv. Spola tillbaka in i dem så spelas de som vanligt."
       }
     }
   },
@@ -533,7 +546,7 @@
       },
       "Always up to date": {
         "title": "Alltid uppdaterat",
-        "text": "Klara nedladdningar, raderingar och var du slutade titta på en annan enhet syns nu direkt, utan att ladda om."
+        "text": "Klara nedladdningar, raderingar och var du slutade titta på en annan enhet syns nu direkt, utan att du behöver ladda om."
       },
       "Add to library": {
         "title": "Lägg till i biblioteket",
@@ -557,7 +570,7 @@
         "text": "På en series sida kan du ta bort en säsong eller hela serien på en gång, i stället för avsnitt för avsnitt."
       },
       "Ready to play sooner": {
-        "title": "Redo att spela tidigare",
+        "title": "Klart att spela tidigare",
         "text": "Nya nedladdningar förbereds för uppspelning ungefär dubbelt så snabbt, och Firefox får sin egen kopia direkt i stället för när du trycker på Spela upp."
       },
       "Tidier subtitles": {
@@ -570,7 +583,7 @@
       },
       "Notes on your phone": {
         "title": "Anteckningar på telefonen",
-        "text": "Anteckningar passar nu små skärmar: lättryckta åtgärder med ångra, tangentbordet täcker inte längre det du skriver, och bilder öppnas i helskärm."
+        "text": "Anteckningar passar nu små skärmar: åtgärder som är lätta att trycka på, med ångra, tangentbordet täcker inte längre det du skriver, och bilder öppnas i helskärm."
       },
       "Search inside images": {
         "title": "Sök inuti bilder",
@@ -582,7 +595,7 @@
       },
       "Better clip editing": {
         "title": "Bättre klippredigering",
-        "text": "Klipp bort flera delar i en redigering, och lämna ute ljudspår du inte vill ha, som en brusig mikrofon."
+        "text": "Klipp bort flera delar i en redigering, och utelämna ljudspår du inte vill ha, som en brusig mikrofon."
       },
       "House: Sharing and Screen Time": {
         "title": "Huset: Delning och Skärmtid",
@@ -603,7 +616,7 @@
       },
       "1440p": {
         "title": "1440p",
-        "text": "Mellan 1080p och 4K finns nu 1440p för skarp bild utan 4K:s storlek."
+        "text": "Mellan 1080p och 4K finns nu 1440p för skarp bild utan 4K-filernas storlek."
       },
       "One library": {
         "title": "Ett bibliotek",
@@ -730,7 +743,7 @@
         "text": "TV-apparaterna hemma erbjuds bara när du är på hemnätverket."
       },
       "Ready sooner": {
-        "title": "Redo tidigare",
+        "title": "Klart tidigare",
         "text": "Nya nedladdningar plockas upp för uppspelning var 30:e sekund i stället för varannan minut."
       }
     }

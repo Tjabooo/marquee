@@ -61,7 +61,7 @@
     return h ? h + ':' + pad2(m) + ':' + pad2(s) : m + ':' + pad2(s);
   }
   function episodeLabel(f) {
-    return f && f.season != null && f.episode != null ? 'S' + pad2(f.season) + ' E' + pad2(f.episode) : '';
+    return f && f.season != null && f.episode != null ? T('S{0} E{1}', pad2(f.season), pad2(f.episode)) : '';
   }
   function minutesLeft(p) { return T('{0} min left', Math.max(1, Math.ceil((p.duration - p.time) / 60))); }
 
@@ -78,6 +78,50 @@
   }
 
   // The home screen: what you were watching (newest first), then shows, then films.
+  // What a transfer is doing, in the same words as the website's Library (public/library-downloads.js).
+  function transferWord(d) {
+    if (d.converting) return T('Preparing playback');
+    var st = String(d.state || '');
+    if (st === 'missingFiles') return T('Files missing');
+    if (st === 'error') return T('Needs attention');
+    if (/^(paused|stopped)/.test(st)) return T('Paused');
+    if (/^checking/.test(st)) return T('Checking files');
+    if (st === 'stalledDL') return T('Waiting for a source');
+    if (st === 'metaDL' || st === 'forcedMetaDL') return T('Starting');
+    if (st === 'queuedDL') return T('In line');
+    if (st === 'moving' || d.progress >= 1) return T('Almost ready');
+    return T('On its way');
+  }
+  // Downloads that aren't ready yet, one entry per film or show (a season pack and single episodes join up),
+  // newest first. The same rule as the website's libraryUnion: yours, and still on its way or needing attention.
+  function pendingTitles(downloads, library) {
+    var order = [], byKey = {};
+    (downloads || []).forEach(function (d) {
+      if (d.mine === false) return;
+      var trouble = d.state === 'error' || d.state === 'missingFiles';
+      var linked = d.libraryIds && d.libraryIds.length;
+      if (!(!d.done || d.converting || trouble || (d.hasVideo !== false && !d.ready && !linked))) return;
+      var isShow = d.mediaType === 'tv' || d.showId;
+      var key = isShow ? 'tv:' + (d.showId || d.tmdbId || d.hash) : d.tmdbId != null ? 'movie:' + d.tmdbId : 'hash:' + d.hash;
+      var e = byKey[key];
+      if (!e) {
+        e = byKey[key] = { key: key, type: isShow ? 'tv' : 'movie', tmdbId: d.tmdbId == null ? null : d.tmdbId, showId: d.showId || null,
+          title: d.canonicalTitle || d.title || d.name || '', poster: d.poster || null, backdrop: d.backdrop || null, year: d.year || null,
+          items: [], added: 0 };
+        order.push(e);
+      }
+      e.items.push(d);
+      e.added = Math.max(e.added, d.added || 0);
+    });
+    return order.map(function (e) {
+      var known = e.items.every(function (d) { return d.size > 0 && typeof d.progress === 'number'; });
+      var total = known ? e.items.reduce(function (n, d) { return n + d.size; }, 0) : 0;
+      e.progress = known && total ? e.items.reduce(function (n, d) { return n + d.size * Math.max(0, Math.min(1, d.progress)); }, 0) / total : null;
+      e.word = e.items.length === 1 ? transferWord(e.items[0]) : T('{0} downloads', e.items.length);
+      return e;
+    }).sort(function (a, b) { return b.added - a.added; });
+  }
+
   function homeRows(library, shows, progress) {
     var cont = library.filter(function (f) { return resumable(progress[progressRef(f)]) && !f.converting; })
       .sort(function (a, b) { return (progress[progressRef(b)].at || 0) - (progress[progressRef(a)].at || 0); })
@@ -177,7 +221,7 @@
     AUTOPLAY_SECONDS: AUTOPLAY_SECONDS, AUTOPLAY_CHAIN: AUTOPLAY_CHAIN, DONE_SECONDS: DONE_SECONDS,
     nextEpisode: nextEpisode, nextPromptAt: nextPromptAt, isNextTime: isNextTime, introShowing: introShowing,
     T: T, fmtTime: fmtTime, episodeLabel: episodeLabel, minutesLeft: minutesLeft, progressRef: progressRef, resumable: resumable,
-    titleKey: titleKey, homeRows: homeRows, genreRows: genreRows, searchKey: searchKey, showSeasons: showSeasons, startEpisode: startEpisode, parseVtt: parseVtt, cueText: cueText,
+    titleKey: titleKey, pendingTitles: pendingTitles, homeRows: homeRows, genreRows: genreRows, searchKey: searchKey, showSeasons: showSeasons, startEpisode: startEpisode, parseVtt: parseVtt, cueText: cueText,
   };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.MarqueeTvLogic = api;

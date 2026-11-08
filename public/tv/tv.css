@@ -63,6 +63,8 @@ img.is-empty { visibility: hidden; }
 .card.poster { width: 236px; }
 .card.poster .art { height: 354px; }
 .bar { position: absolute; left: 0; right: 0; bottom: 0; height: 8px; background: rgba(0, 0, 0, .55); }
+.pct { position: absolute; right: 10px; bottom: 18px; padding: 2px 10px; border-radius: 8px; background: rgba(0, 0, 0, .65); font-size: 24px; font-weight: 700; }
+.pct:empty { display: none; }
 .bar i { display: block; height: 100%; background: var(--bulb); }
 .empty { margin: 120px var(--edge); max-width: 1100px; }
 .empty h2 { font-size: 56px; margin: 0 0 16px; }

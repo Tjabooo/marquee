@@ -14,6 +14,8 @@ All notable changes to Marquee. Versions follow [Semantic Versioning](https://se
 
 ### Added
 
+- **Downloads on the TV.** Titles on their way show in an On its way row in the TV library with live progress, and a
+  Go to library button appears after adding a title. Smart-download messages and House warnings are translated too.
 - **Languages.** Settings → Language switches all of Marquee between English and Svenska: the web app, player,
   What's new, server messages, notifications, sign-in and share pages. The choice follows the account across
   devices; a browser set to Swedish starts in Swedish. TMDB descriptions and genre names follow it, titles don't,

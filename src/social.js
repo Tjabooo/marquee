@@ -6,6 +6,7 @@
 // actually played between two progress saves. Progress rows are deleted when a video is finished,
 // so they can't answer "how much did I watch this year"; this log can. Time watched in a Watch
 // Together room is also credited to each pair of people in it (watch_company).
+import { tr } from './i18n.js';
 import { database } from './accounts.js';
 
 const TITLE_KEY = /^(movie|tv):\d{1,9}$/;
@@ -208,8 +209,8 @@ export function wrapped(userId, year, nameOf, avatarOf = () => null) {
     topShow: topShow ? { key: topShow.key, title: topShow.title, episodes: topShow.episodes.size, seconds: Math.round(topShow.seconds) } : null,
     first: { title: first.title, season: first.season, episode: first.episode, day: first.day },
     busiestDay: { day: busyDay, seconds: Math.round(busySeconds) },
-    busiestMonth: MONTHS[maxIdx(months)],
-    busiestWeekday: WEEKDAYS[maxIdx(weekdays)],
+    busiestMonth: tr(MONTHS[maxIdx(months)]),
+    busiestWeekday: tr(WEEKDAYS[maxIdx(weekdays)]),
     months: months.map(Math.round),
     activeDays: days.length,
     streak,

@@ -12,7 +12,7 @@
   var KEY = { LEFT: 37, UP: 38, RIGHT: 39, DOWN: 40, ENTER: 13, BACK: 10009, BACKSPACE: 8, ESC: 27,
     PLAYPAUSE: 10252, PLAY: 415, PAUSE: 19, STOP: 413, FF: 417, RW: 412 };
   var app = document.getElementById('app');
-  var state = { me: null, library: [], shows: [], progress: {}, genres: [] };
+  var state = { me: null, library: [], shows: [], progress: {}, genres: [], pending: [], focusPending: false };
   var screen = null;
   var history = [];
   var autoChain = 0;
@@ -187,11 +187,32 @@
   }
 
   function loadLibrary() {
-    return Promise.all([api('/api/library'), api('/api/me/progress').catch(function () { return { progress: {} }; })]).then(function (r) {
+    return Promise.all([api('/api/library'), api('/api/me/progress').catch(function () { return { progress: {} }; }), loadPending()]).then(function (r) {
       state.library = r[0].items || [];
       state.shows = r[0].shows || [];
       state.progress = r[1].progress || {};
     });
+  }
+  // Downloads on their way show in the library straight away. Never fails: the library works without them.
+  function loadPending() {
+    return api('/api/downloads').then(function (d) { state.pending = L.pendingTitles(d.items); })
+      .catch(function () { state.pending = []; });
+  }
+  function pendingFor(t) {
+    var key = t.type === 'tv' ? 'tv:tv-' + t.id : 'movie:' + t.id;
+    return state.pending.filter(function (p) { return p.key === key; })[0] || null;
+  }
+  // Back to the library from anywhere, onto the row of what's on its way.
+  function goToLibrary() {
+    if (!history.length) return;
+    state.focusPending = true;
+    if (screen && screen.leave) screen.leave();
+    while (history.length > 1) { var s = history.pop(); if (s.leave) s.leave(); }
+    screen = history.pop();
+    app.innerHTML = '';
+    app.appendChild(screen.el);
+    if (screen.refresh) screen.refresh();
+    if (screen.focus) screen.focus();
   }
 
   // ---------- genres ----------
@@ -250,6 +271,28 @@
       el: h('div', { class: 'card ' + (cls || 'poster') }, h('div', { class: 'art' }, pic.el, cls === 'tile' ? badge() : null),
         h('div', { class: 'name', text: f.filmTitle || f.title }), h('div', { class: 'sub', text: f.year ? String(f.year) : '' })),
       open: function () { playAsked(f); } };
+  }
+  // A title that's still on its way: the progress updates in place, without redrawing the row.
+  function pendingPercent(p) { return p.progress != null && p.progress < 1 ? Math.floor(p.progress * 100) + ' %' : ''; }
+  function pendingText(p) { return [pendingPercent(p), p.word].filter(Boolean).join(' · '); }
+  function pendingCard(p) {
+    var pic = lazy(p.poster || p.backdrop);
+    var fill = h('i', { style: 'width:' + ((p.progress || 0) * 100).toFixed(1) + '%' });
+    var sub = h('div', { class: 'sub', text: p.word });
+    var pct = h('span', { class: 'pct', text: pendingPercent(p) });
+    return { key: p.key, wake: pic.wake, update: function (next) {
+        fill.style.width = ((next.progress || 0) * 100).toFixed(1) + '%';
+        sub.textContent = next.word;
+        pct.textContent = pendingPercent(next);
+      },
+      el: h('div', { class: 'card poster' }, h('div', { class: 'art' }, pic.el, pct, h('div', { class: 'bar' }, fill)),
+        h('div', { class: 'name', text: p.title }), sub),
+      open: function () {
+        var show = p.type === 'tv' && state.shows.filter(function (s) { return s.id === p.showId; })[0];
+        if (show) return showPage(show);
+        if (p.tmdbId != null) return discoverTitle({ type: p.type, id: p.tmdbId, title: p.title, poster: p.poster, backdrop: p.backdrop, year: p.year });
+        toast(p.word);
+      } };
   }
   function continueCard(f) {
     var p = state.progress[L.progressRef(f)];
@@ -532,7 +575,23 @@
     el.appendChild(top);
     el.appendChild(rowsEl);
     var nav = rowsNav(rowsEl, 40);
-    var atTop = false, ti = 1, empty = false;
+    var atTop = false, ti = 1, empty = false, pendingRow = null, watchTimer = null, me = null, gone = false;
+
+    // Keeps the row of what's on its way current while the library is on screen. Progress changes touch
+    // only the cards in that row; a title arriving or finishing redraws the rows.
+    function watchPending() {
+      clearTimeout(watchTimer);
+      if (gone) return;
+      watchTimer = setTimeout(function () {
+        if (screen !== me) return watchPending();
+        var before = state.pending.map(function (p) { return p.key; }).join();
+        loadPending().then(function () {
+          if (screen !== me) return;
+          if (state.pending.map(function (p) { return p.key; }).join() !== before) return me.refresh();
+          if (pendingRow) state.pending.forEach(function (p, i) { if (pendingRow.items[i] && pendingRow.items[i].update) pendingRow.items[i].update(p); });
+        }).then(watchPending, watchPending);
+      }, state.pending.length ? 5000 : 30000);
+    }
 
     function build() {
       // Coming back from the player rebuilds the rows: keep the row and the card you were on.
@@ -542,6 +601,8 @@
       var rows = [];
       function add(title, kind, items) { var row = makeRow({ title: title, kind: kind, items: items }); row.title = title; rows.push(row); }
       if (data.cont.length) add(T('Continue watching'), 'wide', data.cont.map(continueCard));
+      var onWay = T('On its way');
+      if (state.pending.length) add(onWay, 'poster', state.pending.map(pendingCard));
       if (data.shows.length) add(T('Shows'), 'poster', data.shows.map(function (s) { return showCard(s); }));
       if (data.films.length) add(T('Films'), 'poster', data.films.map(function (f) { return filmCard(f); }));
       L.genreRows(state.library, state.shows, state.genres).forEach(function (g) {
@@ -552,6 +613,11 @@
         if (was[row.title] != null) row.index = Math.min(was[row.title], row.items.length - 1);
         if (row.title === wasRow) nav.r = i;
       });
+      if (state.focusPending) {
+        state.focusPending = false;
+        rows.forEach(function (row, i) { if (row.title === onWay) { nav.r = i; row.index = 0; atTop = false; } });
+      }
+      pendingRow = rows.filter(function (row) { return row.title === onWay; })[0] || null;
       empty = !rows.length;
       if (empty) {
         rowsEl.appendChild(h('div', { class: 'empty' }, h('h2', { text: T('Your library is empty') }),
@@ -564,10 +630,11 @@
       nav.paint(!atTop);
     }
     build();
-    show({ el: el,
+    me = { el: el,
       focus: paint,
+      leave: function () { gone = true; clearTimeout(watchTimer); },
       refresh: function () {
-        Promise.all([loadLibrary(), state.genres.length ? null : loadGenres()]).then(function () { build(); paint(); }).catch(function () {});
+        return Promise.all([loadLibrary(), state.genres.length ? null : loadGenres()]).then(function () { build(); paint(); }).catch(function () {});
       },
       key: function (code) {
         if (atTop) {
@@ -587,7 +654,9 @@
         if (code === KEY.LEFT || code === KEY.RIGHT) { nav.side(code === KEY.LEFT ? -1 : 1); return true; }
         if (code === KEY.ENTER) { var c = nav.current(); if (c) c.open(); return true; }
         return false;
-      } });
+      } };
+    show(me);
+    watchPending();
   }
 
   // ---------- Discover ----------
@@ -844,7 +913,8 @@
       .concat(genreNames(t.type, t.genres)).filter(Boolean).join(' · ') });
     var overview = h('p', { class: 'discover-overview', text: t.overview || T('No description available.') });
     var seasonBox = h('div', { class: 'discover-seasons' });
-    var status = h('div', { class: 'download-status', text: lib ? T('Already in your library. Smart Download will avoid duplicates.') : '' });
+    var onWay = pendingFor(t);
+    var status = h('div', { class: 'download-status', text: onWay ? pendingText(onWay) : lib ? T('Already in your library. Smart Download will avoid duplicates.') : '' });
     var downloadBtn = h('button', { class: 'title-action' + (lib ? '' : ' primary'), text: state.me && state.me.canDownload === false ? T('Downloads disabled') : T('Download') });
     var qualityBtn = h('button', { class: 'title-action', text: '' });
     var actions = [];
@@ -852,10 +922,21 @@
       act: function () { if (lib.film) playAsked(lib.film); else showPage(lib.show); } });
     actions.push({ el: downloadBtn, act: download });
     actions.push({ el: qualityBtn, act: function () { cycleQuality(1); }, quality: true });
+    // Once it's on its way, the next thing to do is go and see it in the library.
+    function offerLibrary() {
+      if (actions.some(function (a) { return a.library; })) return;
+      var a = { el: h('button', { class: 'title-action primary', text: T('Go to library') }), act: goToLibrary, library: true };
+      downloadBtn.classList.remove('primary');
+      actions.unshift(a);
+      actionsEl.insertBefore(a.el, actionsEl.firstChild);
+      zone = 'actions';
+      ai = 0;
+    }
     // Seasons pick what Download gets; for a show you already have, Open comes first.
     if (lib) zone = 'actions';
+    var actionsEl = h('div', { class: 'title-actions' }, actions.map(function (a) { return a.el; }));
     var panel = h('div', { class: 'discover-panel' }, h('div', { class: 'discover-copy' }, title, meta, overview, seasonBox,
-      h('div', { class: 'title-actions' }, actions.map(function (a) { return a.el; })), status));
+      actionsEl, status));
     var el = h('div', { class: 'screen discover-title' }, backdrop, panel);
 
     function savedQuality() {
@@ -904,6 +985,7 @@
           downloadBtn.textContent = T('Download');
           if (job.state === 'failed') status.classList.add('error'); else status.classList.remove('error');
           loadLibrary().catch(function () {});
+          if (job.state !== 'failed' && job.outcome !== 'none') offerLibrary(); // 'none': nothing to go and see
           paint();
         }
       }).catch(function (err) {
@@ -926,6 +1008,7 @@
         });
     }
 
+    if (onWay) offerLibrary();
     buildSeasons(); paint();
     show({ el: el, focus: paint, leave: function () { alive = false; clearTimeout(pollTimer); },
       key: function (code) {

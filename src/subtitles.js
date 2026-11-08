@@ -81,8 +81,8 @@ async function osFetchNow(endpoint, { method = 'GET', body } = {}) {
   }
   if (r.status === 429) throw fail(429, 'OpenSubtitles is busy. Try again in a few seconds.');
   if (r.status === 406 || (endpoint === '/download' && data.remaining != null && !data.link)) {
-    const reset = data.reset_time ? ` It resets in ${data.reset_time}.` : '';
-    throw Object.assign(fail(429, `Today’s subtitle download limit is used up.${reset}${USER ? '' : ' Adding a free OpenSubtitles login to .env raises it.'}`), { quota: true });
+    const reset = data.reset_time ? tr(' It resets in {0}.', data.reset_time) : '';
+    throw Object.assign(fail(429, `Today’s subtitle download limit is used up.${reset}${USER ? '' : tr(' Adding a free OpenSubtitles login to .env raises it.')}`), { quota: true });
   }
   if (!r.ok) throw fail(502, data.message || `OpenSubtitles responded with ${r.status}.`);
   return data;

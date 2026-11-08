@@ -64,7 +64,7 @@ export function watchStatus(item, { today = todayIso(), autoDownload = false, in
   }
   const parts = [];
   const n = item.nextEpisode;
-  if (item.follow && n?.airDate) parts.push(T('Next: {0} {1} {2}.', episodeCode(n), n.airDate < today ? 'aired' : 'airs', whenPhrase(n.airDate, today)));
+  if (item.follow && n?.airDate) parts.push(T('Next: {0} {1} {2}.', episodeCode(n), n.airDate < today ? T('aired') : T('airs'), whenPhrase(n.airDate, today)));
   else if (item.follow) parts.push(T('No new episodes announced yet.'));
   if (item.follow && item.auto && autoDownload) {
     if (item.waiting?.length) parts.push(T('Looking for {0}.', item.waiting.map(episodeCode).join(', ')));

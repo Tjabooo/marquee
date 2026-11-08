@@ -46,7 +46,8 @@ export function translate(text, lang = currentLanguage()) {
   if (exact) return exact;
   for (const { regex, order, line } of patternsFor(lang)) {
     const hit = text.match(regex);
-    if (hit) return order.reduce((out, n, i) => out.replace(`{${n}}`, () => translate(hit[i + 1], lang)), line);
+    // The blanks stay as they are: they hold titles and names, which aren't ours to translate.
+    if (hit) return order.reduce((out, n, i) => out.replace(`{${n}}`, () => hit[i + 1]), line);
   }
   return text;
 }

@@ -139,15 +139,15 @@ function fmtTime(s) {
 function fmtAgo(ms) {
   if (!ms) return null;
   const days = (Date.now() - ms) / 86400000;
-  if (days < 1) return 'today';
-  if (days < 2) return 'yesterday';
+  if (days < 1) return T('today');
+  if (days < 2) return T('yesterday');
   if (days < 45) return T('{0} days ago', Math.round(days));
   if (days < 365) return T('{0} months ago', Math.round(days / 30));
   const yrs = Math.round(days / 365);
   return (yrs > 1 ? T('{0} years ago', yrs) : T('{0} year ago', yrs));
 }
 const pad2 = (n) => String(n).padStart(2, '0');
-const episodeLabel = (f) => (f.season != null ? f.episode != null ? `S${pad2(f.season)} E${pad2(f.episode)}` : T('Season {0}', f.season) : null);
+const episodeLabel = (f) => (f.season != null ? f.episode != null ? T('S{0} E{1}', pad2(f.season), pad2(f.episode)) : T('Season {0}', f.season) : null);
 const norm = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   .toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, '');
 
@@ -501,7 +501,7 @@ function expiryBits(f) {
   if (f.expiresAt == null) return null;
   const soon = f.expiresAt - Date.now() < 86400000;
   const wrap = h('span', { class: 'expiry-wrap' },
-    h('span', { class: `expiry${soon ? ' is-soon' : ''}`, title: T('Deleted {0}', new Date(f.expiresAt).toLocaleString(locale, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })) }, timeLeft(f.expiresAt)),
+    h('span', { class: `expiry${soon ? ' is-soon' : ''}`, title: T('Deletes {0}', new Date(f.expiresAt).toLocaleString(locale, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })) }, timeLeft(f.expiresAt)),
     canExtend(f) && h('button', {
       type: 'button', class: 'keep-btn', 'aria-label': T('Keep {0}{1} {2} more days', f.title, episodeLabel(f) ? ` ${episodeLabel(f)}` : '', extendDays()),
       onclick: async (e) => {
@@ -1146,6 +1146,8 @@ const LIB_FILTERS = [['all', T('All')], ['movie', T('Films')], ['tv', T('Shows')
 // ---------- Library: shows ----------
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? T(one) : T(many)}`;
 const episodeCount = (files) => new Set(files.map((f) => `${f.season}:${f.episode}`)).size;
+// TMDB's season names are cached in English; the plain ones have a translation of their own.
+const localSeasonName = (name, n) => (/^(Season \d+|Specials)$/.test(String(name || '')) || !name ? seasonName(n) : name);
 const seasonName = (n) => (n === 0 ? T('Specials') : T('Season {0}', n));
 
 // Library cards share the same identity as playback, including old browser resume points.
@@ -1398,18 +1400,18 @@ function transferPanel(entry) {
 function renderShow() {
   const entry = showEntry(), show = entry?.show;
   const files = entry?.files || [];
-  if (!show) { $('#sheet-body').replaceChildren(h('div', { class: 'sheet-content' }, h('h2', { id: 'sheet-title' }, T('Show')), h('p', {}, T('This show is no longer in your library.')))); return; }
+  if (!show) { $('#sheet-body').replaceChildren(h('div', { class: 'sheet-content' }, h('h2', { id: 'sheet-title' }, T('Series')), h('p', {}, T('This show is no longer in your library.')))); return; }
   const numbers = new Set(files.map(f => f.season));
   for (const d of entry.transfers) { if (d.season != null) numbers.add(d.season); for (const ep of d.episodes || []) if (ep.season != null) numbers.add(ep.season); }
-  const seasons = [...numbers].sort((a,b) => a-b).map(number => ({ ...(show.seasons || []).find(se => se.number === number), number, name: (show.seasons || []).find(se => se.number === number)?.name || seasonName(number) }));
+  const seasons = [...numbers].sort((a,b) => a-b).map(number => ({ ...(show.seasons || []).find(se => se.number === number), number, name: localSeasonName(show.seasons || []).find(se => se.number === number)?.name || seasonName(number, number) }));
   const single = seasons.length === 1;
   const open = single ? seasons[0] : seasons.find(se => se.number === showView.season);
   const pick = n => { showView.season = n; renderShow(); $('#sheet').scrollTo({ top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); };
   const pendingFor = n => entry.transfers.filter(d => d.season === n || (d.episodes || []).some(ep => ep.season === n));
   // One click (plus a confirmation) for a whole season or the whole show.
   const seasonFiles = open ? files.filter(f => f.season === open.number) : [];
-  const deleteShow = files.length > 0 && h('button', { type: 'button', class: 'chip delete-many', onclick: e => openDeleteMany({ files, what: 'show', label: show.title, onDone: closeTopOverlay }, e.currentTarget) }, icon('trash'), T('Delete show'));
-  const deleteSeason = !single && seasonFiles.length > 0 && h('button', { type: 'button', class: 'chip delete-many', onclick: e => openDeleteMany({ files: seasonFiles, what: 'season', label: `${show.title} · ${open.name}`, onDone: () => { showView.season = null; renderShow(); } }, e.currentTarget) }, icon('trash'), T('Delete season'));
+  const deleteShow = files.length > 0 && h('button', { type: 'button', class: 'chip delete-many', onclick: e => openDeleteMany({ files, what: T('this show'), label: show.title, onDone: closeTopOverlay }, e.currentTarget) }, icon('trash'), T('Delete show'));
+  const deleteSeason = !single && seasonFiles.length > 0 && h('button', { type: 'button', class: 'chip delete-many', onclick: e => openDeleteMany({ files: seasonFiles, what: T('this season'), label: `${show.title} · ${open.name}`, onDone: () => { showView.season = null; renderShow(); } }, e.currentTarget) }, icon('trash'), T('Delete season'));
   let content;
   if (!open) content = [h('h3', {}, T('Seasons')), h('ul', { class: 'grid season-grid' }, seasons.map(se => {
     const ready = episodeCount(files.filter(f => f.season === se.number)), transfers = pendingFor(se.number).filter(d => !d.done);
@@ -2056,7 +2058,7 @@ const commandViews = new Set();     // nodes with _update(), refreshed on comman
 function refreshCommandViews() {
   for (const node of commandViews) { if (!node.isConnected) commandViews.delete(node); else node._update(); }
 }
-const commandStep = (cmd) => (/^Starting/.test(cmd?.job?.step || '') ? T('Adding…') : T('Finding the best copy…'));
+const commandStep = (cmd) => (/^(Starting|Startar)/.test(cmd?.job?.step || '') ? T('Adding…') : T('Finding the best copy…'));
 
 async function runDownloadCommand(body) {
   const key = commandKey(body);
@@ -2700,7 +2702,7 @@ async function openDeleteMany({ files, what, label, onDone }, opener) {
   try {
     info = await api('/api/library/delete-many-info', jsonPost({ ids }));
   } catch (err) {
-    body.replaceChildren(h('h2', { id: 'picker-title' }, T('Can’t delete this {0}', what)), h('p', { class: 'muted' }, err.message));
+    body.replaceChildren(h('h2', { id: 'picker-title' }, T('Can’t delete {0}', what)), h('p', { class: 'muted' }, err.message));
     return;
   }
   const episodes = plural(episodeCount(files), 'episode');
@@ -2738,15 +2740,15 @@ async function openDeleteMany({ files, what, label, onDone }, opener) {
   const forEveryone = info.canDeleteForEveryone && button(T('Delete the files for everyone ({0})', fmtBytes(info.sizeForEveryone)), 'del-confirm del-secondary', true);
 
   if (allShared) {
-    body.replaceChildren(h('h2', { id: 'picker-title' }, T('Remove this {0} from your library?', what)),
+    body.replaceChildren(h('h2', { id: 'picker-title' }, T('Remove {0} from your library?', what)),
       h('p', { class: 'del-name' }, label), h('p', { class: 'muted' }, T('{0}. Other people have {1} in their library too, so the files stay on the server. You can add them back from Discover.', episodes, info.videos === 1 ? T('it') : T('these'))),
       h('div', { class: 'del-actions' }, button(T('Remove {0} from my library', what), 'del-confirm'), forEveryone, cancel), status);
   } else {
     const lines = [T('{0} · {1} will be freed.', episodes, fmtBytes(info.size)),
       info.downloads && T('This also removes {0} from qBittorrent, so {1} seeding.', info.downloads === 1 ? T('its download') : T('{0} downloads', info.downloads), info.downloads === 1 ? T('it stops') : T('they stop')),
-      info.shared && T('{0} that other people also have only {1} your library.', plural(info.shared, 'video'), info.shared === 1 ? 'leaves' : 'leave'),
+      info.shared && T('{0} that other people also have only {1} your library.', plural(info.shared, 'video'), info.shared === 1 ? T('leaves') : T('leave')),
       T('This can’t be undone.')].filter(Boolean);
-    body.replaceChildren(h('h2', { id: 'picker-title' }, T('Delete this {0}?', what)),
+    body.replaceChildren(h('h2', { id: 'picker-title' }, T('Delete {0}?', what)),
       h('p', { class: 'del-name' }, label), h('p', { class: 'muted' }, lines.join(' ')),
       h('div', { class: 'del-actions' }, button(T('Delete {0}', what), 'del-confirm'), forEveryone, cancel), status);
   }
@@ -3356,7 +3358,7 @@ function roomStatus(room, host) {
   if (counting) return ['count', T('Starts {0}{1}', startLabel(room.startsAt), party.blocked ? T(' · tap Ready so it can start for you') : '')];
   if (party.blocked) return ['alert', T('Press Play to join playback')];
   if (room.waitingFor.length) return ['wait', T('Waiting for {0}', namesText(room.waitingFor))];
-  if (room.playing) return ['live', T('Playing for {0}', room.members.length === 1 ? 'you' : T('all {0}', room.members.length))];
+  if (room.playing) return ['live', T('Playing for {0}', room.members.length === 1 ? T('you') : T('all {0}', room.members.length))];
   return ['wait', party.isHost ? T('Paused · press Play when everyone’s ready') : T('Paused · {0} has the remote', host)];
 }
 // Where one viewer is: ready, getting ready, needs a tap, or still connecting.
@@ -6032,7 +6034,7 @@ function renderSettings() {
 
   {
     const unseen = state.status?.whatsNew?.unseen?.length || 0;
-    const open = h('button', { class: `chip whats-new-open${unseen ? ' has-new' : ''}`, type: 'button' }, unseen ? T('{0} new', unseen) : T('See updates'));
+    const open = h('button', { class: `chip whats-new-open${unseen ? ' has-new' : ''}`, type: 'button' }, unseen ? (unseen === 1 ? T('1 new') : T('{0} new', unseen)) : T('See updates'));
     open.addEventListener('click', showUpdateHistory);
     out.push(settingsRow(T('What’s new'), T('Everything that changed in Marquee lately.'), open));
   }
@@ -6349,7 +6351,15 @@ async function personUpdate(u, patch) {
 // ---------- activity (server owner only) ----------
 // Who has been using Marquee and what they did, from the server's activity log.
 const ACTIVITY_TEXT = {
-  watch: (d) => d,
+  // The log keeps these lines whole, in English.
+  watch: (d) => {
+    const room = String(d).match(/^started a room for (.*)$/);
+    if (room) return T('started a room for {0}', room[1]);
+    const party = String(d).match(/^planned a watch party for (.*)$/);
+    if (party) return T('planned a watch party for {0}', party[1]);
+    const invited = String(d).match(/^invited (.*) to (.*)$/);
+    return invited ? T('invited {0} to {1}', invited[1], invited[2]) : d;
+  },
   download: (d) => T('started downloading {0}', d),
   delete: (d) => T('deleted {0}', d),
   travel: (d) => T('saved {0}', d),
@@ -6581,7 +6591,7 @@ function activityDevice(entry) {
   const loc = entry.location;
   let country = loc?.country || '';
   if (country) { try { country = new Intl.DisplayNames([lang], { type: 'region' }).of(country); } catch { /* use country code */ } }
-  return [entry.device, [loc?.city, country].filter(Boolean).join(', ') || T('Location unavailable')].filter(Boolean).join(' · ');
+  return [T(entry.device), [loc?.city, country].filter(Boolean).join(', ') || T('Location unavailable')].filter(Boolean).join(' · ');
 }
 
 // ---------- house (server owner only) ----------
@@ -7657,7 +7667,7 @@ function enableActivityTab() {
     h('h2', { class: 'view-heading', id: 'activity-heading' }, T('Activity')),
     h('div', { id: 'activity-body' })));
   const tab = h('button', { class: 'tab', 'data-view': 'activity' });
-  tab.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M3 19c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5"/><path d="M16 4.8a3.5 3.5 0 0 1 0 6.4M18 13.8c1.8.7 3 2.6 3 5.2"/></svg><span>Activity</span>';
+  tab.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M3 19c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5"/><path d="M16 4.8a3.5 3.5 0 0 1 0 6.4M18 13.8c1.8.7 3 2.6 3 5.2"/></svg><span>' + T('Activity') + '</span>';
   tab.addEventListener('click', () => setView('activity'));
   $('.tabs').insertBefore(tab, $('.tab[data-view="settings"]'));
 }
