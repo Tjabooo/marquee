@@ -3026,6 +3026,12 @@ async function handleApi(req, res, url) {
     const d = await cachedTmdb(`/${m[1]}/${m[2]}/videos`, { include_video_language: [...new Set([lang, 'en', 'null'])].join(',') }, 12 * 3600 * 1000);
     return sendJson(res, 200, { trailer: pickTrailer(d.results || [], lang) });
   }
+  // The main actors, for the Cast line under a description. A show counts its whole run, not just the latest season.
+  if ((m = p.match(/^\/api\/title\/(movie|tv)\/(\d+)\/cast$/))) {
+    if (!tmdbOn()) return sendJson(res, 200, { cast: [] });
+    const d = await cachedTmdb(m[1] === 'tv' ? `/tv/${m[2]}/aggregate_credits` : `/movie/${m[2]}/credits`, {}, 24 * 3600 * 1000);
+    return sendJson(res, 200, { cast: (d.cast || []).map((c) => c.name).filter(Boolean).slice(0, 5) });
+  }
   // Anime get an Audio choice in the Download panel; `dubbed`: what this person last chose for it.
   if ((m = p.match(/^\/api\/title\/(movie|tv)\/(\d+)\/dub$/))) {
     if (!tmdbOn()) return sendJson(res, 200, { anime: false, dubbed: false });

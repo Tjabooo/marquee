@@ -54,6 +54,15 @@
   function load(key, fallback) { try { var v = JSON.parse(localStorage.getItem(key)); return v == null ? fallback : v; } catch (e) { return fallback; } }
   function token() { try { return localStorage.getItem(TOKEN_KEY); } catch (e) { return null; } }
 
+  // "Medverkande: …" under a description; stays empty when TMDB has no cast or the title isn't on TMDB.
+  function castLine(type, id, cls) {
+    var line = h('p', { class: cls });
+    if (id) api('/api/title/' + type + '/' + id + '/cast').then(function (d) {
+      if (d.cast && d.cast.length) line.textContent = T('Cast:') + ' ' + d.cast.join(', ');
+    }).catch(function () {});
+    return line;
+  }
+
   function api(path, body) {
     var headers = { 'X-Marquee-TV': '1', 'X-Marquee-Lang': 'sv' };
     var t = token();
@@ -1275,6 +1284,7 @@
     var meta = h('div', { class: 'discover-meta', text: [t.year, t.type === 'tv' ? T('Series') : T('Film'), t.rating ? '★ ' + t.rating : null]
       .concat(genreNames(t.type, t.genres)).filter(Boolean).join(' · ') });
     var overview = h('p', { class: 'discover-overview', text: t.overview || T('No description available.') });
+    var cast = castLine(t.type, t.id, 'discover-cast');
     var seasonBox = h('div', { class: 'discover-seasons' });
     var onWay = pendingFor(t);
     var status = h('div', { class: 'download-status', text: onWay ? '' : lib ? T('Already in your library. Smart Download will avoid duplicates.') : '' });
@@ -1300,7 +1310,7 @@
     // Seasons pick what Download gets; for a show you already have, Open comes first.
     if (lib) zone = 'actions';
     var actionsEl = h('div', { class: 'title-actions' }, actions.map(function (a) { return a.el; }));
-    var panel = h('div', { class: 'discover-panel' }, h('div', { class: 'discover-copy' }, title, meta, overview, seasonBox,
+    var panel = h('div', { class: 'discover-panel' }, h('div', { class: 'discover-copy' }, title, meta, overview, cast, seasonBox,
       actionsEl, strip.el, status));
     var el = h('div', { class: 'screen discover-title' }, backdrop, panel);
     followPending(function () { return alive; }, function () {
@@ -1431,7 +1441,7 @@
     strip.set(onWayHere());
     var el = h('div', { class: 'screen show' },
       h('div', { class: 'backdrop' }, img(s.backdrop)),
-      h('div', { class: 'show-head' }, h('h1', { text: s.title }), s.overview ? h('p', { class: 'overview', text: s.overview }) : null, strip.el),
+      h('div', { class: 'show-head' }, h('h1', { text: s.title }), s.overview ? h('p', { class: 'overview', text: s.overview }) : null, castLine('tv', s.tmdbId, 'show-cast'), strip.el),
       tabs, h('div', { class: 'list-viewport' }, list));
     var waited = onWayHere() ? onWayHere().items.length : 0;
     followPending(function () { return open; }, function () {

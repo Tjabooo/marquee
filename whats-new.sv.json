@@ -1,4 +1,13 @@
 {
+  "2026-11-08-cast-line": {
+    "title": "Se vilka som är med",
+    "items": {
+      "Cast under the description": {
+        "title": "Medverkande under beskrivningen",
+        "text": "Filmer och serier visar nu de viktigaste skådespelarna direkt under beskrivningen, både i appen och på TV:n."
+      }
+    }
+  },
   "2026-11-08-upgrade-where-you-look": {
     "title": "Uppgradera kvalitet finns nu där du behöver det",
     "items": {

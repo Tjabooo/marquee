@@ -1,6 +1,7 @@
 // Swedish for the TV app, keyed by the English line in tv.js and logic.js (loaded first by the shell).
 // tests/tv-app.test.mjs fails if a line in the app is missing here.
 window.MarqueeTvStrings = {
+  'Cast:': 'Medverkande:',
   'Save Space': 'Spara utrymme',
   'Balanced · 1080p': 'Balanserad · 1080p',
   'Best Quality': 'Bästa kvalitet',

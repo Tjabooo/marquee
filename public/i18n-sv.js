@@ -1,5 +1,6 @@
 // Swedish for the web app, keyed by the English line in the code (T('…')). See public/i18n.js.
 export default {
+  "Cast:": "Medverkande:",
   "Episodes {0}": "Avsnitt {0}",
   "{0} of {1} episodes": "{0} av {1} avsnitt",
   "Skipping {0} of {1} episodes": "Hoppar över {0} av {1} avsnitt",

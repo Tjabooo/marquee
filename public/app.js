@@ -1346,7 +1346,8 @@ function renderFilm() {
         h('button', { class: 'chip', onclick: (e) => openTravel(file, e.currentTarget) }, icon('phone'), T('To phone')),
         h('button', { class: 'chip', onclick: (e) => openDelete(file, e.currentTarget) }, icon('trash'), T('Delete')),
         state.me?.isOwner && h('button', { class: 'chip', onclick: (e) => openFilmIdentity(f, e.currentTarget) }, T('Identify film'))),
-      f.overview && h('p', { class: 'overview' }, f.overview)));
+      f.overview && h('p', { class: 'overview' }, f.overview),
+      f.season == null && castLine('movie', f.tmdbId)));
 }
 
 function openFilmIdentity(f, opener) {
@@ -1469,7 +1470,7 @@ function renderShow() {
       show.tmdbId && social.rateRow(`tv:${show.tmdbId}`, show.title),
       h('div', { class: 'title-actions' }, (tv || deleteShow) && h('div', { class: 'action-row' }, tv?.toggle, tv?.dubBtn, deleteShow), tv?.panel, transferPanel(entry)),
       state.status.search && show.tmdbId && watchBox({ id: show.tmdbId, type: 'tv', title: show.title }),
-      files.length > 0 && keepBar(files, renderShow), show.overview && h('p', { class: 'overview' }, show.overview), ...content));
+      files.length > 0 && keepBar(files, renderShow), show.overview && h('p', { class: 'overview' }, show.overview), castLine('tv', show.tmdbId), ...content));
   showStructure = JSON.stringify([showView.id, showView.season, entry.files, entry.transfers.map(d => [d.hash, d.season, (d.episodes || []).map(ep => [ep.season, ep.episode, ep.available, ep.libraryId])])]);
 }
 
@@ -1935,6 +1936,27 @@ function detailsHero(t) {
   return hero;
 }
 
+// "Cast: …" under a title's description. Sheets re-render while they're open, so names already fetched
+// go straight in instead of blinking; nothing shows when TMDB has no cast.
+const knownCasts = new Map();
+function castLine(type, id) {
+  if (!id || !['movie', 'tv'].includes(type)) return null;
+  const key = `${type}/${id}`;
+  const line = h('p', { class: 'cast-line' });
+  const fill = (names) => {
+    line.hidden = !names?.length;
+    if (names?.length) line.replaceChildren(h('span', { class: 'cast-label' }, T('Cast:')), ` ${names.join(', ')}`);
+  };
+  fill(knownCasts.get(key));
+  if (!knownCasts.has(key)) {
+    cachedFor(`/api/title/${key}/cast`, 60 * 60 * 1000).then(({ cast }) => {
+      knownCasts.set(key, cast);
+      fill(cast);
+    }).catch(() => {});
+  }
+  return line;
+}
+
 function renderDetails(t) {
   const files = matchesFor(t);
   const onServer = serverMatchesFor(t);
@@ -1960,6 +1982,7 @@ function renderDetails(t) {
       !isTv && filmVersionPick(t, () => renderDetails(t)),
       state.status.search && t.id && watchBox(t),
       t.overview && h('p', { class: 'overview' }, t.overview),
+      castLine(t.type, t.id),
       // Without download rights, episodes someone else has here can still be added (no copy is made).
       isTv && !canGet() && onServer.length > 0 && serverOffer(t, onServer),
       isTv && files.length > 0 && h('h3', {}, T('In your library')),
