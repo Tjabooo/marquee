@@ -69,3 +69,10 @@ test('the Audio choice is for anime, sends dub, and Dubbed counts only dual-audi
   assert.match(ui, /ready: full\.ready\.filter\(isDubbedCopy\), onServer: full\.onServer\.filter\(isDubbedCopy\)/);
   assert.match(ui, /b\.dub \? 'dub' : ''/, 'dubbed and subtitled requests are separate commands');
 });
+
+test('an anime others have here offers Add dubbed beside the one-press add', () => {
+  assert.match(app, /dubBtn\.hidden = !\(addsAll && dub\.anime && !addingAll\)/, 'only when one press would add copies, anime only');
+  assert.match(app, /dubBtn\.addEventListener\('click', \(\) => \{\s+dub\.choose\('dub'\);\s+ps\.open = true;/, 'opens the panel set to Dubbed');
+  assert.match(app, /tv\.toggle, tv\.dubBtn\)/);
+  assert.match(app, /tv\?\.toggle, tv\?\.dubBtn, deleteShow\)/);
+});

@@ -1731,6 +1731,8 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .dl-field .sub-select, .adv-field .sub-select { width: 100%; min-width: 0; height: 48px; padding-left: 12px; background-color: var(--velvet); }
 .dl-field[hidden] { display: none; }
 .title-actions > .dl-audio { max-width: 340px; }
+.dl-add-dubbed { display: inline-flex; align-items: center; justify-content: center; }
+.dl-add-dubbed[hidden] { display: none; }
 .dl-audio .adv-hint[hidden] { display: none; }
 .dl-range-boxes { display: flex; align-items: center; gap: 8px; }
 .dl-num { flex: 1 1 0; min-width: 0; height: 48px; padding: 0 10px; border: 1px solid var(--line); border-radius: 10px;

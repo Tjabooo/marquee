@@ -586,6 +586,7 @@ export default {
   "Original with subtitles": "Originalljud med undertexter",
   "Dubbed": "Dubbat",
   "Add dubbed version": "Lägg till dubbad version",
+  "Add dubbed": "Lägg till dubbat",
   "Only dual-audio releases, with English and Japanese. If there’s none, nothing is added.": "Bara utgåvor med dubbelt ljudspår, engelska och japanska. Finns ingen läggs inget till.",
   "Audio: {0}": "Ljud: {0}",
   "Switching…": "Byter…",

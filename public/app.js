@@ -1464,7 +1464,7 @@ function renderShow() {
   $('#sheet-body').replaceChildren(h('div', { class: `sheet-hero${show.backdrop ? '' : ' no-image'}`, style: show.backdrop ? `background-image:url("${show.backdrop}")` : null }),
     h('div', { class: 'sheet-content' }, h('h2', { id: 'sheet-title' }, show.title), h('ul', { class: 'facts' }, [show.year, T('Series'), libraryAvailability(entry)].filter(Boolean).map(text => h('li', {}, text))),
       show.tmdbId && social.rateRow(`tv:${show.tmdbId}`, show.title),
-      h('div', { class: 'title-actions' }, (tv || deleteShow) && h('div', { class: 'action-row' }, tv?.toggle, deleteShow), tv?.panel, transferPanel(entry)),
+      h('div', { class: 'title-actions' }, (tv || deleteShow) && h('div', { class: 'action-row' }, tv?.toggle, tv?.dubBtn, deleteShow), tv?.panel, transferPanel(entry)),
       state.status.search && show.tmdbId && watchBox({ id: show.tmdbId, type: 'tv', title: show.title }),
       files.length > 0 && keepBar(files, renderShow), show.overview && h('p', { class: 'overview' }, show.overview), ...content));
   showStructure = JSON.stringify([showView.id, showView.season, entry.files, entry.transfers.map(d => [d.hash, d.season, (d.episodes || []).map(ep => [ep.season, ep.episode, ep.available, ep.libraryId])])]);
@@ -1939,7 +1939,7 @@ function renderDetails(t) {
   // Shows: one Download button opens the season panel; films: Play and/or Download right here.
   const tv = isTv && canGet() && t.id ? showDownload(t, { onAdded: () => renderDetails(t) }) : null;
   const actions = isTv
-    ? h('div', { class: 'title-actions' }, tv && h('div', { class: 'action-row' }, tv.toggle), tv?.panel,
+    ? h('div', { class: 'title-actions' }, tv && h('div', { class: 'action-row' }, tv.toggle, tv.dubBtn), tv?.panel,
       transferSummary(() => titleState(t).transfers, t.title))
     : filmActions(t);
   const versionFiles = isTv ? [] : allVersions(files.filter((f) => f.kind === 'lib'));
@@ -2237,6 +2237,7 @@ function audioChoice(t, id, onChange) {
   const hint = h('p', { class: 'adv-hint' }, T('Only dual-audio releases, with English and Japanese. If there’s none, nothing is added.'));
   const field = h('div', { class: 'dl-field dl-audio', hidden: true }, h('label', { for: id }, T('Audio')), sel, hint);
   const choice = { field, anime: false, dubbing: () => choice.anime && sel.value === 'dub', lock: (on) => { sel.disabled = on; },
+    choose: (value) => { sel.value = value; dubChoices.set(t.id, value); paint(); }, focus: () => sel.focus(),
     remember: () => (choice.anime ? api(`/api/title/${t.type}/${t.id}/dub`, jsonPost({ dubbed: choice.dubbing() })).catch(() => {}) : null) };
   const paint = () => { hint.hidden = sel.value !== 'dub'; onChange(); };
   sel.addEventListener('change', () => { dubChoices.set(t.id, sel.value); paint(); });
@@ -2329,6 +2330,7 @@ function filmActions(t) {
 }
 
 // Shows: when someone else already has episodes here that you don't, one press adds all of them.
+// An anime also gets Add dubbed beside it: the panel, set to Dubbed, since those copies may be subtitled.
 // Otherwise the button opens the panel; the season and quality chosen stay while it's open.
 // Long seasons (Black Clover's 170, One Piece's 197) can download a range of episodes instead.
 const showPanels = new Map(); // tmdb id -> { open, season, profile, exact, last: { [season]: command key }, ranges: { [season]: { on, from, to } } }
@@ -2410,6 +2412,15 @@ function showDownload(t, { season = null, onAdded = null } = {}) {
     toggle.setAttribute('aria-expanded', String(ps.open));
     panel.hidden = !ps.open;
     if (ps.open) { load(); if (e.detail === 0) seasonSel.focus(); } // keyboard: straight to Season
+  });
+  const dubBtn = h('button', { type: 'button', class: 'chip action-btn stroke-icon dl-add-dubbed', hidden: true, 'aria-controls': panelId }, icon('plus'), h('span', {}, T('Add dubbed')));
+  dubBtn.addEventListener('click', () => {
+    dub.choose('dub');
+    ps.open = true;
+    panel.hidden = false;
+    load();
+    panel._update();
+    dub.focus();
   });
   seasonSel.addEventListener('change', () => { ps.season = Number(seasonSel.value); ps.touched = true; addError = ''; panel._update(); });
   profileSel.addEventListener('change', () => { ps.profile = profileSel.value; });
@@ -2506,6 +2517,7 @@ function showDownload(t, { season = null, onAdded = null } = {}) {
       : T('Marquee picks a good copy of the season and skips episodes you already have.');
     // The show's button: "Add to library" until some of it is yours, then "More episodes" for the rest.
     const addsAll = !dubbing && serverOnlyEpisodes(full).length > 0;
+    dubBtn.hidden = !(addsAll && dub.anime && !addingAll);
     const toggleText = addingAll ? T('Adding…') : full.ready.length && !addsAll ? T('More episodes') : T('Add to library');
     if (toggle._mode !== toggleText) {
       toggle._mode = toggleText;
@@ -2542,7 +2554,7 @@ function showDownload(t, { season = null, onAdded = null } = {}) {
   commandViews.add(panel);
   panel._update();
   if (ps.open) load();
-  return { toggle, panel };
+  return { toggle, dubBtn, panel };
 }
 
 // One missing episode in the show sheet: a quiet Download that runs the same command for it alone.
