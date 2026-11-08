@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-08-rare-subtitles",
+    "date": "2026-11-08",
+    "title": "Rare subtitle languages show up",
+    "items": [
+      {
+        "title": "Fewer subtitles missed",
+        "text": "The subtitle list could miss a language when a title had many subtitles in common languages. It now finds them. A language still only appears when someone has made subtitles in it for what you're watching."
+      }
+    ]
+  },
+  {
     "id": "2026-11-08-player-titles",
     "date": "2026-11-08",
     "title": "Episode names in the player",

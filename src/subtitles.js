@@ -165,14 +165,18 @@ async function remoteLanguages(info) {
   const hit = langCache.get(key);
   if (hit && Date.now() - hit.at < 6 * 3600 * 1000) return hit.codes;
   const codes = new Set();
-  // Searches don't count toward the download quota.
-  for (let page = 1; page <= 3; page++) {
-    const data = await osFetch(query(searchParams(info, { languages: [...LANGS].sort().join(','), page })));
+  // Searches don't count toward the download quota. Common languages fill the first pages, so a rare one
+  // can sit many pages in: each round asks only for what's still missing, until a round finds nothing new.
+  for (let round = 0; round < LANGS.length; round++) {
+    const missing = LANGS.filter((l) => !codes.has(l));
+    if (!missing.length) break;
+    const before = codes.size;
+    const data = await osFetch(query(searchParams(info, { languages: missing.sort().join(',') })));
     for (const s of data.data || []) {
       const l = String(s.attributes?.language || '').toLowerCase();
       if (LANG_NAMES[l]) codes.add(l);
     }
-    if (page >= (data.total_pages || 1) || codes.size === LANGS.length) break;
+    if (codes.size === before) break;
   }
   langCache.set(key, { at: Date.now(), codes });
   if (langCache.size > 300) langCache.delete(langCache.keys().next().value);
