@@ -31,10 +31,10 @@ body:has(#view-notes:not([hidden])) main { padding-bottom: 0; }
 .note-tag { background: var(--seat); padding: 1px 5px; border-radius: 4px; font-size: 10px; }
 .note-attachments { display: grid; gap: 10px; margin-top: 8px; }
 .note-attachment { min-width: 0; display: grid; gap: 4px; }
-.note-attachment img, .note-attachment video { display: block; max-width: 100%; max-height: 420px; border-radius: 8px; object-fit: contain; background: var(--velvet); }
+.note-attachment img, .note-attachment video, .note-attachment canvas { display: block; max-width: 100%; max-height: 420px; border-radius: 8px; object-fit: contain; background: var(--velvet); }
 .note-attachment audio { max-width: 100%; width: 100%; }
 .note-video { position: relative; display: block; width: fit-content; max-width: 100%; padding: 0; border: 0; border-radius: 8px; overflow: hidden; background: var(--velvet); cursor: pointer; }
-.note-video video { pointer-events: none; }
+.note-video video, .note-video canvas { pointer-events: none; }
 .note-video-play {
   position: absolute; inset: 0; margin: auto; width: 52px; height: 52px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;

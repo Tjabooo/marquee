@@ -1,5 +1,6 @@
 import { T, locale } from './i18n.js';
 import { parseDiscordExport } from './notes-import.js';
+import { createStills } from './note-stills.js';
 
 export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQuery, copyText, playVideo, overlay }) {
   const state = { anchor: null, focus: null, items: [], filter: 'all', total: 0, due: 0, cursor: null, loaded: false, loading: false, draft: '', reminder: '', files: [], sending: false, follow: true, edit: null, open: null, request: 0, seen: '' };
@@ -8,6 +9,7 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
   // Built cards are kept and reused while their note is unchanged, so a refresh never rebuilds
   // images, videos or audio (which made the list jump and restarted playback).
   const cards = new Map(), days = new Map();
+  const showStill = createStills();
   const touch = () => matchMedia('(hover: none) and (pointer: coarse)').matches;
   const date = (ms) => new Date(ms).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short' });
   const localInput = (ms) => {
@@ -152,7 +154,8 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
         onclick: (e) => { if (!overlay || e.ctrlKey || e.metaKey || e.shiftKey) return; e.preventDefault(); showImage(`${href}?view=1`, a.name); } }, img);
     } else if (a.fileId && a.mime?.startsWith('video/')) {
       // A still of the first frame; playing opens Marquee's own player.
-      const still = h('video', { src: `${href}?view=1#t=0.1`, muted: true, playsinline: true, preload: 'metadata', tabindex: -1, 'aria-hidden': 'true' });
+      const still = h('video', { muted: true, playsinline: true, preload: 'metadata', tabindex: -1, 'aria-hidden': 'true' });
+      showStill(still, `${href}?view=1#t=0.1`);
       preview = h('button', { type: 'button', class: 'note-video', 'aria-label': T('Play {0}', a.name), onclick: () => playVideo(a) }, still,
         h('span', { class: 'note-video-play' }, icon('play')));
     }
