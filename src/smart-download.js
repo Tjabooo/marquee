@@ -21,7 +21,7 @@
 import crypto from 'node:crypto';
 import { showKey } from './shows.js';
 import { sameShow, episodesIn, episodeQueries } from './season.js';
-import { pickBest, pickEpisode, choose } from './recommend.js';
+import { pickBest, pickEpisode, choose, pictureScore, perItemSize, sourceOf } from './recommend.js';
 import { seasonPacks, packQueries, episodeQueriesAnime } from './anime.js';
 
 const jobs = new Map();          // id -> job
@@ -43,16 +43,19 @@ export function smartJob(id, { userId, owner = false } = {}) {
 }
 
 // spec: { type: 'movie' | 'tv', title, year?, originalTitle?, season?, episodes? (only these), range? (episodes is a
-//   chosen range: batches may serve it), anime? (context),
+//   chosen range: batches may serve it), anime? (context), upgrade? ({ episodes, bytes, names, quality }: the season
+//   as it is now; only a clearly better season pack is downloaded, and deps.upgrading() swaps the old files later),
 //   want: { profile, prefer, quality, maxBytes, audioLang }, subs?, requester? }
 // deps: { parseName, searchTorrents, magnetFor1337x, addDownload, wantSubtitles?, log?, sleep?,
 //   filmHave?(), freeBytes?(type), seasonEpisodes?(title, year, season), haveEpisodes?(key, season, ctx),
-//   trimPack?(link, season, owned, ctx), removePack?(link), inOrder?(added, season) (episodes in order) }
+//   trimPack?(link, season, owned, ctx), removePack?(link), inOrder?(added, season) (episodes in order),
+//   upgrading?(added, season) (replace the old episodes as the new ones finish) }
 export function startSmartJob(spec, deps) {
   for (const [id, j] of jobs) if (j.state !== 'running' && Date.now() - j.started > JOB_TTL) jobs.delete(id);
   const key = showKey(spec.title);
   const only = Array.isArray(spec.episodes) && spec.episodes.length ? [...new Set(spec.episodes)].sort((a, b) => a - b) : null;
-  const target = spec.type === 'tv' ? `tv:${key === 'housemd' ? 'house' : key}:${spec.season}:${only?.join(',') || 'all'}` : `movie:${key}:${spec.year || ''}`;
+  const target = (spec.type === 'tv' ? `tv:${key === 'housemd' ? 'house' : key}:${spec.season}:${only?.join(',') || 'all'}` : `movie:${key}:${spec.year || ''}`)
+    + (spec.upgrade ? ':upgrade' : '');
   const running = [...jobs.values()].find((j) => j.state === 'running' && j.requester === (spec.requester ?? null) && j.target === target);
   if (running) return running.id; // pressing Download twice never queues anything twice
   const job = {
@@ -61,7 +64,7 @@ export function startSmartJob(spec, deps) {
     outcome: null, message: null, total: null, have: [], queued: [], added: [], unavailable: [], upcoming: 0, error: null,
   };
   jobs.set(job.id, job);
-  (spec.type === 'tv' ? runSeason(job, { ...spec, only }, deps) : runFilm(job, spec, deps)).catch((e) => {
+  (spec.type === 'tv' ? (spec.upgrade ? runUpgrade : runSeason)(job, { ...spec, only }, deps) : runFilm(job, spec, deps)).catch((e) => {
     job.state = 'failed';
     job.error = e.status === 503 ? 'The download service is unavailable. Try again shortly.' : e.message || String(e);
     job.message = job.error;
@@ -214,7 +217,7 @@ async function runSeason(job, spec, deps) {
     for (const query of titles.flatMap((t) => [`${t} S${pad(season)}`, `${t} Season ${season}`])) {
       try { results = [...results, ...await search(query, 'tv', deps)]; } catch (e) { if (e.status === 503) throw e; continue; }
       best = pickBest(results.filter(usable), { ...want, type: 'tv', episodes: aired?.length || 0, missing: missing?.length || 0, freeBytes }, deps.parseName);
-      if (best.pick) break;
+      if (best.pick && want.profile !== 'best') break; // Best Quality: every name before choosing
     }
     packWhy = best.why;
     if (best.pick) {
@@ -272,6 +275,55 @@ async function runSeason(job, spec, deps) {
   }
   if (!missing) job.total = job.have.length + job.queued.length + covered.size;
   finish(job, deps, packWhy);
+}
+
+// Upgrade quality: the season is here but looks poor. Only a season pack that is clearly better
+// (pictureScore, recommend.js) than what's here is downloaded, by Best Quality rules, with nothing
+// switched off; the old episodes stay playable until each new one has finished (deps.upgrading).
+const UPGRADE_MARGIN = 0.75;
+const sameRelease = (a, b) => a.toLowerCase().replace(/[^a-z0-9]+/g, '') === b.toLowerCase().replace(/[^a-z0-9]+/g, '');
+const perEpisodeText = (bytes) => `${Math.round(bytes / 1024 ** 3 * 10) / 10} GB per episode`;
+const describe = (quality, name, bytes) => [quality === '2160p' ? '4K' : quality, { remux: 'Remux', bluray: 'BluRay', web: 'WEB-DL', webrip: 'WEBRip', tv: 'TV capture', dvd: 'DVD', upscale: 'upscale' }[sourceOf(name)], bytes && perEpisodeText(bytes)].filter(Boolean).join(' · ');
+
+async function runUpgrade(job, spec, deps) {
+  const { season } = spec;
+  const now = spec.upgrade;
+  const plan = deps.seasonEpisodes ? await deps.seasonEpisodes(spec.title, spec.year, season) : null;
+  if (plan?.title) job.title = plan.title;
+  const aired = Array.isArray(plan?.episodes) ? plan.episodes.filter((e) => e.aired).map((e) => e.episode) : null;
+  job.total = aired?.length || now.episodes.length;
+  job.step = 'Checking which episodes you have…';
+  const have = (await deps.haveEpisodes?.(showKey(job.title), season, null)) || new Set();
+  if (have.queued?.size) return done(job, 'queued', 'Some episodes of this season are still downloading. Upgrade once they’ve finished.');
+  const count = aired?.length || now.episodes.length;
+  const current = { name: now.names[0] || '', size: now.bytes / now.episodes.length * count, quality: now.quality || null };
+  const want = { ...spec.want, profile: 'best', quality: spec.want?.quality || null, title: job.title, season, type: 'tv', episodes: count, missing: count };
+  const bar = pictureScore(current, want, 'pack') + UPGRADE_MARGIN;
+  const nowText = describe(now.quality, current.name, now.bytes / now.episodes.length);
+  job.step = 'Looking for a better season pack…';
+  const freeBytes = await deps.freeBytes?.('tv');
+  const titles = [job.title, ...(showKey(job.title) === 'house' ? ['House MD'] : showKey(job.title) === 'housemd' ? ['House'] : [])];
+  let results = [];
+  for (const query of titles.flatMap((t) => [`${t} S${pad(season)}`, `${t} Season ${season}`])) {
+    try { results = [...results, ...await search(query, 'tv', deps)]; } catch (e) { if (e.status === 503) throw e; }
+  }
+  const better = results.filter((r) => usable(r) && !now.names.some((n) => sameRelease(n, r.name))
+    && (!r.size || pictureScore(r, want, 'pack') >= bar)); // size unknown: can't tell, so not an upgrade
+  const best = pickBest(better.filter((r) => r.size), { ...want, freeBytes }, deps.parseName);
+  if (!best.pick) {
+    const why = best.why && !/clearly matches/.test(best.why) ? ` ${best.why}` : '';
+    return done(job, 'none', `Nothing clearly better is out there right now. Yours: ${nowText}.${why}`);
+  }
+  job.step = 'Starting download…';
+  const added = await add(best.pick, 'tv', spec, deps);
+  deps.inOrder?.(added, season);
+  const trim = added.existing ? null : await deps.trimPack?.(added.link, season, new Set());
+  const eps = trim?.covered ? [...trim.covered].sort((a, b) => a - b) : now.episodes;
+  deps.upgrading?.(added, season);
+  const per = perItemSize(best.pick, want, 'pack');
+  job.added.push({ pack: true, upgrade: true, name: best.pick.name, quality: best.pick.quality, episodes: eps, size: best.pick.size || null });
+  done(job, 'started', `Upgrading to ${describe(best.pick.quality, best.pick.name, per)} (was ${nowText}). Each episode is swapped for the new one as it finishes; watch progress carries over.`);
+  deps.log?.(`[upgrade] ${job.title} S${pad(season)}: ${current.name} -> ${best.pick.name}`);
 }
 
 function finish(job, deps, packWhy) {

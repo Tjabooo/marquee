@@ -958,8 +958,10 @@ async function startSmartFor(user, body) {
   const animeCtx = anime.isAnimeDetails(details)
     ? anime.buildContext(type, tmdbId, tmdb, { details }).catch((e) => { console.warn(`[anime] ${title}: ${e.message}`); return null; })
     : null; // a promise: the job waits for it, the Download button doesn't
+  const upgrade = type === 'tv' && body.upgrade ? await upgradeSource(user, title, seasonNo) : null;
   const id = smart.startSmartJob({
-    type, title, year, season: seasonNo, episodes: episodes?.length ? episodes : null, range, requester: user.id, subs, anime: animeCtx,
+    type, title, year, season: seasonNo, episodes: upgrade || !episodes?.length ? null : episodes, range: !upgrade && range, requester: user.id, subs, anime: upgrade ? null : animeCtx,
+    upgrade: upgrade && { episodes: upgrade.episodes, bytes: upgrade.bytes, names: upgrade.names, quality: upgrade.quality },
     originalTitle: original && original !== title && /^[\p{Script=Latin}\d\s\p{P}]+$/u.test(original) ? original : null,
     want: downloadWant(user, body),
   }, {
@@ -971,10 +973,105 @@ async function startSmartFor(user, body) {
     haveEpisodes: (key, n, ctx) => haveEpisodes(key, n, user, ctx),
     trimPack: (link, n, owned, ctx) => trimSeasonPack(link, n, owned, { ctx }), removePack: removeNewPack,
     inOrder: ({ hash, existing }, n) => { if (!existing) orderEpisodes(hash, shows.showKey(title), n); },
+    upgrading: ({ hash }, n) => registerUpgrade(hash, { title, season: n, by: user.id, old: upgrade?.old || [] }),
     log: (msg) => console.log(msg),
   });
-  return { id, title, type, season: seasonNo, episodes };
+  return { id, title, type, season: seasonNo, episodes: upgrade ? null : episodes, upgrade: Boolean(upgrade) };
 }
+
+// ---- Upgrade quality ----
+// The season as this person has it (their library): its files, episodes, size and release name.
+// Replacing deletes files, so someone else's copy can only be upgraded by the server's owner.
+async function upgradeSource(user, title, seasonNo) {
+  const key = shows.showKey(title);
+  const items = ((await libraryVisibleItems(await scanLibrary(), user)) || [])
+    .filter((i) => i.season === seasonNo && i.episode != null && season.sameShow(i.title, key));
+  if (!items.length) throw new HttpError(409, 'There’s nothing of this season in your library to upgrade.');
+  if (!user.isOwner && items.some((i) => accounts.heldOutside(accounts.mediaKey(i.full), user.id))) {
+    throw new HttpError(403, 'Someone else also has these episodes, so only the server’s owner can upgrade them.');
+  }
+  if ([...upgrades.values()].some((u) => u.old.some((o) => items.some((i) => samePath(i.full, o.full))))) {
+    throw new HttpError(409, 'This season is already being upgraded. The old episodes are swapped as the new ones finish.');
+  }
+  const old = items.map((i) => ({ id: i.id, full: i.full, episodes: season.episodesIn(i.file, seasonNo).length ? season.episodesIn(i.file, seasonNo) : [i.episode] }));
+  const folder = path.basename(path.dirname(items[0].full));
+  const files = items.map((i) => path.basename(i.file, path.extname(i.file)));
+  const names = [...new Set(/\b(s\d{1,2}|season)\b/i.test(folder.replace(/[._]+/g, ' ')) ? [folder, ...files] : files)];
+  return {
+    old, names, bytes: items.reduce((n, i) => n + (i.size || 0), 0),
+    episodes: [...new Set(old.flatMap((o) => o.episodes))].sort((a, b) => a - b),
+    quality: parseName(names[0], { file: false }).quality || items[0].quality || null,
+  };
+}
+// New download hash -> { title, season, by, old: [{ id, full, episodes }], at }. Saved across restarts.
+const UPGRADE_FILE = path.join(DATA_DIR, '.marquee-upgrades.json');
+const upgrades = new Map(Object.entries((() => { try { return JSON.parse(fs.readFileSync(UPGRADE_FILE, 'utf8')); } catch { return {}; } })()));
+const saveUpgrades = () => { try { fs.writeFileSync(UPGRADE_FILE, JSON.stringify(Object.fromEntries(upgrades))); } catch (e) { console.warn(`[upgrade] ${e.message}`); } };
+function registerUpgrade(hash, entry) {
+  if (!hash || !entry.old.length) return;
+  upgrades.set(hash.toLowerCase(), { ...entry, at: Date.now() });
+  saveUpgrades();
+}
+// Each old episode goes once its new one has finished: libraries and watch progress move to the new
+// file first, so nobody loses their place. Busy files (playing, converting, in a Watch Together room)
+// wait for the next round. Episodes the new download doesn't have keep their old file. If the new
+// download is removed, the old episodes simply stay.
+let upgradeBusy = false;
+async function upgradeRound() {
+  if (!QBIT_URL || !upgrades.size || upgradeBusy) return;
+  upgradeBusy = true;
+  let changed = false;
+  try {
+    const list = await qbit(`/api/v2/torrents/info?hashes=${[...upgrades.keys()].join('|')}`);
+    const byHash = new Map(list.map((t) => [t.hash.toLowerCase(), t]));
+    for (const [hash, u] of [...upgrades]) {
+      const label = `${u.title} S${String(u.season).padStart(2, '0')}`;
+      const t = byHash.get(hash);
+      if (!t) { upgrades.delete(hash); changed = true; console.log(`[upgrade] ${label}: new download removed, old episodes kept`); continue; }
+      let files;
+      try { files = await torrentFileMetadata(t, { fresh: true }); } catch { continue; }
+      const ready = new Map(); // episode -> finished new file
+      for (const f of files) {
+        if (f.priority === 0 || !isVideo(f.name) || f.progress < 1) continue;
+        const full = torrentFilePath(t, f);
+        if (!fileExists(full)) continue;
+        for (const ep of season.episodesIn(path.basename(f.name.replace(/\\/g, '/')), u.season)) if (!ready.has(ep)) ready.set(ep, full);
+      }
+      const finished = t.progress >= 1 && !BUSY_STATES.test(t.state || '');
+      const left = [];
+      for (const old of u.old) {
+        const target = old.episodes.every((e) => ready.has(e)) ? ready.get(old.episodes[0]) : null;
+        if (!target) { if (!finished) left.push(old); continue; }
+        if (samePath(target, old.full)) continue;
+        if (!await replaceWithUpgrade(old, target)) left.push(old);
+      }
+      if (left.length !== u.old.length) changed = true;
+      if (left.length) u.old = left;
+      else { upgrades.delete(hash); console.log(`[upgrade] ${label}: done, every old episode replaced`); }
+    }
+  } catch (e) {
+    console.warn(`[upgrade] ${e.message}`);
+  } finally {
+    if (changed) saveUpgrades();
+    upgradeBusy = false;
+  }
+}
+async function replaceWithUpgrade(old, target) {
+  if (!fileExists(old.full)) return true;
+  const oldKey = accounts.mediaKey(old.full), newKey = accounts.mediaKey(target);
+  if (converter.isBusy(old.full) || watchRooms.protects(oldKey)) return false;
+  accounts.moveMedia(oldKey, newKey);
+  try {
+    await deleteMedia(old.id, 'file', { everyone: true });
+    if (oldKey) accounts.markGone(oldKey);
+    console.log(`[upgrade] replaced ${path.basename(old.full)} with ${path.basename(target)}`);
+    return true;
+  } catch (e) {
+    console.warn(`[upgrade] ${path.basename(old.full)} kept for now: ${e.message}`);
+    return false;
+  }
+}
+setInterval(() => upgradeRound(), 30_000).unref();
 
 // ---- Save for later and Follow (watchlist.js) ----
 const tmdbOn = () => Boolean(TMDB_TOKEN || TMDB_KEY);
@@ -2582,8 +2679,8 @@ async function handleApi(req, res, url) {
   // ---- Download: one command for a film, a season or some episodes (see smart-download.js) ----
   if (p === '/api/downloads/smart' && req.method === 'POST') {
     const body = await readJson(req);
-    const { id, title, type, season: seasonNo, episodes } = await startSmartFor(user, body);
-    activity.record(req, 'download', type === 'tv'
+    const { id, title, type, season: seasonNo, episodes, upgrade } = await startSmartFor(user, body);
+    activity.record(req, upgrade ? 'upgrade' : 'download', type === 'tv'
       ? `${title} season ${seasonNo}${episodes?.length ? `, ${episodes.length === 1 ? `episode ${episodes[0]}` : `${episodes.length} episodes`}` : ''}` : title);
     return sendJson(res, 202, { id });
   }

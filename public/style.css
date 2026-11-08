@@ -1716,6 +1716,14 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
   border: 1px dashed var(--line); border-radius: 12px; }
 .dl-result { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 12px; }
 .dl-result:has(.dl-status:empty):has(.dl-retry[hidden]) { display: none; }
+.dl-upgrade-box { display: grid; justify-items: start; gap: 8px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.dl-upgrade-box[hidden], .dl-upgrade[hidden], .dl-upgrade-note[hidden] { display: none; }
+.dl-upgrade { display: inline-flex; align-items: center; gap: 6px; height: 44px; color: var(--paper); }
+.dl-upgrade svg { width: 18px; height: 18px; }
+.dl-upgrade[aria-disabled="true"] { opacity: .55; cursor: default; }
+.dl-upgrade-note { margin: 0; }
+.dl-upgrade-status { margin: 0; font-size: 13px; line-height: 1.5; color: var(--paper); }
+.dl-upgrade-status:empty { display: none; }
 .dl-panel .advanced { margin-top: 8px; }
 
 .advanced > summary { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; font-size: 13px; color: var(--dust); cursor: pointer; list-style: none; border-radius: 8px; }

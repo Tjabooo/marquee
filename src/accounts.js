@@ -550,6 +550,17 @@ export function removeEntry(userId, key) {
 export function removeAll(key) {
   db.prepare('DELETE FROM library WHERE media_key = ?').run(key);
 }
+// A video replaced by a better copy (Upgrade quality): everyone who had the old one has the new one,
+// with the same countdown and the same place in it. Returns the number of libraries moved.
+export function moveMedia(oldKey, newKey) {
+  if (!oldKey || !newKey || oldKey === newKey) return 0;
+  track(newKey);
+  const moved = db.prepare('UPDATE OR IGNORE library SET media_key = ? WHERE media_key = ?').run(newKey, oldKey).changes;
+  db.prepare('DELETE FROM library WHERE media_key = ?').run(oldKey); // rows the new key already had
+  db.prepare('UPDATE OR IGNORE progress SET ref = ? WHERE ref = ?').run(`m:${newKey}`, `m:${oldKey}`);
+  db.prepare('DELETE FROM progress WHERE ref = ?').run(`m:${oldKey}`);
+  return moved;
+}
 
 export function extend(userId, key) {
   const ids = libraryMates(userId);

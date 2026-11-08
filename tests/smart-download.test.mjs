@@ -196,3 +196,40 @@ test('Retry unavailable (chosen episodes) never searches a pack and skips what a
   })));
   assert.ok(queries.every((q) => /E06|2x06/.test(q))); assert.equal(job.outcome, 'started');
 });
+
+// ---------- picture quality and Upgrade quality ----------
+const house = [
+  ['House.S03.1080p.BluRay.REMUX.AVC.DTS.5.1-NOGRP', 20, 174.8 * GB],
+  ['House.S03.1080p.BluRay.x264-SHORTBREHD', 20, 77.4 * GB],
+  ['House, M.D. Season 3 S03 (1080p Bluray x265 AAC 5.1 Joy)[UTR]', 213, 8.1 * GB],
+];
+const houseWant = { type: 'tv', title: 'House', season: 3, episodes: 24, missing: 24 };
+test('Best Quality ranks by picture, not popularity: a well-seeded BluRay beats a tiny popular encode', () => {
+  assert.equal(pick(house, { ...houseWant, profile: 'best' }), 'House.S03.1080p.BluRay.x264-SHORTBREHD');
+  assert.equal(pick(house.slice(0, 1).concat(house.slice(2)), { ...houseWant, profile: 'best' }), 'House.S03.1080p.BluRay.REMUX.AVC.DTS.5.1-NOGRP',
+    'a remux when the alternative is starved');
+});
+
+const upgradeDeps = (over = {}) => ({
+  parseName, magnetFor1337x: async () => null, sleep: async () => {},
+  searchTorrents: async () => ({ results: results(house) }),
+  seasonEpisodes: aired(24), haveEpisodes: async () => owned(Array.from({ length: 24 }, (_, i) => i + 1)),
+  addDownload: async () => ({ hash: 'abc' }), ...over,
+});
+const joyNow = { episodes: Array.from({ length: 24 }, (_, i) => i + 1), bytes: 24 * 0.4 * GB, names: ['House, M.D. Season 3 (1080p x265 Joy)'], quality: '1080p' };
+test('Upgrade quality downloads a clearly better pack and hands the swap to the server', async () => {
+  const added = [], swaps = [];
+  const job = await wait(startSmartJob({ type: 'tv', title: 'House', season: 3, upgrade: joyNow, want: { profile: 'balanced' } }, upgradeDeps({
+    addDownload: async (d) => { added.push(d); return { hash: 'abc' }; }, upgrading: (a, n) => swaps.push([a.hash, n]),
+  })));
+  assert.equal(job.outcome, 'started'); assert.equal(added[0].name, 'House.S03.1080p.BluRay.x264-SHORTBREHD');
+  assert.deepEqual(swaps, [['abc', 3]]); assert.match(job.message, /was 1080p · 0\.4 GB per episode/);
+});
+test('Upgrade quality says so when nothing is clearly better, and never re-downloads the same release', async () => {
+  const added = [];
+  const now = { ...joyNow, bytes: 24 * 3.2 * GB, names: ['House.S03.1080p.BluRay.x264-SHORTBREHD'] };
+  const job = await wait(startSmartJob({ type: 'tv', title: 'House', season: 3, upgrade: now, want: {} }, upgradeDeps({
+    searchTorrents: async () => ({ results: results(house.slice(1)) }), addDownload: async (d) => { added.push(d); return {}; },
+  })));
+  assert.equal(job.outcome, 'none'); assert.match(job.message, /Nothing clearly better/); assert.equal(added.length, 0);
+});

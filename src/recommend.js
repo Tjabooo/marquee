@@ -14,6 +14,11 @@
 // a lively one. Among those: more seeders, trusted uploaders, sane sizes; remuxes (huge), burned-in
 // subtitles, Dolby Vision without an HDR10 fallback (odd colours on most screens) and dubbed-only
 // releases in a language you didn't ask for count against.
+// Picture quality (fidelity): the size per film or episode against what its resolution needs, plus
+// the source (BluRay, WEB-DL, HDTV…) and groups known for tiny re-encodes. A 0.3 GB "1080p" episode
+// is 1080p in name only. Balanced avoids starved encodes; Best Quality ranks by picture first, so a
+// popular tiny encode no longer beats a well-seeded BluRay (House S03: Joy 0.3 GB vs 3 GB per episode).
+// Best Quality also weighs 4K, 1440p and 1080p together by that picture score.
 // Hard limits, never relaxed: an exact resolution chosen in Advanced, the largest size per film or
 // episode from Settings, and the free space on the media disk.
 import { showKey } from './shows.js';
@@ -62,9 +67,55 @@ export function languageFit(name, audioLang = '') {
   return other ? 0 : 1;
 }
 
-// Higher is better; only compares torrents of the same quality.
+// What each resolution needs to look like itself, in GB per film / per episode (x264-equivalent).
+const NEEDS = {
+  movie: { '2160p': 20, '1440p': 10, '1080p': 8, '720p': 4, SD: 1.5 },
+  episode: { '2160p': 4, '1440p': 2.5, '1080p': 2, '720p': 1, SD: 0.4 },
+};
+const EFFICIENT = /\b(x\.?265|h\.?265|hevc|av1)\b/i; // more picture per byte than x264
+// The part of the name after the title: groups and tags, never words of the title ("Joy (2015)").
+const tagsOf = (name) => String(name).replace(/[._]+/g, ' ').replace(/^.*?\b((?:19|20)\d{2}|S\d{1,2}|season\s?\d{1,2})\b/i, '');
+// Groups whose releases are tiny re-encodes (fine on a phone, soft on a big screen).
+const TINY_GROUPS = /\b(joy|yify|yts(?:\s?(?:mx|ag|lt))?|psa|megusta|pahe|shaanig|msd|rmteam|ganool|tgx ?x265)\b/i;
+
+// log2 of size against need: 0 = what the resolution needs, -1 = half, +1 = twice. null = size unknown.
+export function fidelity(r, want = {}, kind = 'movie') {
+  const size = perItemSize(r, want, kind);
+  if (!size) return null;
+  const table = kind === 'movie' ? NEEDS.movie : NEEDS.episode;
+  const need = table[r.quality] ?? table['720p'];
+  return Math.log2(size * (EFFICIENT.test(r.name) ? 1.5 : 1) / (need * GB));
+}
+// Where the picture came from: a disc or a clean web download beats a TV capture or an upscale.
+export function sourceOf(name) {
+  const n = tagsOf(name);
+  if (/\b(upscaled?|ai ?upscale|regrade)\b/i.test(n)) return 'upscale';
+  if (/\bremux\b/i.test(n)) return 'remux';
+  if (/\b(blu[ -]?ray|bdrip|brrip|bdremux|bd[ -]?rip|uhd[ -]?bd)\b/i.test(n)) return 'bluray';
+  if (/\b(web[ -]?dl|amzn|nf|dsnp|hmax|atvp|max|pcok|hulu)\b/i.test(n) && !/\bweb[ -]?rip\b/i.test(n)) return 'web';
+  if (/\bweb[ -]?rip\b/i.test(n)) return 'webrip';
+  if (/\b(hdtv|pdtv|tvrip|hdtvrip|dsr)\b/i.test(n)) return 'tv';
+  if (/\b(dvd[ -]?rip|dvd|xvid)\b/i.test(n)) return 'dvd';
+  return null;
+}
+const SOURCE_BONUS = { remux: 0, bluray: 0.3, web: 0.2, webrip: 0, tv: -0.4, dvd: -0.4, upscale: -1 };
+const RES_BONUS = { '2160p': 0.5, '1440p': 0.25, '1080p': 0 };
+
+// Picture only (no seeders): how good a release will look. Used to rank Best Quality and to decide
+// whether a release is an upgrade over what's already here.
+export function pictureScore(r, want = {}, kind = 'movie') {
+  const f = fidelity(r, want, kind);
+  let s = f == null ? 0 : Math.max(-3, Math.min(1, f));
+  s += SOURCE_BONUS[sourceOf(r.name)] ?? 0;
+  if (TINY_GROUPS.test(tagsOf(r.name))) s -= 1;
+  return s;
+}
+
+// Higher is better; only compares torrents of the same quality (Best Quality: of 1080p and up).
 function score(r, want, kind) {
-  let s = Math.log10(r.seeders + 1);
+  const profile = want.profile;
+  // Best Quality: seeders matter for speed, not much beyond a healthy swarm.
+  let s = profile === 'best' ? Math.log10(Math.min(r.seeders, 100) + 1) * 0.6 : Math.log10(r.seeders + 1);
   if (r.trusted) s += 0.3;
   if (r.tags?.includes('Remux')) s -= want.profile === 'best' ? 0.75 : 2;
   if (/\b(hc|hardsub|korsub|hcsubs?)\b/i.test(r.name)) s -= 2;
@@ -77,17 +128,26 @@ function score(r, want, kind) {
   const size = perItemSize(r, want, kind);
   if (size) {
     const unit = kind === 'movie' ? 1 : 0.15; // an episode is roughly a seventh of a film
-    const cap = (r.quality === '2160p' ? 30 : 16) * GB * unit;
+    const cap = (r.quality === '2160p' ? 30 : 16) * GB * unit * (profile === 'best' ? 2.5 : 1);
     if (size > cap) s -= 1;
     if (size < 0.5 * GB * unit && ['1080p', '1440p', '2160p'].includes(r.quality)) s -= 1.5; // too small to be real
-    if (want.profile === 'save') s -= size / (SAVE_TARGET[kind === 'movie' ? 'movie' : 'episode']) * 0.5;
+    if (profile === 'save') s -= size / (SAVE_TARGET[kind === 'movie' ? 'movie' : 'episode']) * 0.5;
+  }
+  if (profile === 'best') {
+    s += pictureScore(r, want, kind) + (RES_BONUS[r.quality] ?? 0) + (want.prefer && r.quality === want.prefer ? 1 : 0);
+  } else if (profile !== 'save') {
+    // Balanced: no reward for size, but a starved encode (under half of what it needs) counts against.
+    const f = fidelity(r, want, kind);
+    if (f != null && f < -1) s += Math.max(-2, f + 1);
+    if (TINY_GROUPS.test(tagsOf(r.name))) s -= 0.5;
+    s += (SOURCE_BONUS[sourceOf(r.name)] ?? 0) * 0.5;
   }
   return s;
 }
 
 // The size that counts against limits: a film's whole size, a pack's size per episode.
 // Anime packs say how many episodes they hold (packEpisodes, anime.js): "(01-170)" is 170 of them.
-const perItemSize = (r, want, kind) => (kind === 'pack' && r.packEpisodes > 0 && r.size ? r.size / r.packEpisodes
+export const perItemSize = (r, want, kind) => (kind === 'pack' && r.packEpisodes > 0 && r.size ? r.size / r.packEpisodes
   : kind === 'pack' && want.episodes > 0 && r.size ? r.size / want.episodes : r.size || 0);
 // The space a download really takes: a pack with owned episodes deselected only downloads the rest.
 // Anime packs: only the episodes of this season it covers (the rest are switched off too).
@@ -170,16 +230,20 @@ export function choose(found, want, kind, minAlive = ALIVE) {
     [['1080p', '720p'], HEALTHY, small], [['1080p', '720p', null], minAlive, small],
     [['720p'], HEALTHY], [['1080p'], HEALTHY], [[null], HEALTHY], [['SD'], HEALTHY],
     [['720p', '1080p', null, 'SD', '1440p', '2160p'], minAlive],
+  ] : profile === 'best' ? [
+    // 4K, 1440p and 1080p side by side: the picture score decides, not the label alone.
+    [high, HEALTHY, null, true], [high, minAlive, null, true],
+    [['720p'], HEALTHY], [[null], HEALTHY], [['SD'], HEALTHY], [['720p', null, 'SD'], minAlive],
   ] : [
     ...high.map((q) => [[q], HEALTHY]), [high, minAlive],         // 1080p or better, however thin
     [['720p'], HEALTHY], ...lower.map((q) => [[q], HEALTHY]), [[null], HEALTHY], [['SD'], HEALTHY], // then lower
     [['720p', ...lower, null, 'SD'], minAlive],
   ];
-  for (const [qualities, min, extra] of steps) {
+  for (const [qualities, min, extra, byScore] of steps) {
     const pool = fits.filter((r) => qualities.includes(r.quality ?? null) && r.seeders >= min && (!extra || extra(r)));
     if (!pool.length) continue;
-    // Within a mixed step, keep the preferred quality first; then the best score.
-    pool.sort((a, b) => (qualities.indexOf(a.quality ?? null) - qualities.indexOf(b.quality ?? null))
+    // Within a mixed step, keep the preferred quality first; then the best score (Best Quality: score only).
+    pool.sort((a, b) => (byScore ? 0 : qualities.indexOf(a.quality ?? null) - qualities.indexOf(b.quality ?? null))
       || score(b, want, kind) - score(a, want, kind));
     const pick = pool[0];
     const low = profile !== 'save' && !['1080p', '1440p', '2160p'].includes(pick.quality);

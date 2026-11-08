@@ -1,5 +1,20 @@
 [
   {
+    "id": "2026-11-08-upgrade-quality",
+    "date": "2026-11-08",
+    "title": "Better picture, and an Upgrade button",
+    "items": [
+      {
+        "title": "Best Quality means best picture",
+        "text": "With Download quality set to Best Quality, Marquee used to pick the most popular release, and that is often a tiny re-encode that looks soft on a big screen. It now looks at how much picture a release really has (its size for the resolution, where it came from and who made it), so you get a proper BluRay or web release when one is out there. Balanced also skips releases that are far too small for their resolution."
+      },
+      {
+        "title": "Upgrade quality",
+        "text": "Got a season that looks bad? Open Download on the show, pick the season and press Upgrade quality. Marquee looks for a clearly better release, downloads it, and swaps each episode for the new one as soon as it has finished. Your place in each episode carries over. If nothing better is out there, it tells you."
+      }
+    ]
+  },
+  {
     "id": "2026-11-08-subtitle-fixes",
     "date": "2026-11-08",
     "title": "Cleaner English subtitles",

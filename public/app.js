@@ -48,6 +48,7 @@ const ICONS = {
   plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
   send: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg>',
   download: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>',
+  upgrade: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20V9M7 14l5-5 5 5M5 4h14"/></svg>',
   check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
   phone: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="2.5" width="11" height="19" rx="2.2"/><path d="M12 6.5v7M9.2 10.8l2.8 2.8 2.8-2.8M10.5 18h3"/></svg>',
   volume: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6"/></svg>',
@@ -1953,7 +1954,7 @@ const canGet = () => Boolean(state.status.torrents && canDownload());
 
 // Commands by target, so a sheet that re-renders (or is reopened) shows the same state.
 const downloadCommands = new Map(); // key -> { body, busy, job, error }
-const commandKey = (b) => [b.type, b.tmdbId, b.season ?? '', (b.episodes || []).join(',')].join(':');
+const commandKey = (b) => [b.type, b.tmdbId, b.season ?? '', (b.episodes || []).join(','), b.upgrade ? 'upgrade' : ''].join(':');
 const commandViews = new Set();     // nodes with _update(), refreshed on command and transfer changes
 function refreshCommandViews() {
   for (const node of commandViews) { if (!node.isConnected) commandViews.delete(node); else node._update(); }
@@ -1981,7 +1982,7 @@ async function runDownloadCommand(body) {
   await loadDownloads();
   patchUnifiedLibrary();
   refreshCommandViews();
-  if (['started', 'partial'].includes(cmd.job?.outcome)) toast(cmd.job.type === 'tv' ? `${cmd.job.title}: ${cmd.job.message}` : `${cmd.job.title} is downloading`);
+  if (['started', 'partial'].includes(cmd.job?.outcome)) toast(body.upgrade ? `${cmd.job.title}: upgrading season ${cmd.job.season}` : cmd.job.type === 'tv' ? `${cmd.job.title}: ${cmd.job.message}` : `${cmd.job.title} is downloading`);
   return cmd;
 }
 // A command's result in plain words, or null while there's nothing to say.
@@ -2192,13 +2193,18 @@ function showDownload(t, { season = null } = {}) {
   const scopeField = h('div', { class: 'dl-field dl-scope' }, h('label', { for: scopeSel.id }, 'Episodes'), scopeSel);
   const submit = h('button', { type: 'button', class: 'play-btn dl-submit' }, h('span', {}, 'Download Season'));
   const quiet = h('p', { class: 'dl-quiet' });
+  // Upgrade quality: the season is here but looks soft. A clearly better pack replaces it episode by episode.
+  const upBtn = h('button', { type: 'button', class: 'chip dl-upgrade stroke-icon' }, icon('upgrade'), h('span', {}, 'Upgrade quality'));
+  const upNote = h('p', { class: 'dl-note dl-upgrade-note' });
+  const upStatus = h('p', { class: 'dl-status dl-upgrade-status', role: 'status' });
+  const upgradeBox = h('div', { class: 'dl-upgrade-box' }, upBtn, upNote, upStatus);
   const status = h('p', { class: 'dl-status', role: 'status' });
   const retry = h('button', { type: 'button', class: 'chip dl-retry' });
   const panel = h('div', { class: 'dl-panel', id: panelId, hidden: !ps.open },
     h('div', { class: 'dl-fields' },
       h('div', { class: 'dl-field' }, h('label', { for: seasonSel.id }, 'Season'), seasonSel),
       h('div', { class: 'dl-field' }, h('label', { for: profileSel.id }, 'Quality'), profileSel), scopeField, rangeRow),
-    note, avail, submit, quiet, h('div', { class: 'dl-result' }, status, retry),
+    note, avail, submit, quiet, h('div', { class: 'dl-result' }, status, retry), upgradeBox,
     advancedOptions(`tv-${t.id}`, {
       exact: ps.exact, onExact: (v) => { ps.exact = v; },
       browse: () => ({ query: `${t.title} S${pad2(ps.season || 1)}`, type: 'tv', tvId: t.id, canonicalTitle: t.title, strict: true }),
@@ -2265,6 +2271,13 @@ function showDownload(t, { season = null } = {}) {
     try { await addFromServer(submit._add); } catch (err) { addError = err.message; } finally { adding = false; panel._update(); }
   });
   retry.addEventListener('click', () => run(retry._episodes));
+  ps.up ||= {};
+  upBtn.addEventListener('click', () => {
+    if (upBtn.getAttribute('aria-disabled') === 'true' || !ps.season) return;
+    const b = { type: 'tv', tmdbId: t.id, season: ps.season, upgrade: true };
+    ps.up[ps.season] = commandKey(b);
+    runDownloadCommand(b);
+  });
   panel._update = () => {
     const n = ps.season, se = seasons?.find((x) => x.number === n);
     const cmd = downloadCommands.get(ps.last[n]);
@@ -2325,6 +2338,18 @@ function showDownload(t, { season = null } = {}) {
     retry._episodes = result?.episodes?.length ? result.episodes : null;
     retry.hidden = !result?.retry;
     retry.textContent = retry._episodes ? 'Retry unavailable' : 'Try again';
+    // Upgrade quality: offered once some of the season is here and nothing of it is downloading.
+    const up = downloadCommands.get(ps.up[n]);
+    const upJob = up && !up.busy ? up.job : null;
+    upgradeBox.hidden = !(canGet() && ready.size > 0 && !submit._add && ((!downloading.size && !packBusy) || up));
+    upBtn.setAttribute('aria-disabled', String(Boolean(locked || up?.busy || downloading.size || packBusy)));
+    upBtn.lastChild.textContent = up?.busy ? 'Looking for better quality…' : 'Upgrade quality';
+    upBtn.hidden = Boolean(upJob && ['started', 'queued'].includes(upJob.outcome));
+    upNote.textContent = 'Looks soft? Finds a clearly better release of this season and swaps each episode as the new one finishes. Watch progress carries over.';
+    upNote.hidden = Boolean(up);
+    const upText = up?.error || upJob?.message || '';
+    if (upStatus.textContent !== upText) upStatus.textContent = upText;
+    upStatus.classList.toggle('is-error', Boolean(up?.error || upJob?.state === 'failed'));
   };
   commandViews.add(panel);
   panel._update();
@@ -6165,6 +6190,7 @@ const ACTIVITY_TEXT = {
   remove: (d) => `removed ${d} from their library`,
   extend: (d) => `kept ${d} longer`,
   expire: (d) => `auto-deleted ${d}`,
+  upgrade: (d) => `upgraded the quality of ${d}`,
   blocked: (d) => `tried to download ${d}, which was blocked`,
   settings: (d) => `changed the server rules (${d})`,
   permission: (d) => `changed a permission: ${d}`,
