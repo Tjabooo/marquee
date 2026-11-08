@@ -4100,7 +4100,7 @@ function setHlsSource(hls, url, session, onMetadata) {
 function capturePlayback(session = current) {
   if (!session?.ready && session?.sourceSnapshot) return { ...session.sourceSnapshot };
   return { url: video.currentSrc || video.src, time: video.currentTime || 0, playing: !video.paused && !video.ended,
-    muted: video.muted, volume: video.volume, rate: video.playbackRate };
+    muted: video.muted, volume: video.volume, rate: video.playbackRate || 1 };
 }
 function restorePlayback(snapshot) {
   if (Number.isFinite(snapshot.time)) video.currentTime = Math.max(0, Math.min(snapshot.time, Number.isFinite(video.duration) ? Math.max(0, video.duration - .05) : snapshot.time));

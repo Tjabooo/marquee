@@ -15,6 +15,27 @@ export class BufferNotice {
   dismiss(now = Date.now()) { this.snoozedUntil = now + this.snooze; }
 }
 
+// A stall in the middle of a video: hold the picture until there's a useful amount buffered, instead of playing
+// each piece the moment it arrives and stopping again (4 s of video, a freeze, 4 s of video...). Stalls close
+// together mean the download is behind, so each one waits for more. No DOM here either.
+export class RebufferHold {
+  constructor({ goals = [8, 16, 32], floor = 4, maxHoldMs = 30_000, memoryMs = 90_000 } = {}) {
+    Object.assign(this, { goals, floor, maxHoldMs, memoryMs, step: -1, since: null, lastEnd: -Infinity });
+  }
+  get holding() { return this.since != null; }
+  get goal() { return this.goals[Math.max(0, this.step)]; }
+  begin(now = Date.now()) {
+    this.step = now - this.lastEnd < this.memoryMs ? Math.min(this.step + 1, this.goals.length - 1) : 0;
+    this.since = now;
+  }
+  // `ahead` = seconds buffered past the playhead, `left` = seconds until the end of the video.
+  ready(ahead, left = Infinity, now = Date.now()) {
+    if (ahead >= this.goal || ahead + 0.5 >= left) return true;
+    return now - this.since >= this.maxHoldMs && ahead >= this.floor;
+  }
+  end(now = Date.now()) { this.since = null; this.lastEnd = now; }
+}
+
 export function fmtEta(seconds) {
   if (!Number.isFinite(seconds) || seconds < 0) return null;
   const minutes = Math.max(1, Math.round(seconds / 60));
@@ -59,6 +80,8 @@ const HLS_CONFIG = {
 const NATIVE_RETRIES = 40;
 const STATUS_MS = 3000;
 const OPEN_MS = 1500;
+const HOLD_TICK_MS = 500;
+const HOLD_POPUP_MS = 10_000; // a short hold is explained well enough by the spinner
 
 const sleep = (ms, signal) => new Promise((resolve) => {
   const timer = setTimeout(resolve, ms);
@@ -74,6 +97,8 @@ export async function playPartial(session, ctx) {
   const query = `id=${encodeURIComponent(session.key)}`;
   const popup = $('#part-popup');
   const notice = new BufferNotice();
+  const hold = new RebufferHold();
+  let holdTimer = null, holdRate = 1;
   let popupKind = null, bufferTimer = null, buffering = false, statusTimer = null, fullOffered = false;
   session.part = null;
 
@@ -130,20 +155,55 @@ export async function playPartial(session, ctx) {
     playerEl.classList.add('has-part-popup');
   };
 
-  const stalled = () => !video.paused && !video.ended && (video.seeking || video.readyState < 3);
-  const onWaiting = () => {
+  const bufferedAhead = () => {
+    const at = video.currentTime, ranges = video.buffered;
+    for (let i = 0; i < ranges.length; i++) if (ranges.start(i) <= at + 0.3 && at < ranges.end(i)) return ranges.end(i) - at;
+    return 0;
+  };
+  // Playback rate 0 stops the picture without counting as paused to the controls, and hls.js leaves it alone.
+  const releaseHold = () => {
+    if (!hold.holding) return;
+    clearInterval(holdTimer);
+    hold.end();
+    if (video.playbackRate === 0) video.playbackRate = holdRate;
+    ctx.setSpinner(false);
+  };
+  const beginHold = () => {
+    // Safari's own HLS keeps its behaviour; the first frame and seeks have their own waits.
+    if (hold.holding || !session.hlsPlayer || !notice.started || video.seeking || video.paused || video.ended) return;
+    holdRate = video.playbackRate || 1;
+    hold.begin();
+    video.playbackRate = 0;
+    holdTimer = setInterval(() => {
+      if (!ctx.isCurrent(session)) { releaseHold(); return; }
+      const left = Number.isFinite(video.duration) ? video.duration - video.currentTime : Infinity;
+      if (!hold.ready(bufferedAhead(), left)) { ctx.setSpinner(true); return; }
+      buffering = false;
+      clearTimeout(bufferTimer);
+      releaseHold();
+      if (popupKind === 'buffer') hidePopup();
+    }, HOLD_TICK_MS);
+  };
+
+  const stalled = () => hold.holding || (!video.paused && !video.ended && (video.seeking || video.readyState < 3));
+  const onStalled = () => {
     buffering = true;
     clearTimeout(bufferTimer);
-    bufferTimer = setTimeout(() => { if (buffering && stalled() && notice.allowed() && !session.part?.done) showBufferPopup(); }, notice.wait());
+    bufferTimer = setTimeout(() => { if (buffering && stalled() && notice.allowed() && !session.part?.done) showBufferPopup(); }, hold.holding ? HOLD_POPUP_MS : notice.wait());
+  };
+  const onWaiting = () => {
+    if (bufferedAhead() < 1) beginHold();
+    onStalled();
   };
   const onPlaying = () => {
+    if (hold.holding) return; // data arrived, but the hold decides when the picture moves again
     buffering = false;
     notice.playing();
     clearTimeout(bufferTimer);
     if (popupKind === 'buffer') hidePopup();
   };
-  const onPause = () => { buffering = false; clearTimeout(bufferTimer); };
-  const events = [['waiting', onWaiting], ['stalled', onWaiting], ['playing', onPlaying], ['pause', onPause]];
+  const onPause = () => { buffering = false; clearTimeout(bufferTimer); releaseHold(); };
+  const events = [['waiting', onWaiting], ['stalled', onStalled], ['playing', onPlaying], ['pause', onPause], ['seeking', releaseHold]];
 
   const pollStatus = async () => {
     if (signal.aborted) return;
@@ -160,6 +220,7 @@ export async function playPartial(session, ctx) {
   };
 
   signal.addEventListener('abort', () => {
+    releaseHold();
     clearTimeout(bufferTimer);
     clearTimeout(statusTimer);
     for (const [name, fn] of events) video.removeEventListener(name, fn);

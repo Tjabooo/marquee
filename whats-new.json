@@ -1,5 +1,20 @@
 [
   {
+    "id": "2026-11-08-play-now-smoother",
+    "date": "2026-11-08",
+    "title": "Play now runs more smoothly",
+    "items": [
+      {
+        "title": "Fewer interruptions",
+        "text": "Videos still downloading now start with a bigger head start when the download is quick. If the download falls behind, playback pauses once to catch up instead of stopping every few seconds."
+      },
+      {
+        "title": "Episodes from season packs",
+        "text": "An episode you play while its season downloads now arrives in order, so it starts sooner and stops less."
+      }
+    ]
+  },
+  {
     "id": "2026-11-08-play-now",
     "date": "2026-11-08",
     "title": "Play now: watch while it downloads",

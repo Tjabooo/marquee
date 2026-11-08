@@ -54,6 +54,10 @@ test('ffmpeg args start at a piece, keep its timeline and force keyframes on pie
   assert.equal(at('-forced-idr'), '1');
   assert.ok(args.includes('0:2'));
   assert.match(at('-vf'), /tonemap=hable/);
+  assert.equal(at('-hwaccel'), 'cuda', 'HDR through NVENC decodes on the GPU');
+  assert.ok(args.indexOf('-hwaccel') < args.indexOf('-i'));
+  assert.ok(!streamArgs({ input: 'in.mkv', dir: 'D', video, audio: null, quality: '1080', encoder: 'x264' }).includes('-hwaccel'), 'not without the GPU');
+  assert.ok(!streamArgs({ input: 'in.mkv', dir: 'D', video: { index: 0, height: 2160 }, audio: null, quality: '1080' }).includes('-hwaccel'), 'not for SDR');
   assert.equal(at('-hls_segment_filename'), path.join('D', 's%05d.ts'));
   // From the start: no seek; x264 when asked; SDR keeps its colours.
   const plain = streamArgs({ input: 'in.mkv', dir: 'D', video: { index: 0 }, audio: null, quality: '720', start: 0, encoder: 'x264' });

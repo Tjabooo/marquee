@@ -69,6 +69,9 @@ export function streamArgs({ input, dir, video, audio, quality, start = 0, encod
   const q = QUALITIES[quality];
   const at = start * SEGMENT;
   const args = ['-hide_banner', '-nostdin', '-loglevel', 'error', '-y'];
+  // Tone mapping is the slow part of a 4K HDR stream: decoding on the GPU leaves it more of the CPU (13 % faster on
+  // the server, same picture). A GPU that can't do it ends in the x264 fallback below, without this.
+  if (encoder === 'nvenc' && tonemap && isHdr(video)) args.push('-hwaccel', 'cuda');
   if (at > 0) args.push('-ss', String(at));
   args.push('-i', input, '-map', `0:${video.index}`);
   if (audio) args.push('-map', `0:${audio.index}`);
@@ -249,8 +252,8 @@ export class PhoneStreams {
       s.proc = null;
       this.advance(s);
       if (code === 0) return;
-      // NVENC missing or out of sessions: the rest goes through x264.
-      if (encoder === 'nvenc' && s.next === n && /nvenc|cuda|OpenEncodeSession|No capable devices/i.test(err) && caps.x264) {
+      // NVENC or NVDEC missing or out of sessions: the rest goes through x264.
+      if (encoder === 'nvenc' && s.next === n && /nvenc|cuda|cuvid|hwaccel|Device creation|OpenEncodeSession|No capable devices/i.test(err) && caps.x264) {
         this.nvencBroken = true;
         this.restart(s, n).catch(() => {});
         return;

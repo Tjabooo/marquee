@@ -1,4 +1,17 @@
 {
+  "2026-11-08-play-now-smoother": {
+    "title": "Spela nu flyter bättre",
+    "items": {
+      "Fewer interruptions": {
+        "title": "Färre avbrott",
+        "text": "Filmer och avsnitt som fortfarande laddas ner får nu ett större försprång när nedladdningen går snabbt. Om nedladdningen hamnar efter pausar uppspelningen en gång för att komma ikapp i stället för att stanna med några sekunders mellanrum."
+      },
+      "Episodes from season packs": {
+        "title": "Avsnitt ur säsongspaket",
+        "text": "Ett avsnitt du spelar medan säsongen laddas ner kommer nu i rätt ordning, så det startar snabbare och stannar mer sällan."
+      }
+    }
+  },
   "2026-11-08-play-now": {
     "title": "Spela nu: titta medan den laddas ner",
     "items": {

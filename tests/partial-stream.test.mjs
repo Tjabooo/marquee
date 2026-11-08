@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { fileLayout, readableBytes, fileProgress, startBytes, parsePartialId, PartialStreams } from '../src/partial-stream.js';
-import { BufferNotice, pastDownloaded, progressLine, fmtEta } from '../public/player-partial.js';
+import { fileLayout, readableBytes, fileProgress, startBytes, readyToStart, packPriorities, parsePartialId, PartialStreams } from '../src/partial-stream.js';
+import { BufferNotice, RebufferHold, pastDownloaded, progressLine, fmtEta } from '../public/player-partial.js';
 import { PhoneStreams } from '../src/phone-stream.js';
 
 const PIECE = 1024;
@@ -140,14 +140,36 @@ test('a stopped download starts, a queued one is forced, and pack episodes go fi
   await q.sweep(Date.now() + 4 * 60_000);
   assert.equal(queued.torrent.force_start, false, 'force start is undone again');
 
-  const pack = rig(t, { files: [
-    { index: 0, name: 'E01.mkv', size: 4096, priority: 1, piece_range: [0, 3] },
-    { index: 1, name: 'E02.mkv', size: 4096, priority: 1, piece_range: [4, 7] }] });
-  const p = await pack.make('/x.mkv');
+  // A pack: the file stays in line when nothing much comes before it, so nothing changes...
+  const inLine = rig(t, { files: [
+    { index: 0, name: 'E01.mkv', size: 4096, priority: 1, progress: 1, piece_range: [0, 3] },
+    { index: 1, name: 'E02.mkv', size: 4096, priority: 1, progress: 0, piece_range: [4, 7] }] });
+  const l = await inLine.make('/x.mkv');
+  await l.open(`${'a'.repeat(40)}-1`);
+  assert.equal(inLine.calls.filter(([name]) => name === 'filePrio').length, 0);
+
+  // ...and top priority comes off it (and any later episode), because that would scramble the order. It goes back after.
+  const topped = rig(t, { files: [
+    { index: 0, name: 'E01.mkv', size: 4096, priority: 1, progress: 1, piece_range: [0, 3] },
+    { index: 1, name: 'E02.mkv', size: 4096, priority: 7, progress: 0.1, piece_range: [4, 7] },
+    { index: 2, name: 'E03.mkv', size: 4096, priority: 7, progress: 0, piece_range: [8, 11] }] });
+  const o = await topped.make('/x.mkv');
+  await o.open(`${'a'.repeat(40)}-1`);
+  const prios = () => topped.calls.filter(([name]) => name === 'filePrio').map(([, b]) => [b.id, b.priority]);
+  assert.deepEqual(prios(), [['1', '1'], ['2', '1']]);
+  await o.sweep(Date.now() + 4 * 60_000);
+  assert.deepEqual(prios().slice(2), [['1', '7'], ['2', '7']]);
+
+  // Skipping far ahead: sequential would fetch the missing episodes first, so top priority is the better choice.
+  const big = 2e9;
+  const ahead = rig(t, { files: [
+    { index: 0, name: 'E01.mkv', size: big, priority: 1, progress: 0, piece_range: [0, 3] },
+    { index: 1, name: 'E02.mkv', size: 4096, priority: 1, progress: 0, piece_range: [4, 7] }] });
+  const p = await ahead.make('/x.mkv');
   await p.open(`${'a'.repeat(40)}-1`);
-  assert.deepEqual(pack.calls.find(([name]) => name === 'filePrio')[1], { hash: 'a'.repeat(40), id: '1', priority: '7' });
+  assert.deepEqual(ahead.calls.find(([name]) => name === 'filePrio')[1], { hash: 'a'.repeat(40), id: '1', priority: '7' });
   await p.sweep(Date.now() + 4 * 60_000);
-  assert.deepEqual(pack.calls.filter(([name]) => name === 'filePrio').at(-1)[1], { hash: 'a'.repeat(40), id: '1', priority: '1' });
+  assert.deepEqual(ahead.calls.filter(([name]) => name === 'filePrio').at(-1)[1], { hash: 'a'.repeat(40), id: '1', priority: '1' });
 });
 
 test('ready only after the probe and enough of the start; a file that can never be read says so', async (t) => {
@@ -308,4 +330,48 @@ test('downloads list Play now and only the people it belongs to can open it', { 
   // The file itself can't be fetched while it downloads, signed or not.
   assert.equal((await call(`/api/play-link?kind=part&id=${id}&variant=browser`, 'member@test.local')).status, 409);
   assert.equal((await fetch(`http://127.0.0.1:${port}/play/part/${id}/phone1080/9999999999/${'x'.repeat(32)}/index.m3u8`)).status, 403);
+});
+
+test('pack priorities: skipped files stay skipped, finished ones are left alone', () => {
+  const files = [
+    { index: 0, size: 5e9, priority: 0, progress: 0 },
+    { index: 1, size: 5e9, priority: 7, progress: 1 },
+    { index: 2, size: 5e9, priority: 1, progress: 0 }];
+  assert.deepEqual(packPriorities(files, 2), [], 'nothing wanted is missing before it');
+  assert.deepEqual(packPriorities([{ size: 1e8, priority: 1, progress: 0 }, { size: 5e9, priority: 1, progress: 0 }], 1), [], 'a small extra before it is quick');
+  assert.deepEqual(packPriorities(files, 9), []);
+});
+
+test('start lead: the full goal right away, otherwise the minimum after a grace period', () => {
+  const size = 1e10, bitrate = 16e6; // 2 MB/s: minimum 40 MB, goal 90 MB
+  assert.equal(startBytes(size, bitrate), 40e6);
+  assert.equal(startBytes(size, bitrate, 45), 90e6);
+  assert.equal(readyToStart(90e6, size, bitrate, null, 1000), true, 'goal reached');
+  assert.equal(readyToStart(50e6, size, bitrate, null, 1000), false);
+  assert.equal(readyToStart(50e6, size, bitrate, 1000, 1000 + 19_000), false, 'still within the grace period');
+  assert.equal(readyToStart(50e6, size, bitrate, 1000, 1000 + 20_000), true, 'stops waiting for the goal');
+  assert.equal(readyToStart(1000, 1000, bitrate, null, 1000), true, 'a tiny file is all there');
+});
+
+test('rebuffer hold: waits for a useful buffer, longer when stalls repeat, and never for ever', () => {
+  const h = new RebufferHold({ goals: [8, 16, 32], floor: 4, maxHoldMs: 30_000, memoryMs: 90_000 });
+  assert.equal(h.holding, false);
+  h.begin(1000);
+  assert.equal(h.holding, true);
+  assert.equal(h.goal, 8);
+  assert.equal(h.ready(4, Infinity, 2000), false);
+  assert.equal(h.ready(8, Infinity, 2000), true);
+  h.end(3000);
+  h.begin(4000);
+  assert.equal(h.goal, 16, 'soon after the last stall: wait for more');
+  assert.equal(h.ready(10, 100, 5000), false);
+  assert.equal(h.ready(10, 10, 5000), true, 'the rest of the video is all buffered');
+  assert.equal(h.ready(3, Infinity, 4000 + 31_000), false, 'too little to be worth moving');
+  assert.equal(h.ready(4, Infinity, 4000 + 31_000), true, 'gives up on the goal after a while');
+  h.end(5000);
+  h.begin(6000); h.end(7000); h.begin(8000); h.end(9000); h.begin(10_000);
+  assert.equal(h.goal, 32, 'tops out');
+  h.end(11_000);
+  h.begin(11_000 + 90_001);
+  assert.equal(h.goal, 8, 'a good stretch starts over');
 });

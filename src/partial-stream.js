@@ -8,6 +8,9 @@
 //
 // qBittorrent has no way to prioritise a piece in the middle of a file, so a seek past the downloaded part
 // waits until the download gets there. The original file is never changed.
+//
+// Even in order, the edge of what's readable moves in jumps: one slow peer can hold a piece back for half a
+// minute while later pieces arrive. So playback starts with a lead that can ride that out when it comes cheaply.
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
@@ -18,7 +21,10 @@ const HAVE = 2;                  // qBittorrent's piece state for "downloaded an
 const READ_BYTES = 4 * 1024 * 1024;
 const POLL_MS = 1000;
 const IDLE_MS = 3 * 60_000;      // nobody watching for this long: the download goes back to normal
-const START_SECONDS = 20;        // this much in order before playback starts
+const START_SECONDS = 20;        // never start with less than this in order
+const START_GOAL_SECONDS = 45;   // start with this much when the download brings it soon
+const START_GRACE_MS = 20_000;   // how long to wait for the goal after having the minimum
+const EARLIER_LEFT_BYTES = 256 * 1024 * 1024; // extras before the video in a pack: not worth reordering for
 const MIN_START_BYTES = 8 * 1024 * 1024;
 const PROBE_MS = 10 * 60_000;    // reading the start and end of the file can wait for the download
 const MAX_PROBE_FAILURES = 2;
@@ -65,7 +71,29 @@ export function fileProgress(layout, states) {
 }
 
 // Enough in order to start: the first seconds at this video's bitrate, or all of a small file.
-export const startBytes = (size, bitrate) => Math.min(size, Math.max(MIN_START_BYTES, Math.ceil(((bitrate || 0) / 8) * START_SECONDS)));
+export const startBytes = (size, bitrate, seconds = START_SECONDS) => Math.min(size, Math.max(MIN_START_BYTES, Math.ceil(((bitrate || 0) / 8) * seconds)));
+
+// Start with the full lead, or with the minimum once it has had a while to grow. `enoughSince` = when the minimum was there.
+export function readyToStart(readable, size, bitrate, enoughSince, now = Date.now()) {
+  if (readable >= startBytes(size, bitrate, START_GOAL_SECONDS)) return true;
+  return enoughSince != null && now - enoughSince >= START_GRACE_MS;
+}
+
+// What a pack's file priorities should be for watching file `index`. In sequential mode libtorrent takes
+// top-priority pieces first but in rarest-first order, so priority 7 scatters the very file being watched: leave it
+// off whenever the file can simply be next in line. Sequential goes by position and ignores normal priorities,
+// so if a lot of earlier files are still missing, it would fetch those first: only then is 7 the better of the two.
+// Returns [[file, priority], ...] for the files to change.
+export function packPriorities(files, index) {
+  const list = files.map((f, i) => ({ ...f, index: f.index ?? i }));
+  const target = list.find((f) => f.index === index);
+  if (!target) return [];
+  const missing = (f) => (f.size || 0) * (1 - (f.progress || 0));
+  const earlier = list.filter((f) => f.index < index && f.priority > 0).reduce((sum, f) => sum + missing(f), 0);
+  if (earlier > EARLIER_LEFT_BYTES) return target.priority === 7 ? [] : [[index, 7]];
+  const changes = list.filter((f) => f.priority === 7 && (f.index === index || (f.progress || 0) < 1)).map((f) => [f.index, 1]);
+  return changes;
+}
 
 const sleep = (ms, signal) => new Promise((resolve) => {
   if (signal?.aborted) return resolve();
@@ -123,7 +151,7 @@ export class PartialStreams {
     if (raced) return raced;
     const entry = { id, hash: parsed.hash, index: parsed.index, file: this.filePath(t, file), name: file.name, priority: file.priority, multiFile: files.length > 1,
       size: layout.size, layout, pieceSize, states: null, statesAt: 0, torrent: t, last: Date.now(), info: null, probing: null, probeFailures: 0, probeError: null,
-      gone: false, boosted: false };
+      gone: false, boosted: false, started: false, enoughSince: null, holds: 0, heldMs: 0, restorePriorities: [] };
     this.entries.set(id, entry);
     return entry;
   }
@@ -152,11 +180,16 @@ export class PartialStreams {
 
   // Waits until something can be read at `from`; resolves with how many bytes in a row.
   async waitReadable(e, from, signal) {
+    let waitingSince = null;
     for (;;) {
       if (signal?.aborted) throw failure(499, 'Stopped.');
       e.last = Date.now();
       const n = this.readable(e, from);
-      if (n > 0) return n;
+      if (n > 0) {
+        if (waitingSince != null && e.started) { e.holds += 1; e.heldMs += Date.now() - waitingSince; }
+        return n;
+      }
+      waitingSince ??= Date.now();
       await this.refresh(e);
       if (e.gone) throw failure(410, 'That download no longer exists.');
       if (this.readable(e, from) > 0) continue;
@@ -240,8 +273,20 @@ export class PartialStreams {
       }
       if (/^(paused|stopped)/.test(t.state || '')) await this.start(e.hash);
       else if (/^queued/.test(t.state || '') && !t.force_start) await this.post('/api/v2/torrents/setForceStart', new URLSearchParams({ hashes: e.hash, value: 'true' }));
-      if (e.multiFile && e.priority !== 7) await this.post('/api/v2/torrents/filePrio', new URLSearchParams({ hash: e.hash, id: String(e.index), priority: '7' }));
+      if (e.multiFile) await this.orderPack(e);
     } catch (error) { e.boosted = false; throw error; }
+  }
+
+  // Someone already watching this pack keeps the order set for them.
+  async orderPack(e) {
+    if ([...this.entries.values()].some((x) => x !== e && x.hash === e.hash && x.boosted)) return;
+    const files = await this.qbit(`/api/v2/torrents/files?hash=${e.hash}`);
+    if (!Array.isArray(files)) return;
+    const before = new Map(files.map((f, i) => [f.index ?? i, f.priority]));
+    for (const [file, priority] of packPriorities(files, e.index)) {
+      await this.post('/api/v2/torrents/filePrio', new URLSearchParams({ hash: e.hash, id: String(file), priority: String(priority) }));
+      e.restorePriorities.push([file, before.get(file)]);
+    }
   }
 
   async open(id) {
@@ -259,8 +304,12 @@ export class PartialStreams {
         .catch((error) => { e.probeFailures += 1; e.probeError = error.message; })
         .finally(() => { e.probing = null; });
     }
-    const ready = Boolean(e.info) && this.readable(e, 0) >= startBytes(e.size, e.info.bitrate);
-    return { ready, entry: e };
+    if (e.info && !e.started) {
+      const readable = this.readable(e, 0);
+      if (readable >= startBytes(e.size, e.info.bitrate)) e.enoughSince ??= Date.now();
+      e.started = readyToStart(readable, e.size, e.info.bitrate, e.enoughSince);
+    }
+    return { ready: Boolean(e.info) && e.started, entry: e };
   }
 
   // What the player shows about the download.
@@ -287,8 +336,12 @@ export class PartialStreams {
   }
 
   async restore(e) {
-    if (e.multiFile && e.boosted && e.priority !== 7) {
-      await this.post('/api/v2/torrents/filePrio', new URLSearchParams({ hash: e.hash, id: String(e.index), priority: String(e.priority) }));
+    if (e.started) {
+      const mbit = ((e.info?.bitrate || 0) / 1e6).toFixed(1);
+      this.log.info?.(`[play now] ${e.name}: ${mbit} Mbit/s, the stream waited for the download ${e.holds} times, ${Math.round(e.heldMs / 1000)} s in all`);
+    }
+    for (const [file, priority] of e.restorePriorities) {
+      await this.post('/api/v2/torrents/filePrio', new URLSearchParams({ hash: e.hash, id: String(file), priority: String(priority) }));
     }
     if ([...this.entries.values()].some((x) => x.hash === e.hash)) return;
     const was = this.torrents.get(e.hash);

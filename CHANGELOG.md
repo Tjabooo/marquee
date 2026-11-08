@@ -4,6 +4,14 @@ All notable changes to Marquee. Versions follow [Semantic Versioning](https://se
 
 ## [Unreleased]
 
+### Changed
+
+- **Play now stutters less.** It starts with up to 45 s in order when the download brings that within 20 s of the old minimum of 20 s.
+  In hls.js browsers a stall now holds the picture until a useful amount is buffered (8, then 16, then 32 s when stalls repeat) instead of
+  stopping after every 4 s piece. Episodes in season packs now really download in order: top file priority, which libtorrent
+  fetches rarest-first even in sequential mode, is used only when many earlier files are missing. HDR streams decode on the GPU
+  (13 % faster). The server log says how often a Play now stream had to wait for the download.
+
 ### Added
 
 - **Play now.** Watch a film or episode while it downloads, in any browser and on iPhones, whatever its format. qBittorrent downloads
