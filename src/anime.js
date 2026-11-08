@@ -247,6 +247,16 @@ function tmdbSeasons(d) {
       return out;
     });
 }
+// Could a release dated `year` be this season? TMDB leaves many seasons undated (most of One Piece's):
+// those can only fall between the dated seasons around them.
+function yearFitsSeason(ctx, n, year) {
+  const i = ctx.seasons.findIndex((s) => s.n === n);
+  if (i < 0) return false;
+  if (ctx.seasons[i].year) return Math.abs(ctx.seasons[i].year - year) <= 1;
+  const earlier = ctx.seasons.slice(0, i).findLast((s) => s.year)?.year ?? ctx.year;
+  const later = ctx.seasons.slice(i + 1).find((s) => s.year)?.year ?? Infinity;
+  return year >= earlier - 1 && year <= later + 1;
+}
 // TMDB's episode number <-> the absolute count, within season s.
 const tmdbEpisode = (s, abs) => abs - s.start + (s.first || 1);
 const absoluteOf = (s, episode) => s.start + episode - (s.first || 1);
@@ -439,8 +449,7 @@ export function resolve(parsed, ctx) {
   // A year in the name must be the show's or the season's: "One Piece (2023) Season 1" is the
   // live-action series, not the 1999 anime.
   if (parsed.year && ctx.year) {
-    const years = new Set([ctx.year, ...out.map((x) => seasonRange(ctx, x.season)?.year).filter(Boolean)]);
-    if (![...years].some((y) => Math.abs(y - parsed.year) <= 1)) return null;
+    if (Math.abs(ctx.year - parsed.year) > 1 && !out.some((x) => yearFitsSeason(ctx, x.season, parsed.year))) return null;
   }
   return out;
 }

@@ -3053,7 +3053,7 @@ async function handleApi(req, res, url) {
         name: x.name || `Season ${x.season_number}`,
         episodes: x.episode_count || null,
         first: ctx?.seasons?.find((c) => c.n === x.season_number)?.first || 1,
-        upcoming: !x.air_date || x.air_date > today,
+        upcoming: shows.seasonUpcoming(d, x, today),
       })),
     });
   }

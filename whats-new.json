@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-08-season-dates",
+    "date": "2026-11-08",
+    "title": "Old seasons no longer say Not released",
+    "items": [
+      {
+        "title": "Every aired season can be chosen",
+        "text": "Some shows, like One Piece, wrongly showed seasons from years ago as Not released, so you couldn't pick them. They can now be chosen and added, on the TV app as well."
+      }
+    ]
+  },
+  {
     "id": "2026-11-08-anime-dubbed",
     "date": "2026-11-08",
     "title": "Dubbed anime",

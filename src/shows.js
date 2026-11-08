@@ -291,6 +291,17 @@ function firstEpisode(episodes) {
   return numbers.length ? Math.min(...numbers) : 1;
 }
 
+// Whether a season from TMDB's show details hasn't started yet. TMDB often leaves a season's own date
+// empty even when all its episodes have dates (One Piece's seasons 2-17, 22 and 23), so an empty date
+// only means "not out" past the last aired episode's season and the last season dated in the past.
+export function seasonUpcoming(details, season, today = new Date().toISOString().slice(0, 10)) {
+  if (season.air_date) return season.air_date > today;
+  if (!season.episode_count) return true;
+  const reached = Math.max(details?.last_episode_to_air?.season_number || 0,
+    ...(details?.seasons || []).filter((x) => x.air_date && x.air_date <= today).map((x) => x.season_number));
+  return season.season_number > reached;
+}
+
 export async function seasonEpisodes(title, year, season, tmdb) {
   const key = showKey(title);
   if (!key || !tmdb) return null;

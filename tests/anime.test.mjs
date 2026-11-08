@@ -229,6 +229,15 @@ test('a year that is neither the show’s nor the season’s is another show (On
   assert.equal(place('[ASW] One Piece (2023) - 1090 [1080p].mkv', onePieceReal), 'S22E1090', 'season 22 began in 2023');
 });
 
+test('undated seasons take their year from the dated seasons around them', () => {
+  // As TMDB really lists One Piece: most seasons have no date of their own.
+  const undated = ctxOf({ title: 'One Piece', keys: ['One Piece'], continuous: true, seasons: [61, 16, 14, 39], year: 1999,
+    years: [1999, null, null, 2016], entries: [[['One Piece'], null]] });
+  assert.equal(place('[ASW] One Piece (2001) - 62 [1080p].mkv', undated), 'S2E62', 'between 1999 and 2016');
+  assert.equal(place('[ASW] One Piece (2023) - 62 [1080p].mkv', undated), null, 'long after the next dated season');
+  assert.equal(place('One Piece (2023) Season 1 S01 (1080p NF WEB-DL x265 HEVC 10bit EAC3 Atmos 5.1 Garshasp) [QxR]', undated), null, 'the live-action series');
+});
+
 test('One Piece season 1: the anime’s batch, never the live-action season', async () => {
   const cat = [
     nyaa('One Piece (2023) Season 1 S01 (1080p NF WEB-DL x265 HEVC 10bit EAC3 Atmos 5.1 Garshasp) [QxR]', 900, 12 * GB),

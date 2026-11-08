@@ -1,4 +1,13 @@
 {
+  "2026-11-08-season-dates": {
+    "title": "Gamla säsonger står inte längre som Inte släppt",
+    "items": {
+      "Every aired season can be chosen": {
+        "title": "Alla säsonger som har sänts går att välja",
+        "text": "Vissa serier, som One Piece, visade felaktigt flera år gamla säsonger som Inte släppt, så att de inte gick att välja. Nu går de att välja och lägga till, även i TV-appen."
+      }
+    }
+  },
   "2026-11-08-anime-dubbed": {
     "title": "Dubbad anime",
     "items": {
