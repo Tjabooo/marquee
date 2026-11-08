@@ -67,6 +67,18 @@ export function languageFit(name, audioLang = '') {
   return other ? 0 : 1;
 }
 
+// A dual-audio release of an anime: Japanese plus an English dub. Spelled "Dual Audio", "Dual-Audio",
+// "DualAudio" or, in capitals only, "DUAL" ("Dual" alone may be part of a title). Dual audio with
+// another language ("Dual Audio Hindi", a German dub) isn't the English dub someone asked for; those
+// languages in a subtitle list ("Subs: German, French") don't count against it.
+const DUB_ELSEWHERE = /\b(hindi|tamil|telugu|malayalam|kannada|bengali|urdu|latino|castellano|dublado|truefrench|vff|deutsch)\b/i;
+const DUB_UNLESS_SUBS = /\b(german|french|spanish|italian|russian|portuguese|arabic)\b/i;
+export function isDualAudio(name) {
+  const n = String(name || '').replace(/[._/\\]+/g, ' ');
+  if (!/\bdual[ -]?audio\b/i.test(n) && !/\bDUAL\b/.test(n)) return false;
+  return !DUB_ELSEWHERE.test(n) && !(DUB_UNLESS_SUBS.test(n) && !/\bsubs?\b/i.test(n));
+}
+
 // What each resolution needs to look like itself, in GB per film / per episode (x264-equivalent).
 const NEEDS = {
   movie: { '2160p': 20, '1440p': 10, '1080p': 8, '720p': 4, SD: 1.5 },

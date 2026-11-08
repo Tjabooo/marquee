@@ -46,7 +46,7 @@ const RETENTION_CHOICES = [0, 1, 3, 7, 14, 30];
 const EXTEND_CHOICES = [1, 3, 7, 14, 30];
 
 // Per-person preferences (Settings tab).
-const USER_DEFAULTS = { theme: null, language: '', subLang: '', quality: 'all', downloadProfile: '', maxSize: 0, audioLang: '', startView: 'discover', librarySort: 'newest', seenUpdate: '', skipIntro: 'button',
+const USER_DEFAULTS = { theme: null, language: '', subLang: '', quality: 'all', downloadProfile: '', maxSize: 0, audioLang: '', dubbed: [], startView: 'discover', librarySort: 'newest', seenUpdate: '', skipIntro: 'button',
   pushDownload: true, pushEpisode: true, pushWatch: true, pushAgent: true }; // which notifications they get (push.js)
 // Settings → Downloads. quality is the resolution chosen before profiles existed: it maps to a profile until one is chosen.
 const DOWNLOAD_PROFILES = ['save', 'balanced', 'best'];
@@ -359,6 +359,8 @@ export function updateMe(user, patch) {
   }
   if ('maxSize' in patch && MAX_SIZES.includes(Number(patch.maxSize))) s.maxSize = Number(patch.maxSize);
   if ('audioLang' in patch) s.audioLang = /^[a-z]{2,3}$/.test(String(patch.audioLang)) ? String(patch.audioLang) : '';
+  // Anime this person asked to hear dubbed ("tv:123"): the player starts on the English track.
+  if (Array.isArray(patch.dubbed)) s.dubbed = [...new Set(patch.dubbed.map(String).filter((k) => /^(tv|movie):\d+$/.test(k)))].slice(-500);
   if ('startView' in patch && START_VIEWS.includes(patch.startView)) s.startView = patch.startView;
   if ('librarySort' in patch && LIBRARY_SORTS.includes(patch.librarySort)) s.librarySort = patch.librarySort;
   if ('skipIntro' in patch && SKIP_INTRO.includes(patch.skipIntro)) s.skipIntro = patch.skipIntro;

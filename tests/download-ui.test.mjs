@@ -29,7 +29,7 @@ test('a film downloads with one press; a show uses the minimal season panel', ()
 });
 
 test('a show someone else already has joins your library in one press, every season, in batches the API accepts', () => {
-  assert.match(ui, /const extra = serverOnlyEpisodes\(titleState\(t\)\);\s+if \(extra\.length\) return addEverything\(extra\);\s+ps\.open = !ps\.open;/, 'adds before any panel opens');
+  assert.match(ui, /const extra = dub\.dubbing\(\) \? \[\] : serverOnlyEpisodes\(titleState\(t\)\);\s+if \(extra\.length\) return addEverything\(extra\);\s+ps\.open = !ps\.open;/, 'adds before any panel opens');
   assert.match(ui, /function serverOnlyEpisodes\(s, season = null\)/);
   assert.match(ui, /const ADD_BATCH = 400;/);
   assert.match(ui, /files\.slice\(i, i \+ ADD_BATCH\)/);
@@ -59,4 +59,13 @@ test('Settings has one Downloads group: profile, size limit, audio language', ()
   assert.match(settings, /saveMe\(\{ maxSize: Number\(v\) \}\)/);
   assert.match(settings, /saveMe\(\{ audioLang: v \}\)/);
   assert.doesNotMatch(settings, /Preferred quality/);
+});
+
+test('the Audio choice is for anime, sends dub, and Dubbed counts only dual-audio copies', () => {
+  const ui = app;
+  assert.match(ui, /\/api\/title\/\$\{t\.type\}\/\$\{t\.id\}\/dub/);
+  assert.match(ui, /if \(!anime\) return;/, 'hidden unless the server says it is anime');
+  assert.equal((ui.match(/\.\.\.\(dub\.anime \? \{ dub: dub\.dubbing\(\) \} : \{\}\)/g) || []).length, 2, 'films and seasons');
+  assert.match(ui, /ready: full\.ready\.filter\(isDubbedCopy\), onServer: full\.onServer\.filter\(isDubbedCopy\)/);
+  assert.match(ui, /b\.dub \? 'dub' : ''/, 'dubbed and subtitled requests are separate commands');
 });

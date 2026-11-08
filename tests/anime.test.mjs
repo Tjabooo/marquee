@@ -8,6 +8,8 @@ import { episodesIn } from '../src/season.js';
 import { parseNyaa } from '../src/torrents.js';
 import { showKey } from '../src/shows.js';
 import { startSmartJob, smartJob } from '../src/smart-download.js';
+import { isDualAudio } from '../src/recommend.js';
+import { versionInfo } from '../src/versions.js';
 
 // A context as anime.buildContext makes it, without the network.
 // continuous: TMDB numbers on across seasons (One Piece); years: when each season began.
@@ -307,4 +309,65 @@ test('a batch on the server with nothing new is left alone, and Best Quality sti
   const best = deps([rival, here], { title: 'Black Clover', aired: 170, have: [], deps: { torrentsHere: async () => new Set([hash]), trimPack: async () => null } });
   await wait(startSmartJob({ type: 'tv', title: 'Black Clover', season: 1, anime: clover, want: { profile: 'best' }, requester: 'bco' }, best.deps));
   assert.equal(best.added.includes(rival.name), true);
+});
+
+test('isDualAudio: every spelling on the sites, not "Dual" in a title or a dub in another language', () => {
+  for (const name of [
+    '[Judas] Sousou no Frieren (Season 02) [1080p][HEVC x265 10bit][Dual-Audio]',
+    '[EMBER] Frieren (2023) (Season 1) [BDRip] [1080p Dual Audio HEVC 10 bits DDP]',
+    'Black.Clover.S01.1080p.BluRay.Dual-Audio.Opus.2.0.AV1-Pi13',
+    'Black Clover S02E04 Day of Atonement 1080p CR WEB-DL DUAL AAC2.0 H.264-VARYG',
+    'Some.Show.S01.1080p.DualAudio.x265',
+    'D:\\media\\[DB] Some Show [Dual Audio 10bit 1080p]\\Episode 01.mkv',
+    '[Judas] Show [Dual-Audio][Subs: German, French]',
+  ]) assert.equal(isDualAudio(name), true, name);
+  for (const name of [
+    '[SubsPlease] Black Clover (01-170) (1080p) [Batch]',
+    '[Group] Dual Parallel Trouble Adventure - 01 (1080p)',
+    'Your Name 2016 1080p Dual Audio Hindi English',
+    'Show S01 1080p German Dual Audio',
+    '',
+  ]) assert.equal(isDualAudio(name), false, name);
+});
+
+test('Dubbed: searches ask for dual audio and only a dual-audio batch is added', async () => {
+  const cat = [
+    nyaa('[SubsPlease] Black Clover (01-170) (1080p) [Batch]', 412, 233 * GB),
+    nyaa('Black.Clover.S01.1080p.BluRay.Dual-Audio.Opus.2.0.AV1-Pi13', 40, 90 * GB),
+    nyaa('[Group] Black Clover (01-170) (1080p) [Dual Audio Hindi] [Batch]', 900, 90 * GB),
+  ];
+  const { deps: d, added } = deps(cat, { title: 'Black Clover', aired: 170 });
+  const queries = [];
+  const plain = d.searchTorrents;
+  d.searchTorrents = (q, t) => { queries.push(q); return plain(q, t); };
+  const job = await wait(startSmartJob({ type: 'tv', title: 'Black Clover', season: 1, anime: clover, dub: true, want: { profile: 'balanced' }, requester: 'dub1' }, d));
+  assert.deepEqual(added, ['Black.Clover.S01.1080p.BluRay.Dual-Audio.Opus.2.0.AV1-Pi13']);
+  assert.equal(job.outcome, 'started');
+  assert.ok(queries.length && queries.every((q) => /\bdual$/.test(q)), queries.join(' | '));
+});
+
+test('Dubbed: no dual-audio release means nothing is added and it says so, never a subtitled copy', async () => {
+  const cat = [nyaa('[SubsPlease] Black Clover (01-170) (1080p) [Batch]', 412, 233 * GB), nyaa('[SubsPlease] Black Clover - 176 (1080p) [DC022518].mkv', 2784, 1.4 * GB)];
+  const { deps: d, added } = deps(cat, { title: 'Black Clover', aired: 2 });
+  const job = await wait(startSmartJob({ type: 'tv', title: 'Black Clover', season: 1, anime: clover, dub: true, want: { profile: 'balanced' }, requester: 'dub2' }, d));
+  assert.deepEqual(added, []);
+  assert.equal(job.outcome, 'none');
+  assert.match(job.message, /dual-audio/);
+});
+
+test('Dubbed and subtitled requests of one season are separate jobs', async () => {
+  const { deps: d } = deps([], { title: 'Black Clover', aired: 1 });
+  const spec = { type: 'tv', title: 'Black Clover', season: 1, anime: clover, want: {}, requester: 'dub3' };
+  const a = startSmartJob(spec, d), b = startSmartJob({ ...spec, dub: true }, d);
+  assert.notEqual(a, b);
+  await wait(a); await wait(b);
+});
+
+test('versions: a dual-audio copy is its own version beside a subtitled one in the same quality', () => {
+  const sub = versionInfo({ file: '[SubsPlease] Frieren - 01 (1080p WEB).mkv', full: 'D:\\media\\[SubsPlease] Frieren\\[SubsPlease] Frieren - 01 (1080p WEB).mkv' });
+  const dub = versionInfo({ file: 'Frieren - 01 (1080p WEB).mkv', full: 'D:\\media\\[Judas] Frieren [Dual-Audio]\\Frieren - 01 (1080p WEB).mkv' });
+  assert.notEqual(sub.versionSignature, dub.versionSignature);
+  assert.equal(dub.versionDubbed, true);
+  assert.equal(sub.versionDubbed, undefined);
+  assert.match(dub.versionLabel, /Dual audio/);
 });

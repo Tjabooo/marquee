@@ -37,7 +37,7 @@ import { createSvtQueue, expectedSize } from './svt-queue.js';
 import { createDocumentaries } from './documentaries.js';
 import * as versions from './versions.js';
 import { planEpisodeOrder } from './episode-order.js';
-import { PROFILES } from './recommend.js';
+import { PROFILES, isDualAudio } from './recommend.js';
 import * as accounts from './accounts.js';
 import * as live from './live.js';
 import { NotesStore } from './notes.js';
@@ -873,7 +873,8 @@ async function libraryView(user) {
     const mediaKey = accounts.mediaKey(full);
     const entry = mediaKey && mine.get(mediaKey);
     const base = { ...rest, mediaKey, ...showOf.get(rest.id), ...filmOf.get(rest.id) };
-    Object.assign(base, versions.versionInfo(base));
+    Object.assign(base, versions.versionInfo({ ...base, full }));
+    if (base.versionDubbed && wantsDub(user, base.filmTitle || base.title)) base.preferDub = true;
     base.versionKey = versions.versionKey(base);
     if (!entry) { server.push(base); continue; }
     own.push({
@@ -1141,13 +1142,15 @@ async function addDownloadNow({ link, file, user = null, name = '', film = null,
 // Episodes of a show's season that are already here: in the library, or in qBittorrent (an episode,
 // or a season pack, which counts as every episode). Episodes already on the server go straight into
 // `user`'s library instead of being downloaded twice.
-async function haveEpisodes(key, seasonNo, user = null, ctx = null) {
+// dub: only dual-audio copies count, so a subtitled copy never stands in for the dub someone asked for.
+async function haveEpisodes(key, seasonNo, user = null, ctx = null, { dub = false } = {}) {
   const have = new Set();
   const queued = new Set(); // in `have` because a download has them, not yet playable
   have.queued = queued;
   let list = [];
   try { list = await qbit('/api/v2/torrents/info'); } catch { /* qBittorrent down: library only */ }
   const relevant = list.filter((t) => {
+    if (dub && !isDualAudio(t.name)) return false;
     // Anime: a torrent Marquee downloaded for this show, or any name the context places in this season.
     if (ctx && (shows.showDownload(t.hash)?.id === ctx.id || season.episodesIn(t.name, seasonNo, ctx).length)) return true;
     const identity = torrentIdentity(t.name);
@@ -1177,6 +1180,7 @@ async function haveEpisodes(key, seasonNo, user = null, ctx = null) {
   }
   const library = await libraryVisibleItems(await scanLibrary(), user || accounts.ownerUser());
   for (const i of library || []) {
+    if (dub && !isDualAudio(i.full)) continue;
     if (ctx ? i.episode == null || !(season.sameShow(i.title, key) || ctx.keys.includes(shows.showKey(i.title)))
       : i.season !== seasonNo || i.episode == null || !season.sameShow(i.title, key)) continue;
     const managedState = managed.get(path.resolve(i.full).toLowerCase());
@@ -1188,6 +1192,18 @@ async function haveEpisodes(key, seasonNo, user = null, ctx = null) {
     if (user) accounts.addEntry(user.id, accounts.mediaKey(i.full), 'added');
   }
   return have;
+}
+
+// This person asked for this anime dubbed (Download panel), by any of its names.
+function wantsDub(user, title) {
+  const ctx = title ? anime.contextForTitle(title) : null;
+  return Boolean(ctx && user?.settings?.dubbed?.includes(`${ctx.type}:${ctx.id}`));
+}
+
+function rememberDub(user, type, id, on) {
+  const key = `${type}:${id}`;
+  const list = (user.settings?.dubbed || []).filter((k) => k !== key);
+  if (on || list.length !== (user.settings?.dubbed || []).length) accounts.updateMe(user, { dubbed: on ? [...list, key] : list });
 }
 
 // The Download command (smart-download.js) for one person: a film, a season or some episodes.
@@ -1221,10 +1237,13 @@ async function startSmartFor(user, body) {
     ? anime.buildContext(type, tmdbId, tmdb, { details }).catch((e) => { console.warn(`[anime] ${title}: ${e.message}`); return null; })
     : null; // a promise: the job waits for it, the Download button doesn't
   const upgrade = type === 'tv' && body.upgrade ? await upgradeSource(user, title, seasonNo) : null;
+  // Dubbed: dual-audio releases only, anime only. The choice is remembered for the player.
+  const dub = Boolean(animeCtx && !upgrade && body.dub === true);
+  if (animeCtx && !upgrade && typeof body.dub === 'boolean') rememberDub(user, type, tmdbId, dub);
   const want = downloadWant(user, body);
   const documentary = (details.genres || []).some((g) => g.id === 99);
   const id = smart.startSmartJob({
-    type, title, year, season: seasonNo, episodes: upgrade || !episodes?.length ? null : episodes, range: !upgrade && range, requester: user.id, subs, anime: upgrade ? null : animeCtx,
+    type, title, year, season: seasonNo, episodes: upgrade || !episodes?.length ? null : episodes, range: !upgrade && range, requester: user.id, subs, anime: upgrade ? null : animeCtx, dub,
     upgrade: upgrade && { episodes: upgrade.episodes, bytes: upgrade.bytes, names: upgrade.names, quality: upgrade.quality },
     originalTitle: original && original !== title && /^[\p{Script=Latin}\d\s\p{P}]+$/u.test(original) ? original : null,
     want,
@@ -1235,9 +1254,9 @@ async function startSmartFor(user, body) {
     alternative: upgrade || animeCtx ? null : svtAlternative(user, { type, title, originalTitle: original, year, tmdbId }),
     addDownload: (opts) => addDownload({ ...opts, user, film, show }),
     wantSubtitles: (link, list, name) => { subtitles.wantSubtitles(link, list, name); setTimeout(checkSubtitleWants, 30_000); },
-    filmHave: () => filmHave(tmdbId, user, want.quality), freeBytes: freeBytesFor,
+    filmHave: () => filmHave(tmdbId, user, want.quality, { dub }), freeBytes: freeBytesFor,
     seasonEpisodes: (t, y, n) => shows.seasonEpisodes(t, y, n, tmdb),
-    haveEpisodes: (key, n, ctx) => haveEpisodes(key, n, user, ctx),
+    haveEpisodes: (key, n, ctx) => haveEpisodes(key, n, user, ctx, { dub }),
     trimPack: (link, n, owned, ctx) => trimSeasonPack(link, n, owned, { ctx }), removePack: removeNewPack,
     reopenPack: (link, n, owned, ctx) => reopenPack(link, n, owned, { ctx, key: shows.showKey(title) }),
     torrentsHere: async () => new Set((await qbit('/api/v2/torrents/info')).map((t) => t.hash.toLowerCase())),
@@ -1414,13 +1433,13 @@ async function freeBytesFor(type) {
 // is already downloading (you're added to its requesters, as when adding the same magnet twice).
 // quality: an exact resolution was asked for (Advanced). A copy in another resolution doesn't count:
 // the new one becomes a version of the film (versions.js).
-async function filmHave(tmdbId, user, quality = null) {
+async function filmHave(tmdbId, user, quality = null, { dub = false } = {}) {
   const items = await libraryVisibleItems(await scanLibrary(), user);
   if (items?.length) {
     const ids = await shows.filmInfo(items.map((i) => ({ ...i, mediaKey: accounts.mediaKey(i.full) })), null);
     const mine = accounts.libraryOf(user.id);
     const matches = items.filter((i) => Number(ids.get(i.id)?.tmdbId) === Number(tmdbId) && !ids.get(i.id)?.movieAmbiguous
-      && (!quality || versions.sameQuality(versions.qualityOf(i.file), quality)));
+      && (!quality || versions.sameQuality(versions.qualityOf(i.file), quality)) && (!dub || isDualAudio(i.full)));
     if (matches.some((i) => mine.has(accounts.mediaKey(i.full)))) return 'library';
     if (matches.length) {
       for (const i of matches) accounts.addEntry(user.id, accounts.mediaKey(i.full), 'added');
@@ -1429,7 +1448,7 @@ async function filmHave(tmdbId, user, quality = null) {
   }
   let list = [];
   try { list = await qbit('/api/v2/torrents/info'); } catch { return null; }
-  const active = list.find((t) => Number(shows.filmDownload(t.hash)?.id) === Number(tmdbId) && !/^(missingFiles|error|unknown)$/.test(t.state || ''));
+  const active = list.find((t) => Number(shows.filmDownload(t.hash)?.id) === Number(tmdbId) && (!dub || isDualAudio(t.name)) && !/^(missingFiles|error|unknown)$/.test(t.state || ''));
   if (!active) return null;
   accounts.recordTorrent(active.hash, torrentOwner(active), active.name);
   accounts.requestTorrent(active.hash, user.id, active.name);
@@ -1864,7 +1883,7 @@ async function listDownloads(user, all = false) {
     poster: art?.poster || null, backdrop: art?.backdrop || null,
     added: t.added_on ? t.added_on * 1000 : accounts.torrentRow(t.hash)?.added_at || null,
     ready: Boolean(primary?.available), hasVideo: filesKnown ? videos.length > 0 : null, files: safeFiles, episodes,
-    packFiles, skippedFiles: packFiles - videos.length,
+    packFiles, skippedFiles: packFiles - videos.length, dualAudio: isDualAudio(t.name),
     others: accounts.torrentWanters(t.hash).some((id) => id !== user.id),
     libraryIds: [...new Set(safeFiles.map((f) => f.libraryId).filter(Boolean))],
     owner: all ? nameOf(owner) : undefined,
@@ -3007,6 +3026,17 @@ async function handleApi(req, res, url) {
     const d = await cachedTmdb(`/${m[1]}/${m[2]}/videos`, { include_video_language: [...new Set([lang, 'en', 'null'])].join(',') }, 12 * 3600 * 1000);
     return sendJson(res, 200, { trailer: pickTrailer(d.results || [], lang) });
   }
+  // Anime get an Audio choice in the Download panel; `dubbed`: what this person last chose for it.
+  if ((m = p.match(/^\/api\/title\/(movie|tv)\/(\d+)\/dub$/))) {
+    if (!tmdbOn()) return sendJson(res, 200, { anime: false, dubbed: false });
+    const d = await cachedTmdb(`/${m[1]}/${m[2]}`, {}, 6 * 3600 * 1000);
+    // Adding someone's dual-audio copy from the server: the same choice, with no download to carry it.
+    if (req.method === 'POST') {
+      if (anime.isAnimeDetails(d)) rememberDub(user, m[1], m[2], (await readJson(req)).dubbed === true);
+      return sendJson(res, 200, { ok: true });
+    }
+    return sendJson(res, 200, { anime: anime.isAnimeDetails(d), dubbed: Boolean(user.settings?.dubbed?.includes(`${m[1]}:${m[2]}`)) });
+  }
   // A show's seasons (TMDB), for the season chips in the details and show sheets.
   if ((m = p.match(/^\/api\/tv\/(\d+)\/seasons$/))) {
     const d = await cachedTmdb(`/tv/${m[1]}`, {}, 6 * 3600 * 1000);
@@ -3372,7 +3402,9 @@ async function handleApi(req, res, url) {
       const file = converter.preferConverted(await sourceFile(kind, url.searchParams.get('id')));
       const info = infoFor(file);
       // anime: Japanese audio, so the player turns on English subtitles for people who never chose any.
-      return sendJson(res, 200, { ...await subtitles.languagesForFile(file, info), anime: Boolean(info?.title && anime.contextForTitle(info.title)) });
+      // Not for a dual-audio copy of an anime they asked for dubbed.
+      const heardDubbed = isDualAudio(file) && wantsDub(user, info?.title);
+      return sendJson(res, 200, { ...await subtitles.languagesForFile(file, info), anime: Boolean(info?.title && anime.contextForTitle(info.title)) && !heardDubbed });
     }
     // Not downloaded yet (torrent search): look up by title.
     const q = (url.searchParams.get('q') || '').trim().slice(0, 100);
@@ -3470,9 +3502,11 @@ async function handleApi(req, res, url) {
     let vid = null;
     try { [tracks, vid] = await Promise.all([converter.probeAudio(served), converter.probeVideo(served)]); } catch { /* unreadable: say nothing */ }
     if (!tracks) return sendJson(res, 200, { known: false });
+    // They asked for this anime dubbed: the player starts on the English track.
+    const preferAudio = isDualAudio(source) && wantsDub(user, infoFor(source)?.title) ? 'en' : null;
     if (phone) {
       return sendJson(res, 200, {
-        known: true, codec: 'aac', tracks, browserSafe: true, aligned: true, phone: true,
+        preferAudio, known: true, codec: 'aac', tracks, browserSafe: true, aligned: true, phone: true,
         audioSource: converter.audioSourceKey(served), defaultAudio: tracks[0]?.index ?? null,
         videoSafe: true, videoCodec: 'H.264', fixable: false, job: null, percent: null, error: null,
         sync: { shift: 0, applied: 0 },
@@ -3491,7 +3525,7 @@ async function handleApi(req, res, url) {
     if (!videoSafe && m[1] === 'lib') prepareNextEpisodes(source, plays).catch(() => {});
     const sync = converter.syncState(source);
     return sendJson(res, 200, {
-      known: true, codec: main, tracks, browserSafe, aligned,
+      preferAudio, known: true, codec: main, tracks, browserSafe, aligned,
       audioSource: converter.audioSourceKey(served), defaultAudio: tracks[0]?.index ?? null,
       videoSafe, videoCodec: vid ? (vid.codec === 'hevc' ? `HEVC (${vid.tag || 'hev1'})` : `${converter.VIDEO_NAMES[vid.codec] || vid.codec}${vid.tenBit ? ' 10-bit' : ''}`) : null,
       fixable: Boolean(fix.fixable), job: fix.state || sync.state || null,
@@ -3755,7 +3789,7 @@ async function handleRequest(req, res) {
         || /^\/api\/access\/(invite|remove|rename|invite\/\w+\/revoke)$/.test(url.pathname) || /^\/c\/i\/[\w-]+\/?$/.test(url.pathname)
         || /^\/api\/auth\/(login|logout|password)$/.test(url.pathname)
         || /^\/api\/(me|me\/progress|me\/avatar|library\/add|library\/extend|library\/identify|admin\/settings|admin\/users\/\d+|admin\/users\/\d+\/avatar|push\/subscribe|push\/unsubscribe|push\/test)$/.test(url.pathname)
-        || /^\/api\/watchlist(?:\/seen)?$/.test(url.pathname) || /^\/api\/travel(?:\/remove)?$/.test(url.pathname)
+        || /^\/api\/title\/(movie|tv)\/\d+\/dub$/.test(url.pathname) || /^\/api\/watchlist(?:\/seen)?$/.test(url.pathname) || /^\/api\/travel(?:\/remove)?$/.test(url.pathname)
         || /^\/api\/admin\/notes(?:\/import|\/\d+(?:\/(?:trash|restore|share|unshare))?)?$/.test(url.pathname)
         || /^\/api\/admin\/notes\/uploads(?:\/[a-f0-9]{32}(?:\/(?:finish|cancel))?)?$/.test(url.pathname)
         || /^\/api\/watch(?:\/plan|\/[A-Za-z0-9_-]{24}\/(join|heartbeat|control|leave|invite|chat|react|schedule|cancel))?$/.test(url.pathname)

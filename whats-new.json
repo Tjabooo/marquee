@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-08-anime-dubbed",
+    "date": "2026-11-08",
+    "title": "Dubbed anime",
+    "items": [
+      {
+        "title": "Choose Dubbed when you add an anime",
+        "text": "Anime now have an Audio choice when you add them. Dubbed only gets a release with both English and Japanese audio, and adds nothing if there isn't one. It plays in English from the start, and you can still switch in the Audio menu."
+      }
+    ]
+  },
+  {
     "id": "2026-11-08-one-press-add",
     "date": "2026-11-08",
     "title": "Add a whole show in one press",

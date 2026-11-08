@@ -19,12 +19,15 @@
 // names are matched by every known title and placed on TMDB's numbering ("Black Clover - 176" is
 // TMDB's season 2 episode 6). Packs' other seasons are switched off like owned episodes.
 //
+// Dubbed (spec.dub, anime only): every search asks for dual audio and only dual-audio releases come back
+// from it, so packs and single episodes alike are the dub or nothing, never a subtitled substitute.
+//
 // Another source (deps.alternative: SVT Play, see server.js) takes over where no torrent can: it's asked
 // first when spec.preferAlternative says the title is likely to be there, else after the search came up empty.
 import crypto from 'node:crypto';
 import { showKey } from './shows.js';
 import { sameShow, episodesIn, episodeQueries } from './season.js';
-import { pickBest, pickEpisode, choose, pictureScore, perItemSize, sourceOf } from './recommend.js';
+import { pickBest, pickEpisode, choose, pictureScore, perItemSize, sourceOf, isDualAudio } from './recommend.js';
 import { seasonPacks, packQueries, episodeQueriesAnime } from './anime.js';
 
 const jobs = new Map();          // id -> job
@@ -48,7 +51,7 @@ export function smartJob(id, { userId, owner = false } = {}) {
 // spec: { type: 'movie' | 'tv', title, year?, originalTitle?, season?, episodes? (only these), range? (episodes is a
 //   chosen range: batches may serve it), anime? (context), upgrade? ({ episodes, bytes, names, quality }: the season
 //   as it is now; only a clearly better season pack is downloaded, and deps.upgrading() swaps the old files later),
-//   want: { profile, prefer, quality, maxBytes, audioLang }, subs?, requester? }
+//   want: { profile, prefer, quality, maxBytes, audioLang }, subs?, requester?, dub? (dual-audio releases only) }
 // deps: { parseName, searchTorrents, magnetFor1337x, addDownload, wantSubtitles?, log?, sleep?,
 //   filmHave?(), freeBytes?(type), seasonEpisodes?(title, year, season), haveEpisodes?(key, season, ctx),
 //   trimPack?(link, season, owned, ctx), removePack?(link), inOrder?(added, season) (episodes in order),
@@ -58,15 +61,17 @@ export function startSmartJob(spec, deps) {
   const key = showKey(spec.title);
   const only = Array.isArray(spec.episodes) && spec.episodes.length ? [...new Set(spec.episodes)].sort((a, b) => a - b) : null;
   const target = (spec.type === 'tv' ? `tv:${key === 'housemd' ? 'house' : key}:${spec.season}:${only?.join(',') || 'all'}` : `movie:${key}:${spec.year || ''}`)
-    + (spec.upgrade ? ':upgrade' : '');
+    + (spec.upgrade ? ':upgrade' : '') + (spec.dub ? ':dub' : '');
   const running = [...jobs.values()].find((j) => j.state === 'running' && j.requester === (spec.requester ?? null) && j.target === target);
   if (running) return running.id; // pressing Download twice never queues anything twice
   const job = {
     id: crypto.randomBytes(6).toString('hex'), type: spec.type, title: spec.title, season: spec.season ?? null,
     requester: spec.requester ?? null, target, started: Date.now(), state: 'running', step: 'Finding a download…',
     outcome: null, message: null, total: null, have: [], queued: [], added: [], unavailable: [], upcoming: 0, error: null,
+    ...(spec.dub ? { dub: true } : {}),
   };
   jobs.set(job.id, job);
+  if (spec.dub) deps = dubbedOnly(deps);
   (spec.type === 'tv' ? (spec.upgrade ? runUpgrade : runSeason)(job, { ...spec, only }, deps) : runFilm(job, spec, deps)).catch((e) => {
     job.state = 'failed';
     job.error = e.status === 503 ? 'The download service is unavailable. Try again shortly.' : e.message || String(e);
@@ -75,6 +80,15 @@ export function startSmartJob(spec, deps) {
     deps.log?.(`[smart] ${spec.title}${spec.season != null ? ` S${pad(spec.season)}` : ''}: ${e.message || e}`);
   });
   return job.id;
+}
+
+// "dual" finds every spelling on the torrent sites ("Dual-Audio", "Dual Audio", "DUAL"); "DualAudio" as a
+// search word finds next to nothing. The names are then checked, because sites match loosely.
+function dubbedOnly(deps) {
+  return { ...deps, searchTorrents: async (query, type) => {
+    const found = await deps.searchTorrents(`${query} dual`, type);
+    return { ...found, results: (found.results || []).filter((r) => isDualAudio(r.name)) };
+  } };
 }
 
 const hashOf = (r) => /btih:([a-z0-9]+)/i.exec(r.magnet || '')?.[1]?.toLowerCase() || null;
@@ -102,7 +116,12 @@ async function add(r, mediaType, spec, deps) {
   }
 }
 
-const done = (job, outcome, message) => { job.state = 'done'; job.outcome = outcome; job.message = message; job.step = null; };
+const done = (job, outcome, message) => {
+  job.state = 'done'; job.outcome = outcome; job.step = null;
+  // "Nothing matched" means no dub here; a size limit or a season that hasn't aired keeps its own reason.
+  job.message = job.dub && outcome === 'none' && /clearly matches|Couldn’t find/.test(message)
+    ? 'No dubbed (dual-audio) release of this was found, so nothing was added.' : message;
+};
 
 // spec.anime may still be on its way (AniList is slow): a promise, waited for here, never fatal.
 async function animeOf(job, spec) {

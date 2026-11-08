@@ -1,4 +1,13 @@
 {
+  "2026-11-08-anime-dubbed": {
+    "title": "Dubbad anime",
+    "items": {
+      "Choose Dubbed when you add an anime": {
+        "title": "Välj Dubbat när du lägger till en anime",
+        "text": "Anime har nu ett ljudval när du lägger till dem. Dubbat hämtar bara en utgåva med både engelskt och japanskt ljud och lägger inte till något om det inte finns någon. Den spelas på engelska från början, och du kan fortfarande byta i ljudmenyn."
+      }
+    }
+  },
   "2026-11-08-one-press-add": {
     "title": "Lägg till en hel serie med ett tryck",
     "items": {
