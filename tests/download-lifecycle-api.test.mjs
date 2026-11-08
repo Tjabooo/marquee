@@ -250,3 +250,63 @@ test('completed non-video downloads report complete without pretending to be pla
   const result = (await request('/api/downloads')).items[0];
   assert.equal(result.mediaType, null); assert.equal(result.done, true); assert.equal(result.ready, false); assert.equal(result.hasVideo, false);
 });
+
+const BATCH = '[Erai-raws] Black Clover (TV) - 001 ~ 170 [1080p][BATCH]';
+const batchFile = (ep, priority, progress = 0) => ({ index: ep - 1, name: `[Erai-raws] Black Clover (TV) - 001 ~ 170 [1080p]/[Erai-raws] Black Clover (TV) - ${String(ep).padStart(3, '0')} [1080p][ABCD1234].mkv`, progress, size: 10, priority });
+
+test('a ranged batch in a "001 ~ 170" folder reports only the episodes switched on', { timeout: 15000 }, async (t) => {
+  const { state, request } = await fixture(t);
+  state.name = BATCH; state.files = [batchFile(1, 0), batchFile(2, 0), batchFile(70, 1), batchFile(71, 1)];
+  await request('/api/downloads/add', { link: `magnet:?xt=urn:btih:${HASH}`, name: BATCH });
+  const d = (await request('/api/downloads')).items[0];
+  assert.equal(d.season, 1); assert.equal(d.episode ?? null, null);
+  assert.deepEqual(d.episodes.map((e) => `${e.season}:${e.episode}`), ['1:70', '1:71']);
+  assert.equal(d.packFiles, 4); assert.equal(d.skippedFiles, 2); assert.equal(d.others, false);
+});
+
+test('leaving a download: it carries on for others and stops being yours; nobody else, and it is cancelled', { timeout: 15000 }, async (t) => {
+  const { state, request } = await fixture(t);
+  state.name = BATCH; state.files = [batchFile(70, 1), batchFile(71, 1)];
+  const link = `magnet:?xt=urn:btih:${HASH}`;
+  await request('/api/downloads/add', { link, name: BATCH }, 'leo@test.local');
+  await request('/api/downloads/add', { link, name: BATCH }, 'member@test.local');
+  assert.equal((await request('/api/downloads')).items[0].others, true);
+
+  assert.deepEqual(await request(`/api/downloads/${HASH}/leave`, {}), { ok: true, kept: true });
+  assert.deepEqual((await request('/api/downloads')).items, [], 'gone from the one who left');
+  assert.equal((await request('/api/downloads', undefined, 'leo@test.local')).items.length, 1, 'still running for the other');
+  assert.deepEqual(state.deletes, []);
+
+  // Someone with no part in it can't cancel it this way.
+  assert.deepEqual(await request(`/api/downloads/${HASH}/leave`, {}, 'stranger@test.local'), { ok: true, kept: true });
+  assert.deepEqual(state.deletes, []);
+
+  // The last person out cancels it.
+  assert.deepEqual(await request(`/api/downloads/${HASH}/leave`, {}, 'leo@test.local'), { ok: true, kept: false });
+  assert.equal(state.deletes.length, 1);
+});
+
+test('removing a show mid-download keeps it out of your library as more episodes finish', { timeout: 15000 }, async (t) => {
+  const { state, request, file } = await fixture(t);
+  const one = 'pack/Example.Show.S01E01.mp4', two = 'pack/Example.Show.S01E02.mp4';
+  state.name = 'Example.Show.S01.COMPLETE';
+  state.files = [{ name: one, progress: 1, size: 10, priority: 1 }, { name: two, progress: 0.3, size: 10, priority: 1 }];
+  await file(one);
+  const link = `magnet:?xt=urn:btih:${HASH}`;
+  await request('/api/downloads/add', { link, name: state.name }, 'leo@test.local');
+  await request('/api/downloads/add', { link, name: state.name });
+  await request('/api/downloads'); await request('/api/downloads', undefined, 'leo@test.local');
+  const library = async (who) => (await request('/api/library', undefined, who)).items;
+  const before = await library();
+  assert.equal(before.length, 1);
+
+  const removed = await request('/api/library/delete-many', { ids: before.map((f) => f.id) });
+  assert.equal(removed.removed, 1); assert.equal(removed.deleted, 0);
+  assert.deepEqual(await library(), []);
+
+  // Another episode lands: it goes to the one still on the download, not back to the one who left.
+  state.files[1].progress = 1; await file(two);
+  await request('/api/downloads'); await request('/api/downloads', undefined, 'leo@test.local');
+  assert.deepEqual(await library(), []);
+  assert.equal((await library('leo@test.local')).length, 2);
+});

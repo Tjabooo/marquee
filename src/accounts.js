@@ -640,6 +640,24 @@ export function requestTorrent(hash, userId, name, { restart = false } = {}) {
     .run(hash, userId);
 }
 export const torrentRequesters = (hash) => db.prepare('SELECT user_id FROM torrent_requests WHERE hash = ?').all(String(hash).toLowerCase()).map((r) => r.user_id);
+// Everyone who wants this download: whoever started it and whoever asked for it since.
+export function torrentWanters(hash) {
+  const row = torrentRow(hash);
+  return [...new Set([row?.user_id, ...torrentRequesters(hash)].filter((id) => id != null))];
+}
+// Someone takes themselves off a download, so it stops landing in their library. The next person who
+// asked for it takes it over. Returns who still wants it.
+export function leaveTorrent(hash, userId) {
+  hash = String(hash).toLowerCase();
+  db.prepare('DELETE FROM torrent_requests WHERE hash = ? AND user_id = ?').run(hash, userId);
+  const row = torrentRow(hash);
+  const others = torrentWanters(hash).filter((id) => id !== userId);
+  if (row?.user_id === userId) {
+    if (others.length) db.prepare('UPDATE torrents SET user_id = ? WHERE hash = ?').run(others[0], hash);
+    else db.prepare('UPDATE torrents SET claimed_at = ? WHERE hash = ?').run(Date.now(), hash); // nobody left to hand its files to
+  }
+  return others;
+}
 export function torrentClaimants(hash) {
   const row = torrentRow(hash);
   const pending = db.prepare('SELECT user_id FROM torrent_requests WHERE hash = ? AND claimed_at IS NULL').all(String(hash).toLowerCase()).map((r) => r.user_id);

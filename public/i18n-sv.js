@@ -1,5 +1,10 @@
 // Swedish for the web app, keyed by the English line in the code (T('…')). See public/i18n.js.
 export default {
+  "Episodes {0}": "Avsnitt {0}",
+  "{0} of {1} episodes": "{0} av {1} avsnitt",
+  "Skipping {0} of {1} episodes": "Hoppar över {0} av {1} avsnitt",
+  "Downloads someone else asked for carry on for them, but stop coming to your library.": "Nedladdningar som någon annan har bett om fortsätter för dem, men kommer inte längre till ditt bibliotek.",
+  "{0} only you asked for will be cancelled, and the {1} downloaded so far deleted.": "{0} som bara du har bett om avbryts, och de {1} som hunnit laddas ner raderas.",
   "started a room for {0}": "startade ett rum för {0}",
   "planned a watch party for {0}": "planerade en tittarkväll för {0}",
   "invited {0} to {1}": "bjöd in {0} till {1}",

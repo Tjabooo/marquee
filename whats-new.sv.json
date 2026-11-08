@@ -1,4 +1,21 @@
 {
+  "2026-11-08-ranges-and-removing": {
+    "title": "Avsnittsintervall och att ta bort serier",
+    "items": {
+      "Ranges say what they're doing": {
+        "title": "Intervall visar vad som händer",
+        "text": "När du laddar ner en del av en säsong visas nu vilka avsnitt som kommer och hur många som hoppas över, i stället för att det ser ut som hela säsongen."
+      },
+      "Ask for more episodes later": {
+        "title": "Be om fler avsnitt senare",
+        "text": "Ber du om andra avsnitt av en säsong används samlingen som redan finns på servern när det går, och överhoppade avsnitt börjar nu verkligen laddas ner."
+      },
+      "Remove a show that's still downloading": {
+        "title": "Ta bort en serie som fortfarande laddas ner",
+        "text": "Nu kan du ta bort en serie från ditt bibliotek medan den laddas ner, och den kommer inte tillbaka. Har någon annan också bett om den fortsätter den för dem."
+      }
+    }
+  },
   "2026-11-08-tv-progress": {
     "title": "Förloppsindikatorer på TV:n",
     "items": {

@@ -274,3 +274,37 @@ test('One Piece season 21 (episodes 892-1088 on TMDB): a 892-1088 batch covers i
   assert.equal(job.added[0].episodes.length, 197);
   assert.equal(job.added[0].episodes[0], 892);
 });
+
+test('more episodes of a batch on the server: same batch, skipped episodes back on, a rival not added', async () => {
+  const here = nyaa('[Erai-raws] Black Clover (TV) - 001 ~ 170 [1080p][BATCH]', 107, 233 * GB);
+  const rival = nyaa('[SubsPlease] Black Clover (01-170) (1080p) [Batch]', 412, 231 * GB);
+  const reopened = [];
+  const { deps: d, added } = deps([rival, here], { title: 'Black Clover', aired: 170, have: Array.from({ length: 101 }, (_, i) => 70 + i),
+    deps: {
+      addDownload: async ({ name }) => { added.push(name); return { existing: name === here.name }; },
+      torrentsHere: async () => new Set([/btih:(\w+)/.exec(here.magnet)[1]]),
+      trimPack: async () => { throw new Error('a pack on the server is never trimmed'); },
+      removePack: async () => { throw new Error('a pack on the server is never removed'); },
+      reopenPack: async (link, season, owned) => { reopened.push(owned); return { covered: new Set(Array.from({ length: 69 }, (_, i) => i + 1)), skipped: 0, reopened: 69 }; },
+    } });
+  const job = await wait(startSmartJob({ type: 'tv', title: 'Black Clover', season: 1, anime: clover, want: { profile: 'balanced' }, requester: 'bcm' }, d));
+  assert.deepEqual(added, [here.name]);
+  assert.equal(reopened[0].has(70), true, 'what you have stays as it is');
+  assert.equal(reopened[0].has(1), false);
+  assert.equal(job.added[0].episodes.length, 69);
+  assert.equal(job.outcome, 'started');
+});
+
+test('a batch on the server with nothing new is left alone, and Best Quality still looks further', async () => {
+  const here = nyaa('[Erai-raws] Black Clover (TV) - 001 ~ 170 [1080p][BATCH]', 107, 233 * GB);
+  const rival = nyaa('[Judas] Black Clover (01-170) (1080p) [BluRay] [Batch]', 412, 300 * GB);
+  const hash = /btih:(\w+)/.exec(here.magnet)[1];
+  let removed = 0;
+  const empty = deps([here], { title: 'Black Clover', aired: 170, have: [],
+    deps: { addDownload: async () => ({ existing: true }), torrentsHere: async () => new Set([hash]), reopenPack: async () => ({ covered: new Set(), skipped: 0 }), removePack: async () => { removed++; } } });
+  await wait(startSmartJob({ type: 'tv', title: 'Black Clover', season: 1, anime: clover, want: { profile: 'balanced' }, requester: 'bcn' }, empty.deps));
+  assert.equal(removed, 0);
+  const best = deps([rival, here], { title: 'Black Clover', aired: 170, have: [], deps: { torrentsHere: async () => new Set([hash]), trimPack: async () => null } });
+  await wait(startSmartJob({ type: 'tv', title: 'Black Clover', season: 1, anime: clover, want: { profile: 'best' }, requester: 'bco' }, best.deps));
+  assert.equal(best.added.includes(rival.name), true);
+});

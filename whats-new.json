@@ -1,5 +1,24 @@
 [
   {
+    "id": "2026-11-08-ranges-and-removing",
+    "date": "2026-11-08",
+    "title": "Episode ranges and removing shows",
+    "items": [
+      {
+        "title": "Ranges say what they're doing",
+        "text": "A download of part of a season now shows which episodes are coming and how many are skipped, instead of looking like the whole season."
+      },
+      {
+        "title": "Ask for more episodes later",
+        "text": "Asking for other episodes of a season uses the batch already on the server when it can, and skipped episodes now really start downloading."
+      },
+      {
+        "title": "Remove a show that's still downloading",
+        "text": "You can now remove a show from your library while it's still downloading, and it stays gone. If someone else asked for it too, it carries on for them."
+      }
+    ]
+  },
+  {
     "id": "2026-11-08-tv-progress",
     "date": "2026-11-08",
     "title": "Progress bars on the TV",

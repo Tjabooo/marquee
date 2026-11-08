@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
-import { libraryUnion, libraryAvailability, filterLibrary, transferState } from '../public/library-downloads.js';
+import { libraryUnion, libraryAvailability, filterLibrary, transferState, episodeSpans, packScope } from '../public/library-downloads.js';
 const show = { id: 'tv-12', tmdbId: 12, title: 'A series', seasons: [{ number: 1, total: 3 }] };
 const film = { id: 'film', title: 'A film', tmdbId: 10, source: 'existing', addedAt: 10 };
 const ep = { id: 'ep', show: show.id, title: show.title, season: 1, episode: 1, source: 'added' };
@@ -164,4 +164,15 @@ test('a focused completed card keeps its grid position until the focusout remove
   h.state.library=[film];h.state.downloads[0]={...h.state.downloads[0],done:true,ready:true,progress:1};h.run('renderLibrary()');
   assert.equal(list.children[1],card);assert.equal(card.querySelector('.sub').textContent,'Ready to watch');
   h.context.document.activeElement={};h.run('renderLibrary()');assert.equal(list.children.includes(card),false);
+});
+
+test('a pack with episodes switched off says which ones it is getting', () => {
+  assert.equal(episodeSpans([70, 71, 72]), '70–72');
+  assert.equal(episodeSpans([9, 1, 2, 3, 12, 13]), '1–3, 9, 12–13');
+  assert.equal(episodeSpans([1, 3, 5, 7, 9]), null);
+  const eps = (list) => list.map((episode) => ({ season: 1, episode }));
+  assert.equal(englishT('{0}', packScope({ season: 1, episode: null, skippedFiles: 69, packFiles: 170, episodes: eps(Array.from({ length: 101 }, (_, i) => 70 + i)) })), 'Episodes 70–170');
+  assert.equal(packScope({ season: 1, episode: null, skippedFiles: 5, packFiles: 10, episodes: eps([1, 3, 5, 7, 9]) }), '5 of 10 episodes');
+  assert.equal(packScope({ season: 1, episode: null, skippedFiles: 0, packFiles: 170, episodes: eps([1]) }), null);
+  assert.equal(packScope({ season: 1, episode: 4, skippedFiles: 9, packFiles: 10, episodes: eps([4]) }), null);
 });

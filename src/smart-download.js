@@ -77,6 +77,7 @@ export function startSmartJob(spec, deps) {
   return job.id;
 }
 
+const hashOf = (r) => /btih:([a-z0-9]+)/i.exec(r.magnet || '')?.[1]?.toLowerCase() || null;
 const usable = (r) => !rejected.has(r.magnet || r.ref) || Date.now() - rejected.get(r.magnet || r.ref) > REJECTED_TTL;
 
 // A search that throws is retried once after a short pause; a 503 (not configured) is final.
@@ -191,6 +192,10 @@ async function runSeason(job, spec, deps) {
   const want = { ...spec.want, title: job.title, season, anime: Boolean(ctx) };
   const covered = new Set();
   let packWhy = null;
+  // A batch already on the server beats a fresh one for the rest of a season: one release throughout,
+  // no second copy. Best Quality still goes for the best out there.
+  const hereHashes = want.profile === 'best' ? new Set() : await Promise.resolve(deps.torrentsHere?.()).catch(() => null) || new Set();
+  const onServer = (list) => list.filter((r) => hereHashes.has(hashOf(r)));
   const fromAlternative = (alt) => {
     alt.episodes.forEach((e) => covered.add(e));
     job.added.push({ pack: true, name: alt.name, quality: alt.quality || null, episodes: [...alt.episodes].sort((a, b) => a - b), skipped: 0, size: null, source: alt.source });
@@ -220,16 +225,23 @@ async function runSeason(job, spec, deps) {
       if (round > 0 && most < PACK_FROM) break;
       const pool = packs.filter((p) => p.covers >= most * 0.9);
       const tidy = pool.filter((p) => p.extra <= p.covers); // this season's worth, not the whole series
-      const best = choose(tidy.length ? tidy : pool, { ...want, type: 'tv', episodes: aired?.length || 0, missing: left.length, freeBytes }, 'pack');
+      const packWant = { ...want, type: 'tv', episodes: aired?.length || 0, missing: left.length, freeBytes };
+      const hereFirst = onServer(tidy.length ? tidy : pool);
+      const reused = hereFirst.length ? choose(hereFirst, packWant, 'pack') : null;
+      const best = reused?.pick ? reused : choose(tidy.length ? tidy : pool, packWant, 'pack');
       if (!best.pick) { if (!round) packWhy = best.why; break; }
       job.step = 'Starting download…';
       try {
         const added = await add(best.pick, 'tv', spec, deps);
         deps.inOrder?.(added, season);
         const owned = new Set([...have, ...covered, ...outside]);
-        const trim = added.existing ? null : await deps.trimPack?.(added.link, season, owned, ctx);
+        const trim = added.existing ? await deps.reopenPack?.(added.link, season, owned, ctx) : await deps.trimPack?.(added.link, season, owned, ctx);
         const packEps = (trim?.covered ? [...trim.covered] : best.pick.coveredEpisodes).filter((e) => !owned.has(e) && inRange(e));
-        if (trim?.covered && !packEps.length) { await deps.removePack?.(added.link); break; }
+        if (trim?.covered && !packEps.length) {
+          if (added.existing) { results = results.filter((r) => r !== best.pick && r.name !== best.pick.name); continue; } // someone else's: never removed
+          await deps.removePack?.(added.link);
+          break;
+        }
         packEps.forEach((e) => covered.add(e));
         job.added.push({ pack: true, name: best.pick.name, quality: best.pick.quality, episodes: packEps.sort((a, b) => a - b),
           skipped: trim?.skipped || 0, size: best.pick.size || null });
@@ -254,6 +266,11 @@ async function runSeason(job, spec, deps) {
       best = pickBest(results.filter(usable), { ...want, type: 'tv', episodes: aired?.length || 0, missing: missing?.length || 0, freeBytes }, deps.parseName);
       if (best.pick && want.profile !== 'best') break; // Best Quality: every name before choosing
     }
+    const hereFirst = onServer(results.filter(usable)).filter((r) => deps.parseName(r.name, { file: false }).episode == null);
+    if (hereFirst.length) {
+      const reused = pickBest(hereFirst, { ...want, type: 'tv', episodes: aired?.length || 0, missing: missing?.length || 0, freeBytes }, deps.parseName);
+      if (reused.pick) best = reused;
+    }
     packWhy = best.why;
     if (best.pick) {
       job.step = 'Starting download…';
@@ -262,10 +279,10 @@ async function runSeason(job, spec, deps) {
         deps.inOrder?.(added, season);
         // The pack's file list: which episodes it really has. Unknown (no metadata yet) counts as all.
         const owned = new Set([...have, ...outside]);
-        const trim = added.existing ? null : await deps.trimPack?.(added.link, season, owned);
+        const trim = added.existing ? await deps.reopenPack?.(added.link, season, owned, null) : await deps.trimPack?.(added.link, season, owned);
         const packEps = trim?.covered ? [...trim.covered].filter((e) => !owned.has(e) && inRange(e)) : (missing || []);
         if (trim?.covered && !packEps.length) {
-          await deps.removePack?.(added.link); // nothing new in it: not worth keeping
+          if (!added.existing) await deps.removePack?.(added.link); // nothing new in it: not worth keeping
           packWhy = 'The season pack had no episodes you’re missing.';
         } else {
           packEps.forEach((e) => covered.add(e));

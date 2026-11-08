@@ -1,5 +1,20 @@
 // Canonical Library union. Ready files are evidence; transfer percentages never grant playback.
 import { T } from './i18n.js';
+// "70–170" or "1–5, 9, 12–20"; null when it would be a long list.
+export function episodeSpans(list, max = 4) {
+  const eps = [...new Set(list)].sort((a, b) => a - b), spans = [];
+  for (const e of eps) {
+    const last = spans.at(-1);
+    if (last && e === last[1] + 1) last[1] = e; else spans.push([e, e]);
+  }
+  return spans.length && spans.length <= max ? spans.map(([a, b]) => (a === b ? String(a) : `${a}–${b}`)).join(', ') : null;
+}
+// What a season pack with episodes switched off is really getting, or null for a whole pack.
+export function packScope(d) {
+  if (d.season == null || d.episode != null || !(d.skippedFiles > 0)) return null;
+  const spans = episodeSpans((d.episodes || []).filter(ep => ep.season === d.season).map(ep => ep.episode));
+  return spans ? T('Episodes {0}', spans) : T('{0} of {1} episodes', d.packFiles - d.skippedFiles, d.packFiles);
+}
 export const transferPaused = d => /^(paused|stopped)/.test(d.state || '');
 export const transferAttention = d => /^(error|missingFiles)$/.test(d.state || '');
 export function transferState(d) {

@@ -11,7 +11,7 @@ import { SUB_SIZES, SUB_BACKGROUNDS, SUB_POSITIONS, subLook, subRaise, secondCho
   SLEEP_MINUTES, sleepTimer, sleepSecondsLeft, sleepFade, sleepLabel } from './player-comfort.js';
 import { comingUp, newEpisodes, watchStatus, todayIso } from './watchlist.js';
 import { travelTitle, sizeWords, stateWords, travelSummary, travelOrder } from './travel.js';
-import { libraryUnion, libraryAvailability, filterLibrary, transferState, transferAttention, transferPaused } from './library-downloads.js';
+import { libraryUnion, libraryAvailability, filterLibrary, transferState, transferAttention, transferPaused, packScope } from './library-downloads.js';
 import { createSocial, titleKeyOf, REACTIONS, countdownText, startLabel, namesText } from './social.js';
 import { createDocumentaries } from './documentaries.js';
 import { createPeople } from './people.js';
@@ -1427,7 +1427,9 @@ function renderShow() {
   const pendingFor = n => entry.transfers.filter(d => d.season === n || (d.episodes || []).some(ep => ep.season === n));
   // One click (plus a confirmation) for a whole season or the whole show.
   const seasonFiles = open ? files.filter(f => f.season === open.number) : [];
-  const deleteShow = files.length > 0 && h('button', { type: 'button', class: 'chip delete-many', onclick: e => openDeleteMany({ files, what: T('this show'), label: show.title, onDone: closeTopOverlay }, e.currentTarget) }, icon('trash'), T('Delete show'));
+  // Downloads you're on, finished or not: with nothing ready yet the show is still in your library.
+  const leaving = entry.transfers.filter(d => d.mine !== false && !d.done && d.others !== undefined);
+  const deleteShow = (files.length > 0 || leaving.length > 0) && h('button', { type: 'button', class: 'chip delete-many', onclick: e => openDeleteMany({ files, transfers: leaving, what: T('this show'), label: show.title, onDone: closeTopOverlay }, e.currentTarget) }, icon('trash'), files.length ? T('Delete show') : T('Remove from my library'));
   const deleteSeason = !single && seasonFiles.length > 0 && h('button', { type: 'button', class: 'chip delete-many', onclick: e => openDeleteMany({ files: seasonFiles, what: T('this season'), label: `${show.title} · ${open.name}`, onDone: () => { showView.season = null; renderShow(); } }, e.currentTarget) }, icon('trash'), T('Delete season'));
   let content;
   if (!open) content = [h('h3', {}, T('Seasons')), h('ul', { class: 'grid season-grid' }, seasons.map(se => {
@@ -1626,10 +1628,11 @@ function updateDlCard(el, d) {
   const operation = transferOperations.get(d.hash);
   const label = operation?.label || (d.ready ? (d.converting ? T('Preparing playback') : T('Ready to watch')) : transferState(d));
   r.release.textContent = d.name;
+  const scope = packScope(d);
   r.error.textContent = operation?.error || (d.ready && d.mediaType === 'tv' && d.episode == null && !(d.libraryIds || []).length ? T('Verified files are outside the media library. Add the download folder to the media library to play individual episodes.') : '') || (d.canManage === false ? T('Shared download. Only the person who started it can change the transfer.') : '');
   const fileKey = JSON.stringify(d.files || []);
   if (r.fileKey !== fileKey) { r.fileKey = fileKey; r.files.hidden = !(d.files || []).length; r.files.querySelector('ul').replaceChildren(...(d.files || []).map(f => h('li', {}, `${f.name} · ${fmtBytes(f.size)} · ${f.available ? T('File ready') : `${Math.floor((f.progress || 0)*100)}%`}`))); }
-  r.title.textContent = [d.canonicalTitle || d.title, d.season != null && d.episode == null ? T('{0} pack', seasonName(d.season)) : episodeLabel(d), d.year && !d.season ? `(${d.year})` : null].filter(Boolean).join(' ');
+  r.title.textContent = [d.canonicalTitle || d.title, scope ? `${seasonName(d.season)} · ${scope}` : d.season != null && d.episode == null ? T('{0} pack', seasonName(d.season)) : episodeLabel(d), d.year && !d.season ? `(${d.year})` : null].filter(Boolean).join(' ');
   r.title.title = d.name;
   r.state.textContent = state.dlScope === 'all' && d.owner ? T('{0} · for {1}', label, d.owner) : label;
   r.state.classList.toggle('is-error', d.state === 'error' || d.state === 'missingFiles');
@@ -1646,10 +1649,11 @@ function updateDlCard(el, d) {
   const stats = d.done
     ? [fmtBytes(d.size), ...subs]
     : [h('strong', {}, Number.isFinite(d.progress) && d.size > 0 ? `${pct}%` : label), d.size > 0 && `${fmtBytes(Math.round(d.size * (Number(d.progress) || 0)))} / ${fmtBytes(d.size)}`, !isPaused(d) && !transferAttention(d) && !/checking/.test(d.state || '') && d.speed > 0 && `${fmtBytes(d.speed)}/s`, !isPaused(d) && !transferAttention(d) && !/checking/.test(d.state || '') && Number.isFinite(d.eta) && d.eta >= 0 && d.eta < 8640000 && fmtEta(d.eta), !isPaused(d) && !/checking/.test(d.state || '') && seedersChip(d), ...subs];
+  if (scope) stats.push(T('Skipping {0} of {1} episodes', d.skippedFiles, d.packFiles));
   r.stats.replaceChildren(...stats.filter(Boolean).map((s) => (s instanceof Node ? s : h('span', {}, s))));
   r.pause.hidden = d.done;
   r.del.hidden = d.canManage === false;
-  r.del.textContent = d.done ? T('Remove transfer') : d.season != null && d.episode == null ? T('Cancel season pack') : T('Cancel download');
+  r.del.textContent = d.done ? T('Remove transfer') : !scope && d.season != null && d.episode == null ? T('Cancel season pack') : T('Cancel download');
   r.pause.disabled = d.canManage === false; r.del.disabled = false;
   r.pause.setAttribute('aria-disabled', String(d.canManage === false || Boolean(operation?.label))); r.del.setAttribute('aria-disabled', String(Boolean(operation?.label)));
   r.retry.hidden = !transferAttention(d) && !operation?.error; r.retry.disabled = d.canManage === false; r.retry.setAttribute('aria-disabled', String(d.canManage === false || Boolean(operation?.label)));
@@ -2719,15 +2723,15 @@ async function openDelete(f, opener) {
 }
 
 // A whole season or show: every version of every episode in it, in one go (see deleteMany on the server).
-async function openDeleteMany({ files, what, label, onDone }, opener) {
+async function openDeleteMany({ files, transfers = [], what, label, onDone }, opener) {
   const ids = [...new Set(allVersions(files).map((f) => f.id).filter(Boolean))];
   const body = $('#picker-body');
   body.replaceChildren(h('h2', { id: 'picker-title' }, T('Delete {0}', what)), h('p', { class: 'muted' }, T('Checking…')));
   pushOverlay(showSheet($('#picker'), $('#picker-backdrop'), () => opener?.focus({ preventScroll: true })));
 
-  let info;
+  let info = { videos: 0, shared: 0, size: 0, downloads: 0, canDeleteForEveryone: false };
   try {
-    info = await api('/api/library/delete-many-info', jsonPost({ ids }));
+    if (ids.length) info = await api('/api/library/delete-many-info', jsonPost({ ids }));
   } catch (err) {
     body.replaceChildren(h('h2', { id: 'picker-title' }, T('Can’t delete {0}', what)), h('p', { class: 'muted' }, err.message));
     return;
@@ -2735,6 +2739,10 @@ async function openDeleteMany({ files, what, label, onDone }, opener) {
   const episodes = plural(episodeCount(files), 'episode');
   const status = h('p', { class: 'device-status', role: 'status' });
   const allShared = info.shared === info.videos;
+  const sole = transfers.filter((d) => !d.others), carryOn = transfers.length - sole.length;
+  const soleBytes = sole.reduce((n, d) => n + (Number(d.size) || 0) * (Number(d.progress) || 0), 0);
+  const transferLines = [carryOn > 0 && T('Downloads someone else asked for carry on for them, but stop coming to your library.'),
+    sole.length > 0 && T('{0} only you asked for will be cancelled, and the {1} downloaded so far deleted.', plural(sole.length, 'download'), fmtBytes(soleBytes))].filter(Boolean).join(' ');
 
   const run = async (btn, everyone = false) => {
     body.querySelectorAll('button').forEach((b) => { b.disabled = true; });
@@ -2742,9 +2750,11 @@ async function openDeleteMany({ files, what, label, onDone }, opener) {
     status.className = 'device-status';
     status.textContent = '';
     try {
-      const r = await api('/api/library/delete-many', jsonPost({ ids, everyone }));
+      const r = ids.length ? await api('/api/library/delete-many', jsonPost({ ids, everyone })) : { deleted: 0, removed: 0, failed: 0 };
+      for (const d of transfers) await api(`/api/downloads/${encodeURIComponent(d.hash)}/leave`, jsonPost({}));
       const gone = new Set(ids);
       dropFromLibrary(gone);
+      if (transfers.length) { const left = new Set(transfers.map((d) => d.hash)); state.downloads = state.downloads.filter((d) => !left.has(d.hash)); invalidateDownloadsRead(); }
       await dismissTopOverlay().catch(() => {});
       toast(r.failed ? T('{0} deleted, {1} kept: {2}', r.deleted + r.removed, r.failed, r.error)
         : r.deleted ? T('Deleted {0}', label) : T('Removed {0} from your library', label));
@@ -2766,7 +2776,11 @@ async function openDeleteMany({ files, what, label, onDone }, opener) {
   const cancel = h('button', { class: 'del-cancel', 'data-label': T('Keep it'), onclick: () => closeTopOverlay() }, T('Keep it'));
   const forEveryone = info.canDeleteForEveryone && button(T('Delete the files for everyone ({0})', fmtBytes(info.sizeForEveryone)), 'del-confirm del-secondary', true);
 
-  if (allShared) {
+  if (!ids.length) {
+    body.replaceChildren(h('h2', { id: 'picker-title' }, T('Remove {0} from your library?', what)),
+      h('p', { class: 'del-name' }, label), h('p', { class: 'muted' }, transferLines),
+      h('div', { class: 'del-actions' }, button(T('Remove {0} from my library', what), 'del-confirm'), cancel), status);
+  } else if (allShared) {
     body.replaceChildren(h('h2', { id: 'picker-title' }, T('Remove {0} from your library?', what)),
       h('p', { class: 'del-name' }, label), h('p', { class: 'muted' }, T('{0}. Other people have {1} in their library too, so the files stay on the server. You can add them back from Discover.', episodes, info.videos === 1 ? T('it') : T('these'))),
       h('div', { class: 'del-actions' }, button(T('Remove {0} from my library', what), 'del-confirm'), forEveryone, cancel), status);
@@ -2774,6 +2788,7 @@ async function openDeleteMany({ files, what, label, onDone }, opener) {
     const lines = [T('{0} · {1} will be freed.', episodes, fmtBytes(info.size)),
       info.downloads && T('This also removes {0} from qBittorrent, so {1} seeding.', info.downloads === 1 ? T('its download') : T('{0} downloads', info.downloads), info.downloads === 1 ? T('it stops') : T('they stop')),
       info.shared && T('{0} that other people also have only {1} your library.', plural(info.shared, 'video'), info.shared === 1 ? T('leaves') : T('leave')),
+      transferLines,
       T('This can’t be undone.')].filter(Boolean);
     body.replaceChildren(h('h2', { id: 'picker-title' }, T('Delete {0}?', what)),
       h('p', { class: 'del-name' }, label), h('p', { class: 'muted' }, lines.join(' ')),

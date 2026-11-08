@@ -1205,6 +1205,8 @@ async function startSmartFor(user, body) {
     seasonEpisodes: (t, y, n) => shows.seasonEpisodes(t, y, n, tmdb),
     haveEpisodes: (key, n, ctx) => haveEpisodes(key, n, user, ctx),
     trimPack: (link, n, owned, ctx) => trimSeasonPack(link, n, owned, { ctx }), removePack: removeNewPack,
+    reopenPack: (link, n, owned, ctx) => reopenPack(link, n, owned, { ctx, key: shows.showKey(title) }),
+    torrentsHere: async () => new Set((await qbit('/api/v2/torrents/info')).map((t) => t.hash.toLowerCase())),
     inOrder: ({ hash, existing }, n) => { if (!existing) orderEpisodes(hash, shows.showKey(title), n); },
     upgrading: ({ hash }, n) => registerUpgrade(hash, { title, season: n, by: user.id, old: upgrade?.old || [] }),
     log: (msg) => console.log(msg),
@@ -1403,15 +1405,55 @@ async function filmHave(tmdbId, user, quality = null) {
 // A season pack that was just added: wait (bounded) for its file list, switch off the episodes
 // already here and report the episodes it really contains. null when the file list never came.
 // Anime (ctx): files of other seasons are switched off too (a "(01-170)" batch for one TMDB season).
-async function trimSeasonPack(link, seasonNo, owned, { timeout = 45000, ctx = null } = {}) {
-  const hash = accounts.magnetHash(link);
-  if (!hash) return null;
+async function packFilesOf(hash, timeout) {
   let files = [];
   for (const end = Date.now() + timeout; Date.now() < end;) {
     try { files = await qbit(`/api/v2/torrents/files?hash=${hash}`); } catch { files = []; }
     if (files.length) break;
     await new Promise((r) => setTimeout(r, 1500));
   }
+  return files;
+}
+
+// The batch is already on the server, perhaps with episodes switched off (someone's range, or ones
+// deleted earlier). Switches back on the ones this request wants, so "on the way" is true.
+async function reopenPack(link, seasonNo, owned, { timeout = 45000, ctx = null, key = null } = {}) {
+  const hash = accounts.magnetHash(link);
+  if (!hash) return null;
+  const files = await packFilesOf(hash, timeout);
+  if (!files.length) return null;
+  const [t] = await qbit(`/api/v2/torrents/info?hashes=${hash}`);
+  if (!t) return null;
+  const covered = new Set(), on = [];
+  let deleted = false;
+  files.forEach((f, i) => {
+    if (!isVideo(f.name)) return;
+    const base = path.basename(f.name.replace(/\\/g, '/'));
+    const fileSeason = ctx ? null : parseName(base).season;
+    if (fileSeason != null && fileSeason !== seasonNo) return;
+    const eps = season.episodesIn(base, seasonNo, ctx).filter((e) => !owned.has(e));
+    if (!eps.length) return;
+    eps.forEach((e) => covered.add(e));
+    if (f.priority !== 0) return;
+    on.push(f.index ?? i);
+    // Fully downloaded once and since deleted: qBittorrent still counts those pieces as done.
+    try { if (f.progress >= 0.99 && !fileExists(torrentFilePath(t, f))) deleted = true; } catch { deleted = true; }
+  });
+  if (!on.length) return { covered, skipped: 0 };
+  await qbitRequest('/api/v2/torrents/filePrio', { method: 'POST', body: new URLSearchParams({ hash, id: on.join('|'), priority: '1' }) });
+  if (deleted) await qbitRequest('/api/v2/torrents/recheck', { method: 'POST', body: new URLSearchParams({ hashes: hash }) });
+  const entry = episodeOrder.get(hash.toLowerCase());
+  if (!entry?.held && /^(paused|stopped)/.test(t.state || '')) await setPaused(hash, false);
+  if (!entry) orderEpisodes(hash, key, seasonNo);
+  torrentFilesCache.delete(hash);
+  torrentInventory.at = 0;
+  return { covered, skipped: 0, reopened: on.length };
+}
+
+async function trimSeasonPack(link, seasonNo, owned, { timeout = 45000, ctx = null } = {}) {
+  const hash = accounts.magnetHash(link);
+  if (!hash) return null;
+  const files = await packFilesOf(hash, timeout);
   if (!files.length) return null;
   const covered = new Set(), skip = [];
   files.forEach((f, i) => {
@@ -1764,13 +1806,20 @@ async function listDownloads(user, all = false) {
         libraryId: item?.id || null };
     }));
     const episodes = [];
+    const animeCtx = mediaType === 'tv' ? anime.contextForTitle(canonicalTitle) : null;
     for (let i = 0; i < videos.length; i++) {
-      const fileSeason = parseName(videos[i].name).season ?? parsed.season;
-      for (const episode of season.episodesIn(videos[i].name, fileSeason)) {
-        episodes.push({ season: fileSeason, episode, progress: safeFiles[i].progress,
+      // The file's own name first: a batch's folder ("Show - 001 ~ 170") isn't this file's episode.
+      const base = safeFiles[i].name;
+      const placed = animeCtx && anime.resolve(anime.parseAnimeName(base, { file: true }), animeCtx);
+      const fileSeason = parseName(base, { file: true }).season ?? parseName(videos[i].name).season ?? parsed.season;
+      const own = season.episodesIn(base, fileSeason);
+      const list = placed?.length ? placed : (own.length ? own : season.episodesIn(videos[i].name, fileSeason)).map((episode) => ({ season: fileSeason, episode }));
+      for (const { season: s, episode } of list) {
+        episodes.push({ season: s, episode, progress: safeFiles[i].progress,
           available: safeFiles[i].available, libraryId: safeFiles[i].libraryId });
       }
     }
+    const packFiles = files.filter((f) => isVideo(f.name)).length;
     const primary = safeFiles.toSorted((a, b) => b.size - a.size)[0];
     const selected = files.filter((f) => f.priority !== 0);
     const verifiedComplete = t.progress >= 1 && selected.length > 0 && (await Promise.all(selected.map((f) => downloadAvailable(t, f)))).every(Boolean);
@@ -1781,6 +1830,8 @@ async function listDownloads(user, all = false) {
     poster: art?.poster || null, backdrop: art?.backdrop || null,
     added: t.added_on ? t.added_on * 1000 : accounts.torrentRow(t.hash)?.added_at || null,
     ready: Boolean(primary?.available), hasVideo: filesKnown ? videos.length > 0 : null, files: safeFiles, episodes,
+    packFiles, skippedFiles: packFiles - videos.length,
+    others: accounts.torrentWanters(t.hash).some((id) => id !== user.id),
     libraryIds: [...new Set(safeFiles.map((f) => f.libraryId).filter(Boolean))],
     owner: all ? nameOf(owner) : undefined,
     mine: mates.includes(owner) || requested,
@@ -3177,6 +3228,29 @@ async function handleApi(req, res, url) {
     }
     return sendJson(res, 200, { ok: true });
   }
+  // "Remove from my library" for a download: others who want it keep it; nobody else, and it's cancelled.
+  if ((m = p.match(/^\/api\/downloads\/([a-f0-9]{40}|[a-f0-9]{64})\/leave$/i)) && req.method === 'POST') {
+    const [t] = await qbit(`/api/v2/torrents/info?hashes=${m[1]}`);
+    if (!t) throw new HttpError(404, 'That download no longer exists.');
+    accounts.recordTorrent(t.hash, torrentOwner(t), t.name);
+    const wanters = accounts.torrentWanters(t.hash);
+    if (!wanters.includes(user.id)) return sendJson(res, 200, { ok: true, kept: true });
+    if (wanters.length === 1) {
+      releaseEpisodeOrder(t.hash);
+      await deleteDownload(t, true, user);
+      activity.record(req, 'delete', t.name);
+      return sendJson(res, 200, { ok: true, kept: false });
+    }
+    accounts.leaveTorrent(t.hash, user.id);
+    for (const f of await torrentFileMetadata(t).catch(() => [])) {
+      let key = null;
+      try { key = accounts.mediaKey(torrentFilePath(t, f)); } catch { /* unsafe path: never in a library */ }
+      if (key) accounts.removeEntry(user.id, key);
+    }
+    invalidateLibrary();
+    activity.record(req, 'remove', t.name);
+    return sendJson(res, 200, { ok: true, kept: true });
+  }
   // ---- casting ----
   if (p === '/api/play-link') {
     const q = url.searchParams;
@@ -3626,7 +3700,7 @@ async function handleRequest(req, res) {
     if (url.pathname === '/signin' && (req.method === 'GET' || req.method === 'HEAD')) return sendSignIn(req, res, url);
     if (!req.auth.via && !publicPath(req, url)) return refuseSignedOut(req, res, url);
     const allowed = req.method === 'GET' || req.method === 'HEAD'
-      || (req.method === 'POST' && (url.pathname.startsWith('/api/cast/') || url.pathname === '/api/downloads/add' || url.pathname === '/api/downloads/smart' || url.pathname === '/api/svt/add' || url.pathname === '/api/subs/fetch' || url.pathname === '/api/subs/sync' || url.pathname === '/api/library/delete' || url.pathname === '/api/library/delete-many' || url.pathname === '/api/library/delete-many-info' || /^\/api\/downloads\/\w+\/(pause|resume|retry|delete)$/.test(url.pathname) || /^\/api\/media\/\w+\/[\w-]+\/sync$/.test(url.pathname)
+      || (req.method === 'POST' && (url.pathname.startsWith('/api/cast/') || url.pathname === '/api/downloads/add' || url.pathname === '/api/downloads/smart' || url.pathname === '/api/svt/add' || url.pathname === '/api/subs/fetch' || url.pathname === '/api/subs/sync' || url.pathname === '/api/library/delete' || url.pathname === '/api/library/delete-many' || url.pathname === '/api/library/delete-many-info' || /^\/api\/downloads\/\w+\/(pause|resume|retry|delete|leave)$/.test(url.pathname) || /^\/api\/media\/\w+\/[\w-]+\/sync$/.test(url.pathname)
         || /^\/api\/(house\/(report|boot|power)|screentime|agent\/notify)$/.test(url.pathname) || /^\/api\/clips\/[\w-]+\/(share|unshare|delete|trim|rename)$/.test(url.pathname)
         || /^\/api\/access\/(invite|remove|rename|invite\/\w+\/revoke)$/.test(url.pathname) || /^\/c\/i\/[\w-]+\/?$/.test(url.pathname)
         || /^\/api\/auth\/(login|logout|password)$/.test(url.pathname)
@@ -3938,6 +4012,13 @@ async function deleteMany(ids, user, everyone) {
       out.failed++;
       out.error ||= e.message;
     }
+  }
+  // Removed everything of yours from a download that's still running: you've left it, or the next
+  // finished episode would put it straight back in your library.
+  if (out.removed) {
+    const mine = accounts.libraryOf(user.id);
+    const left = new Map(items.filter((i) => i.shared && !everyone && i.plan.torrent).map((i) => [i.plan.torrent.hash, i.plan.torrent]));
+    for (const [hash, t] of left) if (!t.videos.some((v) => mine.has(accounts.mediaKey(v.full)))) accounts.leaveTorrent(hash, user.id);
   }
   console.log(`[library] bulk delete "${what}": ${out.deleted} deleted, ${out.removed} removed, ${out.failed} failed`);
   return out;
