@@ -5897,6 +5897,7 @@ async function pickLanguage(code) {
 }
 // The account's language wins on a new device; an account without one takes this device's.
 function syncLanguage() {
+  if (state.me?.via === 'home') return; // the shared home account: each device keeps its own language
   const wanted = prefs().language;
   if (!wanted) { api('/api/me', jsonPost({ language: lang })).catch(() => {}); return; }
   if (wanted === lang) return;

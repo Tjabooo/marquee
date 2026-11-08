@@ -941,8 +941,9 @@
 
     function savedQuality() {
       var s = state.me && state.me.settings || {};
-      if (s.quality) return s.quality;
-      if (s.downloadProfile) return s.downloadProfile;
+      if (s.quality && s.quality !== 'all') return s.quality; // 'all' = no fixed resolution: the profile decides
+      var profile = { save: T('Save Space'), balanced: T('Balanced · 1080p'), best: T('Best Quality') }[s.downloadProfile];
+      if (profile) return profile;
       return T('your saved settings');
     }
     function qualityText() { return T('Quality: {0}', quality || savedQuality()); }
