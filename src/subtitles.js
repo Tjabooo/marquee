@@ -3,6 +3,7 @@
 // and is also visible to other players.
 import fs from 'node:fs';
 import path from 'node:path';
+import { cleanSubtitle } from './subfix.js';
 
 const API_KEY = process.env.OPENSUBTITLES_API_KEY || '';
 const USER = process.env.OPENSUBTITLES_USER || '';
@@ -289,7 +290,9 @@ function decodeText(buf) {
 export async function readSubtitle(file, lang) {
   const p = findSidecar(file, String(lang).toLowerCase());
   if (!p) throw fail(404, 'Those subtitles aren’t on the server.');
-  return decodeText(await fs.promises.readFile(p));
+  const [buf, st] = await Promise.all([fs.promises.readFile(p), fs.promises.stat(p)]);
+  // English text that came from OCR gets its names, acronyms and I/l mix-ups fixed (see subfix.js).
+  return cleanSubtitle(decodeText(buf), { lang: String(lang).toLowerCase(), file: p, mtimeMs: st.mtimeMs });
 }
 
 // SRT to WebVTT: header, dotted timestamps, ASS override tags removed. Lines tagged {\an7}–{\an9}

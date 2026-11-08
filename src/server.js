@@ -12,6 +12,7 @@ import * as cast from './cast.js';
 import * as converter from './convert.js';
 import * as torrents from './torrents.js';
 import * as subtitles from './subtitles.js';
+import { initSubfix } from './subfix.js';
 import * as subsync from './subsync.js';
 import * as activity from './activity.js';
 import * as house from './house.js';
@@ -193,6 +194,8 @@ clips.initClips({ dataDir: DATA_DIR, cacheDir: CACHE_DIR, getEncoder: () => conv
 invites.initInvites({ dataDir: DATA_DIR, onEvent: activity.record });
 cast.initCasting({ lanIp: LAN_IP });
 subsync.initSubsync({ dataDir: DATA_DIR, cacheDir: CACHE_DIR, audioShift: (video) => converter.syncState(video).shift });
+// English subtitles get OCR mistakes fixed as they're served, using words learned from the library.
+initSubfix({ roots: [MEDIA_DIR], cacheFile: path.join(CACHE_DIR, 'subtitle-words.json') });
 subtitles.initSubtitles({
   dataDir: DATA_DIR,
   // Downloaded subtitles get their timing checked in the background. Even a file-hash match is checked:

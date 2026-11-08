@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-08-subtitle-fixes",
+    "date": "2026-11-08",
+    "title": "Cleaner English subtitles",
+    "items": [
+      {
+        "title": "Names and I/l mix-ups fixed",
+        "text": "Some releases come with subtitles that were read off the disc by a computer, so names and abbreviations show up in lowercase (\"cuddy\", \"nicu\") and I and l get swapped (\"ls there\", \"l'm\"). Marquee now fixes these in English subtitles as you watch, on the website, TVs and casting. It learns how names are spelled from the other subtitles in the library, so it gets better as the library grows."
+      }
+    ]
+  },
+  {
     "id": "2026-11-08-episode-ranges",
     "date": "2026-11-08",
     "title": "Download a range of episodes",
