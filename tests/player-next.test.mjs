@@ -56,7 +56,7 @@ const between = (start, end) => source.slice(source.indexOf(start), source.index
 class Element {
   constructor() { this.hidden = true; this.disabled = false; this.textContent = ''; this.attrs = {}; this.events = new Map(); this.style = { setProperty() {} }; this.classes = new Set(); this.dataset = {}; this.children = []; this.classList = { add: (...xs) => xs.forEach(x => this.classes.add(x)), remove: (...xs) => xs.forEach(x => this.classes.delete(x)), toggle: (x, on) => on ? this.classes.add(x) : this.classes.delete(x) }; }
   setAttribute(k, v) { this.attrs[k] = v; }
-  replaceChildren(...xs) { this.children = xs; }
+  replaceChildren(...xs) { this.children = xs; this.textContent = xs.map(x => typeof x === 'string' ? x : x?.text ?? '').join(''); }
   removeAttribute(k) { delete this.attrs[k]; }
   addEventListener(k, fn) { if (!this.events.has(k)) this.events.set(k, new Set()); this.events.get(k).add(fn); }
   removeEventListener(k, fn) { this.events.get(k)?.delete(fn); }
@@ -70,9 +70,9 @@ function playbackHarness({ prepare, autoplayRejected = false, clock = null } = {
   const $ = (key) => { if (!nodes.has(key)) nodes.set(key, new Element()); return nodes.get(key); };
   const logs = [];
   const video = new Element();
-  const context = vm.createContext({ $, video, URL, titleKeyOf: () => null, AbortController, setTimeout: clock?.setTimeout || setTimeout, clearTimeout: clock?.clearTimeout || clearTimeout,
+  const context = vm.createContext({ $, video, URL, h: (tag, props, ...kids) => ({ tag, props, text: kids.join('') }), titleKeyOf: () => null, AbortController, setTimeout: clock?.setTimeout || setTimeout, clearTimeout: clock?.clearTimeout || clearTimeout,
     Date: clock?.Date || Date, location: { href: 'https://example.test/' },
-    nextLibraryEpisode, isNextEpisodeTime, AUTOPLAY_SECONDS, AUTOPLAY_CHAIN, invalidateLibraryProgress() {}, state: { library: [episode('one', 1), episode('two', 2, { still: 'https://image.test/two.jpg' })], libraryShows: [{ id: 'tv-123', backdrop: 'https://image.test/show.jpg' }], progress: {}, view: 'library' },
+    nextLibraryEpisode, isNextEpisodeTime, AUTOPLAY_SECONDS, AUTOPLAY_CHAIN, invalidateLibraryProgress() {}, state: { library: [episode('one', 1), episode('two', 2, { still: 'https://image.test/two.jpg' })], libraryShows: [{ id: 'tv-123', title: 'Example Show', backdrop: 'https://image.test/show.jpg' }], progress: {}, view: 'library' },
     current: { ...playing, ready: true, sourceUrl: 'https://example.test/one.mp4', abort: new AbortController(), creditsAt: 800, upNextDismissed: false },
     party: null, nativeSubs: false, onTvVersion: false, seeking: null, hasRemotePlayback: false,
     playerEl: $('#player'), ccBtn: $('#cc-btn'), audioBtn: $('#sync-btn'), helpEl: $('#help'), osdEl: $('#osd'),
@@ -318,4 +318,14 @@ test('Play on TV: Up next starts at the credits, or once the TV played the episo
   assert.equal(tvFinished({ state: 'stopped', lastPosition: 1289, duration: 1300 }), false);
   assert.equal(tvFinished({ state: 'playing', lastPosition: 1299, duration: 1300 }), false);
   assert.equal(tvFinished({ state: 'stopped', lastPosition: 1299, duration: null }), false);
+});
+
+test('the player heading spells out the episode with its TMDB name', () => {
+  const h = playbackHarness();
+  const title = (f) => { h.context.f = f; h.run('setPlayerTitle(f)'); return h.$('#player-title').textContent; };
+  assert.equal(title({ ...episode('x', 2, { title: 'example show', season: 3, episodeName: 'Cane & Able' }) }), 'Example Show \u00b7 Season 3, Episode 2: Cane & Able');
+  assert.equal(title(episode('x', 2)), 'Example Show \u00b7 Season 1, Episode 2');
+  assert.equal(title(episode('x', 2, { episodeEnd: 3 })), 'Example Show \u00b7 Season 1, Episodes 2\u20133');
+  assert.equal(title({ id: 'film', title: 'heat 1995', filmTitle: 'Heat', season: null }), 'Heat');
+  assert.equal(title({ id: 'clip', kind: 'clip', title: 'Ace on Mirage' }), 'Ace on Mirage');
 });
