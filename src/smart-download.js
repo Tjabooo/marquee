@@ -94,6 +94,14 @@ function dubbedOnly(deps) {
 const hashOf = (r) => /btih:([a-z0-9]+)/i.exec(r.magnet || '')?.[1]?.toLowerCase() || null;
 const usable = (r) => !rejected.has(r.magnet || r.ref) || Date.now() - rejected.get(r.magnet || r.ref) > REJECTED_TTL;
 
+// Search sites sort by popularity and cut the list short, so a quiet remux may never show up in a plain
+// search. Best Quality also asks for the good stuff by name (under the main title, to keep it quick).
+const QUALITY_WORDS = ['2160p', '1080p', 'BluRay', 'REMUX'];
+const seasonQueries = (titles, season, profile) => [
+  ...titles.flatMap((t) => [`${t} S${pad(season)}`, `${t} Season ${season}`]),
+  ...(profile === 'best' ? QUALITY_WORDS.map((w) => `${titles[0]} S${pad(season)} ${w}`) : []),
+];
+
 // A search that throws is retried once after a short pause; a 503 (not configured) is final.
 async function search(query, type, deps) {
   try { return (await deps.searchTorrents(query, type)).results || []; } catch (e) {
@@ -159,12 +167,13 @@ async function runFilm(job, spec, deps) {
   const freeBytes = await deps.freeBytes?.('movie');
   const want = { ...spec.want, type: 'movie', title: spec.title, year: spec.year, freeBytes, anime: Boolean(spec.anime), aliases: spec.anime?.keys || [] };
   const names = [spec.title, spec.originalTitle, ...(spec.anime?.queryTitles || [])].filter(Boolean);
-  const queries = [...new Set([...names.map((t) => [t, spec.year].filter(Boolean).join(' ')), spec.title, ...(spec.anime?.queryTitles || [])])];
+  const queries = [...new Set([...names.map((t) => [t, spec.year].filter(Boolean).join(' ')), spec.title, ...(spec.anime?.queryTitles || []),
+    ...(want.profile === 'best' ? QUALITY_WORDS.map((w) => [spec.title, spec.year, w].filter(Boolean).join(' ')) : [])])];
   let results = [], best = { pick: null, why: null }, failures = 0;
   for (const query of queries) {
     try { results = [...results, ...await search(query, 'movie', deps)]; } catch (e) { if (e.status === 503) throw e; failures++; continue; }
     best = pickBest(results.filter(usable), want, deps.parseName);
-    if (best.pick) break;
+    if (best.pick && want.profile !== 'best') break; // Best Quality: every search before choosing
   }
   if (!best.pick) {
     const alt = spec.preferAlternative ? null : await tryAlternative(job, deps, { type: 'movie' });
@@ -280,7 +289,7 @@ async function runSeason(job, spec, deps) {
     job.step = 'Looking for a season pack…';
     const titles = [job.title, ...(showKey(job.title) === 'house' ? ['House MD'] : showKey(job.title) === 'housemd' ? ['House'] : [])];
     let results = [], best = { pick: null, why: null };
-    for (const query of titles.flatMap((t) => [`${t} S${pad(season)}`, `${t} Season ${season}`])) {
+    for (const query of seasonQueries(titles, season, want.profile)) {
       try { results = [...results, ...await search(query, 'tv', deps)]; } catch (e) { if (e.status === 503) throw e; continue; }
       best = pickBest(results.filter(usable), { ...want, type: 'tv', episodes: aired?.length || 0, missing: missing?.length || 0, freeBytes }, deps.parseName);
       if (best.pick && want.profile !== 'best') break; // Best Quality: every name before choosing
@@ -383,7 +392,7 @@ async function runUpgrade(job, spec, deps) {
   const freeBytes = await deps.freeBytes?.('tv');
   const titles = [job.title, ...(showKey(job.title) === 'house' ? ['House MD'] : showKey(job.title) === 'housemd' ? ['House'] : [])];
   let results = [];
-  for (const query of titles.flatMap((t) => [`${t} S${pad(season)}`, `${t} Season ${season}`])) {
+  for (const query of seasonQueries(titles, season, 'best')) {
     try { results = [...results, ...await search(query, 'tv', deps)]; } catch (e) { if (e.status === 503) throw e; }
   }
   const better = results.filter((r) => usable(r) && !now.names.some((n) => sameRelease(n, r.name))

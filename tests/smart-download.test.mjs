@@ -254,6 +254,24 @@ test('Best Quality: "ENG" in a name earns nothing when English is wanted, but a 
   assert.equal(best('Breaking Bad', 3, 13, rows, { audioLang: 'en' }), rows[1][0]);
   assert.equal(best('Breaking Bad', 3, 13, [['Breaking.Bad.S03.1080p.BluRay.x264.FRENCH-X', 200, 70 * GB], ['Breaking.Bad.S03.1080p.BluRay.x264-Y', 20, 60 * GB]], { audioLang: 'en' }), 'Breaking.Bad.S03.1080p.BluRay.x264-Y');
 });
+test('Best Quality searches for quality releases by name; a plain search can miss them', async () => {
+  const added = [], asked = [];
+  const quiet = ['House.S07.1080p.BluRay.REMUX.AVC.DTS.5.1-NOGRP', 20, 150 * GB];
+  const popular = ['House.S07.1080p.AMZN.WEBRip.AAC5.1.x265-RxB', 55, 17.7 * GB];
+  const deps = (over) => ({ parseName, magnetFor1337x: async () => null, sleep: async () => {}, freeBytes: async () => 900 * GB,
+    addDownload: async (d) => { added.push(d.name); return { hash: 'abc' }; }, ...over,
+    searchTorrents: async (q) => { asked.push(q); return { results: results(/REMUX/.test(q) ? [quiet, popular] : [popular]) }; } });
+  await wait(startSmartJob({ type: 'tv', title: 'House', season: 7, want: { profile: 'best' } }, deps()));
+  assert.equal(added[0], quiet[0]); assert.ok(asked.includes('House S07 REMUX') && asked.includes('House S07 BluRay'));
+  asked.length = 0;
+  await wait(startSmartJob({ type: 'tv', title: 'Severance', season: 2, want: { profile: 'balanced' } }, deps()));
+  assert.ok(!asked.some((q) => /REMUX|BluRay/.test(q)), 'other profiles search as before');
+  added.length = 0; asked.length = 0;
+  const filmRemux = ['Dune.2021.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1', 20, 30 * GB];
+  await wait(startSmartJob({ type: 'movie', title: 'Dune', year: 2021, want: { profile: 'best' } }, { ...deps(), searchTorrents: async (q) => { asked.push(q);
+    return { results: results(/REMUX/.test(q) ? [filmRemux] : [['Dune.2021.1080p.WEBRip.x265', 900, 2 * GB]]) }; } }));
+  assert.equal(added[0], filmRemux[0], 'a film goes through every search too'); assert.ok(asked.includes('Dune 2021 REMUX'));
+});
 test('Hard limits still win over picture: the size limit and free space', () => {
   const rows = [['House.S06.1080p.BluRay.REMUX.AVC-A', 29, 182 * GB], ['House.S06.1080p.AMZN.WEBRip.x265-RxB', 54, 17.1 * GB]];
   assert.equal(best('House', 6, 22, rows, { maxBytes: 4 * GB }), rows[1][0]);
