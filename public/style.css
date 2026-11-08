@@ -451,6 +451,7 @@ main {
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
 }
 .player-game { color: var(--dust); font-weight: 500; }
+.player-episode { color: rgba(255, 255, 255, 0.78); font-weight: 500; }
 .player-error {
   position: absolute; z-index: 3; left: var(--gutter); right: var(--gutter); top: 45%;
   max-width: 560px; margin: 0 auto; padding: 16px;

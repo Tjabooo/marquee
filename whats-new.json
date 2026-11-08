@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-08-player-titles",
+    "date": "2026-11-08",
+    "title": "Episode names in the player",
+    "items": [
+      {
+        "title": "Proper episode titles",
+        "text": "While an episode plays, the top of the player now shows the show's name and the episode's real title, like \"House · Season 3, Episode 2: Cane & Able\", instead of a short code like \"house S03 E02\"."
+      }
+    ]
+  },
+  {
     "id": "2026-11-08-versions",
     "date": "2026-11-08",
     "title": "One title, several qualities",

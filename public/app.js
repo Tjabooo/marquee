@@ -5400,12 +5400,28 @@ async function preparePlayerSource(f, watchSession, signal) {
   return link;
 }
 
+// Player heading: the TMDB show name, then the episode spelled out with its TMDB title,
+// e.g. "House · Season 3, Episode 2: Cane & Able". Films and clips keep their own title.
+function playerEpisodeText(f) {
+  if (f.season == null) return '';
+  if (f.episode == null) return `Season ${f.season}`;
+  const eps = f.episodeEnd != null && f.episodeEnd > f.episode ? `Episodes ${f.episode}\u2013${f.episodeEnd}` : `Episode ${f.episode}`;
+  return `Season ${f.season}, ${eps}${f.episodeName ? `: ${f.episodeName}` : ''}`;
+}
+function setPlayerTitle(f) {
+  const show = f.show != null ? state.libraryShows.find((s) => s.id === f.show) : null;
+  const name = show?.title || f.filmTitle || f.title || '';
+  const episode = playerEpisodeText(f);
+  $('#player-title').replaceChildren(name, ...(episode ? [h('span', { class: 'player-episode' }, `${name ? ' \u00b7 ' : ''}${episode}`)] : []));
+  $('#player-title').title = $('#player-title').textContent;
+}
+
 async function loadPlayerMedia(f, opts = {}) {
   resetPlayerMedia();
   const session = current = { ...f, ready: false, abort: new AbortController(), creditsAt: null, intro: null, introDone: false,
     upNextDismissed: false, upNextBusy: false, upNextError: '', upNextAnnounced: null, autoLeft: null, autoTimer: null };
   const err = $('#player-error');
-  $('#player-title').textContent = [f.title, episodeLabel(f)].filter(Boolean).join(' ');
+  setPlayerTitle(f);
   playerEl.classList.toggle('is-clip', plainMedia(f));
   updatePlayState();
   updateTime();
