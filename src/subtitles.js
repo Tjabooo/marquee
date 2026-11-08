@@ -17,9 +17,9 @@ export const LANG_NAMES = {
   tr: 'Turkish', ru: 'Russian', uk: 'Ukrainian', bg: 'Bulgarian', hr: 'Croatian', sr: 'Serbian', sl: 'Slovenian',
   et: 'Estonian', lv: 'Latvian', lt: 'Lithuanian', ar: 'Arabic', he: 'Hebrew', fa: 'Persian', hi: 'Hindi',
   th: 'Thai', vi: 'Vietnamese', id: 'Indonesian', ms: 'Malay', ja: 'Japanese', ko: 'Korean',
-  'zh-cn': 'Chinese (Simplified)', 'zh-tw': 'Chinese (Traditional)',
+  'zh-cn': 'Chinese (Simplified)', 'zh-tw': 'Chinese (Traditional)', ka: 'Georgian', tl: 'Tagalog',
 };
-const LANGS = (process.env.SUB_LANGS || 'en,sv,da,no,fi,de,nl,fr,es,pt-pt,pt-br,it,pl,ar,tr')
+const LANGS = (process.env.SUB_LANGS || 'en,sv,da,no,fi,de,nl,fr,es,pt-pt,pt-br,it,pl,ar,tr,ka,tl')
   .split(',').map((s) => s.trim().toLowerCase()).filter((l) => LANG_NAMES[l]);
 const langList = (codes) => LANGS.filter((c) => codes.has(c)).map((code) => ({ code, name: LANG_NAMES[code] }));
 // Every language Marquee looks for (SUB_LANGS), for the default-subtitles setting.

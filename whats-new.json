@@ -5,6 +5,10 @@
     "title": "Episode names in the player",
     "items": [
       {
+        "title": "Georgian and Tagalog subtitles",
+        "text": "Georgian and Tagalog are now in the subtitle list, next to the other languages, wherever someone has made them for what you're watching."
+      },
+      {
         "title": "Proper episode titles",
         "text": "While an episode plays, the top of the player now shows the show's name and the episode's real title, like \"House · Season 3, Episode 2: Cane & Able\", instead of a short code like \"house S03 E02\"."
       }

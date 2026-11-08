@@ -51,7 +51,7 @@ const ISO2TO3 = {
   es: 'spa', it: 'ita', pl: 'pol', cs: 'cze', sk: 'slo', hu: 'hun', ro: 'rum', el: 'gre', tr: 'tur', ru: 'rus', uk: 'ukr',
   bg: 'bul', hr: 'hrv', sr: 'srp', sl: 'slv', et: 'est', lv: 'lav', lt: 'lit', ar: 'ara', he: 'heb', fa: 'per', hi: 'hin',
   th: 'tha', vi: 'vie', id: 'ind', ms: 'may', ja: 'jpn', ko: 'kor', pt: 'por', 'pt-br': 'por', 'pt-pt': 'por', zh: 'chi',
-  'zh-cn': 'chi', 'zh-tw': 'chi',
+  'zh-cn': 'chi', 'zh-tw': 'chi', ka: 'geo', tl: 'tgl',
 };
 export const lang3 = (code) => ISO2TO3[String(code || '').toLowerCase()] || (/^[a-z]{3}$/.test(String(code)) ? String(code) : 'und');
 

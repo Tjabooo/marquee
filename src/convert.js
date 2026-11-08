@@ -84,7 +84,7 @@ const ISO3 = {
   cze: 'cs', ces: 'cs', slo: 'sk', slk: 'sk', hun: 'hu', rum: 'ro', ron: 'ro', gre: 'el', ell: 'el',
   tur: 'tr', rus: 'ru', ukr: 'uk', bul: 'bg', hrv: 'hr', srp: 'sr', slv: 'sl', est: 'et', lav: 'lv',
   lit: 'lt', ara: 'ar', heb: 'he', per: 'fa', fas: 'fa', hin: 'hi', tha: 'th', vie: 'vi', ind: 'id',
-  may: 'ms', msa: 'ms', jpn: 'ja', kor: 'ko',
+  may: 'ms', msa: 'ms', jpn: 'ja', kor: 'ko', geo: 'ka', kat: 'ka', tgl: 'tl', fil: 'tl',
 };
 
 function subLanguage(stream) {

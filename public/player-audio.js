@@ -1,5 +1,5 @@
 // A stream index belongs only to the file fingerprint returned with it.
-const languageAliases = { eng: 'en', kor: 'ko', swe: 'sv', nor: 'no', dan: 'da', fin: 'fi', deu: 'de', ger: 'de', fra: 'fr', fre: 'fr', spa: 'es', ita: 'it', jpn: 'ja', zho: 'zh', chi: 'zh', por: 'pt', rus: 'ru', ara: 'ar', nld: 'nl', dut: 'nl' };
+const languageAliases = { eng: 'en', kor: 'ko', swe: 'sv', nor: 'no', dan: 'da', fin: 'fi', deu: 'de', ger: 'de', fra: 'fr', fre: 'fr', spa: 'es', ita: 'it', jpn: 'ja', zho: 'zh', chi: 'zh', por: 'pt', rus: 'ru', ara: 'ar', nld: 'nl', dut: 'nl', geo: 'ka', kat: 'ka', tgl: 'tl', fil: 'tl' };
 export const audioLanguage = (value) => {
   const code = String(value || '').trim().toLowerCase();
   return !code || ['und', 'mul', 'zxx'].includes(code) ? '' : languageAliases[code] || code;

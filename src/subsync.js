@@ -304,7 +304,7 @@ async function probe(file) {
   try { return JSON.parse((await run(FFPROBE, ['-v', 'error', '-print_format', 'json', '-show_streams', file])).toString()); } catch { return null; }
 }
 
-const ISO3 = { eng: 'en', swe: 'sv', dan: 'da', nor: 'no', nob: 'no', fin: 'fi', ger: 'de', deu: 'de', dut: 'nl', nld: 'nl', fre: 'fr', fra: 'fr', spa: 'es', ita: 'it', pol: 'pl', ara: 'ar', tur: 'tr', por: 'pt' };
+const ISO3 = { eng: 'en', swe: 'sv', dan: 'da', nor: 'no', nob: 'no', fin: 'fi', ger: 'de', deu: 'de', dut: 'nl', nld: 'nl', fre: 'fr', fra: 'fr', spa: 'es', ita: 'it', pol: 'pl', ara: 'ar', tur: 'tr', por: 'pt', geo: 'ka', kat: 'ka', tgl: 'tl', fil: 'tl' };
 const sameLang = (iso, lang) => {
   const code = ISO3[String(iso || '').toLowerCase()] || String(iso || '').toLowerCase();
   return Boolean(lang) && (code === lang || lang.startsWith(`${code}-`));
