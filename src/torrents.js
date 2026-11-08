@@ -38,6 +38,7 @@ const searchCache = new Map(); // key -> { at, data }
 const magnetCache = new Map(); // 1337x path -> magnet
 
 export const torrentsEnabled = () => ENABLED;
+export const torrentQueryAllowed = (q) => String(q || '').length >= 2 || /^\d$/.test(String(q || ''));
 
 class TorrentError extends Error {
   constructor(status, message) { super(message); this.status = status; }
@@ -357,7 +358,7 @@ async function searchAll(rawQuery, rawType, documentary = false) {
   if (!ENABLED) throw new TorrentError(503, 'Torrent search is turned off (TORRENTS=off in .env).');
   const q = String(rawQuery || '').replace(/\s+/g, ' ').trim().slice(0, 100);
   const type = ['movie', 'tv'].includes(rawType) ? rawType : 'all';
-  if (q.length < 2) return { results: [], problems: [] };
+  if (!torrentQueryAllowed(q)) return { results: [], problems: [] };
 
   const key = `${type}|${documentary ? 'doc|' : ''}${q.toLowerCase()}`;
   const hit = searchCache.get(key);
