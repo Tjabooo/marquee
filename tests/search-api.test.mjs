@@ -1,0 +1,88 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
+import net from 'node:net';
+import http from 'node:http';
+import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+
+test('Discover finds the exact film 9 and treats 2009 as a year filter', { timeout: 15000 }, async (t) => {
+  const root = fileURLToPath(new URL('../', import.meta.url));
+  const app = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-search-api-'));
+  const media = path.join(app, 'media'); await fs.mkdir(media);
+  const requests = [];
+  const noisy = [
+    { id: 17654, media_type: 'movie', title: 'District 9', release_date: '2009-08-14' },
+    { id: 75219, media_type: 'tv', name: '9-1-1', first_air_date: '2018-01-03' },
+  ];
+  const exact = { id: 22947, title: '9', original_title: '9', release_date: '2009-08-19', overview: 'Nine rag dolls awaken.' };
+
+  const mock = http.createServer((req, res) => {
+    const url = new URL(req.url, 'http://localhost');
+    requests.push({ path: url.pathname, params: Object.fromEntries(url.searchParams) });
+    let body = {};
+    if (url.pathname === '/search/multi') body = { results: noisy };
+    else if (url.pathname === '/search/movie') body = { results: [exact, { id: 99999, title: '9', release_date: '2019-01-01' }] };
+    else if (url.pathname === '/search/tv') body = { results: [] };
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(body));
+  });
+  await new Promise((r) => mock.listen(0, '127.0.0.1', r));
+  const mockBase = `http://127.0.0.1:${mock.address().port}`;
+
+  const reserve = net.createServer();
+  await new Promise((r) => reserve.listen(0, '127.0.0.1', r));
+  const port = reserve.address().port;
+  await new Promise((r) => reserve.close(r));
+
+  for (const name of await fs.readdir(root)) if (name.endsWith('.js') || name === 'package.json') await fs.copyFile(path.join(root, name), path.join(app, name));
+  await fs.cp(path.join(root, 'src'), path.join(app, 'src'), { recursive: true });
+  const source = await fs.readFile(path.join(app, 'src', 'server.js'), 'utf8');
+  await fs.writeFile(path.join(app, 'src', 'server.js'), source.replace('https://api.themoviedb.org/3', mockBase));
+  await fs.cp(path.join(root, 'public'), path.join(app, 'public'), { recursive: true });
+
+  const child = spawn(process.execPath, ['server.js'], { cwd: app, env: {
+    PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, WINDIR: process.env.WINDIR, TEMP: process.env.TEMP, TMP: process.env.TMP,
+    PORT: String(port), MEDIA_DIR: media, ADMIN_EMAILS: 'owner@test.local', TMDB_TOKEN: 'test',
+    CONVERT: 'off', SUBSYNC: 'off', TORRENTS: 'off', SVT_PLAY: 'off', CAST_APPLETV: 'off',
+    SERVER_IP: '127.0.0.1', PREPARE_NEXT_EPISODES: '0',
+  }, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+  let logs = '';
+  child.stdout.on('data', (c) => { logs += c; });
+  child.stderr.on('data', (c) => { logs += c; });
+  t.after(async () => {
+    child.kill();
+    await new Promise((r) => child.exitCode !== null ? r() : child.once('exit', r));
+    mock.closeAllConnections();
+    await new Promise((r) => mock.close(r));
+    await fs.rm(app, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
+  });
+
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(Error('Startup timeout: ' + logs)), 7000);
+    child.stdout.on('data', (c) => { if (String(c).includes('Marquee is running')) { clearTimeout(timer); resolve(); } });
+    child.once('error', reject);
+    child.once('exit', () => { clearTimeout(timer); reject(Error(logs)); });
+  });
+
+  const search = async (q) => {
+    const response = await fetch(`http://127.0.0.1:${port}/api/search?q=${encodeURIComponent(q)}`, {
+      headers: { 'cf-access-authenticated-user-email': 'owner@test.local' },
+    });
+    const data = await response.json();
+    assert.equal(response.status, 200, JSON.stringify(data));
+    return data;
+  };
+
+  let data = await search('9');
+  assert.equal(data.results[0].id, 22947);
+  assert.ok(requests.some((r) => r.path === '/search/movie' && r.params.query === '9'));
+
+  requests.length = 0;
+  data = await search('9 (2009)');
+  assert.equal(data.results[0].id, 22947);
+  assert.ok(requests.some((r) => r.path === '/search/movie' && r.params.query === '9' && r.params.year === '2009'));
+  assert.ok(requests.some((r) => r.path === '/search/tv' && r.params.query === '9' && r.params.first_air_date_year === '2009'));
+});
