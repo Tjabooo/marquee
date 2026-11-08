@@ -32,7 +32,7 @@ import { fetchTorrentFile, TorrentFetchError } from './torrent-fetch.js';
 import { filterMode, filterApplies, firstAdult, torrentFileNames, BLOCKED_MESSAGE } from './content-filter.js';
 import * as smart from './smart-download.js';
 import * as svt from './svtplay.js';
-import { createSvtQueue } from './svt-queue.js';
+import { createSvtQueue, expectedSize } from './svt-queue.js';
 import { createDocumentaries } from './documentaries.js';
 import * as versions from './versions.js';
 import { planEpisodeOrder } from './episode-order.js';
@@ -559,7 +559,8 @@ async function svtHave(user, title) {
   const statusOf = (item, videoId) => {
     if (item) return { status: mine.has(accounts.mediaKey(item.full)) ? 'library' : 'server', libraryId: item.id };
     const job = videoId && svtQueue?.get(svt.svtHashOf(videoId));
-    return job ? { status: job.state === 'error' ? 'failed' : 'queued', libraryId: null } : { status: null, libraryId: null };
+    if (!job) return { status: null, libraryId: null };
+    return { status: job.state === 'error' ? 'failed' : 'queued', libraryId: null, state: job.state, progress: job.progress || 0, error: job.error || null };
   };
   return { same, statusOf };
 }
@@ -597,7 +598,7 @@ async function svtAdd(user, title, { seasons = null, episodes = null, name = nul
   };
   if (title.kind === 'film') {
     if (!identity) shows.pinFilmArt(shown, { title: shown, overview: title.overview, poster, backdrop: title.backdrop, genres: title.genres });
-    take(same.find((i) => i.season == null), { videoId: title.videoId, season: null, episode: null, episodeName: null });
+    take(same.find((i) => i.season == null), { videoId: title.videoId, season: null, episode: null, episodeName: null, minutes: title.minutes });
   } else {
     const picked = title.seasons.filter((s) => !seasons || seasons.includes(s.number));
     const art = { title: shown, overview: title.overview, year: title.year, poster, backdrop: title.backdrop, genres: title.genres,
@@ -612,7 +613,7 @@ async function svtAdd(user, title, { seasons = null, episodes = null, name = nul
       for (const e of s.episodes) {
         if (episodes && !episodes.includes(e.number)) continue;
         take(same.find((i) => i.season === s.number && i.episode === e.number), {
-          videoId: e.videoId, season: s.number, episode: e.number, episodeName: e.name, showId, showKey: shows.showKey(shown),
+          videoId: e.videoId, season: s.number, episode: e.number, episodeName: e.name, minutes: e.minutes, showId, showKey: shows.showKey(shown),
         });
         result.episodes.push(e.number);
       }
@@ -844,6 +845,7 @@ async function libraryView(user) {
     own.push({
       ...base,
       converting: Boolean(converting) && converting === full && converter.needsConversion(full),
+      convertPercent: Boolean(converting) && converting === full ? convertPercentOf(full) : null,
       source: entry.source,
       addedAt: entry.addedAt,
       expiresAt: autoDelete ? entry.expiresAt : null,
@@ -1701,9 +1703,9 @@ function svtDownloadView(job, user, all) {
   const mates = accounts.libraryMates(user.id);
   const mine = job.requesters.some((id) => mates.includes(id));
   if (!mine && !all) return null;
-  const size = job.size || job.bytes || 0;
+  const size = expectedSize(job);
   return {
-    source: 'svt', hash: job.hash,
+    source: 'svt', hash: job.hash, svtPath: job.path, batchDone: job.batchDone || 0,
     mediaType: job.kind === 'series' ? 'tv' : 'movie', tmdbId: job.tmdbId || null, canonicalTitle: job.title,
     showKey: job.showKey || null, showId: job.showId || null, poster: job.poster || null, backdrop: job.backdrop || null,
     added: job.added, ready: false, hasVideo: true, files: [],
@@ -1797,6 +1799,7 @@ async function listDownloads(user, all = false) {
     transferComplete: t.progress >= 1,
     done: Boolean(verifiedComplete),
     converting: convertingIn(t),
+    convertPercent: convertPercentIn(t),
     subs: subtitles.subtitleWants(t.hash),
     };
   }));
@@ -1808,6 +1811,16 @@ function convertingIn(t) {
   const file = converter.convertingFile();
   if (!file || !converter.needsConversion(file) || !t.content_path) return false;
   return samePath(file, t.content_path) || isInside(file, t.content_path);
+}
+
+// How far along that MP4 copy is, or null.
+function convertPercentOf(file) {
+  const job = file && converter.jobFiles().active.find((j) => samePath(j.file, file));
+  return job && Number.isFinite(job.slot?.percent) ? job.slot.percent : null;
+}
+function convertPercentIn(t) {
+  if (!convertingIn(t)) return null;
+  return convertPercentOf(converter.convertingFile());
 }
 
 async function downloadSource(hash) {

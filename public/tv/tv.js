@@ -249,11 +249,12 @@
   function badge() { return h('span', { class: 'tv-badge', text: T('In library') }); }
   function titleSub(t) { return [t.year, t.type === 'tv' ? T('Series') : T('Film')].filter(Boolean).join(' · '); }
 
+  function onWayBar(p) { return p ? barFor(p.progress).el : null; }
   // A film or show from TMDB (Discover, search). OK opens its page.
   function titleCard(t) {
     var pic = lazy(t.poster);
     return { key: t.type + ':' + t.id, t: t, wake: pic.wake,
-      el: h('div', { class: 'card tile' }, h('div', { class: 'art' }, pic.el, libraryEntry(t) ? badge() : null),
+      el: h('div', { class: 'card tile' }, h('div', { class: 'art' }, pic.el, libraryEntry(t) ? badge() : null, onWayBar(pendingFor(t))),
         h('div', { class: 'name', text: t.title }), h('div', { class: 'sub', text: titleSub(t) })),
       open: function () { discoverTitle(t); } };
   }
@@ -275,21 +276,61 @@
   // A title that's still on its way: the progress updates in place, without redrawing the row.
   function pendingPercent(p) { return p.progress != null && p.progress < 1 ? Math.floor(p.progress * 100) + ' %' : ''; }
   function pendingText(p) { return [pendingPercent(p), p.word].filter(Boolean).join(' · '); }
+  // The bar's fill: how far along, or a moving stripe while nobody knows yet (a torrent without its file list).
+  function setBar(bar, fill, progress) {
+    var unknown = progress == null;
+    bar.classList.toggle('is-unknown', unknown);
+    fill.style.width = unknown ? '' : (progress * 100).toFixed(1) + '%';
+  }
+  function barFor(progress) {
+    var fill = h('i'), bar = h('div', { class: 'bar' }, fill);
+    setBar(bar, fill, progress);
+    return { el: bar, set: function (next) { setBar(bar, fill, next); } };
+  }
+  // A long bar with its words above, for a title's page. set(null) hides it.
+  function progressStrip() {
+    var text = h('div', { class: 'strip-text' }), fill = h('i'), bar = h('div', { class: 'strip-bar' }, fill);
+    var el = h('div', { class: 'progress-strip', style: 'display:none' }, text, bar);
+    return { el: el, set: function (p) {
+      el.style.display = p ? '' : 'none';
+      if (!p) return;
+      text.textContent = pendingText(p);
+      setBar(bar, fill, p.progress);
+    } };
+  }
+  // Keeps asking how downloads are doing while a screen is open. each() runs after every answer.
+  function followPending(isOpen, each) {
+    function tick() {
+      if (!isOpen()) return;
+      loadPending().then(function () { if (isOpen()) { each(); setTimeout(tick, 5000); } });
+    }
+    setTimeout(tick, 5000);
+  }
+  function pendingForPath(path) {
+    return state.pending.filter(function (p) { return p.items.some(function (d) { return d.svtPath === path; }); })[0] || null;
+  }
+  function pendingNamed(name) {
+    var key = L.searchKey(name);
+    return state.pending.filter(function (p) { return L.searchKey(p.title) === key; })[0] || null;
+  }
   function pendingCard(p) {
     var pic = lazy(p.poster || p.backdrop);
-    var fill = h('i', { style: 'width:' + ((p.progress || 0) * 100).toFixed(1) + '%' });
+    var bar = barFor(p.progress);
     var sub = h('div', { class: 'sub', text: p.word });
     var pct = h('span', { class: 'pct', text: pendingPercent(p) });
     return { key: p.key, wake: pic.wake, update: function (next) {
-        fill.style.width = ((next.progress || 0) * 100).toFixed(1) + '%';
+        bar.set(next.progress);
         sub.textContent = next.word;
         pct.textContent = pendingPercent(next);
+        p = next;
       },
-      el: h('div', { class: 'card poster' }, h('div', { class: 'art' }, pic.el, pct, h('div', { class: 'bar' }, fill)),
+      el: h('div', { class: 'card poster' }, h('div', { class: 'art' }, pic.el, pct, bar.el),
         h('div', { class: 'name', text: p.title }), sub),
       open: function () {
         var show = p.type === 'tv' && state.shows.filter(function (s) { return s.id === p.showId; })[0];
         if (show) return showPage(show);
+        var path = p.items[0] && p.items[0].svtPath;
+        if (path) return svtScreen({ type: 'svt', path: path, title: p.title, backdrop: p.backdrop, kind: p.type === 'tv' ? 'series' : 'film' });
         if (p.tmdbId != null) return discoverTitle({ type: p.type, id: p.tmdbId, title: p.title, poster: p.poster, backdrop: p.backdrop, year: p.year });
         toast(p.word);
       } };
@@ -799,7 +840,7 @@
   function svtCard(t, cls) {
     var pic = lazy(cls === 'tile' ? t.poster || t.wide : t.wide || t.poster);
     return { key: 'svt:' + t.path, t: t, wake: pic.wake,
-      el: h('div', { class: 'card ' + (cls || 'svt') }, h('div', { class: 'art' }, pic.el, h('span', { class: 'svt-mark', text: 'SVT Play' }), svtOwned(t) ? badge() : null),
+      el: h('div', { class: 'card ' + (cls || 'svt') }, h('div', { class: 'art' }, pic.el, h('span', { class: 'svt-mark', text: 'SVT Play' }), svtOwned(t) ? badge() : null, onWayBar(pendingForPath(t.path) || pendingNamed(t.title))),
         h('div', { class: 'name', text: t.title }), h('div', { class: 'sub', text: titleSub({ year: t.year, type: t.kind === 'series' ? 'tv' : 'movie' }) })),
       open: function () { svtScreen(t); } };
   }
@@ -918,11 +959,13 @@
     var chips = h('div', { class: 'svt-seasons' });
     var action = h('button', { class: 'title-action primary', text: T('Loading…') });
     var status = h('div', { class: 'download-status' });
+    var strip = progressStrip();
     var list = h('div', { class: 'episodes' });
+    var rows = []; // per episode on screen: { label, bar, pct }
     var listBox = h('div', { class: 'svt-list' }, list);
     var el = h('div', { class: 'screen discover-title svt-title' }, backdrop,
       h('div', { class: 'discover-panel' }, h('div', { class: 'discover-copy' }, titleEl, meta, overview, chips,
-        h('div', { class: 'title-actions' }, action), status), listBox));
+        h('div', { class: 'title-actions' }, action), strip.el, status), listBox));
 
     function season() { return data && data.seasons && data.seasons[si] || null; }
     function episodes() { var s = season(); return s ? s.episodes : []; }
@@ -934,11 +977,11 @@
       if (!data) return T('Loading…');
       if (data.kind === 'film') {
         if (data.status === 'library') return T('Play');
-        if (data.status === 'queued') return T('On its way');
+        if (data.status === 'queued') return T('Go to library');
         return T('Add to library');
       }
       var rest = open(episodes()).length;
-      if (!rest) return episodes().some(function (e) { return e.status === 'queued'; }) ? T('On its way') : T('Open');
+      if (!rest) return episodes().some(function (e) { return e.status === 'queued'; }) ? T('Go to library') : T('Open');
       return rest === 1 ? T('Add 1 episode') : T('Add {0} episodes', rest);
     }
     function buildChips() {
@@ -949,15 +992,38 @@
       data.seasons.forEach(function (s) { track.appendChild(h('div', { class: 'svt-chip', text: s.dated && s.name ? s.name : String(s.number) })); });
       chips.appendChild(track);
     }
+    function labelFor(e) {
+      var word = e.status === 'queued' ? L.transferWord({ state: e.state, progress: e.progress }) : statusWord(e.status);
+      var pct = e.status === 'queued' && e.state === 'downloading' ? Math.floor((e.progress || 0) * 100) + ' %' : null;
+      return [T('Episode {0}', e.number), e.minutes ? T('{0} min', e.minutes) : null, word, pct].filter(Boolean).join(' · ');
+    }
     function buildList() {
       list.innerHTML = '';
-      episodes().forEach(function (e) {
+      rows = episodes().map(function (e) {
+        var label = h('div', { class: 'label', text: labelFor(e) }), bar = barFor(e.progress || 0);
+        bar.el.style.display = e.status === 'queued' ? '' : 'none';
         list.appendChild(h('div', { class: 'episode' },
-          h('div', { class: 'art' }, img(e.still)),
-          h('div', { class: 'text' },
-            h('div', { class: 'label', text: [T('Episode {0}', e.number), e.minutes ? T('{0} min', e.minutes) : null, statusWord(e.status)].filter(Boolean).join(' · ') }),
-            h('div', { class: 'name', text: e.name }))));
+          h('div', { class: 'art' }, img(e.still), bar.el),
+          h('div', { class: 'text' }, label, h('div', { class: 'name', text: e.name }))));
+        return { label: label, bar: bar };
       });
+    }
+    // The rows stay and only their words and bars change, so the list doesn't flicker and images don't reload.
+    function updateRows() {
+      episodes().forEach(function (e, i) {
+        var row = rows[i];
+        if (!row) return;
+        row.label.textContent = labelFor(e);
+        row.bar.el.style.display = e.status === 'queued' ? '' : 'none';
+        row.bar.set(e.progress || 0);
+      });
+    }
+    function overall() {
+      var p = pendingForPath(t.path);
+      strip.set(p);
+      var failed = data && (data.status === 'failed' ? data : (data.seasons || []).reduce(function (found, s) {
+        return found || s.episodes.filter(function (e) { return e.status === 'failed'; })[0]; }, null));
+      if (failed && failed.error) { status.textContent = failed.error; status.classList.add('error'); }
     }
     function paint() {
       action.textContent = actionText();
@@ -972,13 +1038,30 @@
       var item = items[ei];
       list.style.transform = 'translateY(' + (zone === 'episodes' && item ? -Math.max(0, item.offsetTop - 10) : 0) + 'px)';
     }
+    function waitingOn(d) {
+      return d && (d.status === 'queued' || (d.seasons || []).some(function (s) { return s.episodes.some(function (e) { return e.status === 'queued'; }); }));
+    }
+    function hereCount(d) {
+      return d.status === 'library' ? 1 : (d.seasons || []).reduce(function (n, s) { return n + s.episodes.filter(function (e) { return e.status === 'library'; }).length; }, 0);
+    }
     function schedule() {
       clearTimeout(timer);
-      var waiting = data && (data.status === 'queued' || (data.seasons || []).some(function (s) { return s.episodes.some(function (e) { return e.status === 'queued'; }); }));
-      if (waiting) timer = setTimeout(load, 6000);
+      if (waitingOn(data)) timer = setTimeout(tick, 4000);
+    }
+    // While something's on its way: fresh numbers, in place. An episode that just finished can be played.
+    function tick() {
+      Promise.all([api('/api/svt/title?path=' + encodeURIComponent(t.path)), loadPending()]).then(function (r) {
+        if (!alive) return;
+        var arrived = hereCount(r[0]) !== hereCount(data);
+        data = r[0];
+        updateRows(); overall(); paint();
+        schedule();
+        if (arrived) loadLibrary().catch(function () {});
+      }).catch(function () { if (alive) schedule(); });
     }
     function load() {
-      api('/api/svt/title?path=' + encodeURIComponent(t.path)).then(function (d) {
+      Promise.all([api('/api/svt/title?path=' + encodeURIComponent(t.path)), loadPending()]).then(function (r) {
+        var d = r[0];
         if (!alive) return;
         var first = !data;
         data = d;
@@ -989,7 +1072,12 @@
         si = Math.min(si, Math.max(0, (d.seasons || []).length - 1));
         buildChips(); buildList();
         schedule();
-        return loadLibrary().catch(function () {}).then(function () { if (alive) paint(); if (first && alive) status.textContent = T('Saved to your library in full quality, with Swedish subtitles.'); });
+        overall();
+        return loadLibrary().catch(function () {}).then(function () {
+          if (!alive) return;
+          paint();
+          if (first && !status.classList.contains('error')) status.textContent = T('Saved to your library in full quality, with Swedish subtitles.');
+        });
       }).catch(function (err) {
         if (!alive) return;
         action.textContent = T('Back'); status.textContent = err.message; status.classList.add('error');
@@ -1024,10 +1112,12 @@
       if (!data) return;
       if (data.kind === 'film') {
         if (data.status === 'library') playId(data.libraryId);
-        else if (data.status !== 'queued') add({});
+        else if (data.status === 'queued') goToLibrary();
+        else add({});
         return;
       }
       if (open(episodes()).length) { add({ seasons: [season().number] }); return; }
+      if (episodes().some(function (e) { return e.status === 'queued'; })) { goToLibrary(); return; }
       var here = episodes().filter(function (e) { return e.status === 'library'; })[0];
       if (here) { zone = 'episodes'; ei = episodes().indexOf(here); paint(); }
     }
@@ -1187,7 +1277,9 @@
     var overview = h('p', { class: 'discover-overview', text: t.overview || T('No description available.') });
     var seasonBox = h('div', { class: 'discover-seasons' });
     var onWay = pendingFor(t);
-    var status = h('div', { class: 'download-status', text: onWay ? pendingText(onWay) : lib ? T('Already in your library. Smart Download will avoid duplicates.') : '' });
+    var status = h('div', { class: 'download-status', text: onWay ? '' : lib ? T('Already in your library. Smart Download will avoid duplicates.') : '' });
+    var strip = progressStrip();
+    strip.set(onWay);
     var downloadBtn = h('button', { class: 'title-action' + (lib ? '' : ' primary'), text: state.me && state.me.canDownload === false ? T('Downloads disabled') : T('Download') });
     var qualityBtn = h('button', { class: 'title-action', text: '' });
     var actions = [];
@@ -1209,8 +1301,14 @@
     if (lib) zone = 'actions';
     var actionsEl = h('div', { class: 'title-actions' }, actions.map(function (a) { return a.el; }));
     var panel = h('div', { class: 'discover-panel' }, h('div', { class: 'discover-copy' }, title, meta, overview, seasonBox,
-      actionsEl, status));
+      actionsEl, strip.el, status));
     var el = h('div', { class: 'screen discover-title' }, backdrop, panel);
+    followPending(function () { return alive; }, function () {
+      var was = onWay;
+      onWay = pendingFor(t);
+      strip.set(onWay);
+      if (onWay && !was && !busy) status.textContent = '';
+    });
 
     function savedQuality() {
       var s = state.me && state.me.settings || {};
@@ -1328,10 +1426,28 @@
     seasons.forEach(function (season, i) { season.episodes.forEach(function (f, j) { if (f === startAt) { si = i; ei = j; } }); });
     var tabs = h('div', { class: 'seasons' });
     var list = h('div', { class: 'episodes' });
+    var strip = progressStrip(), open = true;
+    function onWayHere() { return state.pending.filter(function (p) { return p.showId === s.id; })[0] || null; }
+    strip.set(onWayHere());
     var el = h('div', { class: 'screen show' },
       h('div', { class: 'backdrop' }, img(s.backdrop)),
-      h('div', { class: 'show-head' }, h('h1', { text: s.title }), s.overview ? h('p', { class: 'overview', text: s.overview }) : null),
+      h('div', { class: 'show-head' }, h('h1', { text: s.title }), s.overview ? h('p', { class: 'overview', text: s.overview }) : null, strip.el),
       tabs, h('div', { class: 'list-viewport' }, list));
+    var waited = onWayHere() ? onWayHere().items.length : 0;
+    followPending(function () { return open; }, function () {
+      var p = onWayHere(), now = p ? p.items.length : 0;
+      strip.set(p);
+      // An episode finished while you were here: it joins the list.
+      if (now !== waited) {
+        waited = now;
+        loadLibrary().then(function () {
+          if (!open) return;
+          seasons = L.showSeasons(state.library, s.id);
+          si = Math.min(si, Math.max(0, seasons.length - 1));
+          if (seasons.length) { buildTabs(); buildList(); paint(); }
+        }).catch(function () {});
+      }
+    });
     function buildTabs() {
       tabs.innerHTML = '';
       seasons.forEach(function (season) { tabs.appendChild(h('div', { class: 'tab', text: T('Season {0}', season.number) })); });
@@ -1344,7 +1460,8 @@
         list.appendChild(h('div', { class: 'episode' + (f.converting ? ' is-busy' : '') },
           h('div', { class: 'art' }, img(f.still || s.backdrop), ok ? h('div', { class: 'bar' }, h('i', { style: 'width:' + (p.time / p.duration * 100).toFixed(1) + '%' })) : null),
           h('div', { class: 'text' },
-            h('div', { class: 'label', text: T('Episode {0}', f.episode) + (ok ? ' · ' + L.minutesLeft(p) : '') + (f.converting ? ' · ' + T('getting ready') : '') }),
+            h('div', { class: 'label', text: T('Episode {0}', f.episode) + (ok ? ' · ' + L.minutesLeft(p) : '')
+              + (f.converting ? ' · ' + T('getting ready') + (typeof f.convertPercent === 'number' ? ' ' + Math.floor(f.convertPercent) + ' %' : '') : '') }),
             h('div', { class: 'name', text: f.episodeName || L.episodeLabel(f) }))));
       });
     }
@@ -1357,6 +1474,7 @@
     }
     buildTabs(); buildList();
     show({ el: el, focus: paint,
+      leave: function () { open = false; },
       refresh: function () { loadLibrary().then(function () { seasons = L.showSeasons(state.library, s.id); si = Math.min(si, seasons.length - 1); if (si < 0) { back(); return; } buildList(); paint(); }).catch(function () {}); },
       key: function (code) {
         if (zone === 'seasons') {

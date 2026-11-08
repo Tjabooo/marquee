@@ -15,6 +15,8 @@ import { svtVideo, svtStreams, svtSubtitles, svtHashOf as svtHash } from './svtp
 const MAX_RUNNING = 2;
 // Well above real time, but it can't flood the line while someone is watching something else.
 const READ_RATE = '12';
+// Until a copy has started, its size is a guess from its length (SVT's 1080p runs about 4 Mbit/s).
+const BYTES_PER_MINUTE = 30e6;
 const pad = (n) => String(n).padStart(2, '0');
 
 // A title as a file or folder name on every system. Colons read better as dashes ("Kriminalarkivet - Flickmorden").
@@ -44,6 +46,12 @@ export function parseProgress(chunk) {
     bytes: Number(out.total_size) > 0 ? Number(out.total_size) : null,
     end: out.progress === 'end',
   };
+}
+
+// What to show as a copy's size. Once under way, what it has written so far says more than SVT's peak bitrate.
+export function expectedSize({ bytes, progress, minutes, size }) {
+  if (bytes > 0 && progress > 0.02) return Math.round(bytes / progress);
+  return minutes ? minutes * BYTES_PER_MINUTE : size || 30 * BYTES_PER_MINUTE;
 }
 
 // deps: { mediaDir, dataDir, ffmpeg, freeBytes?(), onSaved(job, fullPath), onChange?(), log? }
@@ -154,9 +162,13 @@ export function createSvtQueue(deps) {
     }
     log(`[svt] saved ${job.name} (${streams.height}p)`);
     jobs.delete(job.hash);
+    // A title's overall progress counts what's finished, so it doesn't fall back when an episode leaves the queue.
+    for (const other of jobs.values()) if (sameTitle(other, job)) other.batchDone = (other.batchDone || 0) + 1;
     await deps.onSaved(job, full);
     changed();
   }
+
+  const sameTitle = (a, b) => a.path === b.path;
 
   function pump() {
     const busy = [...jobs.values()].filter((j) => j.state === 'metaDL' || j.state === 'downloading').length;
@@ -192,6 +204,7 @@ export function createSvtQueue(deps) {
       const job = {
         ...info, hash, name: label, target: targetFile(spec), requesters: requester != null ? [requester] : [],
         state: 'queuedDL', progress: 0, bytes: 0, size: null, speed: 0, error: null, added: Date.now(),
+        batchDone: Math.max(0, ...[...jobs.values()].filter((j) => sameTitle(j, spec)).map((j) => j.batchDone || 0)),
       };
       jobs.set(hash, job);
       changed();

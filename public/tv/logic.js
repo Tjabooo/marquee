@@ -92,6 +92,13 @@
     if (st === 'moving' || d.progress >= 1) return T('Almost ready');
     return T('On its way');
   }
+  function pendingWord(items, finished) {
+    if (items.some(function (d) { return d.state === 'error' || d.state === 'missingFiles'; })) return T('Needs attention');
+    if (items.length === 1 && !finished) return transferWord(items[0]);
+    if (finished) return T('{0} of {1} ready', finished, finished + items.length);
+    if (items.every(function (d) { return /^(paused|stopped)/.test(String(d.state || '')); })) return T('Paused');
+    return items.every(function (d) { return d.episode != null; }) ? T('{0} episodes on their way', items.length) : T('{0} downloads', items.length);
+  }
   // Downloads that aren't ready yet, one entry per film or show (a season pack and single episodes join up),
   // newest first. The same rule as the website's libraryUnion: yours, and still on its way or needing attention.
   function pendingTitles(downloads, library) {
@@ -114,10 +121,20 @@
       e.added = Math.max(e.added, d.added || 0);
     });
     return order.map(function (e) {
+      var count = e.items.length;
       var known = e.items.every(function (d) { return d.size > 0 && typeof d.progress === 'number'; });
       var total = known ? e.items.reduce(function (n, d) { return n + d.size; }, 0) : 0;
-      e.progress = known && total ? e.items.reduce(function (n, d) { return n + d.size * Math.max(0, Math.min(1, d.progress)); }, 0) / total : null;
-      e.word = e.items.length === 1 ? transferWord(e.items[0]) : T('{0} downloads', e.items.length);
+      var part = known && total ? e.items.reduce(function (n, d) { return n + d.size * Math.max(0, Math.min(1, d.progress)); }, 0) / total : null;
+      // Everything downloaded and now being prepared: the bar follows that instead of sitting full.
+      var preparing = e.items.filter(function (d) { return d.converting && typeof d.convertPercent === 'number'; });
+      if (preparing.length === count) part = preparing.reduce(function (n, d) { return n + d.convertPercent; }, 0) / count / 100;
+      // SVT Play copies leave the list as they finish: what's done still counts, so the bar never falls back.
+      var finished = 0;
+      e.items.forEach(function (d) { finished = Math.max(finished, d.batchDone || 0); });
+      e.finished = finished;
+      e.total = finished + count;
+      e.progress = part == null ? null : (finished + part * count) / (finished + count);
+      e.word = pendingWord(e.items, finished);
       return e;
     }).sort(function (a, b) { return b.added - a.added; });
   }
@@ -221,7 +238,7 @@
     AUTOPLAY_SECONDS: AUTOPLAY_SECONDS, AUTOPLAY_CHAIN: AUTOPLAY_CHAIN, DONE_SECONDS: DONE_SECONDS,
     nextEpisode: nextEpisode, nextPromptAt: nextPromptAt, isNextTime: isNextTime, introShowing: introShowing,
     T: T, fmtTime: fmtTime, episodeLabel: episodeLabel, minutesLeft: minutesLeft, progressRef: progressRef, resumable: resumable,
-    titleKey: titleKey, pendingTitles: pendingTitles, homeRows: homeRows, genreRows: genreRows, searchKey: searchKey, showSeasons: showSeasons, startEpisode: startEpisode, parseVtt: parseVtt, cueText: cueText,
+    titleKey: titleKey, transferWord: transferWord, pendingTitles: pendingTitles, homeRows: homeRows, genreRows: genreRows, searchKey: searchKey, showSeasons: showSeasons, startEpisode: startEpisode, parseVtt: parseVtt, cueText: cueText,
   };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.MarqueeTvLogic = api;

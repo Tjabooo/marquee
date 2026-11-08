@@ -44,6 +44,9 @@ export function libraryUnion(files = [], shows = [], downloads = []) {
     e.attention = e.active.some(transferAttention);
     const known = e.active.length > 0 && e.active.every(d => Number.isFinite(d.size) && d.size > 0 && Number.isFinite(d.progress));
     e.progress = known ? e.active.reduce((n, d) => n + d.size * Math.max(0, Math.min(1, d.progress)), 0) / e.active.reduce((n, d) => n + d.size, 0) : null;
+    // SVT Play copies leave the list as they finish: what's done still counts, so the bar never falls back.
+    const finished = Math.max(0, ...e.active.map(d => d.batchDone || 0));
+    if (known && finished) e.progress = (finished + e.progress * e.active.length) / (finished + e.active.length);
     e.speed = e.active.filter(d => !transferPaused(d) && !transferAttention(d) && !/checking/.test(d.state || '')).reduce((n, d) => n + (Number(d.speed) || 0), 0);
     e.state = e.attention ? T('Needs attention') : e.active.length === 1 ? transferState(e.active[0]) : e.active.length ? e.active.every(transferPaused) ? T('Paused') : T('{0} downloads', e.active.length) : e.preparing ? T('Preparing playback') : e.transfers.length && !e.ready && e.transfers.every(d => d.done && d.hasVideo === false) ? T('Complete') : T('Ready to watch');
     e.added = Math.max(0, ...e.files.map(f => f.addedAt || f.added || 0), ...e.transfers.map(d => d.added || 0));

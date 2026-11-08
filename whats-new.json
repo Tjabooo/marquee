@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-08-tv-progress",
+    "date": "2026-11-08",
+    "title": "Progress bars on the TV",
+    "items": [
+      {
+        "title": "See how far it's come",
+        "text": "The TV now shows progress wherever something's on its way: on the home screen, on a title's page, beside each episode and on cards in Discover. It tells you how many episodes are ready, too."
+      }
+    ]
+  },
+  {
     "id": "2026-11-08-documentaries",
     "date": "2026-11-08",
     "title": "Documentaries, with Swedish true crime",

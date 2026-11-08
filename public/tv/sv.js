@@ -124,4 +124,6 @@ window.MarqueeTvStrings = {
   'Add to library': 'Lägg till i biblioteket',
   'On its way from SVT Play.': 'På väg från SVT Play.',
   'Saved to your library in full quality, with Swedish subtitles.': 'Sparas i ditt bibliotek i full kvalitet, med svensk text.',
+  '{0} of {1} ready': '{0} av {1} klara',
+  '{0} episodes on their way': '{0} avsnitt på väg',
 };

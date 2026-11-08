@@ -84,8 +84,13 @@ export function createDocumentaries(ui) {
 
   const stillOpen = (token) => shown === token && ui.sheet().classList.contains('open');
 
-  function statusWord(status) {
-    return { library: T('In your library'), server: T('On server'), queued: T('On its way'), failed: T('Couldn’t save this') }[status] || '';
+  function statusWord(item) {
+    if (item.status === 'queued') {
+      if (item.state === 'queuedDL') return T('In line');
+      if (/^paused/.test(item.state || '')) return T('Paused');
+      return item.progress > 0 ? `${T('On its way')} · ${Math.floor(item.progress * 100)} %` : T('On its way');
+    }
+    return { library: T('In your library'), server: T('On server'), failed: T('Couldn’t save this') }[item.status] || '';
   }
 
   function playById(id) {
@@ -96,7 +101,7 @@ export function createDocumentaries(ui) {
   // One episode or film: Play when it's here, Add when it isn't, a word in between.
   function actionFor(item, label, add) {
     if (item.status === 'library') return h('button', { class: 'play-btn round', 'aria-label': T('Play {0} here', label), onclick: () => playById(item.libraryId) }, icon('play'));
-    if (item.status === 'queued') return h('span', { class: 'doc-status' }, statusWord('queued'));
+    if (item.status === 'queued') return h('span', { class: 'doc-status' }, item.state === 'queuedDL' ? T('In line') : `${Math.floor((item.progress || 0) * 100)} %`);
     if (!ui.canAdd()) return null;
     return h('button', { class: 'play-btn round stroke-icon', 'aria-label': T('Add {0} to your library', label), title: T('Add to library'), onclick: add }, icon('plus'));
   }
@@ -132,7 +137,7 @@ export function createDocumentaries(ui) {
       const button = here
         ? h('button', { class: 'play-btn action-btn', onclick: () => playById(data.libraryId) }, icon('play'), h('span', {}, T('Play')))
         : data.status === 'queued'
-          ? h('button', { class: 'play-btn action-btn', disabled: true }, h('span', {}, T('On its way')))
+          ? h('button', { class: 'play-btn action-btn', disabled: true }, h('span', {}, statusWord(data)))
           : ui.canAdd() && h('button', { class: 'play-btn action-btn stroke-icon', onclick: () => add({}, data.title) }, icon('plus'), h('span', {}, T('Add to library')));
       content.push(h('div', { class: 'title-actions' }, button, status));
       if (data.minutes) content[1].append(h('li', {}, T('{0} min', data.minutes)));
@@ -158,7 +163,8 @@ export function createDocumentaries(ui) {
         e.still && h('img', { class: 'doc-still', src: e.still, alt: '', loading: 'lazy', decoding: 'async' }),
         h('div', { class: 'row-text' },
           h('div', { class: 'row-title' }, e.name),
-          h('div', { class: 'row-meta' }, [e.minutes && T('{0} min', e.minutes), statusWord(e.status)].filter(Boolean).map((m) => h('span', {}, m))),
+          h('div', { class: 'row-meta' }, [e.minutes && T('{0} min', e.minutes), statusWord(e)].filter(Boolean).map((m) => h('span', {}, m))),
+          e.status === 'queued' && e.progress > 0 && h('div', { class: 'resume-track' }, h('i', { style: `width:${(e.progress * 100).toFixed(1)}%` })),
           e.overview && h('p', { class: 'doc-episode-text' }, e.overview)),
         h('div', { class: 'row-actions' },
           actionFor(e, e.name, () => add({ seasons: [season.number], episodes: [e.number] }, e.name)))))));

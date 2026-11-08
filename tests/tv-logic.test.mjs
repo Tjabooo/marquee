@@ -83,3 +83,24 @@ test('TV: a transfer that is stuck or paused says so', () => {
   assert.equal(word('queuedDL'), 'In line');
   assert.equal(word('error'), 'Needs attention');
 });
+
+test('TV: queued episodes count in a title\'s progress, and finished ones keep it from falling back', () => {
+  const ep = (hash, progress, state, extra = {}) => ({ hash, mediaType: 'tv', showId: 'name-x', canonicalTitle: 'X', season: 1, episode: 1, progress, size: 100, state, done: false, ...extra });
+  const start = L.pendingTitles([ep('a', 0.5, 'downloading'), ep('b', 0, 'queuedDL'), ep('c', 0, 'queuedDL')])[0];
+  assert.equal(start.progress, 0.5 / 3);
+  assert.equal(start.word, '3 episodes on their way');
+  const later = L.pendingTitles([ep('b', 0.5, 'downloading', { batchDone: 1 }), ep('c', 0, 'queuedDL', { batchDone: 1 })])[0];
+  assert.equal(later.progress, 1.5 / 3, 'one done of three, the next half way');
+  assert.equal(later.word, '1 of 3 ready');
+  assert.deepEqual([later.finished, later.total], [1, 3]);
+  const last = L.pendingTitles([ep('c', 0, 'queuedDL', { batchDone: 2 })])[0];
+  assert.equal(last.word, '2 of 3 ready');
+  assert.equal(L.pendingTitles([ep('a', 0.5, 'error'), ep('b', 0, 'queuedDL')])[0].word, 'Needs attention');
+});
+
+test('TV: a video being prepared shows how far that has come', () => {
+  const p = L.pendingTitles([{ hash: 'a', mediaType: 'movie', tmdbId: 1, progress: 1, size: 100, state: 'uploading', done: false, converting: true, convertPercent: 40 }])[0];
+  assert.equal(p.progress, 0.4);
+  assert.equal(p.word, 'Preparing playback');
+  assert.equal(L.pendingTitles([{ hash: 'a', tmdbId: 1, mediaType: 'movie', state: 'metaDL', size: 0, progress: 0, done: false }])[0].progress, null, 'nothing known yet');
+});

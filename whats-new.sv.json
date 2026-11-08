@@ -1,4 +1,13 @@
 {
+  "2026-11-08-tv-progress": {
+    "title": "Förloppsindikatorer på TV:n",
+    "items": {
+      "See how far it's come": {
+        "title": "Se hur långt det har kommit",
+        "text": "TV:n visar nu förloppet överallt där något är på väg: på startskärmen, på en titels sida, vid varje avsnitt och på korten i Upptäck. Den visar också hur många avsnitt som är klara."
+      }
+    }
+  },
   "2026-11-08-documentaries": {
     "title": "Dokumentärer, med svensk true crime",
     "items": {

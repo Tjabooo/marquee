@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CATEGORIES, HOME_ROWS, createDocumentaries, discoverParams, mergeResults } from '../src/documentaries.js';
 import { parseCategory, parseSearch, parseTitle, parseVideo, pickVariant, vttToSrt, validPath, pageData } from '../src/svtplay.js';
-import { safeName, targetFile, parseProgress } from '../src/svt-queue.js';
+import { safeName, targetFile, parseProgress, expectedSize } from '../src/svt-queue.js';
 import { parseKnaben, plainQuery } from '../src/torrents.js';
 
 const page = (...states) => `<html><script>
@@ -232,4 +232,11 @@ test('Swedish letters also search in the spelling release names use', () => {
   assert.equal(plainQuery('Mordet på Olof Palme'), 'Mordet pa Olof Palme');
   assert.equal(plainQuery('Hövdingen ä'), 'Hovdingen a');
   assert.equal(plainQuery('GW:s mord'), 'GW:s mord');
+});
+
+test('a copy always has a size to weigh progress with, better once under way', () => {
+  assert.equal(expectedSize({ minutes: 10 }), 300e6);
+  assert.equal(expectedSize({ size: 5, bytes: 0, progress: 0 }), 5);
+  assert.ok(expectedSize({}) > 0, 'jobs queued before sizes were estimated');
+  assert.equal(expectedSize({ bytes: 100e6, progress: 0.25, minutes: 10, size: 9 }), 400e6);
 });

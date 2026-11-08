@@ -272,3 +272,13 @@ img.is-empty { visibility: hidden; }
 .svt-title .episode .art { width: 240px; height: 135px; margin-right: 26px; }
 .svt-title .episode .name { font-size: 30px; }
 .svt-title .episode .label { font-size: 23px; }
+
+/* ---- Progress ---- */
+.bar.is-unknown i, .strip-bar.is-unknown i { width: 30%; animation: bar-unknown 1.8s ease-in-out infinite alternate; }
+@keyframes bar-unknown { from { margin-left: 0; } to { margin-left: 70%; } }
+.progress-strip { width: 760px; margin-top: 20px; }
+.strip-text { font-size: 28px; font-weight: 700; color: var(--paper); }
+.strip-bar { height: 12px; margin-top: 10px; border-radius: 6px; background: rgba(255, 255, 255, .14); overflow: hidden; }
+.strip-bar i { display: block; height: 100%; border-radius: 6px; background: var(--bulb); transition: width .4s linear; }
+.bar i { transition: width .4s linear; }
+.show-head .progress-strip { margin-top: 14px; }
