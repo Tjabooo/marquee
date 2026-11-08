@@ -17,15 +17,19 @@ test('Discover finds the exact film 9 and treats 2009 as a year filter', { timeo
     { id: 17654, media_type: 'movie', title: 'District 9', release_date: '2009-08-14' },
     { id: 75219, media_type: 'tv', name: '9-1-1', first_air_date: '2018-01-03' },
   ];
-  const exact = { id: 22947, title: '9', original_title: '9', release_date: '2009-08-19', overview: 'Nine rag dolls awaken.' };
+  const exact = { id: 12244, title: '9', original_title: '9', release_date: '2009-08-19', overview: 'Nine rag dolls awaken.' };
 
   const mock = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://localhost');
     requests.push({ path: url.pathname, params: Object.fromEntries(url.searchParams) });
     let body = {};
     if (url.pathname === '/search/multi') body = { results: noisy };
-    else if (url.pathname === '/search/movie') body = { results: [exact, { id: 99999, title: '9', release_date: '2019-01-01' }] };
-    else if (url.pathname === '/search/tv') body = { results: [] };
+    else if (url.pathname === '/search/movie') {
+      const page = Number(url.searchParams.get('page') || 1);
+      body = page === 3
+        ? { page, total_pages: 3, results: [exact] }
+        : { page, total_pages: 3, results: [{ id: 90000 + page, title: 'Nine Lives', release_date: '2009-01-01' }] };
+    } else if (url.pathname === '/search/tv') body = { page: 1, total_pages: 1, results: [] };
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(body));
   });
@@ -77,12 +81,12 @@ test('Discover finds the exact film 9 and treats 2009 as a year filter', { timeo
   };
 
   let data = await search('9');
-  assert.equal(data.results[0].id, 22947);
-  assert.ok(requests.some((r) => r.path === '/search/movie' && r.params.query === '9'));
+  assert.equal(data.results[0].id, 12244);
+  assert.ok(requests.some((r) => r.path === '/search/movie' && r.params.query === '9' && r.params.page === '3'));
 
   requests.length = 0;
   data = await search('9 (2009)');
-  assert.equal(data.results[0].id, 22947);
-  assert.ok(requests.some((r) => r.path === '/search/movie' && r.params.query === '9' && r.params.year === '2009'));
+  assert.equal(data.results[0].id, 12244);
+  assert.ok(requests.some((r) => r.path === '/search/movie' && r.params.query === '9' && r.params.primary_release_year === '2009' && r.params.page === '3'));
   assert.ok(requests.some((r) => r.path === '/search/tv' && r.params.query === '9' && r.params.first_air_date_year === '2009'));
 });
