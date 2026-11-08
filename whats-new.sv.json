@@ -1,4 +1,17 @@
 {
+  "2026-11-08-best-quality-picture": {
+    "title": "Bästa kvalitet går nu verkligen efter bästa bilden",
+    "items": {
+      "Picked by picture, not popularity": {
+        "title": "Väljs efter bild, inte popularitet",
+        "text": "Bästa kvalitet tittar på var en utgåva kommer ifrån och hur mycket av bilden som finns kvar. En orörd skivkopia kommer först, och en liten populär omkodning vinner inte längre bara för att fler delar den. Nedladdningarna blir större och kan ta längre tid."
+      },
+      "No more odd versions": {
+        "title": "Inga fler udda versioner",
+        "text": "3D, AI-uppskalade utgåvor och skivavbilder hoppas över på alla kvalitetsinställningar, om det inte finns något annat."
+      }
+    }
+  },
   "2026-11-08-season-dates": {
     "title": "Gamla säsonger står inte längre som Inte släppt",
     "items": {

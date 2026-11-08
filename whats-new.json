@@ -1,5 +1,20 @@
 [
   {
+    "id": "2026-11-08-best-quality-picture",
+    "date": "2026-11-08",
+    "title": "Best Quality now really goes for the best picture",
+    "items": [
+      {
+        "title": "Picked by picture, not popularity",
+        "text": "Best Quality looks at where a release came from and how much of the picture survived. An untouched disc copy comes first, and a small popular re-encode no longer wins because more people share it. These downloads are bigger and can take longer."
+      },
+      {
+        "title": "No more odd versions",
+        "text": "3D, AI-upscaled and disc-image releases are skipped on every quality setting, unless nothing else exists."
+      }
+    ]
+  },
+  {
     "id": "2026-11-08-season-dates",
     "date": "2026-11-08",
     "title": "Old seasons no longer say Not released",

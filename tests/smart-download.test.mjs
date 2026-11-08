@@ -29,9 +29,9 @@ const dune = [
   ['Dune.2021.1080p.WEB.x265', 300, 1.9 * GB],
   ['Dune.2021.720p.WEB.x264', 1200, 1.2 * GB],
 ];
-test('Balanced favours a sensible 1080p, Best a 4K that isn’t a remux, Save Space a compact copy', () => {
+test('Balanced favours a sensible 1080p, Best the untouched 4K remux, Save Space a compact copy', () => {
   assert.equal(pick(dune, { ...film, profile: 'balanced' }), 'Dune.2021.1080p.BluRay.x264');
-  assert.equal(pick(dune, { ...film, profile: 'best' }), 'Dune.2021.2160p.WEB-DL.HDR.x265');
+  assert.equal(pick(dune, { ...film, profile: 'best' }), 'Dune.2021.2160p.UHD.BluRay.REMUX.HDR.HEVC');
   assert.equal(pick(dune, { ...film, profile: 'save' }), 'Dune.2021.1080p.WEB.x265');
   assert.equal(pick(dune.slice(0, 3), { ...film, profile: 'save' }), 'Dune.2021.1080p.BluRay.x264', 'nothing compact: the smallest sensible one');
 });
@@ -204,10 +204,60 @@ const house = [
   ['House, M.D. Season 3 S03 (1080p Bluray x265 AAC 5.1 Joy)[UTR]', 213, 8.1 * GB],
 ];
 const houseWant = { type: 'tv', title: 'House', season: 3, episodes: 24, missing: 24 };
-test('Best Quality ranks by picture, not popularity: a well-seeded BluRay beats a tiny popular encode', () => {
-  assert.equal(pick(house, { ...houseWant, profile: 'best' }), 'House.S03.1080p.BluRay.x264-SHORTBREHD');
-  assert.equal(pick(house.slice(0, 1).concat(house.slice(2)), { ...houseWant, profile: 'best' }), 'House.S03.1080p.BluRay.REMUX.AVC.DTS.5.1-NOGRP',
-    'a remux when the alternative is starved');
+test('Best Quality ranks by picture, not popularity: remux, then a solid BluRay, then a tiny popular encode', () => {
+  assert.equal(pick(house, { ...houseWant, profile: 'best' }), 'House.S03.1080p.BluRay.REMUX.AVC.DTS.5.1-NOGRP');
+  assert.equal(pick(house.slice(1), { ...houseWant, profile: 'best' }), 'House.S03.1080p.BluRay.x264-SHORTBREHD');
+});
+
+// Real search results, seeders and sizes (2026-11-08). Each of these went wrong, or nearly did.
+const best = (title, season, episodes, rows, over = {}) => pick(rows,
+  { type: 'tv', title, season, episodes, missing: episodes, profile: 'best', ...over });
+test('Best Quality: a remux beats a popular small encode, even with fewer seeders', () => {
+  assert.equal(best('House', 6, 22, [
+    ['House.S06.1080p.BluRay.REMUX.VC-1.DTS-HD.MA.5.1-NOGRP', 29, 182 * GB],
+    ['House.S06.1080p.AMZN.WEBRip.AAC5.1.x265-RxB', 54, 17.1 * GB],
+    ['House, M.D. Season 6 S06 (1080p Bluray x265 AAC 5.1 Joy)[UTR]', 204, 7.7 * GB],
+  ]), 'House.S06.1080p.BluRay.REMUX.VC-1.DTS-HD.MA.5.1-NOGRP');
+});
+test('Best Quality: a solid encode that plays directly beats a VC-1 remux; an H.264 remux beats it', () => {
+  const s07 = [
+    ['House.S07.1080p.BluRay.REMUX.VC-1.DTS-HD.MA.5.1-NOGRP', 23, 181.4 * GB],
+    ['House.S07.1080p.BluRay.X264-MIXED', 13, 75.3 * GB],
+    ['House.S07.1080p.AMZN.WEBRip.AAC5.1.x265-RxB', 55, 17.7 * GB],
+  ];
+  assert.equal(best('House', 7, 23, s07), 'House.S07.1080p.BluRay.X264-MIXED');
+  assert.equal(best('House', 7, 23, [['House.S07.1080p.BluRay.REMUX.AVC.DTS.5.1-NOGRP', 23, 150 * GB], ...s07]), 'House.S07.1080p.BluRay.REMUX.AVC.DTS.5.1-NOGRP');
+});
+test('3D, AI upscales and disc images are never picked while a normal copy exists, in any profile', () => {
+  const s03 = [
+    ['Breaking Bad. S03. 2008  2160P.Ai Upscaled.BluRay.60FPS.H265.SDR.DTS5.1_Marjen', 95, 187.3 * GB],
+    ['Breaking.Bad.S03.1080p.3D.FULL-SBS.HEVC.SBS-SUB.ENG-HUN.iFA-AI3D', 300, 102.4 * GB],
+    ['Breaking.Bad.S03.COMPLETE.BLURAY.BDMV-GROUP', 300, 180 * GB],
+    ['Breaking.Bad.S03.1080p.BluRay.X264-7SinS', 23, 42.6 * GB],
+  ];
+  for (const profile of ['best', 'balanced', 'save']) assert.equal(best('Breaking Bad', 3, 13, s03, { profile }), 'Breaking.Bad.S03.1080p.BluRay.X264-7SinS', profile);
+  assert.equal(best('Breaking Bad', 3, 13, s03.slice(1, 2)), s03[1][0], 'nothing else exists: better than nothing');
+});
+test('Best Quality: seeders only settle near-ties, and a dead release still loses to a healthy one', () => {
+  assert.equal(best('House', 6, 22, [['House.S06.1080p.BluRay.x264-A', 8, 70 * GB], ['House.S06.1080p.BluRay.x264-B', 400, 70 * GB]]), 'House.S06.1080p.BluRay.x264-B');
+  assert.equal(best('House', 6, 22, [['House.S06.1080p.BluRay.REMUX.AVC-A', 3, 150 * GB], ['House.S06.1080p.BluRay.x264-B', 40, 70 * GB]]), 'House.S06.1080p.BluRay.x264-B');
+});
+test('Best Quality: a solid 720p beats a starved 1080p, but not a decent one, and says nothing about "nothing better"', () => {
+  const bd720 = ['House.S06.720p.BluRay.x264-GRP', 30, 44 * GB];
+  assert.equal(best('House', 6, 22, [bd720, ['House.S06.1080p.WEBRip.x265-Joy', 500, 6 * GB]]), bd720[0]);
+  assert.equal(best('House', 6, 22, [bd720, ['House.S06.1080p.BluRay.x264-GRP', 30, 70 * GB]]), 'House.S06.1080p.BluRay.x264-GRP');
+  const res = pickBest(results([bd720, ['House.S06.1080p.WEBRip.x265-Joy', 500, 6 * GB]]), { type: 'tv', title: 'House', season: 6, episodes: 22, missing: 22, profile: 'best' }, parseName);
+  assert.equal(res.why, null);
+});
+test('Best Quality: "ENG" in a name earns nothing when English is wanted, but a dub still loses', () => {
+  const rows = [['Breaking Bad S03 Complete 1080p ENG-ITA MultiSub x264 BluRay', 18, 34.5 * GB], ['Breaking Bad (2008) S03 (1080p x265 10bit BD DTS-HD MA 5.1) [Prof]', 150, 59.7 * GB]];
+  assert.equal(best('Breaking Bad', 3, 13, rows, { audioLang: 'en' }), rows[1][0]);
+  assert.equal(best('Breaking Bad', 3, 13, [['Breaking.Bad.S03.1080p.BluRay.x264.FRENCH-X', 200, 70 * GB], ['Breaking.Bad.S03.1080p.BluRay.x264-Y', 20, 60 * GB]], { audioLang: 'en' }), 'Breaking.Bad.S03.1080p.BluRay.x264-Y');
+});
+test('Hard limits still win over picture: the size limit and free space', () => {
+  const rows = [['House.S06.1080p.BluRay.REMUX.AVC-A', 29, 182 * GB], ['House.S06.1080p.AMZN.WEBRip.x265-RxB', 54, 17.1 * GB]];
+  assert.equal(best('House', 6, 22, rows, { maxBytes: 4 * GB }), rows[1][0]);
+  assert.equal(best('House', 6, 22, rows, { freeBytes: 100 * GB }), rows[1][0]);
 });
 
 const upgradeDeps = (over = {}) => ({
@@ -222,7 +272,7 @@ test('Upgrade quality downloads a clearly better pack and hands the swap to the 
   const job = await wait(startSmartJob({ type: 'tv', title: 'House', season: 3, upgrade: joyNow, want: { profile: 'balanced' } }, upgradeDeps({
     addDownload: async (d) => { added.push(d); return { hash: 'abc' }; }, upgrading: (a, n) => swaps.push([a.hash, n]),
   })));
-  assert.equal(job.outcome, 'started'); assert.equal(added[0].name, 'House.S03.1080p.BluRay.x264-SHORTBREHD');
+  assert.equal(job.outcome, 'started'); assert.equal(added[0].name, 'House.S03.1080p.BluRay.REMUX.AVC.DTS.5.1-NOGRP');
   assert.deepEqual(swaps, [['abc', 3]]); assert.match(job.message, /was 1080p · 0\.4 GB per episode/);
 });
 test('Upgrade quality says so when nothing is clearly better, and never re-downloads the same release', async () => {

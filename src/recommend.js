@@ -8,17 +8,19 @@
 // Quality follows the person's profile (Settings → Download quality):
 // - Balanced (default): 1080p, 1440p or 4K whenever one exists (1080p first, or the preferred
 //   resolution); 720p, unlabelled and SD only when nothing 1080p or better is out there.
-// - Best Quality: 4K, then 1440p, then 1080p.
+// - Best Quality: the best picture available, whatever it costs in space. See "Picture quality" below.
 // - Save Space: a compact 1080p or 720p under a size target; larger ones only if nothing fits.
 // Torrents with 5+ seeders are tried before thin ones within each step, so a dead 1080p doesn't beat
 // a lively one. Among those: more seeders, trusted uploaders, sane sizes; remuxes (huge), burned-in
 // subtitles, Dolby Vision without an HDR10 fallback (odd colours on most screens) and dubbed-only
 // releases in a language you didn't ask for count against.
-// Picture quality (fidelity): the size per film or episode against what its resolution needs, plus
-// the source (BluRay, WEB-DL, HDTV…) and groups known for tiny re-encodes. A 0.3 GB "1080p" episode
-// is 1080p in name only. Balanced avoids starved encodes; Best Quality ranks by picture first, so a
-// popular tiny encode no longer beats a well-seeded BluRay (House S03: Joy 0.3 GB vs 3 GB per episode).
-// Best Quality also weighs 4K, 1440p and 1080p together by that picture score.
+// Picture quality (pictureScore): where the picture came from, then how much of it survived. An
+// untouched remux leads, then disc encodes, web downloads and web re-encodes, each adjusted by its
+// size per film or episode against what its resolution needs. A 0.3 GB "1080p" episode is 1080p in
+// name only. Balanced avoids starved encodes. Best Quality ranks by this score alone: seeders only
+// decide whether a release is usable and settle near-ties, and 4K, 1080p and 720p compete on picture.
+// (House S06: a 8 GB per episode remux beats a popular 0.8 GB encode.)
+// Never picked while anything else exists, in any profile: 3D, AI upscales and disc images.
 // Hard limits, never relaxed: an exact resolution chosen in Advanced, the largest size per film or
 // episode from Settings, and the free space on the media disk.
 import { showKey } from './shows.js';
@@ -102,51 +104,79 @@ export function fidelity(r, want = {}, kind = 'movie') {
 export function sourceOf(name) {
   const n = tagsOf(name);
   if (/\b(upscaled?|ai ?upscale|regrade)\b/i.test(n)) return 'upscale';
-  if (/\bremux\b/i.test(n)) return 'remux';
-  if (/\b(blu[ -]?ray|bdrip|brrip|bdremux|bd[ -]?rip|uhd[ -]?bd)\b/i.test(n)) return 'bluray';
-  if (/\b(web[ -]?dl|amzn|nf|dsnp|hmax|atvp|max|pcok|hulu)\b/i.test(n) && !/\bweb[ -]?rip\b/i.test(n)) return 'web';
+  if (/\b(?:bd ?|uhd ?|hd ?)?remux\b/i.test(n)) return 'remux';
+  if (/\b(blu[ -]?ray|bdrip|brrip|bd|bd[ -]?rip|uhd[ -]?bd)\b/i.test(n)) return 'bluray';
+  if (/\b(web|web[ -]?dl|amzn|nf|dsnp|hmax|atvp|max|pcok|hulu)\b/i.test(n) && !/\bweb[ -]?rip\b/i.test(n)) return 'web';
   if (/\bweb[ -]?rip\b/i.test(n)) return 'webrip';
   if (/\b(hdtv|pdtv|tvrip|hdtvrip|dsr)\b/i.test(n)) return 'tv';
   if (/\b(dvd[ -]?rip|dvd|xvid)\b/i.test(n)) return 'dvd';
   return null;
 }
 const SOURCE_BONUS = { remux: 0, bluray: 0.3, web: 0.2, webrip: 0, tv: -0.4, dvd: -0.4, upscale: -1 };
-const RES_BONUS = { '2160p': 0.5, '1440p': 0.25, '1080p': 0 };
+const RES_BONUS = { '2160p': 0.5, '1440p': 0.25, '1080p': 0, '720p': -1, SD: -2 };
+
+// Best Quality's ladder: what each source starts from before its size is counted.
+const SOURCE_RANK = { remux: 3, bluray: 1.5, web: 1.2, webrip: 1, tv: -0.4, dvd: -1, upscale: -2 };
+const UNKNOWN_SOURCE = 1;
+// VC-1 and MPEG-2 remuxes are as good on disc, but browsers need them re-encoded on the fly. A solid
+// encode that plays directly ranks above them; anything starved still ranks below.
+const OLD_CODEC_REMUX = 1.9;
+const OLD_CODEC = /\b(vc ?-?1|mpeg ?-?2)\b/i;
+const INTERPOLATED = /\b(50|60|120) ?fps\b|\binterpolated\b|\bsvp\b/i;
+// "WEB-DL" on an x265 file means someone re-encoded the download.
+const REENCODED = /\b(x\.?265|h\.?265|hevc|av1)\b/i;
 
 // Picture only (no seeders): how good a release will look. Used to rank Best Quality and to decide
 // whether a release is an upgrade over what's already here.
 export function pictureScore(r, want = {}, kind = 'movie') {
   const f = fidelity(r, want, kind);
-  let s = f == null ? 0 : Math.max(-3, Math.min(1, f));
-  s += SOURCE_BONUS[sourceOf(r.name)] ?? 0;
-  if (TINY_GROUPS.test(tagsOf(r.name))) s -= 1;
+  const source = sourceOf(r.name);
+  const tags = tagsOf(r.name);
+  let s;
+  if (source === 'remux' && (f == null || f >= 0)) {
+    // Untouched: a bigger file isn't a better one, so size stops counting. (Too small to be real: below.)
+    s = OLD_CODEC.test(tags) ? OLD_CODEC_REMUX : SOURCE_RANK.remux;
+  } else {
+    const start = source === 'remux' ? SOURCE_RANK.bluray
+      : source === 'web' && REENCODED.test(tags) ? SOURCE_RANK.webrip
+      : SOURCE_RANK[source] ?? UNKNOWN_SOURCE;
+    s = start + (f == null ? 0 : Math.max(-3, Math.min(1, f)));
+  }
+  s += RES_BONUS[r.quality] ?? 0;
+  if (TINY_GROUPS.test(tags)) s -= 1;
+  if (INTERPOLATED.test(tags)) s -= 1;
   return s;
 }
 
 // Higher is better; only compares torrents of the same quality (Best Quality: of 1080p and up).
 function score(r, want, kind) {
   const profile = want.profile;
-  // Best Quality: seeders matter for speed, not much beyond a healthy swarm.
-  let s = profile === 'best' ? Math.log10(Math.min(r.seeders, 100) + 1) * 0.6 : Math.log10(r.seeders + 1);
-  if (r.trusted) s += 0.3;
-  if (r.tags?.includes('Remux')) s -= want.profile === 'best' ? 0.75 : 2;
+  // Best Quality: seeders only settle near-ties (at most about 0.25 of a picture score).
+  let s = profile === 'best' ? Math.log10(Math.min(r.seeders, 50) + 1) * 0.15 : Math.log10(r.seeders + 1);
+  if (r.trusted) s += profile === 'best' ? 0.1 : 0.3;
+  if (profile !== 'best' && r.tags?.includes('Remux')) s -= 2;
   if (/\b(hc|hardsub|korsub|hcsubs?)\b/i.test(r.name)) s -= 2;
   if (/\b(dv|dovi|dolby ?vision)\b/i.test(r.name) && !/\bhdr(10)?\b/i.test(r.name)) s -= 1;
-  if (want.audioLang) s += (languageFit(r.name, want.audioLang) - 1) * 0.8;
+  if (want.audioLang) {
+    const fit = languageFit(r.name, want.audioLang) - 1;
+    // Best Quality, English wanted: most English originals aren't labelled at all, so "ENG" in a name
+    // says nothing about the picture. A dub in another language still counts against.
+    if (!(profile === 'best' && want.audioLang === 'en' && fit > 0)) s += fit * 0.8;
+  }
   if (r.remake) s -= 0.5;                                     // Nyaa: a re-upload of someone else's release
   // 10-bit H.264 ("Hi10P", common in older anime) plays on almost no TV or phone without re-encoding.
   if (/\b(hi10p?|10.?bits?)\b/i.test(r.name) && /\b(x264|h\.?264|avc)\b/i.test(r.name) && !/\b(x265|hevc|av1)\b/i.test(r.name)) s -= 0.7;
   if (want.anime && GOOD_GROUPS.has(animeGroup(r.name))) s += 0.3;
   const size = perItemSize(r, want, kind);
-  if (size) {
+  if (size && profile !== 'best') {
     const unit = kind === 'movie' ? 1 : 0.15; // an episode is roughly a seventh of a film
-    const cap = (r.quality === '2160p' ? 30 : 16) * GB * unit * (profile === 'best' ? 2.5 : 1);
+    const cap = (r.quality === '2160p' ? 30 : 16) * GB * unit;
     if (size > cap) s -= 1;
     if (size < 0.5 * GB * unit && ['1080p', '1440p', '2160p'].includes(r.quality)) s -= 1.5; // too small to be real
     if (profile === 'save') s -= size / (SAVE_TARGET[kind === 'movie' ? 'movie' : 'episode']) * 0.5;
   }
   if (profile === 'best') {
-    s += pictureScore(r, want, kind) + (RES_BONUS[r.quality] ?? 0) + (want.prefer && r.quality === want.prefer ? 1 : 0);
+    s += pictureScore(r, want, kind) + (want.prefer && r.quality === want.prefer ? 1 : 0);
   } else if (profile !== 'save') {
     // Balanced: no reward for size, but a starved encode (under half of what it needs) counts against.
     const f = fidelity(r, want, kind);
@@ -198,6 +228,8 @@ export function pickEpisode(fits, want) {
 
 const COUNTRIES = new Set(['us', 'uk', 'au', 'nz', 'ca']);
 const qualityName = (q) => (q === '2160p' ? '4K' : q);
+// 3D (side by side or over/under), AI upscales, and disc images (qBittorrent is told to skip .iso files).
+const NOT_A_NORMAL_COPY = /\b(3d|sbs|hsbs|fsbs|h-?ou|half-?ou|anaglyph|upscaled?|ai ?upscale|bdmv|bd-?(?:25|50|66|100)|dvd[59]|dvdr|iso|complete[ -](?:uhd[ -])?blu-?ray)\b/i;
 const fmtGB = (bytes) => `${Math.round(bytes / GB * 10) / 10} GB`;
 
 function limits(fits, want, kind) {
@@ -212,6 +244,9 @@ function limits(fits, want, kind) {
     if (fits.length && !fitsDisk.length) why = `Not enough free space for a suitable download (${fmtGB(Math.max(0, want.freeBytes))} free).`;
     fits = fitsDisk;
   }
+  // Not a normal copy of the film or show: only when nothing else exists.
+  const normal = fits.filter((r) => !NOT_A_NORMAL_COPY.test(tagsOf(r.name)));
+  if (normal.length) fits = normal;
   // A dubbed-only release in another language only when nothing else exists.
   const spoken = fits.filter((r) => languageFit(r.name, want.audioLang) > 0);
   if (spoken.length) fits = spoken;
@@ -243,9 +278,9 @@ export function choose(found, want, kind, minAlive = ALIVE) {
     [['720p'], HEALTHY], [['1080p'], HEALTHY], [[null], HEALTHY], [['SD'], HEALTHY],
     [['720p', '1080p', null, 'SD', '1440p', '2160p'], minAlive],
   ] : profile === 'best' ? [
-    // 4K, 1440p and 1080p side by side: the picture score decides, not the label alone.
-    [high, HEALTHY, null, true], [high, minAlive, null, true],
-    [['720p'], HEALTHY], [[null], HEALTHY], [['SD'], HEALTHY], [['720p', null, 'SD'], minAlive],
+    // 4K down to 720p side by side: the picture score decides, not the label alone.
+    [[...high, '720p'], HEALTHY, null, true], [[...high, '720p'], minAlive, null, true],
+    [[null], HEALTHY], [['SD'], HEALTHY], [[null, 'SD'], minAlive],
   ] : [
     ...high.map((q) => [[q], HEALTHY]), [high, minAlive],         // 1080p or better, however thin
     [['720p'], HEALTHY], ...lower.map((q) => [[q], HEALTHY]), [[null], HEALTHY], [['SD'], HEALTHY], // then lower
@@ -258,7 +293,9 @@ export function choose(found, want, kind, minAlive = ALIVE) {
     pool.sort((a, b) => (byScore ? 0 : qualities.indexOf(a.quality ?? null) - qualities.indexOf(b.quality ?? null))
       || score(b, want, kind) - score(a, want, kind));
     const pick = pool[0];
-    const low = profile !== 'save' && !['1080p', '1440p', '2160p'].includes(pick.quality);
+    const isHigh = (q) => ['1080p', '1440p', '2160p'].includes(q);
+    // (Best Quality may prefer a solid 720p to a starved 1080p: that isn't "nothing better exists".)
+    const low = profile !== 'save' && !isHigh(pick.quality) && !fits.some((r) => isHigh(r.quality) && r.seeders >= minAlive);
     return { pick, why: low ? 'Nothing in 1080p, 1440p or 4K is available, so this is the best there is.' : null };
   }
   return { pick: null, why: limited.why || none };
