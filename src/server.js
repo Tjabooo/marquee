@@ -61,6 +61,7 @@ import { checkConfig } from './config-check.js';
 import { raiseServer } from './priority.js';
 import { startPlaybackGuard } from './playback-guard.js';
 import { PhoneStreams, segmentIndex, isHeavy, probe as probePhone } from './phone-stream.js';
+import { PartialStreams, parsePartialId } from './partial-stream.js';
 
 import { APP_DIR, DATA_DIR, CACHE_DIR, PUBLIC_DIR, dataDirProblem, ensureDataDir } from './paths.js';
 
@@ -1695,6 +1696,10 @@ async function episodeOrderRound() {
     const held = new Set([...episodeOrder].filter(([, e]) => e.held).map(([hash]) => hash));
     for (const group of groups.values()) {
       const plan = planEpisodeOrder(group, held);
+      // Someone is watching this one with Play now: it keeps its own order until they stop.
+      const watching = partialStreams.activeHashes();
+      plan.priorities = plan.priorities.filter(({ hash }) => !watching.has(hash));
+      plan.stop = plan.stop.filter((hash) => !watching.has(hash));
       for (const { hash, ids, priority } of plan.priorities) {
         await qbitRequest('/api/v2/torrents/filePrio', { method: 'POST', body: new URLSearchParams({ hash, id: ids.join('|'), priority: String(priority) }) });
         torrentFilesCache.delete(hash);
@@ -1856,6 +1861,7 @@ async function listDownloads(user, all = false) {
       const item = key && mine.has(key) && library.get(key);
       return { name: path.basename(f.name.replace(/\\/g, '/')), size: f.size || 0, progress: f.progress || 0,
         available: await downloadAvailable(t, f),
+        index: f.index ?? files.indexOf(f), mediaKey: key || null,
         libraryId: item?.id || null };
     }));
     const episodes = [];
@@ -1869,7 +1875,8 @@ async function listDownloads(user, all = false) {
       const list = placed?.length ? placed : (own.length ? own : season.episodesIn(videos[i].name, fileSeason)).map((episode) => ({ season: fileSeason, episode }));
       for (const { season: s, episode } of list) {
         episodes.push({ season: s, episode, progress: safeFiles[i].progress,
-          available: safeFiles[i].available, libraryId: safeFiles[i].libraryId });
+          available: safeFiles[i].available, libraryId: safeFiles[i].libraryId,
+          fileIndex: safeFiles[i].index, mediaKey: safeFiles[i].mediaKey });
       }
     }
     const packFiles = files.filter((f) => isVideo(f.name)).length;
@@ -1883,6 +1890,7 @@ async function listDownloads(user, all = false) {
     poster: art?.poster || null, backdrop: art?.backdrop || null,
     added: t.added_on ? t.added_on * 1000 : accounts.torrentRow(t.hash)?.added_at || null,
     ready: Boolean(primary?.available), hasVideo: filesKnown ? videos.length > 0 : null, files: safeFiles, episodes,
+    canPlayNow: PARTIAL_ENABLED && filesKnown && videos.length > 0 && STREAMABLE_TORRENT.test(t.state || ''),
     packFiles, skippedFiles: packFiles - videos.length, dualAudio: isDualAudio(t.name),
     others: accounts.torrentWanters(t.hash).some((id) => id !== user.id),
     libraryIds: [...new Set(safeFiles.map((f) => f.libraryId).filter(Boolean))],
@@ -1993,7 +2001,38 @@ const BROWSER_VARIANTS = ['browser', 'browser-hevc'];
 // the best file there is (phone-stream.js). The file itself is never changed.
 const PHONE_VARIANT = /^phone(1080|720)(?:-a(\d{1,5}))?$/;
 const phoneStreams = new PhoneStreams({ dir: path.join(CACHE_DIR, 'phone') });
+// Play now: the same live stream, from a video qBittorrent is still downloading (partial-stream.js).
+const PARTIAL_ENABLED = !/^(0|off|false|no)$/i.test(process.env.PARTIAL_STREAMS || '') && Boolean(QBIT_URL);
+const partialStreams = new PartialStreams({
+  qbit,
+  post: (endpoint, body) => qbitRequest(endpoint, { method: 'POST', body }).then(() => torrentFilesCache.clear()),
+  filePath: (t, f) => torrentFilePath(t, f),
+  isVideo: (name) => isVideo(name),
+  start: async (hash) => {
+    const held = episodeOrder.get(hash);
+    if (held?.held) { held.held = false; saveEpisodeOrder(); }
+    await setPaused(hash, false);
+    torrentInventory.at = 0;
+  },
+});
+const STREAMABLE_TORRENT = /^(?!error$|missingFiles$|checking|moving$|metaDL$|forcedMetaDL$|allocating$)/;
+// Play now is for downloads in this person's library: their own, their group's, or ones they asked for too.
+async function partialAccess(user, id) {
+  if (!PARTIAL_ENABLED) throw new HttpError(404, 'Not found.');
+  const parsed = parsePartialId(id);
+  if (!parsed) throw new HttpError(400, 'Invalid video.');
+  if (partialStreams.finished(id)) return null; // watched to the end of its download; the torrent has gone
+  const [t] = await qbit(`/api/v2/torrents/info?hashes=${parsed.hash}`);
+  if (!t) throw new HttpError(404, 'That download no longer exists.');
+  const mates = accounts.libraryMates(user.id);
+  if (!user.isOwner && !mates.includes(torrentOwner(t)) && !accounts.torrentRequesters(t.hash).some((who) => mates.includes(who))) {
+    throw new HttpError(403, 'That’s someone else’s download.');
+  }
+  if (!STREAMABLE_TORRENT.test(t.state || '')) throw new HttpError(409, 'This download can’t be played right now. Try again in a moment.');
+  return t;
+}
 async function streamFile(kind, id, variant) {
+  if (kind === 'part') throw new HttpError(409, 'This video hasn’t finished downloading yet.');
   if (PHONE_VARIANT.test(variant)) return streamFile(kind, id, 'browser-hevc');
   const selected = variant.match(/^(browser(?:-hevc)?)-a(\d+)-([a-f0-9]{24})$/);
   if (selected) {
@@ -2118,7 +2157,7 @@ async function convertStatusFor(user, plays) {
 
 // The file a signed /play/ path names, once its signature checks out (expiry is the caller's business).
 function verifiedPlayPath(pathname) {
-  const m = pathname.match(/^\/play\/(lib|dl)\/([A-Za-z0-9_-]+)\/(browser(?:-hevc)?(?:-a\d+-[a-f0-9]{24})?|tv|phone(?:1080|720)(?:-a\d{1,5})?)\/(\d+)\/([A-Za-z0-9_-]+)(?:\/[^/]*)?$/);
+  const m = pathname.match(/^\/play\/(lib|dl|part)\/([A-Za-z0-9_-]+)\/(browser(?:-hevc)?(?:-a\d+-[a-f0-9]{24})?|tv|phone(?:1080|720)(?:-a\d{1,5})?)\/(\d+)\/([A-Za-z0-9_-]+)(?:\/[^/]*)?$/);
   if (!m) throw new HttpError(404, 'Not found.');
   const [, kind, id, variant, exp, sig] = m;
   const expected = signPlay(kind, id, variant, exp);
@@ -2131,6 +2170,10 @@ function verifiedPlayPath(pathname) {
 async function handlePlay(req, res, url) {
   const { kind, id, variant, exp } = verifiedPlayPath(url.pathname);
   if (exp < Date.now() / 1000) throw new HttpError(410, 'This link has expired. Start playback again.');
+  if (kind === 'part') {
+    if (!PHONE_VARIANT.test(variant)) throw new HttpError(404, 'Not found.');
+    return sendPartialPiece(req, res, url, { id, variant });
+  }
   if (PHONE_VARIANT.test(variant)) return sendPhonePiece(req, res, url, { kind, id, variant });
   // Library files name their stream for House → Sharing (cheap); downloads keep the file's own name.
   return sendVideo(req, res, await streamFile(kind, id, variant), { label: kind === 'lib' ? streamLabel(librarySource(id)) : null });
@@ -2170,6 +2213,56 @@ async function sendPhonePiece(req, res, url, { kind, id, variant }) {
   pipeline(read, res, () => meter.done());
 }
 
+// Play now: the same playlist and pieces, from a video still downloading. A piece the download hasn't reached
+// yet can take minutes, and proxies give up on a silent response, so after a while the response starts with
+// MPEG-TS null packets (which players skip) to show it is still coming.
+const NULL_TS_PACKET = (() => { const b = Buffer.alloc(188, 0xff); b[0] = 0x47; b[1] = 0x1f; b[2] = 0xff; b[3] = 0x10; return b; })();
+const PIECE_HOLD_MS = 20_000;
+const PIECE_BEAT_MS = 15_000;
+async function sendPartialPiece(req, res, url, { id, variant }) {
+  const name = url.pathname.split('/').pop();
+  const [, quality] = PHONE_VARIANT.exec(variant);
+  const sig = url.pathname.split('/').at(-2);
+  let opened;
+  try { opened = await partialStreams.open(id); }
+  catch (e) { throw new HttpError(e.status || 500, e.message); }
+  const entry = opened.entry;
+  if (!entry.info) throw new HttpError(503, 'This video is still starting.');
+  const input = await partialStreams.inputUrl(entry);
+  const label = `${streamLabel(entry.file)} · ${quality}p`;
+  const session = await phoneStreams.open(sig, { file: input, info: entry.info, quality, label });
+  const headers = { 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' };
+  if (name === 'index.m3u8') {
+    const body = phoneStreams.playlist(session);
+    res.writeHead(200, { ...headers, 'Content-Type': 'application/vnd.apple.mpegurl', 'Content-Length': Buffer.byteLength(body) });
+    return res.end(req.method === 'HEAD' ? undefined : body);
+  }
+  const n = segmentIndex(name);
+  if (n == null) throw new HttpError(404, 'Not found.');
+  const stop = new AbortController();
+  res.once('close', () => stop.abort());
+  const making = phoneStreams.segment(session, n, { patient: true, signal: stop.signal });
+  making.catch(() => {});
+  let held = false;
+  let piece = await Promise.race([making, new Promise((resolve) => { held = setTimeout(() => resolve(null), PIECE_HOLD_MS); })]).catch((e) => { throw new HttpError(e.status || 500, e.message); });
+  clearTimeout(held);
+  const size = piece ? (await fs.promises.stat(piece)).size : null;
+  if (req.method === 'HEAD') { res.writeHead(200, { ...headers, 'Content-Type': 'video/mp2t' }); return res.end(); }
+  if (piece) res.writeHead(200, { ...headers, 'Content-Type': 'video/mp2t', 'Content-Length': size });
+  else {
+    res.writeHead(200, { ...headers, 'Content-Type': 'video/mp2t' });
+    res.write(NULL_TS_PACKET);
+    const beat = setInterval(() => res.write(NULL_TS_PACKET), PIECE_BEAT_MS);
+    try { piece = await making; }
+    catch { return res.destroy(); }
+    finally { clearInterval(beat); }
+  }
+  const meter = trackStream(req, session.dir, size ?? (await fs.promises.stat(piece)).size, label);
+  const read = fs.createReadStream(piece, { highWaterMark: STREAM_READ_BYTES });
+  read.on('data', (chunk) => meter.add(chunk.length));
+  pipeline(read, res, () => meter.done());
+}
+
 // Stats for nerds: what ffprobe says about the exact file the player streams (its src path), and
 // about the original release when the player gets a browser copy of it.
 async function streamInfo(req, src) {
@@ -2180,6 +2273,7 @@ async function streamInfo(req, src) {
   let m;
   if (src.startsWith('/play/')) {
     const link = verifiedPlayPath(src);
+    if (link.kind === 'part') return { known: false, reason: 'This video is still downloading.' };
     expires = link.exp * 1000;
     file = await streamFile(link.kind, link.id, link.variant);
     const source = await sourceFile(link.kind, link.id);
@@ -3339,6 +3433,31 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, { ok: true, kept: true });
   }
   // ---- casting ----
+  // Play now: asks for the download to run for playback; polled until the start of the video has arrived.
+  if (p === '/api/part/open' || p === '/api/part/status') {
+    const id = url.searchParams.get('id') || '';
+    await partialAccess(user, id);
+    let opened;
+    try { opened = await partialStreams.open(id); }
+    catch (e) { throw new HttpError(e.status || 500, e.message); }
+    const { entry, ready } = opened;
+    const status = partialStreams.status(entry);
+    if (p === '/api/part/status') {
+      // The finished file in this person's library, once there is one to switch to.
+      let libraryId = null;
+      if (status.done) {
+        const key = accounts.mediaKey(entry.file);
+        if (key && accounts.libraryOf(user.id).has(key)) libraryId = (libraryCache.items || []).find((i) => accounts.mediaKey(i.full) === key)?.id || null;
+      }
+      return sendJson(res, 200, { ...status, libraryId });
+    }
+    if (!ready) return sendJson(res, 202, { ready: false, status });
+    if (!entry.announced) { entry.announced = true; activity.record(req, 'play', titleOf(entry.file), { quietMs: 3 * 3600 * 1000 }); }
+    const variant = 'phone1080';
+    const exp = Math.floor(Date.now() / 1000) + PLAY_LINK_HOURS * 3600;
+    return sendJson(res, 200, { ready: true, status, url: `/play/part/${id}/${variant}/${exp}/${signPlay('part', id, variant, exp)}/index.m3u8`,
+      sourceHeight: entry.info.height || null });
+  }
   if (p === '/api/play-link') {
     const q = url.searchParams;
     const link = await playLink(q.get('kind') || '', q.get('id') || '', q.get('variant') || 'browser', q.get('audio'), q.get('audioSource'), q.get('audioRetry') === '1', q.get('quality'));

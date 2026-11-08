@@ -6,6 +6,12 @@ All notable changes to Marquee. Versions follow [Semantic Versioning](https://se
 
 ### Added
 
+- **Play now.** Watch a film or episode while it downloads, in any browser and on iPhones, whatever its format. qBittorrent downloads
+  it in order, and ffmpeg reads it through a loopback server that holds each read until those pieces are verified
+  (`src/partial-stream.js`), making the usual live HLS stream of up to 1080p. A popup explains when the video stops to wait for the
+  download, and another offers the full-quality file when it's finished. Subtitles, audio choices, casting and Watch Together
+  wait for the finished file. Browsers without HLS use hls.js 1.7.4 (Apache-2.0), vendored in `public/vendor`.
+  `PARTIAL_STREAMS=off` turns it off.
 - **Documentaries.** A Documentaries tab in Discover and on the TV's home screen, with over 30 categories built from TMDB's genre,
   keyword and country filters (`src/documentaries.js`) and SVT Play's own.
 - **SVT Play.** Its free catalogue in Documentaries and search; Add copies the streams into the library without re-encoding, with

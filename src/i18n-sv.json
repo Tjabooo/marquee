@@ -1,4 +1,8 @@
 {
+ "This video is still downloading.": "Videon laddas fortfarande ner.",
+ "This download can’t be played right now. Try again in a moment.": "Den här nedladdningen går inte att spela just nu. Försök igen om en stund.",
+ "This video is still starting.": "Videon startar fortfarande.",
+ "This download is still starting. Try again in a moment.": "Nedladdningen startar fortfarande. Försök igen om en stund.",
  "No dubbed (dual-audio) release of this was found, so nothing was added.": "Ingen dubbad utgåva (med dubbelt ljudspår) hittades, så inget lades till.",
  " Adding a free OpenSubtitles login to .env raises it.": " Lägg till en gratis OpenSubtitles-inloggning i .env för att höja den.",
  " It resets in {0}.": " Den nollställs om {0}.",

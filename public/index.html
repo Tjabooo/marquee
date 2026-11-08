@@ -163,6 +163,7 @@
         <span class="pc-time" id="pc-time">0:00</span>
         <div class="seek" id="seek" role="slider" tabindex="0" aria-label="Seek" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0">
           <div class="seek-track">
+            <div class="seek-downloaded" id="seek-downloaded" hidden></div>
             <div class="seek-buffer" id="seek-buffer"></div>
             <div class="seek-fill" id="seek-fill"></div>
           </div>
@@ -281,6 +282,18 @@
       <p class="up-next-error" id="up-next-error" hidden></p>
     </section>
     <p class="sr-only" id="up-next-status" role="status" aria-live="polite" aria-atomic="true"></p>
+    <section class="part-popup" id="part-popup" role="dialog" aria-labelledby="part-popup-label part-popup-title" aria-describedby="part-popup-body" hidden>
+      <div class="part-popup-lights" aria-hidden="true"></div>
+      <p class="part-popup-label" id="part-popup-label"></p>
+      <h2 id="part-popup-title"></h2>
+      <p class="part-popup-body" id="part-popup-body"></p>
+      <div class="bulbs part-popup-bar" id="part-popup-bar" aria-hidden="true"><i></i></div>
+      <p class="part-popup-progress" id="part-popup-progress"></p>
+      <div class="part-popup-actions">
+        <button class="part-popup-primary" id="part-popup-primary" type="button"></button>
+        <button class="part-popup-secondary" id="part-popup-secondary" type="button"></button>
+      </div>
+    </section>
     <div class="player-help" id="player-help" role="dialog" aria-label="Keyboard shortcuts" hidden></div>
     <p class="player-error" id="player-error" hidden></p>
   </div>

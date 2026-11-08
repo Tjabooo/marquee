@@ -1,0 +1,311 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { fileLayout, readableBytes, fileProgress, startBytes, parsePartialId, PartialStreams } from '../src/partial-stream.js';
+import { BufferNotice, pastDownloaded, progressLine, fmtEta } from '../public/player-partial.js';
+import { PhoneStreams } from '../src/phone-stream.js';
+
+const PIECE = 1024;
+
+test('a file is placed in its pieces, padding files included', () => {
+  const files = [{ index: 0, size: 2500, piece_range: [0, 2] }, { index: 1, size: 5000, piece_range: [2, 7] }];
+  assert.deepEqual(fileLayout(files, 1, PIECE), { offset: 2500, size: 5000, first: 2, last: 7 });
+  // A hidden padding file pushed the second file onto the next piece boundary.
+  const padded = [{ index: 0, size: 2500, piece_range: [0, 2] }, { index: 1, size: 5000, piece_range: [3, 7] }];
+  assert.equal(fileLayout(padded, 1, PIECE).offset, 3072);
+  assert.equal(fileLayout(files, 9, PIECE), null);
+});
+
+test('only finished pieces in a row count as readable', () => {
+  const layout = { offset: 2500, size: 5000, first: 2, last: 7 };
+  const states = [0, 0, 2, 2, 0, 2, 2, 2];
+  assert.equal(readableBytes(layout, PIECE, states, 0), 2 * PIECE * 2 - 2500); // pieces 2-3, from 2500
+  assert.equal(readableBytes(layout, PIECE, states, 1548), 48, 'to the end of piece 3');
+  assert.equal(readableBytes(layout, PIECE, states, 1596), 0, 'piece 4 is missing');
+  assert.equal(readableBytes(layout, PIECE, states, 2620), 5000 - 2620, 'stops at the end of the file, not the piece');
+  assert.equal(readableBytes(layout, PIECE, null, 0), 0);
+  assert.equal(readableBytes(layout, PIECE, [0, 0, 1, 1, 1, 1, 1, 1], 0), 0, 'state 1 is still downloading');
+  assert.equal(fileProgress(layout, states), 5 / 6);
+});
+
+test('ids and the start amount', () => {
+  assert.deepEqual(parsePartialId(`${'A'.repeat(40)}-3`), { hash: 'a'.repeat(40), index: 3 });
+  assert.equal(parsePartialId('../etc-1'), null);
+  assert.equal(parsePartialId(`${'a'.repeat(40)}`), null);
+  assert.equal(startBytes(1000, 8e6), 1000, 'a small file needs all of itself');
+  assert.equal(startBytes(1e10, 80e6), 200e6, '20 s of a 80 Mbit/s file');
+  assert.equal(startBytes(1e10, 1e6), 8 * 1024 * 1024);
+});
+
+function rig(t, { size = 8192, state = 'downloading', seq = false, firstLast = false, files = null } = {}) {
+  const calls = [];
+  let states = new Array(Math.ceil(size / PIECE)).fill(0);
+  const torrent = { hash: 'a'.repeat(40), state, seq_dl: seq, f_l_piece_prio: firstLast, force_start: false, dlspeed: 1000, save_path: '/x' };
+  const list = files || [{ index: 0, name: 'Film.mkv', size, priority: 1, piece_range: [0, states.length - 1] }];
+  const qbit = async (endpoint) => {
+    if (endpoint.includes('/torrents/info')) return torrent.gone ? [] : [{ ...torrent }];
+    if (endpoint.includes('/torrents/files')) return list;
+    if (endpoint.includes('/torrents/properties')) return { piece_size: PIECE };
+    if (endpoint.includes('/torrents/pieceStates')) return states;
+    throw new Error(`unexpected ${endpoint}`);
+  };
+  const post = async (endpoint, body) => {
+    calls.push([endpoint.split('/').pop(), Object.fromEntries(body)]);
+    if (endpoint.endsWith('toggleSequentialDownload')) torrent.seq_dl = !torrent.seq_dl;
+    if (endpoint.endsWith('toggleFirstLastPiecePrio')) torrent.f_l_piece_prio = !torrent.f_l_piece_prio;
+    if (endpoint.endsWith('setForceStart')) torrent.force_start = body.get('value') === 'true';
+  };
+  return { calls, torrent, setStates: (s) => { states = s; }, states: () => states, make: async (file, extra = {}) => {
+    const streams = new PartialStreams({ qbit, post, filePath: () => file, isVideo: () => true, start: async (hash) => { calls.push(['start', hash]); torrent.state = 'downloading'; },
+      probe: async () => ({ duration: 100, bitrate: 1000, height: 1080 }), log: {}, ...extra });
+    t.after(() => streams.close());
+    return streams;
+  } };
+}
+
+test('the loopback server holds a read until those pieces are verified, and never serves the holes', { timeout: 15000 }, async (t) => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-partial-'));
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  const file = path.join(dir, 'Film.mkv');
+  const real = Buffer.alloc(8192, 0xab);
+  const onDisk = Buffer.alloc(8192); // holes read as zeros
+  real.copy(onDisk, 0, 0, 2048);
+  await fs.writeFile(file, onDisk);
+  const r = rig(t);
+  r.setStates([2, 2, 0, 0, 0, 0, 0, 0]);
+  const streams = await r.make(file);
+  const { entry } = await streams.open(`${'a'.repeat(40)}-0`);
+  const url = await streams.inputUrl(entry);
+
+  // A range inside the finished part.
+  const head = await fetch(url, { headers: { Range: 'bytes=0-1023' } });
+  assert.equal(head.status, 206);
+  assert.equal(head.headers.get('content-range'), 'bytes 0-1023/8192');
+  assert.ok((await head.bytes()).every((b) => b === 0xab));
+
+  // Reading the whole file stops at the holes...
+  const whole = await fetch(url);
+  assert.equal(whole.headers.get('content-length'), '8192');
+  const reader = whole.body.getReader();
+  const got = [];
+  let total = 0;
+  while (total < 2048) { const { value } = await reader.read(); got.push(value); total += value.length; }
+  assert.equal(total, 2048);
+  const pending = reader.read();
+  const early = await Promise.race([pending.then(() => 'data'), new Promise((resolve) => setTimeout(() => resolve('held'), 1500))]);
+  assert.equal(early, 'held', 'bytes of an unfinished piece must not be sent');
+  // ...and carries on when they arrive.
+  await fs.writeFile(file, real);
+  r.setStates(new Array(8).fill(2));
+  const { value } = await pending;
+  got.push(value);
+  total += value.length;
+  while (total < 8192) { const next = await reader.read(); if (next.done) break; got.push(next.value); total += next.value.length; }
+  assert.equal(total, 8192);
+  assert.ok(Buffer.concat(got).every((b) => b === 0xab), 'no zeros from the holes');
+
+  // Wrong token: nothing.
+  assert.equal((await fetch(url.replace(streams.token, 'x'.repeat(48)))).status, 404);
+  // Out of range.
+  assert.equal((await fetch(url, { headers: { Range: 'bytes=9000-' } })).status, 416);
+});
+
+test('playing turns on in-order downloading and restores it when nobody watches any more', async (t) => {
+  const r = rig(t, { firstLast: true });
+  const streams = await r.make('/nowhere.mkv');
+  const id = `${'a'.repeat(40)}-0`;
+  await streams.open(id);
+  await streams.open(id);
+  assert.deepEqual(r.calls.map(([name]) => name), ['toggleSequentialDownload'], 'first/last was already on; nothing twice');
+  assert.deepEqual([...streams.activeHashes()], ['a'.repeat(40)]);
+  await streams.sweep(Date.now());
+  assert.equal(streams.entries.size, 1, 'still watching');
+  await streams.sweep(Date.now() + 4 * 60_000);
+  assert.equal(streams.entries.size, 0);
+  assert.equal(r.torrent.seq_dl, false, 'back to how it was');
+  assert.equal(r.torrent.f_l_piece_prio, true, 'left as it was');
+});
+
+test('a stopped download starts, a queued one is forced, and pack episodes go first', async (t) => {
+  const stopped = rig(t, { state: 'stoppedDL' });
+  await (await stopped.make('/x.mkv')).open(`${'a'.repeat(40)}-0`);
+  assert.ok(stopped.calls.some(([name]) => name === 'start'));
+
+  const queued = rig(t, { state: 'queuedDL' });
+  const q = await queued.make('/x.mkv');
+  await q.open(`${'a'.repeat(40)}-0`);
+  assert.equal(queued.torrent.force_start, true);
+  await q.sweep(Date.now() + 4 * 60_000);
+  assert.equal(queued.torrent.force_start, false, 'force start is undone again');
+
+  const pack = rig(t, { files: [
+    { index: 0, name: 'E01.mkv', size: 4096, priority: 1, piece_range: [0, 3] },
+    { index: 1, name: 'E02.mkv', size: 4096, priority: 1, piece_range: [4, 7] }] });
+  const p = await pack.make('/x.mkv');
+  await p.open(`${'a'.repeat(40)}-1`);
+  assert.deepEqual(pack.calls.find(([name]) => name === 'filePrio')[1], { hash: 'a'.repeat(40), id: '1', priority: '7' });
+  await p.sweep(Date.now() + 4 * 60_000);
+  assert.deepEqual(pack.calls.filter(([name]) => name === 'filePrio').at(-1)[1], { hash: 'a'.repeat(40), id: '1', priority: '1' });
+});
+
+test('ready only after the probe and enough of the start; a file that can never be read says so', async (t) => {
+  const r = rig(t);
+  let release;
+  const streams = await r.make('/x.mkv', { probe: () => new Promise((resolve) => { release = resolve; }) });
+  const id = `${'a'.repeat(40)}-0`;
+  assert.equal((await streams.open(id)).ready, false);
+  release({ duration: 100, bitrate: 1000, height: 1080 });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal((await streams.open(id)).ready, false, 'the start of the file is not here yet');
+  r.setStates(new Array(8).fill(2));
+  streams.entries.get(id).statesAt = 0;
+  const { ready, entry } = await streams.open(id);
+  assert.equal(ready, true);
+  const status = streams.status(entry);
+  assert.equal(status.done, true);
+  assert.equal(status.inOrder, 1);
+
+  const bad = rig(t);
+  const broken = await bad.make('/x.mkv', { probe: async () => { throw new Error('Couldn’t read this video.'); } });
+  await broken.open(id);
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  await broken.open(id);
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  await assert.rejects(broken.open(id), /Couldn’t read/);
+});
+
+test('a torrent removed while waiting ends the wait', async (t) => {
+  const r = rig(t);
+  const streams = await r.make('/x.mkv');
+  const { entry } = await streams.open(`${'a'.repeat(40)}-0`);
+  r.torrent.gone = true;
+  await assert.rejects(streams.waitReadable(entry, 0), /no longer exists/);
+});
+
+test('a finished download leaving qBittorrent does not stop the person watching it', async (t) => {
+  const r = rig(t);
+  r.setStates(new Array(8).fill(2));
+  const streams = await r.make('/x.mkv');
+  const id = `${'a'.repeat(40)}-0`;
+  await streams.open(id);
+  await new Promise((resolve) => setTimeout(resolve, 5)); // the probe finishes
+  r.torrent.gone = true;
+  streams.entries.get(id).statesAt = 0;
+  const { entry, ready } = await streams.open(id);
+  assert.equal(entry.gone, true);
+  assert.equal(ready, true);
+  assert.equal(streams.finished(id), true);
+  assert.equal(streams.status(entry).done, true);
+  assert.equal(await streams.waitReadable(entry, 0), 8192);
+});
+
+test('a patient piece wait outlasts the idle limits and ends when the player leaves', { timeout: 8000 }, async (t) => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-partial-'));
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  const { EventEmitter } = await import('node:events');
+  const spawnFn = () => { const child = new EventEmitter(); child.stderr = new EventEmitter(); child.kill = () => {}; return child; };
+  const phone = new PhoneStreams({ dir: path.join(dir, 'phone'), spawnFn, caps: { nvenc: false, x264: true, zscale: false } });
+  t.after(() => phone.close());
+  const info = { duration: 100, height: 1080, bitrate: 1e6, video: { index: 0 }, audios: [] };
+  const s = await phone.open('k', { file: 'http://127.0.0.1:1/x', quality: 1080, info });
+  assert.equal(s.file, 'http://127.0.0.1:1/x');
+  const stop = new AbortController();
+  const waiting = phone.segment(s, 0, { patient: true, signal: stop.signal });
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  const before = s.last;
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  assert.ok(s.last > before, 'still counted as watching');
+  stop.abort();
+  await assert.rejects(waiting, (e) => e.status === 499);
+});
+
+test('the buffering popup waits longer at the start and stays away after Keep watching', () => {
+  const n = new BufferNotice({ delay: 2500, startDelay: 8000, snooze: 1000 });
+  assert.equal(n.wait(), 8000);
+  n.playing();
+  assert.equal(n.wait(), 2500);
+  assert.equal(n.allowed(100), true);
+  n.dismiss(100);
+  assert.equal(n.allowed(500), false);
+  assert.equal(n.allowed(1100), true);
+});
+
+test('the popup says how far the download is', () => {
+  assert.equal(pastDownloaded(600, { duration: 1000, inOrder: 0.5 }), true);
+  assert.equal(pastDownloaded(400, { duration: 1000, inOrder: 0.5 }), false);
+  assert.equal(pastDownloaded(400, null), false);
+  assert.equal(fmtEta(null), null);
+  assert.equal(fmtEta(30), '1 min');
+  assert.equal(progressLine({ progress: 0.9, eta: 30 }), '90% downloaded · less than a minute left');
+  assert.equal(fmtEta(720), '12 min');
+  assert.equal(fmtEta(3900), '1 h 5 min');
+  assert.equal(progressLine({ progress: 0.43, eta: 720 }), '43% downloaded · about 12 min left');
+  assert.equal(progressLine({ progress: 0.43, eta: null }), '43% downloaded · waiting for sources');
+  assert.equal(progressLine({ progress: 0.43, paused: true, eta: 5 }), '43% downloaded · paused');
+});
+
+test('downloads list Play now and only the people it belongs to can open it', { timeout: 20000 }, async (t) => {
+  const { default: http } = await import('node:http');
+  const { default: net } = await import('node:net');
+  const { spawn } = await import('node:child_process');
+  const { fileURLToPath } = await import('node:url');
+  const app = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-partial-api-'));
+  const root = fileURLToPath(new URL('../', import.meta.url));
+  const media = path.join(app, 'media'); await fs.mkdir(media);
+  const hash = 'd'.repeat(40), name = 'Example.Film.2024.mkv', posts = [];
+  let added = false;
+  const mock = http.createServer((req, res) => {
+    const url = new URL(req.url, 'http://localhost');
+    if (url.pathname === '/api/v2/auth/login') { res.setHeader('Set-Cookie', 'SID=test'); res.end('Ok.'); return; }
+    if (url.pathname === '/api/v2/torrents/add') { added = true; req.resume(); res.end('Ok.'); return; }
+    if (req.method === 'POST') { posts.push(url.pathname.split('/').pop()); req.resume(); res.end('Ok.'); return; }
+    res.setHeader('Content-Type', 'application/json');
+    if (url.pathname === '/api/v2/torrents/info') { res.end(JSON.stringify(added ? [{ hash, name, tags: '', progress: 0.1, state: 'downloading', save_path: media, content_path: path.join(media, name), size: 4096, seq_dl: false, f_l_piece_prio: false }] : [])); return; }
+    if (url.pathname === '/api/v2/torrents/files') { res.end(JSON.stringify([{ index: 0, name, size: 4096, priority: 1, progress: 0.1, piece_range: [0, 3] }])); return; }
+    if (url.pathname === '/api/v2/torrents/properties') { res.end(JSON.stringify({ piece_size: 1024 })); return; }
+    if (url.pathname === '/api/v2/torrents/pieceStates') { res.end(JSON.stringify([0, 0, 0, 0])); return; }
+    res.end('[]');
+  });
+  await new Promise((r) => mock.listen(0, '127.0.0.1', r));
+  const reserve = net.createServer(); await new Promise((r) => reserve.listen(0, '127.0.0.1', r));
+  const port = reserve.address().port; await new Promise((r) => reserve.close(r));
+  for (const entry of await fs.readdir(root)) if (entry.endsWith('.js') || entry === 'package.json') await fs.copyFile(path.join(root, entry), path.join(app, entry));
+  await fs.cp(path.join(root, 'public'), path.join(app, 'public'), { recursive: true });
+  await fs.cp(path.join(root, 'src'), path.join(app, 'src'), { recursive: true });
+  const child = spawn(process.execPath, ['server.js'], { cwd: app, env: {
+    PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, WINDIR: process.env.WINDIR, TEMP: process.env.TEMP, TMP: process.env.TMP,
+    PORT: String(port), MEDIA_DIR: media, ADMIN_EMAILS: 'owner@test.local', QBIT_URL: `http://127.0.0.1:${mock.address().port}`,
+    QBIT_USER: 'test', CONVERT: 'off', SUBSYNC: 'off', TORRENTS: 'off', CAST_APPLETV: 'off', SERVER_IP: '127.0.0.1', PREPARE_NEXT_EPISODES: '0',
+  }, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+  let logs = ''; child.stdout.on('data', (c) => { logs += c; }); child.stderr.on('data', (c) => { logs += c; });
+  t.after(async () => {
+    child.kill(); await new Promise((r) => (child.exitCode !== null ? r() : child.once('exit', r)));
+    mock.closeAllConnections(); await new Promise((r) => mock.close(r));
+    await fs.rm(app, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
+  });
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`Startup timeout: ${logs}`)), 10000);
+    child.stdout.on('data', (c) => { if (String(c).includes('Marquee is running')) { clearTimeout(timer); resolve(); } });
+    child.once('error', reject); child.once('exit', () => { clearTimeout(timer); reject(new Error(logs)); });
+  });
+  const call = (endpoint, email, body) => fetch(`http://127.0.0.1:${port}${endpoint}`, { method: body ? 'POST' : 'GET',
+    headers: { 'cf-access-authenticated-user-email': email, 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+  await call('/api/me', 'owner@test.local');
+  assert.equal((await call('/api/downloads/add', 'member@test.local', { link: `magnet:?xt=urn:btih:${hash}`, name })).status, 200);
+  const [d] = (await (await call('/api/downloads', 'member@test.local')).json()).items;
+  assert.equal(d.canPlayNow, true);
+  assert.equal(d.files[0].index, 0);
+  const id = `${hash}-0`;
+  assert.equal((await call(`/api/part/open?id=${id}`, 'stranger@test.local')).status, 403, 'someone else\u2019s download');
+  assert.equal(posts.includes('toggleSequentialDownload'), false, 'a refused request changes nothing');
+  assert.equal((await call('/api/part/open?id=../../etc-0', 'member@test.local')).status, 400);
+  const opened = await call(`/api/part/open?id=${id}`, 'member@test.local');
+  assert.equal(opened.status, 202, 'nothing has arrived yet');
+  assert.equal((await opened.json()).ready, false);
+  assert.ok(posts.includes('toggleSequentialDownload') && posts.includes('toggleFirstLastPiecePrio'));
+  // The file itself can't be fetched while it downloads, signed or not.
+  assert.equal((await call(`/api/play-link?kind=part&id=${id}&variant=browser`, 'member@test.local')).status, 409);
+  assert.equal((await fetch(`http://127.0.0.1:${port}/play/part/${id}/phone1080/9999999999/${'x'.repeat(32)}/index.m3u8`)).status, 403);
+});

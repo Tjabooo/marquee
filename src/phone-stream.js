@@ -87,6 +87,26 @@ export function streamArgs({ input, dir, video, audio, quality, start = 0, encod
 }
 
 const probeCache = new Map();
+function runProbe(input, { size, timeout = 60000 }) {
+  return new Promise((resolve, reject) => {
+    execFile(FFPROBE, ['-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', input],
+      { timeout, maxBuffer: 16 * 1024 * 1024, windowsHide: true }, (error, stdout) => {
+        if (error) return reject(new Error('Couldn’t read this video.'));
+        try {
+          const info = JSON.parse(stdout);
+          const streams = info.streams || [];
+          const video = streams.find((s) => s.codec_type === 'video' && !s.disposition?.attached_pic);
+          const audios = streams.filter((s) => s.codec_type === 'audio');
+          const duration = Number(info.format?.duration) || Number(video?.duration) || 0;
+          const bitrate = Number(info.format?.bit_rate) || (duration > 0 ? (size * 8) / duration : 0);
+          if (!video || !(duration > 0)) return reject(new Error('Couldn’t read this video.'));
+          resolve({ duration, height: Number(video.height) || 0, width: Number(video.width) || 0, bitrate, video, audios });
+        } catch { reject(new Error('Couldn’t read this video.')); }
+      });
+  });
+}
+// The same for something ffmpeg reads over HTTP (partial-stream.js), where reads may wait for the download.
+export const probeInput = runProbe;
 // { duration, height, bitrate, video, audios } for a file (cached per file version).
 export function probe(file) {
   let stat;
@@ -94,22 +114,7 @@ export function probe(file) {
   const key = `${file}|${stat.size}|${stat.mtimeMs}`;
   if (!probeCache.has(key)) {
     if (probeCache.size > 200) probeCache.clear();
-    const p = new Promise((resolve, reject) => {
-      execFile(FFPROBE, ['-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', file],
-        { timeout: 60000, maxBuffer: 16 * 1024 * 1024, windowsHide: true }, (error, stdout) => {
-          if (error) return reject(new Error('Couldn’t read this video.'));
-          try {
-            const info = JSON.parse(stdout);
-            const streams = info.streams || [];
-            const video = streams.find((s) => s.codec_type === 'video' && !s.disposition?.attached_pic);
-            const audios = streams.filter((s) => s.codec_type === 'audio');
-            const duration = Number(info.format?.duration) || Number(video?.duration) || 0;
-            const bitrate = Number(info.format?.bit_rate) || (duration > 0 ? (stat.size * 8) / duration : 0);
-            if (!video || !(duration > 0)) return reject(new Error('Couldn’t read this video.'));
-            resolve({ duration, height: Number(video.height) || 0, width: Number(video.width) || 0, bitrate, video, audios });
-          } catch { reject(new Error('Couldn’t read this video.')); }
-        });
-    });
+    const p = runProbe(file, { size: stat.size });
     p.catch(() => probeCache.delete(key));
     probeCache.set(key, p);
   }
@@ -141,11 +146,12 @@ export class PhoneStreams {
   }
 
   // One session per play link (its signature). Same link = same session, also across pieces.
-  async open(key, { file, quality, audioIndex = null, label = '' }) {
+  // `info` = already probed (a file still downloading is read over HTTP, see partial-stream.js).
+  async open(key, { file, quality, audioIndex = null, label = '', info: known = null }) {
     let s = this.sessions.get(key);
     if (s) { s.last = Date.now(); return s; }
     if (!validQuality(quality)) throw Object.assign(new Error('Unknown quality.'), { status: 400 });
-    const info = await probe(file);
+    const info = known || await probe(file);
     s = this.sessions.get(key); // opened meanwhile
     if (s) return s;
     const safe = key.replace(/[^\w-]/g, '').slice(0, 40);
@@ -162,8 +168,9 @@ export class PhoneStreams {
 
   count(s) { return pieceCount(s.info.duration); }
 
-  // The path of finished piece n, made now if needed.
-  async segment(s, n) {
+  // The path of finished piece n, made now if needed. `patient`: for a file still downloading, the piece
+  // arrives when the download reaches it, so wait for as long as the player is still asking (`signal`).
+  async segment(s, n, { patient = false, signal = null } = {}) {
     if (!Number.isSafeInteger(n) || n < 0 || n >= this.count(s)) throw Object.assign(new Error('No such piece.'), { status: 404 });
     s.last = Date.now();
     s.want = n;
@@ -176,8 +183,10 @@ export class PhoneStreams {
     const until = Date.now() + WAIT_MS;
     let restarts = 0;
     while (!done()) {
+      if (signal?.aborted) throw Object.assign(new Error('The player stopped asking for this piece.'), { status: 499 });
+      if (patient) s.last = Date.now(); // waiting for the download is not an idle player
       if (s.error && !s.proc) throw Object.assign(new Error(s.error), { status: 503 });
-      if (Date.now() > until) throw Object.assign(new Error('The phone-quality stream is taking too long.'), { status: 504 });
+      if (!patient && Date.now() > until) throw Object.assign(new Error('The phone-quality stream is taking too long.'), { status: 504 });
       // A seek elsewhere replaced this run, or it ended without this piece: start again for it (twice at most).
       if (!s.proc || n < s.start) {
         if (++restarts > 2) throw Object.assign(new Error('The server couldn’t make this part of the video.'), { status: 503 });

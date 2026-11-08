@@ -1,4 +1,17 @@
 {
+  "2026-11-08-play-now": {
+    "title": "Spela nu: titta medan den laddas ner",
+    "items": {
+      "No more waiting for the download": {
+        "title": "Slipp vänta på nedladdningen",
+        "text": "Tryck på Spela nu på något som fortfarande laddas ner, så startar det så snart den första delen har kommit, på alla enheter. Det spelas i upp till 1080p, utan undertexter eller val av ljud, tills nedladdningen är klar."
+      },
+      "If it has to buffer": {
+        "title": "Om den måste buffra",
+        "text": "När videon kommer ikapp nedladdningen berättar en ruta varför och hur långt nedladdningen har kommit. Hoppar du förbi det som är nedladdat väntar videon tills nedladdningen kommer dit. Vill du se den smidigt och i full kvalitet får du vänta tills nedladdningen är klar. Då kan du byta över från samma ställe."
+      }
+    }
+  },
   "2026-11-08-cast-links": {
     "title": "Kolla upp skådespelarna",
     "items": {

@@ -1,5 +1,20 @@
 [
   {
+    "id": "2026-11-08-play-now",
+    "date": "2026-11-08",
+    "title": "Play now: watch while it downloads",
+    "items": [
+      {
+        "title": "No more waiting for the download",
+        "text": "Press Play now on anything that's still downloading and it starts as soon as the first part has arrived, on any device. It plays at up to 1080p, without subtitles or a choice of audio, until the download is done."
+      },
+      {
+        "title": "If it has to buffer",
+        "text": "When the video catches up with the download, a popup tells you why and how far along the download is. Skipping ahead past what has downloaded waits until the download gets there. For smooth playback in full quality, wait for the download to finish. When it does, you can switch over from the same spot."
+      }
+    ]
+  },
+  {
     "id": "2026-11-08-cast-links",
     "date": "2026-11-08",
     "title": "Look up the actors",

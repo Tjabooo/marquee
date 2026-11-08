@@ -500,6 +500,38 @@ main {
   border: 1px solid rgba(246, 234, 223, 0.2); border-radius: 14px;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
 }
+/* Play now: the video has stopped to wait for the download. A little marquee sign over the picture. */
+.part-popup {
+  position: absolute; z-index: 4; left: 50%; top: 50%; translate: -50% -50%;
+  width: min(420px, calc(100% - var(--pad-x) * 2));
+  max-height: calc(100% - max(var(--safe-top), 16px) * 2);
+  padding: 0 22px 20px; overflow: auto; overscroll-behavior: contain;
+  color: var(--on-image); background: rgba(31, 16, 25, 0.97);
+  border: 1px solid rgba(244, 193, 82, 0.45); border-radius: 16px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4), 0 18px 48px rgba(0, 0, 0, 0.55), 0 0 40px rgba(244, 193, 82, 0.1);
+  animation: part-popup-in .22s ease-out;
+}
+.part-popup[hidden] { display: none; }
+@keyframes part-popup-in { from { opacity: 0; translate: -50% calc(-50% + 8px); } }
+.part-popup-lights {
+  height: 20px; margin: 0 -22px 14px; border-bottom: 1px solid rgba(244, 193, 82, 0.2);
+  background: radial-gradient(circle, var(--bulb) 2.5px, rgba(244, 193, 82, 0.28) 3px, transparent 6px) 3px 50% / 16px 16px repeat-x;
+}
+.part-popup-label { margin: 0 0 6px; color: var(--bulb); font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.part-popup h2 { margin: 0 0 8px; font: 700 21px/1.25 var(--display); overflow-wrap: anywhere; }
+.part-popup-body { margin: 0; color: rgba(246, 234, 223, 0.86); font-size: 15px; line-height: 1.45; }
+.part-popup-bar { margin-top: 14px; }
+.part-popup-bar[hidden], .part-popup-progress[hidden] { display: none; }
+.part-popup-progress { margin: 7px 0 0; color: rgba(246, 234, 223, 0.7); font-size: 13px; font-variant-numeric: tabular-nums; }
+.part-popup-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.part-popup-actions button { flex: 1 1 auto; min-height: 44px; padding: 9px 14px; border-radius: 10px; font: 700 14px/1.2 var(--body); cursor: pointer; transition: background .15s, border-color .15s; }
+.part-popup-primary { color: var(--on-bulb); background: var(--bulb); border: 1px solid transparent; }
+.part-popup-primary:hover { background: #ffd471; }
+.part-popup-secondary { color: var(--on-image); background: transparent; border: 1px solid rgba(246, 234, 223, 0.32); }
+.part-popup-secondary:hover { border-color: rgba(246, 234, 223, 0.7); background: rgba(246, 234, 223, 0.08); }
+.part-popup-actions button:focus-visible { outline: 2px solid var(--on-image); outline-offset: 2px; }
+.has-part-popup .player-spinner { opacity: 0; }
+@media (prefers-reduced-motion: reduce) { .part-popup { animation: none; } }
 /* Skip intro sits where Up next does and, like it, stays while the other controls fade. */
 .skip-intro {
   position: absolute; z-index: 3; right: var(--pad-x); bottom: var(--up-next-bottom, 120px);
@@ -563,6 +595,9 @@ main {
 .seek:focus-visible .seek-track { outline: 2px solid var(--bulb); outline-offset: 4px; }
 .seek-buffer, .seek-fill { position: absolute; top: 0; bottom: 0; left: 0; }
 .seek-buffer { width: var(--buf); background: rgba(246, 234, 223, 0.3); }
+/* Play now: how far the download has got. Past this mark, the video waits for the download. */
+.seek-downloaded { position: absolute; top: 0; bottom: 0; left: 0; width: var(--dl, 0%); background: var(--bulb-dim); }
+.seek-downloaded[hidden] { display: none; }
 .seek-fill { width: var(--pos); background: var(--bulb); }
 .seek-thumb {
   position: absolute; left: var(--pos); top: 50%;

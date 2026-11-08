@@ -7,6 +7,7 @@ import { audioChoices, audioLanguage, nativeAudioMapping } from './player-audio.
 import { createSeekPreview } from './seek-preview.js';
 import * as pushDevice from './notifications.js';
 import { createStreamStats } from './player-stats.js';
+import { playPartial } from './player-partial.js';
 import { SUB_SIZES, SUB_BACKGROUNDS, SUB_POSITIONS, subLook, subRaise, secondChoices, createNightAudio,
   SLEEP_MINUTES, sleepTimer, sleepSecondsLeft, sleepFade, sleepLabel } from './player-comfort.js';
 import { comingUp, newEpisodes, watchStatus, todayIso } from './watchlist.js';
@@ -1452,7 +1453,7 @@ function renderShow() {
     const rows = ready.map(f => ({ number: f.episode, node: (() => { const row = fileRow(libraryFile(f)); row.classList.add('episode-row'); row.prepend(thumb(f.episode, f.still)); $('.row-title', row).textContent = epTitle(f.episode, f.episodeName); $('.row-title', row).title = f.file; return row; })() }));
     const tvId = { id: show.tmdbId ?? null, title: show.title, type: 'tv' }; // episodeDownload decides Add / Download / nothing
     const upgrade = seasonUpgrade(tvId, open.number);
-    for (const {d,ep} of byEpisode.values()) rows.push({ number: ep.episode, node: h('li', { class: 'row episode-row pending-episode', 'data-transfer-hash': d.hash, 'data-episode-number': ep.episode, 'data-episode-season': ep.season }, thumb(ep.episode), h('div', { class: 'row-text' }, h('div', { class: 'row-title' }, epTitle(ep.episode)), h('div', { class: 'row-meta episode-transfer-state' }, ep.available ? T('Ready · watch it from Details') : `${transferState(d)}${Number.isFinite(ep.progress) ? ` · ${Math.floor(ep.progress*100)}%` : ''}`)), h('button', { class: 'chip', onclick: e => openTransferDetails({ ...entry, transfers: [d] }, e.currentTarget) }, T('Details'))) });
+    for (const {d,ep} of byEpisode.values()) rows.push({ number: ep.episode, node: h('li', { class: 'row episode-row pending-episode', 'data-transfer-hash': d.hash, 'data-episode-number': ep.episode, 'data-episode-season': ep.season }, thumb(ep.episode), h('div', { class: 'row-text' }, h('div', { class: 'row-title' }, epTitle(ep.episode)), h('div', { class: 'row-meta episode-transfer-state' }, ep.available ? T('Ready · watch it from Details') : `${transferState(d)}${Number.isFinite(ep.progress) ? ` · ${Math.floor(ep.progress*100)}%` : ''}`)), d.canPlayNow && !ep.available && ep.fileIndex != null && h('button', { class: 'play-btn', onclick: () => openPlayer(playNowItem(d, ep, ep)) }, icon('play'), T('Play now')), h('button', { class: 'chip', onclick: e => openTransferDetails({ ...entry, transfers: [d] }, e.currentTarget) }, T('Details'))) });
     if (Number.isInteger(open.total) && open.total > 0 && open.total <= 1000) for (let number = open.first || 1; number < (open.first || 1) + open.total; number++) if (!rows.some(row => row.number === number)) rows.push({ number, node: h('li', { class: 'row episode-row missing-episode' }, thumb(number), h('div', { class: 'row-text' }, h('div', { class: 'row-title' }, epTitle(number)), h('div', { class: 'row-meta' }, T('Not added yet'))), tvId && episodeDownload(tvId, open.number, number)) });
     content = [!single && h('button', { class: 'chip season-back', onclick: () => pick(null) }, icon('back'), T('All seasons')), h('h3', {}, open.name),
       seasonVersionPick(ready, () => renderShow()),
@@ -1525,6 +1526,8 @@ function makeDlCard(d) {
       refs.actions = h('div', { class: 'row-actions' },
         refs.cast = h('button', { class: 'cast-btn', title: T('Play on TV'), onclick: () => openPicker({ ...refs.data, kind: 'dl', key: refs.data.hash }, refs.cast) }, icon('tv')),
         refs.play = h('button', { class: 'play-btn', onclick: () => {
+          const part = playNowFile(refs.data);
+          if (part) { openPlayer(playNowItem(refs.data, part)); return; }
           if (refs.data.converting) { toast(T('Almost ready. It can be played in a moment.')); return; }
           openPlayer({ ...refs.data, kind: 'dl', key: refs.data.hash });
         } }, icon('play'), T('Play')))),
@@ -1627,6 +1630,16 @@ function seedersChip(d) {
   return h('span', { class: `seeds seeds-${health}`, title: swarm != null ? T('Connected to {0} of the {1} seeders the trackers report', d.seeds.toLocaleString(locale), swarm.toLocaleString(locale)) : T('Seeders connected right now') }, text);
 }
 
+// Play now: one video still downloading, sample files aside. A season pack offers it per episode instead.
+function playNowFile(d) {
+  if (!d?.canPlayNow || d.ready || d.done || !d.files?.length) return null;
+  const [main, next] = d.files.toSorted((a, b) => b.size - a.size);
+  return main.available || (next && main.size < next.size * 3) ? null : main;
+}
+const playNowItem = (d, file, ep = null) => ({ kind: 'part', key: `${d.hash}-${file.index ?? file.fileIndex}`, hash: d.hash, mediaKey: file.mediaKey || undefined,
+  title: d.canonicalTitle || d.title, filmTitle: d.canonicalTitle || d.title, show: d.showId || undefined, tmdbId: d.tmdbId ?? undefined,
+  season: ep?.season ?? d.season ?? null, episode: ep?.episode ?? d.episode ?? null });
+
 function updateDlCard(el, d) {
   if (!el) return;
   const r = el._refs;
@@ -1643,7 +1656,10 @@ function updateDlCard(el, d) {
   r.title.title = d.name;
   r.state.textContent = state.dlScope === 'all' && d.owner ? T('{0} · for {1}', label, d.owner) : label;
   r.state.classList.toggle('is-error', d.state === 'error' || d.state === 'missingFiles');
-  r.actions.hidden = !d.ready || d.mediaType === 'tv' && d.episode == null;
+  const playNow = playNowFile(d);
+  r.actions.hidden = !playNow && (!d.ready || d.mediaType === 'tv' && d.episode == null);
+  r.cast.hidden = Boolean(playNow);
+  r.play.lastChild.textContent = playNow ? T('Play now') : T('Play');
   r.play.setAttribute('aria-label', T('Play {0} here', d.title));
   r.cast.setAttribute('aria-label', T('Play {0} on a TV', d.title));
   r.bar.hidden = d.done;
@@ -2194,8 +2210,13 @@ function transferSummary(getTransfers, name) {
   const pause = h('button', { type: 'button', class: 'chip transfer-ctl' });
   const retry = h('button', { type: 'button', class: 'chip transfer-ctl' }, T('Retry'));
   const details = h('button', { type: 'button', class: 'link-btn transfer-details' }, T('Details'));
-  const el = h('div', { class: 'transfer-summary' }, h('div', { class: 'transfer-line' }, stateEl, pct), track, h('div', { class: 'transfer-controls' }, pause, retry, details));
   const list = () => getTransfers().filter((d) => !d.done || d.converting || transferAttention(d));
+  const playable = () => { const active = list(); return active.length === 1 && playNowFile(active[0]) ? active[0] : null; };
+  const play = h('button', { type: 'button', class: 'play-btn transfer-play', onclick: () => {
+    const d = playable();
+    if (d) openPlayer(playNowItem(d, playNowFile(d)));
+  } }, icon('play'), T('Play now'));
+  const el = h('div', { class: 'transfer-summary' }, h('div', { class: 'transfer-line' }, stateEl, pct), track, h('div', { class: 'transfer-controls' }, play, pause, retry, details));
   pause.addEventListener('click', () => {
     const mine = list().filter((d) => d.canManage !== false && !transferAttention(d));
     const resume = mine.length && mine.every((d) => isPaused(d));
@@ -2224,6 +2245,7 @@ function transferSummary(getTransfers, name) {
     pause.textContent = resume ? T('Resume') : T('Pause');
     pause.setAttribute('aria-label', `${resume ? T('Resume') : T('Pause')} ${name}`);
     retry.hidden = !attention;
+    play.hidden = !playable();
   };
   commandViews.add(el);
   el._update();
@@ -3936,8 +3958,8 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden && pa
 
 function saveProgress(force = false) {
   countPlayed();
-  if (plainMedia(current)) return; // clips and note videos have no resume point
-  if (!current?.ready || video.currentSrc !== current.sourceUrl || !video.duration || !isFinite(video.duration)) return;
+  if (plainMedia(current) && current.kind !== 'part') return; // clips and note videos have no resume point
+  if (!current?.ready || !sourceIsCurrent(current) || !video.duration || !isFinite(video.duration)) return;
   const now = Date.now();
   if (!force && now - lastSave < 5000) return;
   lastSave = now;
@@ -3974,10 +3996,12 @@ function countPlayed() {
 const watchAbout = (f) => ({ titleKey: titleKeyOf(f.season == null && f.tmdbId ? { tmdbId: f.tmdbId } : f) || undefined,
   title: f.filmTitle || f.canonicalTitle || f.title || f.name || '', season: f.season ?? null, episode: f.episode ?? null });
 
-const mediaId = (f) => (f.kind === 'lib' ? f.id || f.key : f.hash || f.key);
+const mediaId = (f) => (f.kind === 'lib' || f.kind === 'part' ? f.id || f.key : f.hash || f.key);
 // Clips and note videos play in the player's plain mode: no subtitles, audio choices, casting,
 // Watch Together, Up next or resume points.
-function plainMedia(f) { return f?.kind === 'clip' || f?.kind === 'note'; }
+// A video still downloading (Play now) plays the same way until the finished file is there, but keeps its resume point.
+function plainMedia(f) { return f?.kind === 'clip' || f?.kind === 'note' || f?.kind === 'part'; }
+const sourceIsCurrent = (f) => Boolean(f) && (f.hlsPlayer ? true : video.currentSrc === f.sourceUrl);
 
 // ---- subtitles ----
 // ---------- AirPlay / Chromecast from the browser ----------
@@ -4051,6 +4075,26 @@ function setPlayerSource(url, session, onMetadata) {
   sourceMetadataHandler = handler;
   video.addEventListener('loadedmetadata', handler);
   video.src = url;
+}
+
+// A stream played through hls.js has no plain URL on the video element, so the check above doesn't apply.
+function setHlsSource(hls, url, session, onMetadata) {
+  if (current !== session) return;
+  if (sourceMetadataHandler) video.removeEventListener('loadedmetadata', sourceMetadataHandler);
+  session.ready = false;
+  session.sourceUrl = null;
+  const handler = () => {
+    if (sourceMetadataHandler !== handler || current !== session || video.readyState < 1) return;
+    video.removeEventListener('loadedmetadata', handler);
+    sourceMetadataHandler = null;
+    session.ready = true;
+    onMetadata?.();
+    updateUpNext();
+  };
+  sourceMetadataHandler = handler;
+  video.addEventListener('loadedmetadata', handler);
+  hls.loadSource(url);
+  hls.attachMedia(video);
 }
 
 function capturePlayback(session = current) {
@@ -5493,7 +5537,8 @@ const streamStats = createStreamStats({
       party?.offsets?.[ccActive] ? T('room {0}', signed(party.offsets[ccActive])) : ''].filter(Boolean).join(', ');
     return {
       title: $('#player-title').textContent,
-      delivery: session?.kind === 'clip' ? T('Clip · direct play') : session?.kind === 'note' ? T('Note video · direct play') : '',
+      delivery: session?.kind === 'clip' ? T('Clip · direct play') : session?.kind === 'note' ? T('Note video · direct play')
+        : session?.kind === 'part' ? T('Live 1080p stream, made while the video downloads') : '',
       audio: session?.audio?.activeLabel || '',
       subtitles: lang ? `${lang.name || lang.code}${lang.saved ? T(' · saved on the server') : ''}${nativeSubs ? T(' · drawn by the browser') : ''}${timing ? T(' · timing {0}', timing) : ''}` : '',
       party: party ? [party.isHost ? 'host' : 'guest', party.connected ? 'connected' : 'reconnecting', T('clock {0} ms off', Math.round(party.clockOffset)),
@@ -5525,7 +5570,7 @@ const PLAYER_KEYS = {
 };
 // Keys typed into a menu or a text field are left alone.
 const playerKeyTarget = (e) => !playerEl.hidden && !e.ctrlKey && !e.metaKey && !e.altKey
-  && !e.target.closest?.('.cc-menu, #up-next, #watch-bar') && !e.target.matches?.('input:not([type="range"]), textarea, select');
+  && !e.target.closest?.('.cc-menu, #up-next, #part-popup, #watch-bar') && !e.target.matches?.('input:not([type="range"]), textarea, select');
 document.addEventListener('keydown', (e) => {
   if (!playerKeyTarget(e)) return;
   if (e.key === 'Tab') { showPlayerUi(); return; } // hidden controls can't take focus
@@ -5637,6 +5682,37 @@ async function loadPlayerMedia(f, opts = {}) {
     seekPreview.load(null);
     setPlayerSource(`/api/admin/notes/files/${encodeURIComponent(f.id)}?view=1`, session);
     video.play().catch(() => { /* autoplay blocked: the controls are there */ });
+    return;
+  }
+  // Still downloading: a live stream of what's there so far. The finished file takes over when it's ready.
+  if (f.kind === 'part') {
+    renderParty();
+    seekPreview.load(null);
+    playPartial(session, {
+      video, playerEl, seekEl, api, $,
+      isCurrent: (s) => current === s,
+      setSource: setPlayerSource,
+      setHlsSource,
+      onMetadata: (s) => {
+        // Resume, but not further than the download has reached.
+        const saved = savedProgress(s);
+        const reach = (s.part?.inOrder || 0) * video.duration - 20;
+        const at = saved && saved.time < video.duration - 90 ? Math.min(saved.time, reach) : 0;
+        if (at > 30) { video.currentTime = at; toast(T('Resuming at {0}', fmtTime(at))); }
+      },
+      setSpinner,
+      showNote: (text) => { const note = $('#player-note'); note.textContent = text; note.hidden = false; },
+      hideNote: () => { $('#player-note').hidden = true; },
+      showError: (text) => { err.textContent = text; err.hidden = false; },
+      fullItem: (id) => state.library.find((x) => x.id === id && !x.converting) || null,
+      switchToFull: (item) => {
+        const at = video.currentTime || 0;
+        saveProgress(true);
+        loadPlayerMedia(libraryFile(item), { startAt: at });
+      },
+      leave: closeTopOverlay,
+      toast,
+    });
     return;
   }
   const watchSession = opts.watchRoom ? attachWatchRoom(opts.watchRoom) : null;
@@ -5892,7 +5968,7 @@ for (const event of ['seeking', 'waiting']) video.addEventListener(event, () => 
 for (const event of ['keydown', 'pointerdown']) document.addEventListener(event, () => { autoChain = 0; }, true);
 video.addEventListener('pause', () => saveProgress(true));
 video.addEventListener('error', () => {
-  if (!current?.sourceUrl || video.currentSrc !== current.sourceUrl) return;
+  if (!current?.sourceUrl || video.currentSrc !== current.sourceUrl || current.kind === 'part') return;
   const err = $('#player-error');
   err.textContent = current.kind === 'note'
     ? T('This video can’t play in this browser. Its format isn’t supported here; open the file link under the video to download it, or try another browser.')
