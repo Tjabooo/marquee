@@ -123,7 +123,7 @@ People turn it on per device in **Settings → Notifications** and switch each k
 | Kind | Setting | Sent when |
 | --- | --- | --- |
 | Downloads ready | `pushDownload` | Something you downloaded (or asked for) landed in your library; a season pack's episodes replace each other's notification |
-| New episodes | `pushEpisode` | A show you follow got an episode (downloaded for you, or by someone else), or an episode of a show in your library was downloaded by someone else; once per episode |
+| New episodes | `pushEpisode` | A show you follow got an episode downloaded for you, or an episode of a show in your library was downloaded by someone else; once per episode. Nothing about shows or films that aren't in your library |
 | Watch Together invites | `pushWatch` | Someone in a room taps **Invite** and picks you; opens the room's join screen. Off: you aren't offered as an invitee |
 
 Push endpoints must belong to a known push service (Google FCM, Mozilla, Apple, Windows), so a subscription can't make the server POST to an address on your network. A device the push service reports as gone (404/410) is removed. On iPhone and iPad, Apple allows web notifications only for Home Screen apps (iOS 16.4+), which Settings explains. A server reached only over plain `http://` (not localhost) can't use notifications: browsers require https.

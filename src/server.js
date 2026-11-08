@@ -2186,7 +2186,8 @@ function announceArrivals(hash, arrived, claimants) {
     notify([userId], 'download', { title, body: files.length === 1 ? 'It’s in your library. Tap to watch.' : 'They’re in your library. Tap to watch.',
       url: '/#library', tag: `download-${hash.toLowerCase()}` });
   }
-  // New episodes: everyone else who follows the show or has an episode of it in their library hears once per episode.
+  // New episodes: everyone else with an episode of the show in their library hears once per episode.
+  // Following alone isn't enough: a show that isn't in your library stays quiet until it lands there.
   const episodes = [...new Set([...arrived.values()].flat())].map((full) => ({ key: accounts.mediaKey(full), info: parseFile(full) }))
     .filter((e) => e.key && e.info.season != null && !announcedEpisodes.has(e.key));
   if (!episodes.length) return;
@@ -2196,10 +2197,6 @@ function announceArrivals(hash, arrived, claimants) {
     if (info.season == null) continue;
     if (!showsOf.has(r.user_id)) showsOf.set(r.user_id, new Set());
     showsOf.get(r.user_id).add(shows.showKey(info.title));
-  }
-  for (const [id, keys] of follows) {
-    if (!showsOf.has(id)) showsOf.set(id, new Set());
-    for (const k of keys) showsOf.get(id).add(k);
   }
   const skip = new Set(claimants);
   const byShow = new Map();

@@ -6212,7 +6212,7 @@ function notificationSettings() {
   if (pushView.devices.length) {
     out.push(settingsRow(T('Downloads ready'), T('When something you downloaded can be watched.'),
       toggle(p.pushDownload !== false, (v) => saveMe({ pushDownload: v }), T('Notify when downloads are ready'))));
-    out.push(settingsRow(T('New episodes'), T('When a new episode of a show you follow or have in your library arrives on Marquee.'),
+    out.push(settingsRow(T('New episodes'), T('When a new episode of a show in your library arrives on Marquee.'),
       toggle(p.pushEpisode !== false, (v) => saveMe({ pushEpisode: v }), T('Notify about new episodes'))));
     out.push(settingsRow(T('Watch Together invites'), T('When someone asks you to join their room. Off: nobody can invite you this way.'),
       toggle(p.pushWatch !== false, (v) => saveMe({ pushWatch: v }), T('Notify about Watch Together invites'))));

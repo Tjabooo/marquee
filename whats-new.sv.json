@@ -1,4 +1,13 @@
 {
+  "2026-11-08-download-alerts": {
+    "title": "Färre aviseringar",
+    "items": {
+      "Only what's in your library": {
+        "title": "Bara det som finns i ditt bibliotek",
+        "text": "Andras nedladdningar ger dig inte längre aviseringar om en serie som inte finns i ditt bibliotek, inte ens om du följer den. Serier i ditt bibliotek säger fortfarande till om nya avsnitt, och dina egna nedladdningar säger till när de är klara."
+      }
+    }
+  },
   "2026-11-08-languages": {
     "title": "Marquee på svenska",
     "items": {

@@ -835,7 +835,7 @@ export default {
   "When something you downloaded can be watched.": "När något du laddat ner går att titta på.",
   "Notify when downloads are ready": "Avisera när nedladdningar är klara",
   "New episodes": "Nya avsnitt",
-  "When a new episode of a show you follow or have in your library arrives on Marquee.": "När ett nytt avsnitt av en serie du följer eller har i biblioteket kommer till Marquee.",
+  "When a new episode of a show in your library arrives on Marquee.": "När ett nytt avsnitt av en serie i ditt bibliotek kommer till Marquee.",
   "Notify about new episodes": "Avisera om nya avsnitt",
   "Watch Together invites": "Inbjudningar till Titta tillsammans",
   "When someone asks you to join their room. Off: nobody can invite you this way.": "När någon ber dig gå med i sitt rum. Av: ingen kan bjuda in dig på det här sättet.",

@@ -6,6 +6,8 @@ All notable changes to Marquee. Versions follow [Semantic Versioning](https://se
 
 ### Changed
 
+- **Notifications stay with your library.** Someone else's download no longer notifies people who only follow a show;
+  it reaches those with an episode of it in their library. Your own downloads and auto-downloads still notify you.
 - **One TV app, in Swedish.** The Samsung TV Preview replaced the old TV app: `public/tv` and `tv/tizen` now hold it
   under the original package `MrqTvApp01.Marquee`, and `tv-preview`/`tizen-preview` are gone. It's in Swedish, with
   å, ä and ö on the on-screen keyboard. Remove an installed Marquee Preview with `tizen uninstall -p MrqTvPrv01.MarqueePreview`.

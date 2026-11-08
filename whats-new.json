@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-08-download-alerts",
+    "date": "2026-11-08",
+    "title": "Fewer notifications",
+    "items": [
+      {
+        "title": "Only what's in your library",
+        "text": "Someone else's downloads no longer notify you about a show that isn't in your library, even if you follow it. Shows you have in your library still tell you about new episodes, and your own downloads still tell you when they're ready."
+      }
+    ]
+  },
+  {
     "id": "2026-11-08-languages",
     "date": "2026-11-08",
     "title": "Marquee in Swedish",
