@@ -27,14 +27,14 @@ test('aggregate progress uses selected byte weighting, with unknown sizes remain
   [entry] = libraryUnion([], [], [dl('small'), dl('unknown', { size: 0 })]); assert.equal(entry.progress, null);
 });
 test('validated readiness differs from 100 percent, completed external files remain reachable and paused seeds are complete', () => {
-  const [preparing] = libraryUnion([], [], [dl('waiting', { progress: 1 })]); assert.equal(preparing.ready, false); assert.equal(preparing.state, 'Preparing library…');
+  const [preparing] = libraryUnion([], [], [dl('waiting', { progress: 1 })]); assert.equal(preparing.ready, false); assert.equal(preparing.state, 'Almost ready');
   const [external] = libraryUnion([], [], [dl('external', { done: true, ready: true, state: 'stoppedUP' })]); assert.equal(external.ready, true); assert.equal(external.active.length, 0); assert.equal(transferState(external.transfers[0]), 'Complete');
   const [unadmitted] = libraryUnion([], [], [dl('complete-but-missing', { done: true, progress: 1 })]); assert.equal(unadmitted.ready, false); assert.equal(unadmitted.active.length, 1);
 });
 test('season file evidence reports unique ready and pending episodes; pack progress invents no episode count', () => {
   let [entry] = libraryUnion([ep, { ...ep, id: 'duplicate' }], [show], [dl('season', { mediaType: 'tv', showId: show.id, episodes: [{ season: 1, episode: 1, available: false }, { season: 1, episode: 2, progress: .5 }, { season: 1, episode: 3, progress: 1, available: false }] })]);
   assert.equal(libraryAvailability(entry), '1 ready · 2 downloading');
-  [entry] = libraryUnion([ep], [show], [dl('pack', { mediaType: 'tv', showId: show.id, season: 1 })]); assert.equal(libraryAvailability(entry), '1 ready · Season pack downloading');
+  [entry] = libraryUnion([ep], [show], [dl('pack', { mediaType: 'tv', showId: show.id, season: 1 })]); assert.equal(libraryAvailability(entry), '1 ready · Season on its way');
 });
 test('unknown releases stay distinct, queryable and attention/ready filters do not conflate stalled peers with errors', () => {
   const entries = libraryUnion([film], [], [dl('unknown', { mediaType: null, tmdbId: null, canonicalTitle: null, title: null, name: 'Unidentified.release' }), dl('stall', { tmdbId: 22, state: 'stalledDL' }), dl('err', { tmdbId: 23, state: 'missingFiles' })]);

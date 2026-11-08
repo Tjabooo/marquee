@@ -7,9 +7,9 @@ export function transferState(d) {
   if (d.done && (d.ready || d.hasVideo === false)) return 'Complete';
   if (transferPaused(d)) return 'Paused';
   if (/checking/.test(d.state || '')) return 'Checking files';
-  if (d.done) return 'Preparing library…';
-  if (Number(d.progress) >= 1) return 'Preparing library…';
-  return ({ stalledDL: 'Waiting for peers', metaDL: 'Getting file info', forcedMetaDL: 'Getting file info', queuedDL: 'Queued', moving: 'Moving files' })[d.state] || 'Downloading';
+  if (d.done) return 'Almost ready';
+  if (Number(d.progress) >= 1) return 'Almost ready';
+  return ({ stalledDL: 'Waiting for a source', metaDL: 'Starting', forcedMetaDL: 'Starting', queuedDL: 'In line', moving: 'Almost ready' })[d.state] || 'On its way';
 }
 const mediaType = x => x.mediaType === 'tv' || x.showId || x.show || x.season != null ? 'tv' : x.mediaType === 'movie' || x.tmdbId ? 'movie' : 'unknown';
 function identity(x, ready = false) {
@@ -56,7 +56,7 @@ export function libraryAvailability(e) {
   const readyEpisodes = new Set(e.files.map(f => `${f.season}:${f.episode}`));
   const ready = readyEpisodes.size;
   const pending = new Set(e.active.flatMap(d => (d.episodes || []).filter(ep => !ep.available && !readyEpisodes.has(`${ep.season}:${ep.episode}`)).map(ep => `${ep.season}:${ep.episode}`))).size;
-  return [ready ? `${ready} ready` : null, pending ? `${pending} downloading` : e.active.length ? 'Season pack downloading' : null].filter(Boolean).join(' · ') || 'Series';
+  return [ready ? `${ready} ready` : null, pending ? `${pending} downloading` : e.active.length ? 'Season on its way' : null].filter(Boolean).join(' · ') || 'Series';
 }
 export function filterLibrary(entries, { type = 'all', availability = 'all', query = '', sort = 'newest' } = {}) {
   const normalize = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');

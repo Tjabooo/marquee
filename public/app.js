@@ -426,13 +426,13 @@ function watchBox(t) {
     const save = h('button', { type: 'button', class: `chip watch-toggle${saved ? ' is-on' : ''}`, 'aria-pressed': String(saved),
       onclick: () => act({ saved: !saved }, (i) => (i?.saved ? 'Saved for later' : 'Removed from Saved')) }, icon('bookmark'), saved ? 'Saved' : 'Save');
     const followBtn = isTv && h('button', { type: 'button', class: `chip watch-toggle${follow ? ' is-on' : ''}`, 'aria-pressed': String(follow),
-      onclick: () => act({ follow: !follow }, (i) => (i?.follow ? (i.auto ? 'Following. New episodes download as they air.' : 'Following') : 'Stopped following')) },
+      onclick: () => act({ follow: !follow }, (i) => (i?.follow ? (i.auto ? 'Following. New episodes arrive as they air.' : 'Following') : 'Stopped following')) },
       icon('bell'), follow ? 'Following' : 'Follow');
     // Films: wait for the release. Shows: new episodes as they air (only while following).
     const offerAuto = watch.autoDownload && (isTv ? follow : saved && !inLibrary && item?.state !== 'got');
     const autoSwitch = offerAuto && h('label', { class: 'watch-auto' },
       h('input', { type: 'checkbox', checked: auto, onchange: (e) => act({ auto: e.currentTarget.checked }) }),
-      h('span', {}, isTv ? 'Download new episodes as they air' : 'Download it when a good copy is out'));
+      h('span', {}, isTv ? 'Add new episodes as they air' : 'Add it when a good copy is out'));
     const line = watchStatus(item, { today: todayIso(), autoDownload: watch.autoDownload, inLibrary });
     box.replaceChildren(...[h('div', { class: 'watch-buttons' }, save, followBtn), autoSwitch, line && h('p', { class: 'watch-status', role: 'status' }, line)].filter(Boolean));
   };
@@ -551,7 +551,7 @@ function fileRow(f) {
       h('button', { class: 'cast-btn', 'aria-label': `Play ${title} on a TV`, title: 'Play on TV', onclick: (e) => openPicker(f, e.currentTarget) }, icon('tv')),
       f.kind === 'lib' && h('button', { class: 'cast-btn', 'aria-label': `Plan a watch party for ${title}`, title: 'Plan a watch party', onclick: (e) => openPlanParty(f, e.currentTarget) }, icon('party')),
       f.converting
-        ? h('button', { class: 'play-btn round is-disabled', 'aria-disabled': 'true', title: 'Cannot play while converting', 'aria-label': `${title}: cannot play while converting`, onclick: () => toast('Cannot play while converting') }, icon('play'))
+        ? h('button', { class: 'play-btn round is-disabled', 'aria-disabled': 'true', title: 'Getting ready to play', 'aria-label': `${title}: getting ready to play`, onclick: () => toast('Almost ready. It can be played in a moment.') }, icon('play'))
         : h('button', { class: 'play-btn round', 'aria-label': `Play ${title} here`, onclick: () => openPlayer(f) }, icon('play'))));
 }
 
@@ -1005,7 +1005,7 @@ function renderLibrary() {
   const body = $('#library-body');
   if (!libraryUI || !body.contains(libraryUI.root)) {
     const filters = segmented(LIB_FILTERS, state.libFilter, v => { state.libFilter = v; renderLibrary(); }, 'Show');
-    const availability = select([['all', 'All titles'], ['ready', 'Ready to watch'], ['downloading', 'Downloading'], ['attention', 'Needs attention']], state.libAvailability, v => { state.libAvailability = v; renderLibrary(); }, 'Availability');
+    const availability = select([['all', 'All titles'], ['ready', 'Ready to watch'], ['downloading', 'On the way'], ['attention', 'Needs attention']], state.libAvailability, v => { state.libAvailability = v; renderLibrary(); }, 'Availability');
     const groups = new Map(['movie', 'tv', 'unknown'].map(type => {
       const list = h('ul', { class: 'grid library-grid' });
       return [type, { list, section: h('section', { class: 'lib-group' }, h('h3', { class: 'lib-subhead' }, { movie: 'Films', tv: 'Shows', unknown: 'Unidentified' }[type]), list) }];
@@ -1070,7 +1070,7 @@ function renderLibrary() {
     card.remove(); libraryCards.delete(key);
   }
   for (const group of ui.groups.values()) group.section.hidden = !group.list.children.length;
-  const emptyText = entries.length || [...libraryCards.values()].some(c => c.contains(document.activeElement)) ? '' : all.length ? 'No titles match these filters.' : 'Your library is empty. Find something in Discover or use Find torrents to add your first title.';
+  const emptyText = entries.length || [...libraryCards.values()].some(c => c.contains(document.activeElement)) ? '' : all.length ? 'No titles match these filters.' : 'Nothing here yet. Find something in Discover and press Add to start watching.';
   if (ui.empty.textContent !== emptyText) ui.empty.replaceChildren(emptyText ? notice(all.length ? 'No matching titles' : 'Your library is empty', emptyText) : '');
   // Shelves use ready files only; transfers never create fake playback progress.
   const shelfKey = JSON.stringify([librarySignature, state.libFilter, state.query, libraryProgressRevision, watch.revision, todayIso()]);
@@ -1423,8 +1423,8 @@ function renderShow() {
     const thumb = (n, still) => episodeArt(still || tmdbEp(n).still, show, 'episode-thumb');
     const rows = ready.map(f => ({ number: f.episode, node: (() => { const row = fileRow(libraryFile(f)); row.classList.add('episode-row'); row.prepend(thumb(f.episode, f.still)); $('.row-title', row).textContent = epTitle(f.episode, f.episodeName); $('.row-title', row).title = f.file; return row; })() }));
     const tvId = { id: show.tmdbId ?? null, title: show.title, type: 'tv' }; // episodeDownload decides Add / Download / nothing
-    for (const {d,ep} of byEpisode.values()) rows.push({ number: ep.episode, node: h('li', { class: 'row episode-row pending-episode', 'data-transfer-hash': d.hash, 'data-episode-number': ep.episode, 'data-episode-season': ep.season }, thumb(ep.episode), h('div', { class: 'row-text' }, h('div', { class: 'row-title' }, epTitle(ep.episode)), h('div', { class: 'row-meta episode-transfer-state' }, ep.available ? 'Ready in download details' : `${transferState(d)}${Number.isFinite(ep.progress) ? ` · ${Math.floor(ep.progress*100)}%` : ''}`)), h('button', { class: 'chip', onclick: e => openTransferDetails({ ...entry, transfers: [d] }, e.currentTarget) }, 'Details')) });
-    if (Number.isInteger(open.total) && open.total > 0 && open.total <= 1000) for (let number = open.first || 1; number < (open.first || 1) + open.total; number++) if (!rows.some(row => row.number === number)) rows.push({ number, node: h('li', { class: 'row episode-row missing-episode' }, thumb(number), h('div', { class: 'row-text' }, h('div', { class: 'row-title' }, epTitle(number)), h('div', { class: 'row-meta' }, 'Not in library')), tvId && episodeDownload(tvId, open.number, number)) });
+    for (const {d,ep} of byEpisode.values()) rows.push({ number: ep.episode, node: h('li', { class: 'row episode-row pending-episode', 'data-transfer-hash': d.hash, 'data-episode-number': ep.episode, 'data-episode-season': ep.season }, thumb(ep.episode), h('div', { class: 'row-text' }, h('div', { class: 'row-title' }, epTitle(ep.episode)), h('div', { class: 'row-meta episode-transfer-state' }, ep.available ? 'Ready · watch it from Details' : `${transferState(d)}${Number.isFinite(ep.progress) ? ` · ${Math.floor(ep.progress*100)}%` : ''}`)), h('button', { class: 'chip', onclick: e => openTransferDetails({ ...entry, transfers: [d] }, e.currentTarget) }, 'Details')) });
+    if (Number.isInteger(open.total) && open.total > 0 && open.total <= 1000) for (let number = open.first || 1; number < (open.first || 1) + open.total; number++) if (!rows.some(row => row.number === number)) rows.push({ number, node: h('li', { class: 'row episode-row missing-episode' }, thumb(number), h('div', { class: 'row-text' }, h('div', { class: 'row-title' }, epTitle(number)), h('div', { class: 'row-meta' }, 'Not added yet')), tvId && episodeDownload(tvId, open.number, number)) });
     content = [!single && h('button', { class: 'chip season-back', onclick: () => pick(null) }, icon('back'), 'All seasons'), h('h3', {}, open.name),
       seasonVersionPick(ready, () => renderShow()),
       h('div', { class: 'season-summary' }, h('p', { class: 'muted' }, `${open.total ? `${episodeCount(ready)} of ${open.total}` : episodeCount(ready)} episodes ready`),
@@ -1494,7 +1494,7 @@ function makeDlCard(d) {
       refs.actions = h('div', { class: 'row-actions' },
         refs.cast = h('button', { class: 'cast-btn', title: 'Play on TV', onclick: () => openPicker({ ...refs.data, kind: 'dl', key: refs.data.hash }, refs.cast) }, icon('tv')),
         refs.play = h('button', { class: 'play-btn', onclick: () => {
-          if (refs.data.converting) { toast('Cannot play while converting'); return; }
+          if (refs.data.converting) { toast('Almost ready. It can be played in a moment.'); return; }
           openPlayer({ ...refs.data, kind: 'dl', key: refs.data.hash });
         } }, icon('play'), 'Play'))),
     refs.release = h('p', { class: 'transfer-release' }),
@@ -1633,7 +1633,7 @@ function updateDlCard(el, d) {
   r.retry.hidden = !transferAttention(d) && !operation?.error; r.retry.disabled = d.canManage === false; r.retry.setAttribute('aria-disabled', String(d.canManage === false || Boolean(operation?.label)));
   r.play.classList.toggle('is-disabled', Boolean(d.converting));
   r.play.setAttribute('aria-disabled', String(Boolean(d.converting)));
-  r.play.title = d.converting ? 'Cannot play while converting' : '';
+  r.play.title = d.converting ? 'Getting ready to play' : '';
   r.pause.textContent = operation?.label || (isPaused(d) ? 'Resume' : 'Pause');
   r.pause.setAttribute('aria-label', `${isPaused(d) ? 'Resume' : 'Pause'} ${d.title}`);
 }
@@ -1679,7 +1679,7 @@ function patchTransferNodes() {
   }
   for (const row of document.querySelectorAll('.pending-episode')) {
     const d = state.downloads.find(d => d.hash === row.dataset.transferHash), ep = d?.episodes?.find(ep => String(ep.season) === row.dataset.episodeSeason && String(ep.episode) === row.dataset.episodeNumber);
-    if (ep) $('.episode-transfer-state', row).textContent = ep.available ? 'Ready in download details' : `${transferState(d)}${Number.isFinite(ep.progress) ? ` · ${Math.floor(ep.progress*100)}%` : ''}`;
+    if (ep) $('.episode-transfer-state', row).textContent = ep.available ? 'Ready · watch it from Details' : `${transferState(d)}${Number.isFinite(ep.progress) ? ` · ${Math.floor(ep.progress*100)}%` : ''}`;
   }
   drawTransferDetails();
   refreshCommandViews();
@@ -1992,11 +1992,11 @@ function serverOffer(t, list) {
   }
   return h('div', { class: 'server-offer' },
     h('div', { class: 'server-offer-head' },
-      h('h3', {}, 'Already on the server'),
+      h('h3', {}, 'Ready to watch now'),
       isTv && rows.length > 1 && button(`Add all ${plural(episodeCount(list), 'episode')}`, 'play-btn', list)),
     h('p', { class: 'muted' }, isTv
-      ? 'Someone already has these here. Add them to your library to watch now, without downloading them again.'
-      : 'Someone already has this here. Add it to your library to watch now, without downloading it again.'),
+      ? 'These are already here. Add them to your library and watch right away.'
+      : 'This is already here. Add it to your library and watch right away.'),
     h('ul', { class: 'rows' }, rows),
     status);
 }
@@ -2053,8 +2053,7 @@ const commandViews = new Set();     // nodes with _update(), refreshed on comman
 function refreshCommandViews() {
   for (const node of commandViews) { if (!node.isConnected) commandViews.delete(node); else node._update(); }
 }
-const commandStep = (cmd, plural = false) => (/^Starting/.test(cmd?.job?.step || '')
-  ? `Starting download${plural ? 's' : ''}…` : `Finding ${plural ? 'downloads' : 'a download'}…`);
+const commandStep = (cmd) => (/^Starting/.test(cmd?.job?.step || '') ? 'Adding…' : 'Finding the best copy…');
 
 async function runDownloadCommand(body) {
   const key = commandKey(body);
@@ -2076,7 +2075,7 @@ async function runDownloadCommand(body) {
   await loadDownloads();
   patchUnifiedLibrary();
   refreshCommandViews();
-  if (['started', 'partial'].includes(cmd.job?.outcome)) toast(body.upgrade ? `${cmd.job.title}: upgrading season ${cmd.job.season}` : cmd.job.type === 'tv' ? `${cmd.job.title}: ${cmd.job.message}` : `${cmd.job.title} is downloading`);
+  if (['started', 'partial'].includes(cmd.job?.outcome)) toast(body.upgrade ? `${cmd.job.title}: upgrading season ${cmd.job.season}` : cmd.job.type === 'tv' ? `${cmd.job.title}: ${cmd.job.message}` : `${cmd.job.title} is on its way. It’ll be ready to watch soon.`);
   return cmd;
 }
 // A command's result in plain words, or null while there's nothing to say.
@@ -2183,7 +2182,7 @@ function advancedOptions(key, { exact, onExact, browse }) {
     h('summary', {}, 'Advanced options'),
     h('div', { class: 'adv-body' },
       h('div', { class: 'adv-field' }, h('label', { for: `adv-exact-${key}` }, 'Exact quality'), exactSel,
-        h('p', { class: 'adv-hint' }, 'Download looks for this resolution only, and finds nothing rather than another one.')),
+        h('p', { class: 'adv-hint' }, 'Only this resolution is looked for. If there’s none, nothing else is picked instead.')),
       browseBtn, browser));
   box.open = Boolean(advancedOpen.get(key));
   box.addEventListener('toggle', () => advancedOpen.set(key, box.open));
@@ -2195,7 +2194,7 @@ const filmExact = new Map(); // tmdb id -> exact resolution for this session
 function filmActions(t) {
   const body = () => ({ type: 'movie', tmdbId: t.id, ...(filmExact.get(t.id) ? { quality: filmExact.get(t.id) } : {}) });
   const play = h('button', { type: 'button', class: 'play-btn action-btn' });
-  const get = h('button', { type: 'button', class: 'play-btn action-btn stroke-icon' }, icon('download'), h('span', {}, 'Download'));
+  const get = h('button', { type: 'button', class: 'play-btn action-btn stroke-icon' }, icon('plus'), h('span', {}, 'Add to library'));
   const row = h('div', { class: 'action-row' }, play, get);
   const status = h('p', { class: 'action-status', role: 'status' });
   const retry = h('button', { type: 'button', class: 'chip action-retry' }, 'Try again');
@@ -2242,12 +2241,11 @@ function filmActions(t) {
       play.replaceChildren(icon('play'), h('span', {}, converting ? 'Preparing playback…' : partlyWatched(saved) ? `Resume at ${fmtTime(saved.time)}` : 'Play'));
       play.setAttribute('aria-disabled', String(Boolean(converting || playing)));
     }
-    // On the server under someone else: "Add to library" (no copy). Otherwise Download only when there's
-    // nothing to play and nothing downloading; while it runs it says what it's doing.
+    // "Add to library" either way: someone else's copy here is added at once, otherwise Marquee fetches one.
+    // Shown only when there's nothing to play and nothing on its way; while it runs it says what it's doing.
     const addable = !file && s.onServer.length > 0;
     get.hidden = addable ? false : playable || !canGet() || !t.id || (s.active.length > 0 && !cmd?.busy);
-    if (get._mode !== (addable ? 'add' : 'get')) { get._mode = addable ? 'add' : 'get'; get.firstChild.replaceWith(icon(addable ? 'plus' : 'download')); }
-    get.lastChild.textContent = addable ? (adding ? 'Adding…' : 'Add to library') : cmd?.busy ? commandStep(cmd) : 'Download';
+        get.lastChild.textContent = adding ? 'Adding…' : cmd?.busy ? commandStep(cmd) : 'Add to library';
     get.setAttribute('aria-disabled', String(Boolean(cmd?.busy || adding)));
     root.setAttribute('aria-busy', String(Boolean(cmd?.busy)));
     const result = !playable && commandResult(cmd);
@@ -2262,7 +2260,7 @@ function filmActions(t) {
   return root;
 }
 
-// Shows: one Download button opens the panel; the season and quality chosen stay while it's open.
+// Shows: one Add button opens the panel; the season and quality chosen stay while it's open.
 // Long seasons (Black Clover's 170, One Piece's 197) can download a range of episodes instead.
 const showPanels = new Map(); // tmdb id -> { open, season, profile, exact, last: { [season]: command key }, ranges: { [season]: { on, from, to } } }
 const RANGE_FROM = 40; // episodes in a season before the panel offers a range
@@ -2271,7 +2269,7 @@ function showDownload(t, { season = null } = {}) {
   if (!ps) { ps = { open: false, season, profile: savedProfile(), exact: '', last: {}, ranges: {} }; showPanels.set(t.id, ps); }
   else if (season != null && !ps.touched) ps.season = season;
   const panelId = `dl-panel-${t.id}`;
-  const toggle = h('button', { type: 'button', class: 'play-btn action-btn stroke-icon', 'aria-expanded': String(ps.open), 'aria-controls': panelId }, icon('download'), h('span', {}, 'Download'));
+  const toggle = h('button', { type: 'button', class: 'play-btn action-btn stroke-icon', 'aria-expanded': String(ps.open), 'aria-controls': panelId }, icon('plus'), h('span', {}, 'Add to library'));
   const seasonSel = h('select', { class: 'sub-select', id: `${panelId}-season`, disabled: true }, h('option', {}, 'Loading seasons…'));
   const profileSel = h('select', { class: 'sub-select', id: `${panelId}-quality` }, PROFILE_OPTIONS.map(([v, text]) => h('option', { value: v }, text)));
   profileSel.value = ps.profile;
@@ -2285,7 +2283,7 @@ function showDownload(t, { season = null } = {}) {
   const rangeRow = h('div', { class: 'dl-field dl-range' }, h('label', { for: fromIn.id }, 'From – to'),
     h('div', { class: 'dl-range-boxes' }, fromIn, h('span', { class: 'dl-range-dash', 'aria-hidden': 'true' }, '–'), toIn));
   const scopeField = h('div', { class: 'dl-field dl-scope' }, h('label', { for: scopeSel.id }, 'Episodes'), scopeSel);
-  const submit = h('button', { type: 'button', class: 'play-btn dl-submit' }, h('span', {}, 'Download Season'));
+  const submit = h('button', { type: 'button', class: 'play-btn dl-submit' }, h('span', {}, 'Add Season'));
   const quiet = h('p', { class: 'dl-quiet' });
   // Upgrade quality: the season is here but looks soft. A clearly better pack replaces it episode by episode.
   const upBtn = h('button', { type: 'button', class: 'chip dl-upgrade stroke-icon' }, icon('upgrade'), h('span', {}, 'Upgrade quality'));
@@ -2396,8 +2394,8 @@ function showDownload(t, { season = null } = {}) {
     const packBusy = s.active.some((d) => d.season === n && !(d.episodes || []).length);
     const total = se?.episodes || null;
     const parts = [ready.size && (total ? `${ready.size} of ${total} episodes ready` : `${plural(ready.size, 'episode')} ready`),
-      downloading.size ? `${downloading.size} downloading` : packBusy && 'Season pack downloading',
-      server.size && `${server.size} already on the server`].filter(Boolean);
+      downloading.size ? `${downloading.size} on the way` : packBusy && 'Season on its way',
+      server.size && `${server.size} ready to add`].filter(Boolean);
     avail.textContent = parts.join(' · ');
     avail.hidden = !parts.length;
     const complete = total && ready.size >= total;
@@ -2407,19 +2405,20 @@ function showDownload(t, { season = null } = {}) {
     const locked = Boolean(cmd?.busy);
     submit._add = addOnly && !locked ? serverOnlyEpisodes(s, n).filter((f) => server.has(f.episode)) : null;
     submit.hidden = Boolean(complete || covered) && !locked;
-    quiet.textContent = complete ? 'This season is ready to watch' : covered ? 'Remaining episodes are downloading' : '';
+    quiet.textContent = complete ? 'This season is ready to watch' : covered ? 'The rest are on their way' : '';
     quiet.hidden = !submit.hidden;
-    const rangeText = picked?.length ? (picked.length === 1 ? `Download Episode ${picked[0]}` : `Download Episodes ${picked[0]}–${picked.at(-1)}`) : 'Choose episodes';
-    submit.firstChild.textContent = locked ? commandStep(cmd, true) : submit._add ? (adding ? 'Adding…' : `Add Season ${n} to library`)
-      : useRange ? rangeText : `Download Season ${n ?? ''}`.trim();
+    const rangeText = picked?.length ? (picked.length === 1 ? `Add Episode ${picked[0]}` : `Add Episodes ${picked[0]}–${picked.at(-1)}`) : 'Choose episodes';
+    submit.firstChild.textContent = locked ? commandStep(cmd) : submit._add ? (adding ? 'Adding…' : `Add Season ${n} to library`)
+      : useRange ? rangeText : `Add Season ${n ?? ''}`.trim();
     submit.setAttribute('aria-disabled', String(locked || adding || !n || Boolean(useRange && !picked.length)));
     note.textContent = submit._add ? 'Someone already has this season here. Adding it makes no copy, so it’s ready to watch right away.'
       : useRange ? `${plural(picked.length, 'episode')} of ${bounds().first}–${bounds().last}. A season batch still serves a range: episodes outside it are skipped.`
-      : 'Smart selection chooses a suitable season download and skips episodes you already have.';
-    const addMode = serverOnlyEpisodes(s).length > 0; // the show's button: add what's here before downloading more
-    if (toggle._mode !== addMode) {
-      toggle._mode = addMode;
-      toggle.replaceChildren(icon(addMode ? 'plus' : 'download'), h('span', {}, addMode ? 'Add to library' : 'Download'));
+      : 'Marquee picks a good copy of the season and skips episodes you already have.';
+    // The show's button: "Add to library" until some of it is yours, then "More episodes" for the rest.
+    const toggleText = s.ready.length && !serverOnlyEpisodes(s).length ? 'More episodes' : 'Add to library';
+    if (toggle._mode !== toggleText) {
+      toggle._mode = toggleText;
+      toggle.replaceChildren(icon('plus'), h('span', {}, toggleText));
     }
     seasonSel.disabled = locked || !seasons?.length;
     profileSel.disabled = locked;
@@ -2468,10 +2467,10 @@ function episodeDownload(t, seasonNo, episode) {
   btn._update = () => {
     const cmd = downloadCommands.get(commandKey(b)), result = commandResult(cmd), add = Boolean(onServer());
     if (btn._mode !== add) { btn._mode = add; btn.firstChild.replaceWith(icon(add ? 'plus' : 'download')); }
-    btn.setAttribute('aria-label', `${add ? 'Add' : 'Download'} episode ${episode}${add ? ' to your library' : ''}`);
+    btn.setAttribute('aria-label', `Add episode ${episode} to your library`);
     btn.setAttribute('aria-disabled', String(Boolean(cmd?.busy || adding)));
     btn.lastChild.textContent = add ? (adding ? 'Adding…' : error ? 'Try again' : 'Add to library')
-      : cmd?.busy ? 'Finding…' : result?.retry ? 'Try again' : 'Download';
+      : cmd?.busy ? 'Finding…' : result?.retry ? 'Try again' : 'Add';
     btn.title = add ? error : result?.text || '';
   };
   commandViews.add(btn);

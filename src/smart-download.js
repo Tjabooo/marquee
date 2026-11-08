@@ -105,7 +105,7 @@ async function animeOf(job, spec) {
   if (!spec.anime?.then) return spec.anime || null;
   job.step = 'Looking up the anime…';
   spec.anime = await spec.anime.catch(() => null);
-  job.step = 'Finding a download…';
+  job.step = 'Finding the best copy…';
   return spec.anime;
 }
 
@@ -114,7 +114,7 @@ async function runFilm(job, spec, deps) {
   const have = await deps.filmHave?.();
   if (have === 'library') return done(job, 'have', 'Already in your library.');
   if (have === 'server') return done(job, 'have', 'It was already on the server, so it’s in your library now.');
-  if (have === 'downloading') return done(job, 'queued', 'Already downloading.');
+  if (have === 'downloading') return done(job, 'queued', 'Already on its way.');
   const freeBytes = await deps.freeBytes?.('movie');
   const want = { ...spec.want, type: 'movie', title: spec.title, year: spec.year, freeBytes, anime: Boolean(spec.anime), aliases: spec.anime?.keys || [] };
   const names = [spec.title, spec.originalTitle, ...(spec.anime?.queryTitles || [])].filter(Boolean);
@@ -127,12 +127,12 @@ async function runFilm(job, spec, deps) {
   }
   if (!best.pick) {
     if (failures === queries.length) throw new Error('The torrent sites aren’t answering. Try again shortly.');
-    return done(job, 'none', best.why || 'No release clearly matches this title.');
+    return done(job, 'none', best.why || 'Couldn’t find a good copy of this yet.');
   }
   job.step = 'Starting download…';
   await add(best.pick, 'movie', spec, deps);
   job.added.push({ name: best.pick.name, quality: best.pick.quality, size: best.pick.size || null, seeders: best.pick.seeders });
-  done(job, 'started', 'Downloading.');
+  done(job, 'started', 'On its way. It’ll be ready to watch soon.');
 }
 
 async function runSeason(job, spec, deps) {
@@ -156,7 +156,7 @@ async function runSeason(job, spec, deps) {
   job.queued = (wanted || [...queued]).filter((e) => queued.has(e));
   const missing = wanted ? wanted.filter((e) => !have.has(e)) : null;
   if (missing && !missing.length) {
-    return done(job, job.queued.length ? 'queued' : 'have', job.queued.length ? 'Remaining episodes are downloading.'
+    return done(job, job.queued.length ? 'queued' : 'have', job.queued.length ? 'The rest are on their way.'
       : only && only.length > 1 ? 'These episodes are ready to watch.' : only ? 'This episode is ready to watch.' : 'This season is ready to watch.');
   }
   // A chosen range (episodes 150-200 of a long anime season): a batch still serves it, with the
@@ -333,11 +333,11 @@ function finish(job, deps, packWhy) {
   const reasons = [...new Set(job.unavailable.map((u) => u.reason).filter((r) => r && r !== NOTHING))];
   const reason = reasons.length === 1 ? ` ${reasons[0]}` : '';
   if (!n && gone.length) {
-    done(job, 'none', (gone.length === 1 ? `No suitable download for episode ${gone[0]}.` : `No suitable downloads for ${episodeList(gone)}.`) + reason);
+    done(job, 'none', (gone.length === 1 ? `Couldn’t find a good copy of episode ${gone[0]}.` : `Couldn’t find good copies of ${episodeList(gone)}.`) + reason);
   } else if (!n) {
-    done(job, 'none', packWhy || 'No suitable download was found.');
+    done(job, 'none', packWhy || 'Couldn’t find a good copy of this season yet.');
   } else {
-    done(job, gone.length ? 'partial' : 'started', [`${plural(n, 'episode')} downloading`, gone.length && `${gone.length} unavailable (${episodeList(gone)})`].filter(Boolean).join(' · '));
+    done(job, gone.length ? 'partial' : 'started', [`${plural(n, 'episode')} on the way`, gone.length && `${gone.length} not out yet (${episodeList(gone)})`].filter(Boolean).join(' · '));
   }
   deps.log?.(`[smart] ${job.title} S${pad(job.season)}: ${job.message}`);
 }

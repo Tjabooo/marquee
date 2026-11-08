@@ -50,7 +50,7 @@ test('a rejected episode download is reported and does not stop later episodes',
   assert.deepEqual(unavailable(result), [1]);
   assert.match(result.unavailable[0].reason, /rejected/);
   assert.deepEqual(added, ['magnet:rejected-02']);
-  assert.match(result.message, /1 episode downloading · 1 unavailable \(E01\)/);
+  assert.match(result.message, /1 episode on the way · 1 not out yet \(E01\)/);
 });
 
 test('House aliases and alternate episode numbering are accepted without matching other House shows', async () => {

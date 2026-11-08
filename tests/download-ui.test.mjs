@@ -21,8 +21,8 @@ test('a film downloads with one press; a show uses the minimal season panel', ()
   assert.match(ui, /get\.addEventListener\('click', async \(\) => \{[\s\S]*?return start\(\);/);
   assert.match(ui, /runDownloadCommand\(body\(\)\)/);
   assert.match(ui, /api\('\/api\/downloads\/smart', jsonPost\(body\)\)/);
-  for (const text of ['\'Season\'', '\'Quality\'', 'Smart selection chooses a suitable season download and skips episodes you already have.',
-    'Download Season', 'Advanced options', 'This season is ready to watch', 'Remaining episodes are downloading', 'Retry unavailable']) assert.ok(ui.includes(text), text);
+  for (const text of ['\'Season\'', '\'Quality\'', 'Marquee picks a good copy of the season and skips episodes you already have.',
+    'Add Season', 'Advanced options', 'This season is ready to watch', 'The rest are on their way', 'Retry unavailable']) assert.ok(ui.includes(text), text);
   assert.match(ui, /\['balanced', 'Balanced · 1080p'\]/);
   assert.match(ui, /'aria-expanded': String\(ps\.open\), 'aria-controls': panelId/);
   assert.match(ui, /if \(e\.detail === 0\) seasonSel\.focus\(\)/, 'keyboard opens straight onto Season');

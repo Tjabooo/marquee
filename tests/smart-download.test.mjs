@@ -130,7 +130,7 @@ test('nothing owned: one season pack, nothing else', async () => {
     addDownload: async (d) => { added.push(d.name); return { existing: false }; },
   })));
   assert.deepEqual(added, ['Severance.S02.1080p.WEB']); assert.equal(job.outcome, 'started');
-  assert.match(job.message, /8 episodes downloading/);
+  assert.match(job.message, /8 episodes on the way/);
 });
 
 test('partly owned: the pack is added with owned episodes switched off, and gaps are filled one by one', async () => {
@@ -145,7 +145,7 @@ test('partly owned: the pack is added with owned episodes switched off, and gaps
   assert.deepEqual(trims, [[2, [1, 2, 3]]]);
   assert.deepEqual(added, ['Severance.S02.1080p.WEB', 'Severance.S02E08.1080p.WEB'], 'E08 is not in the pack, so it comes on its own');
   assert.deepEqual(job.added[0].episodes, [4, 5, 6, 7]); assert.equal(job.added[0].skipped, 3);
-  assert.equal(job.outcome, 'started'); assert.match(job.message, /5 episodes downloading/);
+  assert.equal(job.outcome, 'started'); assert.match(job.message, /5 episodes on the way/);
 });
 
 test('a pack with nothing new is removed again and the missing episodes come one by one', async () => {
@@ -176,7 +176,7 @@ test('a complete or fully queued season says so and queues nothing', async () =>
   let searches = 0;
   const deps = (have) => seasonDeps({ seasonEpisodes: aired(3), haveEpisodes: async () => have, searchTorrents: async () => { searches++; return { results: [] }; } });
   assert.match((await wait(startSmartJob({ type: 'tv', title: 'Done Show', season: 1, want: {} }, deps(owned([1, 2, 3]))))).message, /ready to watch/);
-  assert.match((await wait(startSmartJob({ type: 'tv', title: 'Busy Show', season: 1, want: {} }, deps(owned([1, 2, 3], [3]))))).message, /Remaining episodes are downloading/);
+  assert.match((await wait(startSmartJob({ type: 'tv', title: 'Busy Show', season: 1, want: {} }, deps(owned([1, 2, 3], [3]))))).message, /The rest are on their way/);
   assert.equal(searches, 0);
 });
 

@@ -5,6 +5,10 @@
     "title": "Episode names in the player",
     "items": [
       {
+        "title": "Add instead of Download",
+        "text": "Getting something new is now just Add: on a film, a show, a season or a single episode. If it's already here it's ready right away; otherwise it shows as On its way, then Almost ready, until you can press Play. A show you already watch says More episodes instead."
+      },
+      {
         "title": "Georgian and Tagalog subtitles",
         "text": "Georgian and Tagalog are now in the subtitle list, next to the other languages, wherever someone has made them for what you're watching."
       },
