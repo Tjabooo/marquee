@@ -441,6 +441,8 @@ main {
 .cast-line { margin: 0 0 22px; color: var(--paper); opacity: 0.9; max-width: 65ch; font-size: 0.94em; }
 .overview + .cast-line { margin-top: -12px; }
 .cast-label { color: var(--dust); }
+.cast-line a { padding-block: 4px; color: inherit; text-decoration: underline; text-decoration-color: var(--dust); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+.cast-line a:hover { color: var(--bulb); text-decoration-color: currentColor; }
 .sheet-content h3 { margin: 0 0 10px; font: 700 17px/1.3 var(--display); }
 .sheet-content .row { background: var(--seat); }
 .muted { color: var(--dust); margin: 0; }

@@ -1,4 +1,13 @@
 {
+  "2026-11-08-cast-links": {
+    "title": "Kolla upp skådespelarna",
+    "items": {
+      "Cast names are links": {
+        "title": "Namnen går att klicka på",
+        "text": "Tryck på en skådespelares namn under beskrivningen för att öppna personens sida på TMDB och se vad hen mer har varit med i."
+      }
+    }
+  },
   "2026-11-08-cast-line": {
     "title": "Se vilka som är med",
     "items": {

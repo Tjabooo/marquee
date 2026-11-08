@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-08-cast-links",
+    "date": "2026-11-08",
+    "title": "Look up the actors",
+    "items": [
+      {
+        "title": "Cast names are links",
+        "text": "Press an actor’s name under a description to open their TMDB page and see what else they’ve been in."
+      }
+    ]
+  },
+  {
     "id": "2026-11-08-cast-line",
     "date": "2026-11-08",
     "title": "See who's in it",

@@ -3028,9 +3028,10 @@ async function handleApi(req, res, url) {
   }
   // The main actors, for the Cast line under a description. A show counts its whole run, not just the latest season.
   if ((m = p.match(/^\/api\/title\/(movie|tv)\/(\d+)\/cast$/))) {
-    if (!tmdbOn()) return sendJson(res, 200, { cast: [] });
+    if (!tmdbOn()) return sendJson(res, 200, { cast: [], people: [] });
     const d = await cachedTmdb(m[1] === 'tv' ? `/tv/${m[2]}/aggregate_credits` : `/movie/${m[2]}/credits`, {}, 24 * 3600 * 1000);
-    return sendJson(res, 200, { cast: (d.cast || []).map((c) => c.name).filter(Boolean).slice(0, 5) });
+    const people = (d.cast || []).filter((c) => c.name && c.id).slice(0, 5).map((c) => ({ name: c.name, id: c.id }));
+    return sendJson(res, 200, { cast: people.map((c) => c.name), people });
   }
   // Anime get an Audio choice in the Download panel; `dubbed`: what this person last chose for it.
   if ((m = p.match(/^\/api\/title\/(movie|tv)\/(\d+)\/dub$/))) {

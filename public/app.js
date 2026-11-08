@@ -1943,15 +1943,17 @@ function castLine(type, id) {
   if (!id || !['movie', 'tv'].includes(type)) return null;
   const key = `${type}/${id}`;
   const line = h('p', { class: 'cast-line' });
-  const fill = (names) => {
-    line.hidden = !names?.length;
-    if (names?.length) line.replaceChildren(h('span', { class: 'cast-label' }, T('Cast:')), ` ${names.join(', ')}`);
+  const fill = (people) => {
+    line.hidden = !people?.length;
+    if (!people?.length) return;
+    line.replaceChildren(h('span', { class: 'cast-label' }, T('Cast:')), ' ', ...people.flatMap((p, i) => [i ? ', ' : '',
+      h('a', { href: `https://www.themoviedb.org/person/${encodeURIComponent(p.id)}`, target: '_blank', rel: 'noopener noreferrer' }, p.name)]));
   };
   fill(knownCasts.get(key));
   if (!knownCasts.has(key)) {
-    cachedFor(`/api/title/${key}/cast`, 60 * 60 * 1000).then(({ cast }) => {
-      knownCasts.set(key, cast);
-      fill(cast);
+    cachedFor(`/api/title/${key}/cast`, 60 * 60 * 1000).then(({ people }) => {
+      knownCasts.set(key, people);
+      fill(people);
     }).catch(() => {});
   }
   return line;
