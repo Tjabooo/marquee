@@ -12,7 +12,7 @@ const show = between('function renderShow() {', '// ---------- Downloads -------
 
 test('title sheets offer Play / Download, never a release list, quality rail or second search', () => {
   assert.match(details, /filmActions\(t\)/);
-  assert.match(details, /showDownload\(t\)/);
+  assert.match(details, /showDownload\(t, \{ onAdded: \(\) => renderDetails\(t\) \}\)/);
   assert.doesNotMatch(app, /seasonStrip|bestDownload|getSeason\(|Get only missing episodes|Find another release|api\/torrents\/recommend|api\/downloads\/season/);
   assert.equal((app.match(/openTorrents\(/g) || []).length, 2, 'only the Find torrents sheet itself and its button');
 });
@@ -28,6 +28,15 @@ test('a film downloads with one press; a show uses the minimal season panel', ()
   assert.match(ui, /if \(e\.detail === 0\) seasonSel\.focus\(\)/, 'keyboard opens straight onto Season');
 });
 
+test('a show someone else already has joins your library in one press, every season, in batches the API accepts', () => {
+  assert.match(ui, /const extra = serverOnlyEpisodes\(titleState\(t\)\);\s+if \(extra\.length\) return addEverything\(extra\);\s+ps\.open = !ps\.open;/, 'adds before any panel opens');
+  assert.match(ui, /function serverOnlyEpisodes\(s, season = null\)/);
+  assert.match(ui, /const ADD_BATCH = 400;/);
+  assert.match(ui, /files\.slice\(i, i \+ ADD_BATCH\)/);
+  assert.match(app, /await addIds\(files\);\s+await loadLibrary\(\);/, 'the no-download-rights offer uses the same batches');
+  assert.match(ui, /addingAll \? T\('Adding…'\)/);
+});
+
 test('manual releases and an exact resolution only appear inside Advanced options', () => {
   const adv = between('function advancedOptions(', '// Films: Play when');
   assert.match(adv, /h\('details', \{ class: 'advanced' \}/);
@@ -40,7 +49,7 @@ test('Library shows state and progress only; details carry speed and ETA', () =>
   assert.doesNotMatch(card, /transfer-stats|fmtEta|entry\.speed/);
   assert.doesNotMatch(css, /\.transfer-stats/);
   assert.match(css, /\.library-transfer \{ min-height: 42px;/);
-  assert.match(show, /showDownload\(\{ id: show\.tmdbId, title: show\.title, type: 'tv' \}, \{ season: open\?\.number \?\? null \}\)/);
+  assert.match(show, /showDownload\(\{ id: show\.tmdbId, title: show\.title, type: 'tv' \}, \{ season: open\?\.number \?\? null, onAdded: renderShow \}\)/);
   assert.match(show, /episodeDownload\(tvId, open\.number, number\)/);
 });
 

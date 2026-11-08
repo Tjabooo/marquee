@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-08-one-press-add",
+    "date": "2026-11-08",
+    "title": "Add a whole show in one press",
+    "items": [
+      {
+        "title": "No season to choose",
+        "text": "If someone already has a show here, Add to library now adds every episode they have straight away, across all seasons. To get anything else, press More episodes."
+      }
+    ]
+  },
+  {
     "id": "2026-11-08-ranges-and-removing",
     "date": "2026-11-08",
     "title": "Episode ranges and removing shows",
