@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-08-skip-intro-ready",
+    "date": "2026-11-08",
+    "title": "Skip intro is ready sooner",
+    "items": [
+      {
+        "title": "Ready before you press play",
+        "text": "When new episodes arrive or a season is upgraded, Marquee now finds their intros and credits in the background, so Skip intro and Up next are less likely to turn up late the first time you watch. Upgraded episodes also keep what was already found."
+      }
+    ]
+  },
+  {
     "id": "2026-11-08-rare-subtitles",
     "date": "2026-11-08",
     "title": "Rare subtitle languages show up",

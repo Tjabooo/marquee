@@ -1091,6 +1091,7 @@ async function replaceWithUpgrade(old, target) {
     await deleteMedia(old.id, 'file', { everyone: true });
     if (oldKey) accounts.markGone(oldKey);
     console.log(`[upgrade] replaced ${path.basename(old.full)} with ${path.basename(target)}`);
+    prepSeasonOf(target);
     return true;
   } catch (e) {
     console.warn(`[upgrade] ${path.basename(old.full)} kept for now: ${e.message}`);
@@ -2051,6 +2052,51 @@ async function creditPeers(file) {
     .filter((i) => !seen.has(i.episode) && seen.add(i.episode));
   return { siblings: siblings.slice(0, 2).map((i) => i.full), next: siblings.find((i) => i.episode === here.episode + 1)?.full };
 }
+
+// Skip intro and Up next for a whole season, worked out when its episodes arrive. Otherwise the first
+// play has to compare the audio itself, and the button can turn up after the intro has passed. One
+// decode at a time, so someone pressing play waits for the one in progress at most, and with longer
+// pauses while anyone is watching. Saved, so a restart carries on where it was.
+const PREP_FILE = path.join(DATA_DIR, '.marquee-prep-seasons.json');
+const seasonsToPrep = new Map((() => { try { return JSON.parse(fs.readFileSync(PREP_FILE, 'utf8')); } catch { return []; } })());
+const savePrepSeasons = () => { try { fs.writeFileSync(PREP_FILE, JSON.stringify([...seasonsToPrep])); } catch (e) { console.warn(`[prep] ${e.message}`); } };
+let prepRunning = false;
+const PREP_DELAY = 30e3; // episodes of a pack land in a burst
+function startSeasonPrep() {
+  if (prepRunning || !seasonsToPrep.size) return;
+  prepRunning = true;
+  setTimeout(() => runSeasonPrep().catch((e) => console.warn(`[prep] ${e.message}`)).finally(() => { prepRunning = false; }), PREP_DELAY).unref();
+}
+function prepSeasonOf(file) {
+  const { title, season, episode } = parseFile(file);
+  if (season == null || episode == null) return;
+  const key = shows.showKey(title);
+  seasonsToPrep.set(`${key}|${season}`, { key, season });
+  savePrepSeasons();
+  startSeasonPrep();
+}
+async function runSeasonPrep() {
+  for (let next; (next = seasonsToPrep.entries().next().value);) {
+    const [id, job] = next;
+    try { await prepSeason(job); } catch (e) { console.warn(`[prep] ${e.message}`); }
+    if (seasonsToPrep.get(id) === job) { seasonsToPrep.delete(id); savePrepSeasons(); } // more arrived meanwhile: goes again
+  }
+}
+async function prepSeason({ key, season }) {
+  await scanLibrary();
+  const files = new Set((libraryCache.all || [])
+    .filter((i) => i.season === season && i.episode != null && shows.showKey(i.title) === key)
+    .sort((a, b) => a.episode - b.episode)
+    .map((i) => converter.originalFor(i.full) || i.full));
+  for (const file of files) {
+    const { siblings } = await creditPeers(file);
+    await introFor(file, siblings);
+    await creditsFor(file, siblings);
+    await new Promise((resolve) => { setTimeout(resolve, load.watching() ? 15e3 : 1e3); });
+  }
+  if (files.size) console.log(`[prep] Skip intro and Up next ready for ${files.size} files of ${key} season ${season}`);
+}
+setTimeout(startSeasonPrep, 60e3).unref();
 
 function titleOf(file) {
   const info = parseFile(file); // a full path: "Show/Season 1/S01E05.mkv" takes the show's folder name
@@ -3750,6 +3796,7 @@ function claimCompletedTorrents(torrents) {
         if (t.progress >= 1 && availability.every(Boolean)) accounts.markClaimed(t.hash);
         if (changed) invalidateLibrary();
         if (arrived.size) announceArrivals(t.hash, arrived, claimants);
+        for (const file of new Set([...arrived.values()].flat())) prepSeasonOf(file);
       } catch {
         // A transient qBittorrent/filesystem failure is retried on the next poll.
       }

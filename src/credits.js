@@ -244,6 +244,9 @@ function decodeAudio(file, start, seconds) {
 // ---- per-file facts, cached on disk ----
 // files[path] = { key, duration, chapter, intro, vs: { siblingKey: creditsStart | null },
 //   ivs: { siblingKey: { start, end } | null } }  (v: what the probe recorded; older entries are probed again)
+// siblingKey = the sibling's tok and its path without the extension. tok is the file's identity: its key
+// when first seen, and kept by the MP4 copy that takes over from its original (see twinOf), so neither the
+// episode nor its neighbours have to compare their audio again when originals are removed.
 let stateFile = null;
 let state = { files: {} };
 let saveTimer = null;
@@ -257,6 +260,37 @@ export function initCredits({ dataDir } = {}) {
     const saved = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
     if (saved && typeof saved.files === 'object') state = { files: saved.files };
   } catch { /* first run */ }
+  for (const entry of Object.values(state.files)) addIdentity(entry);
+}
+
+const stem = (file) => file.slice(0, file.length - path.extname(file).length);
+const siblingKey = (file, entry) => `${entry.tok}|${stem(file)}`;
+
+// Entries saved before tok existed stored comparisons under "key|full path".
+function addIdentity(entry) {
+  if (entry.tok) return;
+  entry.tok = entry.key;
+  for (const part of ['vs', 'ivs']) {
+    const moved = {};
+    for (const [id, value] of Object.entries(entry[part] || {})) {
+      const at = id.lastIndexOf('|');
+      moved[`${id.slice(0, at)}|${stem(id.slice(at + 1))}`] = value;
+    }
+    entry[part] = moved;
+  }
+}
+
+// What's known about the same episode under another extension: normally the original of an MP4 copy,
+// which is the file looked at until it's removed. A copy can end a few seconds earlier than its original
+// (seen: up to 3 s), so the length only has to be close. Its chapters are worth keeping too, since a
+// browser copy can lose them.
+const TWIN_SLACK = 5;
+function twinOf(file, duration) {
+  const own = stem(file);
+  for (const [other, entry] of Object.entries(state.files)) {
+    if (other !== file && stem(other) === own && entry.probed && Math.abs(entry.duration - duration) <= TWIN_SLACK) return { file: other, entry };
+  }
+  return null;
 }
 
 function save() {
@@ -284,11 +318,14 @@ async function facts(file) {
   if (hit?.key === key && hit.probed && hit.v === FACTS) { hit.at = Date.now(); return hit; }
   if (probing.has(file)) return probing.get(file);
   const task = probe(file).then((info) => {
-    if (!info) return { key, duration: null, chapter: null, intro: null, vs: {}, ivs: {} }; // not cached: retried next time
+    if (!info) return { key, tok: key, duration: null, chapter: null, intro: null, vs: {}, ivs: {} }; // not cached: retried next time
     const same = hit?.key === key; // only the probe got older: keep the comparisons already made
-    const entry = { key, duration: info.duration, chapter: info.chapter, intro: info.intro, vs: same && hit.vs || {},
-      ivs: same && hit.ivs || {}, probed: true, v: FACTS, at: Date.now() };
+    const twin = !same && info.duration ? twinOf(file, info.duration) : null;
+    const entry = { key, tok: same && hit.tok || twin?.entry.tok || key, duration: info.duration,
+      chapter: info.chapter ?? twin?.entry.chapter ?? null, intro: info.intro ?? twin?.entry.intro ?? null,
+      vs: same && hit.vs || { ...twin?.entry.vs }, ivs: same && hit.ivs || { ...twin?.entry.ivs }, probed: true, v: FACTS, at: Date.now() };
     state.files[file] = entry;
+    if (twin && !fs.existsSync(twin.file)) delete state.files[twin.file];
     save();
     return entry;
   }).finally(() => probing.delete(file));
@@ -326,8 +363,8 @@ async function compare(fileA, a, fileB, b) {
       const t = Math.ceil((p.start + SECONDS(frame) + 0.5) * 10) / 10;
       return t > entry.duration / 2 && t < entry.duration - 1 ? t : null;
     };
-    a.vs[b.key + '|' + fileB] = m ? at(pa, m.a, a) : null;
-    b.vs[a.key + '|' + fileA] = m ? at(pb, m.b, b) : null;
+    a.vs[siblingKey(fileB, b)] = m ? at(pa, m.a, a) : null;
+    b.vs[siblingKey(fileA, a)] = m ? at(pb, m.b, b) : null;
     save();
     return true;
   })().finally(() => comparing.delete(pair));
@@ -345,7 +382,7 @@ export async function creditsFor(file, siblings = []) {
     if (path.resolve(other) === path.resolve(file)) continue;
     const peer = await facts(other);
     if (!peer?.duration || peer.duration < 300) continue;
-    const id = peer.key + '|' + other;
+    const id = siblingKey(other, peer);
     if (!(id in entry.vs)) await compare(file, entry, other, peer);
     if (entry.vs[id] != null) found.push(entry.vs[id]);
   }
@@ -368,8 +405,8 @@ async function compareOpenings(fileA, a, fileB, b) {
       const start = Math.ceil(SECONDS(frame) * 10) / 10, end = Math.floor((SECONDS(frame + m.frames) - 0.5) * 10) / 10;
       return end - start >= INTRO_MIN && end - start <= INTRO_MAX && end < entry.duration / 2 ? { start, end } : null;
     };
-    a.ivs[b.key + '|' + fileB] = span(m?.a, a);
-    b.ivs[a.key + '|' + fileA] = span(m?.b, b);
+    a.ivs[siblingKey(fileB, b)] = span(m?.a, a);
+    b.ivs[siblingKey(fileA, a)] = span(m?.b, b);
     save();
     return true;
   })().finally(() => comparing.delete(pair));
@@ -396,7 +433,7 @@ export async function introFor(file, siblings = []) {
     if (path.resolve(other) === path.resolve(file)) continue;
     const peer = await facts(other);
     if (!peer?.duration || peer.duration < 300) continue;
-    const id = peer.key + '|' + other;
+    const id = siblingKey(other, peer);
     if (!(id in entry.ivs)) await compareOpenings(file, entry, other, peer);
     if (entry.ivs[id]) found.push(entry.ivs[id]);
   }

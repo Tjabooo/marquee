@@ -163,3 +163,84 @@ test('introFor compares real encoded openings and caches them', async (t) => {
   initCredits({ dataDir: dir });
   assert.deepEqual(await introFor(e1, [e2]), i1, 'the comparison survives a restart');
 });
+
+// The MP4 "copies" here have no theme song, so getting the same intro back can only come from the
+// comparisons their originals made: a fresh comparison would find nothing.
+async function episodesWithCopies(t) {
+  const run = promisify(execFile);
+  try { await run(process.env.FFMPEG || 'ffmpeg', ['-version']); } catch { t.skip('FFmpeg unavailable'); return null; }
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-twin-'));
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  const encode = async (name, samples) => {
+    const raw = path.join(dir, `${name}.raw`), out = path.join(dir, name);
+    await fs.writeFile(raw, Buffer.from(samples.buffer));
+    await run(process.env.FFMPEG || 'ffmpeg', ['-v', 'error', '-f', 's16le', '-ar', String(RATE), '-ac', '1', '-i', raw, '-c:a', 'aac', '-b:a', '96k', '-y', out]);
+    await fs.rm(raw);
+    return out;
+  };
+  const one = synth(7), two = synth(99), other = synth(5);
+  return {
+    dir, encode, other,
+    e1: await encode('e1.mkv', one.pcm(one.scene(62), one.music(48), one.scene(240))),
+    e2: await encode('e2.mkv', two.pcm(two.music(48), two.scene(300))),
+  };
+}
+const toMp4 = (file) => file.replace(/\.mkv$/, '.mp4');
+const saved = () => new Promise((r) => setTimeout(r, 1300));
+
+test('an MP4 copy keeps the matches of the original it replaced', async (t) => {
+  const f = await episodesWithCopies(t);
+  if (!f) return;
+  initCredits({ dataDir: f.dir });
+  const i1 = await introFor(f.e1, [f.e2]);
+  const i2 = await introFor(f.e2, [f.e1]);
+  assert.ok(i1 && i2, 'the originals match');
+  await saved();
+  // Only the first original is gone: its copy still compares with the other original.
+  await f.encode('e1.mp4', f.other.pcm(f.other.scene(350)));
+  await fs.rm(f.e1);
+  assert.deepEqual(await introFor(toMp4(f.e1), [f.e2]), i1);
+  assert.deepEqual(await introFor(f.e2, [toMp4(f.e1)]), i2, 'its neighbour keeps the match as well');
+  // Now the other one too, after a restart.
+  await f.encode('e2.mp4', f.other.pcm(f.other.scene(346)));
+  await fs.rm(f.e2);
+  await saved();
+  initCredits({ dataDir: f.dir });
+  assert.deepEqual(await introFor(toMp4(f.e1), [toMp4(f.e2)]), i1);
+  assert.deepEqual(await introFor(toMp4(f.e2), [toMp4(f.e1)]), i2);
+  await saved();
+  const { files } = JSON.parse(await fs.readFile(path.join(f.dir, '.marquee-credits.json'), 'utf8'));
+  assert.ok(!(f.e1 in files) && !(f.e2 in files), 'the removed originals are forgotten');
+});
+
+test('a file of a different length is not treated as the same episode', async (t) => {
+  const f = await episodesWithCopies(t);
+  if (!f) return;
+  initCredits({ dataDir: f.dir });
+  assert.ok(await introFor(f.e1, [f.e2]));
+  await f.encode('e1.mp4', f.other.pcm(f.other.scene(320)));
+  await fs.rm(f.e1);
+  assert.equal(await introFor(toMp4(f.e1), [f.e2]), null);
+});
+
+test('comparisons saved in the old format still count', async (t) => {
+  const f = await episodesWithCopies(t);
+  if (!f) return;
+  initCredits({ dataDir: f.dir });
+  const i1 = await introFor(f.e1, [f.e2]);
+  assert.ok(i1);
+  await saved();
+  const file = path.join(f.dir, '.marquee-credits.json');
+  const state = JSON.parse(await fs.readFile(file, 'utf8'));
+  for (const [name, entry] of Object.entries(state.files)) {
+    const peer = name === f.e1 ? f.e2 : f.e1;
+    entry.ivs = Object.fromEntries(Object.values(entry.ivs).map((iv) => [`${state.files[peer].key}|${peer}`, iv]));
+    entry.vs = {};
+  }
+  for (const entry of Object.values(state.files)) delete entry.tok;
+  await fs.writeFile(file, JSON.stringify(state));
+  initCredits({ dataDir: f.dir });
+  await f.encode('e1.mp4', f.other.pcm(f.other.scene(350)));
+  await fs.rm(f.e1);
+  assert.deepEqual(await introFor(toMp4(f.e1), [f.e2]), i1);
+});
