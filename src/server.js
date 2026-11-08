@@ -25,6 +25,7 @@ import * as invites from './invites.js';
 import * as shows from './shows.js';
 import * as season from './season.js';
 import { matchesRelease, exactFirst } from './release-match.js';
+import { parseCatalogueSearch, needsExactCatalogueFallback, mergeCatalogueResults } from './title-search.js';
 import { parseName } from './release-name.js';
 import * as anime from './anime.js';
 import { downloadDestination, downloadFilePath } from './download-paths.js';
@@ -3042,12 +3043,25 @@ async function handleApi(req, res, url) {
   if (p === '/api/search') {
     const q = (url.searchParams.get('q') || '').trim().slice(0, 100);
     if (!q) return sendJson(res, 200, { results: [], svt: [] });
+    const search = parseCatalogueSearch(q);
+    const catalogue = [tmdbForViewer('/search/multi', { query: search.title, include_adult: 'false' })];
+    // Very short names ("9", "It", "Up") are easily buried in TMDB's multi-search. A year suffix is
+    // also a filter, not part of the title. Ask the type-specific endpoints so exact matches can win.
+    if (needsExactCatalogueFallback(search)) {
+      catalogue.push(tmdbForViewer('/search/movie', {
+        query: search.title, include_adult: 'false', ...(search.year ? { year: String(search.year) } : {}),
+      }));
+      catalogue.push(tmdbForViewer('/search/tv', {
+        query: search.title, include_adult: 'false', ...(search.year ? { first_air_date_year: String(search.year) } : {}),
+      }));
+    }
     // SVT Play may answer late or not at all: its titles are a bonus, never a reason to wait long.
-    const [data, svtHits] = await Promise.all([
-      tmdbForViewer('/search/multi', { query: q, include_adult: 'false' }),
-      Promise.race([svt.svtSearch(q), new Promise((r) => setTimeout(() => r([]), 5000))]),
+    const [answers, svtHits] = await Promise.all([
+      Promise.all(catalogue),
+      Promise.race([svt.svtSearch(search.title), new Promise((r) => setTimeout(() => r([]), 5000))]),
     ]);
-    return sendJson(res, 200, { results: data.results.filter(onlyScreen).map((x) => mapTitle(x)), svt: svtHits });
+    const results = mergeCatalogueResults(search, answers.map((data) => data.results || []));
+    return sendJson(res, 200, { results: results.filter(onlyScreen).map((x) => mapTitle(x)), svt: svtHits });
   }
   // ---- documentaries ----
   if (p === '/api/docs/home') return sendJson(res, 200, await docs.home());
