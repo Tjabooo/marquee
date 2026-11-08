@@ -26,3 +26,11 @@ export function matchesRelease(query, releaseName, parseName) {
   }
   return true;
 }
+
+// Releases of exactly what was searched for come first: the film "9" (2009) would otherwise drown in
+// anything else from 2009 with more seeders. The order within each group stays as it was.
+export function exactFirst(query, results, parseName) {
+  const exact = [], rest = [];
+  for (const r of results) (matchesRelease(query, r.name, parseName) ? exact : rest).push(r);
+  return [...exact, ...rest];
+}

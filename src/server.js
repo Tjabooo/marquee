@@ -24,7 +24,7 @@ import * as clips from './clips.js';
 import * as invites from './invites.js';
 import * as shows from './shows.js';
 import * as season from './season.js';
-import { matchesRelease } from './release-match.js';
+import { matchesRelease, exactFirst } from './release-match.js';
 import { parseName } from './release-name.js';
 import * as anime from './anime.js';
 import { downloadDestination, downloadFilePath } from './download-paths.js';
@@ -3192,7 +3192,7 @@ async function handleApi(req, res, url) {
       }
     }
     return sendJson(res, 200, url.searchParams.get('strict') === '1'
-      ? { ...found, results: found.results.filter((r) => matchesRelease(query, r.name, parseName) || (ctx && animeMatches(query, r.name, ctx))) } : found);
+      ? { ...found, results: found.results.filter((r) => matchesRelease(query, r.name, parseName) || (ctx && animeMatches(query, r.name, ctx))) } : { ...found, results: exactFirst(query, found.results, parseName) });
   }
   if (p === '/api/torrents/magnet') {
     return sendJson(res, 200, { magnet: await torrents.magnetFor1337x(url.searchParams.get('ref')) });
