@@ -357,6 +357,39 @@ function mapTitle(x, knownType) {
 
 const onlyScreen = (x) => x.media_type === 'movie' || x.media_type === 'tv';
 
+function exactCatalogueHit(search, item) {
+  const expected = shows.showKey(search.title);
+  const names = [item.title, item.original_title, item.name, item.original_name].filter(Boolean);
+  const date = item.release_date || item.first_air_date || '';
+  return names.some((name) => shows.showKey(name) === expected)
+    && (!search.year || date.startsWith(String(search.year)));
+}
+
+function catalogueParams(search, type, page = 1) {
+  return {
+    query: search.title,
+    include_adult: 'false',
+    page: String(page),
+    ...(search.year && type === 'movie' ? { primary_release_year: String(search.year) } : {}),
+    ...(search.year && type === 'tv' ? { first_air_date_year: String(search.year) } : {}),
+  };
+}
+
+// TMDB text search is relevance-ranked, so a one-character exact title can be several pages deep.
+// Search a few pages in small parallel batches, but only for short/year-qualified queries.
+async function exactCataloguePages(search, type, first) {
+  const pages = [first];
+  if ((first.results || []).some((item) => exactCatalogueHit(search, item))) return pages;
+  const lastPage = Math.min(Math.max(1, Number(first.total_pages) || 1), 8);
+  for (let start = 2; start <= lastPage; start += 3) {
+    const numbers = Array.from({ length: Math.min(3, lastPage - start + 1) }, (_, i) => start + i);
+    const batch = await Promise.all(numbers.map((page) => tmdbForViewer(`/search/${type}`, catalogueParams(search, type, page))));
+    pages.push(...batch);
+    if (batch.some((data) => (data.results || []).some((item) => exactCatalogueHit(search, item)))) break;
+  }
+  return pages;
+}
+
 // ---------- discover ----------
 const tmdbCache = new Map(); // key -> { at, promise }
 // The same TMDB answer with descriptions and genre names in the viewer's language. Titles stay as they are:
@@ -3044,22 +3077,25 @@ async function handleApi(req, res, url) {
     const q = (url.searchParams.get('q') || '').trim().slice(0, 100);
     if (!q) return sendJson(res, 200, { results: [], svt: [] });
     const search = parseCatalogueSearch(q);
-    const catalogue = [tmdbForViewer('/search/multi', { query: search.title, include_adult: 'false' })];
-    // Very short names ("9", "It", "Up") are easily buried in TMDB's multi-search. A year suffix is
-    // also a filter, not part of the title. Ask the type-specific endpoints so exact matches can win.
-    if (needsExactCatalogueFallback(search)) {
-      catalogue.push(tmdbForViewer('/search/movie', {
-        query: search.title, include_adult: 'false', ...(search.year ? { year: String(search.year) } : {}),
-      }));
-      catalogue.push(tmdbForViewer('/search/tv', {
-        query: search.title, include_adult: 'false', ...(search.year ? { first_air_date_year: String(search.year) } : {}),
-      }));
-    }
     // SVT Play may answer late or not at all: its titles are a bonus, never a reason to wait long.
-    const [answers, svtHits] = await Promise.all([
-      Promise.all(catalogue),
-      Promise.race([svt.svtSearch(search.title), new Promise((r) => setTimeout(() => r([]), 5000))]),
-    ]);
+    const svtHitsPromise = Promise.race([svt.svtSearch(search.title), new Promise((r) => setTimeout(() => r([]), 5000))]);
+    const multiPromise = tmdbForViewer('/search/multi', { query: search.title, include_adult: 'false' });
+    let answers;
+    if (needsExactCatalogueFallback(search)) {
+      const [multi, movieFirst, tvFirst] = await Promise.all([
+        multiPromise,
+        tmdbForViewer('/search/movie', catalogueParams(search, 'movie')),
+        tmdbForViewer('/search/tv', catalogueParams(search, 'tv')),
+      ]);
+      const [moviePages, tvPages] = await Promise.all([
+        exactCataloguePages(search, 'movie', movieFirst),
+        exactCataloguePages(search, 'tv', tvFirst),
+      ]);
+      answers = [multi, ...moviePages, ...tvPages];
+    } else {
+      answers = [await multiPromise];
+    }
+    const svtHits = await svtHitsPromise;
     const results = mergeCatalogueResults(search, answers.map((data) => data.results || []));
     return sendJson(res, 200, { results: results.filter(onlyScreen).map((x) => mapTitle(x)), svt: svtHits });
   }
