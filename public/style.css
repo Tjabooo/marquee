@@ -1716,6 +1716,13 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
   border: 1px dashed var(--line); border-radius: 12px; }
 .dl-result { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 12px; }
 .dl-result:has(.dl-status:empty):has(.dl-retry[hidden]) { display: none; }
+.version-pick { display: grid; gap: 6px; max-width: 360px; margin-top: 14px; }
+.version-pick label { font-size: 13px; font-weight: 500; color: var(--dust); }
+.version-pick .sub-select { width: 100%; min-width: 0; height: 44px; padding-left: 12px; background-color: var(--velvet); }
+.season-versions { margin: 0 0 14px; }
+.season-versions .version-pick { margin-top: 0; }
+.version-hint { margin: 6px 0 0; font-size: 12px; line-height: 1.5; }
+.tor-have { color: var(--bulb); }
 .dl-upgrade-box { display: grid; justify-items: start; gap: 8px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
 .dl-upgrade-box[hidden], .dl-upgrade[hidden], .dl-upgrade-note[hidden] { display: none; }
 .dl-upgrade { display: inline-flex; align-items: center; gap: 6px; height: 44px; color: var(--paper); }

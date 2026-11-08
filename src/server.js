@@ -31,6 +31,7 @@ import { downloadDestination, downloadFilePath } from './download-paths.js';
 import { fetchTorrentFile, TorrentFetchError } from './torrent-fetch.js';
 import { filterMode, filterApplies, firstAdult, torrentFileNames, BLOCKED_MESSAGE } from './content-filter.js';
 import * as smart from './smart-download.js';
+import * as versions from './versions.js';
 import { planEpisodeOrder } from './episode-order.js';
 import { PROFILES } from './recommend.js';
 import * as accounts from './accounts.js';
@@ -124,7 +125,7 @@ const jellyfin = createJellyfin({
   resolveItem: jellyfinItem,
   sendVideo, sendJson, readJson, clientAddress,
   userById: accounts.userById,
-  saveProgress: accounts.saveProgress,
+  saveProgress: (...args) => saveProgressAllVersions(...args),
   progressOf: accounts.progressOf,
   readSubtitle: subtitles.readSubtitle,
   displayName: (user) => user.name || accounts.displayNameFor(user.email) || 'Home network',
@@ -636,6 +637,8 @@ async function libraryView(user) {
     const mediaKey = accounts.mediaKey(full);
     const entry = mediaKey && mine.get(mediaKey);
     const base = { ...rest, mediaKey, ...showOf.get(rest.id), ...filmOf.get(rest.id) };
+    Object.assign(base, versions.versionInfo(base));
+    base.versionKey = versions.versionKey(base);
     if (!entry) { server.push(base); continue; }
     own.push({
       ...base,
@@ -647,7 +650,29 @@ async function libraryView(user) {
     });
   }
   const myShows = new Set([...own, ...server].map((i) => i.show).filter(Boolean));
-  return { items: own, server, shows: showList.filter((s) => myShows.has(s.id)) };
+  rememberVersions([...own, ...server]);
+  // Versions (versions.js): one item per film or episode, the others under `versions`.
+  return { items: versions.collapseVersions(own), server, shows: showList.filter((s) => myShows.has(s.id)) };
+}
+
+// Media key -> the media keys of every version of the same title (itself included), so a watch
+// position saved on one version is saved on all of them (web, TV app, Jellyfin alike).
+const versionSiblings = new Map();
+function rememberVersions(items) {
+  const groups = new Map();
+  for (const i of items) if (i.versionKey && i.mediaKey) groups.set(i.versionKey, [...(groups.get(i.versionKey) || []), i.mediaKey]);
+  for (const keys of groups.values()) {
+    if (keys.length > 1) for (const k of keys) versionSiblings.set(k, keys);
+    else versionSiblings.delete(keys[0]);
+  }
+  if (versionSiblings.size > 20000) versionSiblings.clear();
+}
+function saveProgressAllVersions(userId, ref, time, duration) {
+  accounts.saveProgress(userId, ref, time, duration);
+  const key = /^m:(.+)$/.exec(String(ref || ''))?.[1];
+  for (const other of versionSiblings.get(key) || []) {
+    if (other !== key) accounts.saveProgress(userId, `m:${other}`, time, duration);
+  }
 }
 
 // The Jellyfin plugin's view: the Library tab's items plus the subtitles saved beside each video.
@@ -959,16 +984,17 @@ async function startSmartFor(user, body) {
     ? anime.buildContext(type, tmdbId, tmdb, { details }).catch((e) => { console.warn(`[anime] ${title}: ${e.message}`); return null; })
     : null; // a promise: the job waits for it, the Download button doesn't
   const upgrade = type === 'tv' && body.upgrade ? await upgradeSource(user, title, seasonNo) : null;
+  const want = downloadWant(user, body);
   const id = smart.startSmartJob({
     type, title, year, season: seasonNo, episodes: upgrade || !episodes?.length ? null : episodes, range: !upgrade && range, requester: user.id, subs, anime: upgrade ? null : animeCtx,
     upgrade: upgrade && { episodes: upgrade.episodes, bytes: upgrade.bytes, names: upgrade.names, quality: upgrade.quality },
     originalTitle: original && original !== title && /^[\p{Script=Latin}\d\s\p{P}]+$/u.test(original) ? original : null,
-    want: downloadWant(user, body),
+    want,
   }, {
     parseName, searchTorrents: torrents.searchTorrents, magnetFor1337x: torrents.magnetFor1337x,
     addDownload: (opts) => addDownload({ ...opts, user, film, show }),
     wantSubtitles: (link, list, name) => { subtitles.wantSubtitles(link, list, name); setTimeout(checkSubtitleWants, 30_000); },
-    filmHave: () => filmHave(tmdbId, user), freeBytes: freeBytesFor,
+    filmHave: () => filmHave(tmdbId, user, want.quality), freeBytes: freeBytesFor,
     seasonEpisodes: (t, y, n) => shows.seasonEpisodes(t, y, n, tmdb),
     haveEpisodes: (key, n, ctx) => haveEpisodes(key, n, user, ctx),
     trimPack: (link, n, owned, ctx) => trimSeasonPack(link, n, owned, { ctx }), removePack: removeNewPack,
@@ -1142,12 +1168,15 @@ async function freeBytesFor(type) {
 
 // A film you already have, can have (someone else's copy on the server joins your library), or that
 // is already downloading (you're added to its requesters, as when adding the same magnet twice).
-async function filmHave(tmdbId, user) {
+// quality: an exact resolution was asked for (Advanced). A copy in another resolution doesn't count:
+// the new one becomes a version of the film (versions.js).
+async function filmHave(tmdbId, user, quality = null) {
   const items = await libraryVisibleItems(await scanLibrary(), user);
   if (items?.length) {
     const ids = await shows.filmInfo(items.map((i) => ({ ...i, mediaKey: accounts.mediaKey(i.full) })), null);
     const mine = accounts.libraryOf(user.id);
-    const matches = items.filter((i) => Number(ids.get(i.id)?.tmdbId) === Number(tmdbId) && !ids.get(i.id)?.movieAmbiguous);
+    const matches = items.filter((i) => Number(ids.get(i.id)?.tmdbId) === Number(tmdbId) && !ids.get(i.id)?.movieAmbiguous
+      && (!quality || versions.sameQuality(versions.qualityOf(i.file), quality)));
     if (matches.some((i) => mine.has(accounts.mediaKey(i.full)))) return 'library';
     if (matches.length) {
       for (const i of matches) accounts.addEntry(user.id, accounts.mediaKey(i.full), 'added');
@@ -1201,7 +1230,85 @@ async function trimSeasonPack(link, seasonNo, owned, { timeout = 45000, ctx = nu
   }
   torrentFilesCache.delete(hash);
   torrentInventory.at = 0;
-  return { covered, skipped: covered.size ? skip.length : 0 };
+  return { covered, skipped: covered.size ? skip.length : 0, allOwned: !covered.size && skip.length > 0 };
+}
+
+// ---- versions: no second copy in the same resolution (versions.js) ----
+// A manual download (release list, Find torrents, a pasted link) of a film or episode that's already
+// here in the same resolution is refused with what's here and what to do instead. Another resolution
+// is fine: it becomes a version. Season packs aren't refused (they may fill gaps): the episodes already
+// here in that resolution are switched off instead. Returns { seasonNo, owned } for that.
+async function newVersionCheck(user, { link, name, film, show, mediaType }) {
+  // The same torrent again (already in qBittorrent, or its files still here) is shared or resumed, not copied.
+  const hash = accounts.magnetHash(link);
+  if (hash && (await qbit(`/api/v2/torrents/info?hashes=${hash}`).catch(() => []))[0]) return null;
+  const items = await libraryVisibleItems(await scanLibrary(), user);
+  if (!items?.length) return null;
+  const quality = versions.qualityOf(name);
+  const mine = accounts.libraryOf(user.id);
+  const label = quality === '2160p' ? '4K' : quality || 'this quality';
+  const plainName = (n) => String(n).replace(/\.[a-z0-9]{2,4}$/i, '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+  const release = plainName(name);
+  const ownFiles = (i) => plainName(i.file) === release || plainName(path.basename(path.dirname(i.full))) === release;
+  const same = (i) => versions.sameQuality(versions.qualityOf(i.file), quality) && !ownFiles(i);
+  const refuse = (title, found) => {
+    const yours = found.some((i) => mine.has(accounts.mediaKey(i.full)));
+    throw new HttpError(409, `${title} is already ${yours ? 'in your library' : 'on the server'} in ${label}. `
+      + (yours ? 'Pick a release in another quality (it becomes a version you can switch to), or use Upgrade quality to replace it.'
+        : 'Add it to your library instead of downloading it again.'));
+  };
+  const identity = torrentIdentity(name);
+  const isShow = show || mediaType === 'tv' || identity.season != null;
+  if (!isShow) {
+    const parsed = parseName(name, { file: false });
+    const films = items.filter((i) => i.season == null);
+    if (!films.length) return null;
+    const info = await shows.filmInfo(films.map((i) => ({ ...i, mediaKey: accounts.mediaKey(i.full) })), null);
+    const found = films.filter((i) => {
+      const f = info.get(i.id);
+      if (film) return Number(f?.tmdbId) === Number(film.id) && !f?.movieAmbiguous;
+      return shows.showKey(f?.filmTitle || i.title) === shows.showKey(parsed.title)
+        && (!parsed.year || !(f?.year || i.year) || Math.abs((f?.year || i.year) - parsed.year) <= 1);
+    }).filter(same);
+    if (found.length) refuse(film?.title || parsed.title, found);
+    return null;
+  }
+  const seasonNo = identity.season;
+  if (seasonNo == null) return null;
+  const key = shows.showKey(show?.name || identity.title || '');
+  if (!key) return null;
+  const here = items.filter((i) => i.season === seasonNo && i.episode != null && season.sameShow(i.title, key) && same(i));
+  const eps = season.episodesIn(name, seasonNo);
+  if (eps.length) {
+    const found = here.filter((i) => eps.includes(i.episode));
+    if (eps.every((e) => found.some((i) => i.episode === e))) {
+      refuse(`${show?.name || identity.title} S${String(seasonNo).padStart(2, '0')}${eps.length === 1 ? `E${String(eps[0]).padStart(2, '0')}` : ''}`, found);
+    }
+    return null;
+  }
+  return { seasonNo, owned: new Set(here.map((i) => i.episode)), here: here.map((i) => ({ full: i.full, episode: i.episode })) };
+}
+// Once the pack's file list is known: files already on disk at the pack's own paths are the pack
+// itself (a re-add or a resume), not other copies, so they never count as owned.
+async function trimDuplicatePack(link, { seasonNo, here }) {
+  const hash = accounts.magnetHash(link);
+  if (!hash) return;
+  let files = [], t = null;
+  for (const end = Date.now() + 45000; Date.now() < end && !files.length;) {
+    try { [t] = await qbit(`/api/v2/torrents/info?hashes=${hash}`); files = t ? await qbit(`/api/v2/torrents/files?hash=${hash}`) : []; } catch { files = []; }
+    if (!files.length) await new Promise((r) => setTimeout(r, 1500));
+  }
+  if (!t || !files.length) return;
+  const own = new Set(files.map((f) => path.resolve(torrentFilePath(t, f)).toLowerCase()));
+  const owned = new Set(here.filter((i) => !own.has(path.resolve(i.full).toLowerCase())).map((i) => i.episode));
+  if (!owned.size) return;
+  trimSeasonPack(link, seasonNo, owned).then(async (trim) => {
+    if (!trim?.covered) return;
+    if (trim.allOwned) {
+      await removeNewPack(link);
+      console.log(`[versions] removed a season ${seasonNo} pack: every episode was already here in that quality`);
+    } else if (trim.skipped) console.log(`[versions] season ${seasonNo} pack: ${trim.skipped} episodes already here in that quality switched off`);
+  }).catch((e) => console.warn(`[versions] ${e.message}`));
 }
 
 async function removeNewPack(link) {
@@ -2251,7 +2358,7 @@ async function handleApi(req, res, url) {
   if (p === '/api/me/progress') {
     if (req.method === 'POST') {
       const { ref, time, duration, watched, about, room } = await readJson(req);
-      accounts.saveProgress(user.id, ref, time, duration);
+      saveProgressAllVersions(user.id, ref, time, duration);
       // Watch time for Wrapped and Popular on Marquee (see social.js), with who was in the same room.
       if (about && typeof about === 'object') {
         const companions = /^[A-Za-z0-9_-]{24}$/.test(String(room || '')) ? watchRooms.companions(room, user.id) : [];
@@ -2660,8 +2767,11 @@ async function handleApi(req, res, url) {
         if (!Number.isSafeInteger(id) || id <= 0) throw new HttpError(400, 'Invalid show identity.');
         show = await tmdb(`/tv/${id}`);
       }
-      await addDownload({ link: body.link, user, name, film, show,
+      const check = name ? await newVersionCheck(user, { link: String(body.link || ''), name, film, show, mediaType: body.mediaType }) : null;
+      const added = await addDownload({ link: body.link, user, name, film, show,
         mediaType: ['tv', 'movie'].includes(body.mediaType) ? body.mediaType : null });
+      // A season pack: episodes already here in the same resolution are switched off once its file list arrives.
+      if (check?.owned?.size && added && !added.existing) trimDuplicatePack(String(body.link || ''), check).catch((e) => console.warn(`[versions] ${e.message}`));
       activity.record(req, 'download', name || 'a torrent link');
       // Subtitles chosen in torrent search are fetched when the download completes.
       if (Array.isArray(body.subs) && body.subs.length) {

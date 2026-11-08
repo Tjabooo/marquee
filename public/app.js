@@ -172,6 +172,92 @@ const canDownload = () => state.status.downloads && state.me?.canDownload !== fa
 const prefs = () => state.me?.settings || {};
 
 // Local files (library + finished downloads) that belong to a TMDB title.
+// ---------- versions (src/versions.js) ----------
+// Two files of one film or episode (a 4K and a 1080p) arrive from the server as one item with
+// `versions`, best first. Which one plays here: the one you picked for the title, else the one you
+// picked for its season (matched by quality and source, so one choice covers a season pack), else
+// the best one, or on a phone the lightest 720p/1080p one. Picks are kept per device.
+const VERSION_PICKS = 'marquee:versions';
+let versionPicks = {};
+try { versionPicks = JSON.parse(localStorage.getItem(VERSION_PICKS)) || {}; } catch { /* blocked */ }
+const versionSeasonKey = (f) => (/^ep:/.test(f?.versionKey || '') ? f.versionKey.replace(/^ep:/, 'season:').replace(/:\d+$/, '') : null);
+function chooseVersion(list) {
+  const picked = list.find((v) => v.mediaKey === versionPicks[list[0].versionKey]);
+  if (picked) return picked;
+  const season = versionSeasonKey(list[0]);
+  const bySeason = season && list.find((v) => v.versionSignature === versionPicks[season]);
+  if (bySeason) return bySeason;
+  if (matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) <= 600) {
+    return [...list].reverse().find((v) => ['720p', '1080p'].includes(v.versionQuality)) || list.at(-1);
+  }
+  return list[0];
+}
+// Deleted files leave at once: a title keeps its other versions.
+function dropFromLibrary(ids) {
+  const gone = new Set(ids);
+  const items = (state.libraryItems || state.library).flatMap((x) => {
+    if (!(x.versions?.length > 1)) return gone.has(x.id) ? [] : [x];
+    const left = x.versions.filter((v) => !gone.has(v.id));
+    return !left.length ? [] : left.length === 1 ? [left[0]] : [{ ...left[0], versions: left }];
+  });
+  state.libraryItems = items;
+  state.library = items.map(applyVersion);
+}
+const applyVersion = (item) => (item.versions?.length > 1 ? { ...chooseVersion(item.versions), versions: item.versions } : item);
+// Every file behind these items (all versions), for deleting or keeping a whole title or season.
+const allVersions = (files) => files.flatMap((f) => (f.versions?.length > 1 ? f.versions : [f]));
+// season: the choice applies to the whole season (and replaces per-episode choices in it).
+function setVersionPick(f, v, { season = false } = {}) {
+  const sk = versionSeasonKey(f);
+  if (season && sk) {
+    versionPicks[sk] = v.versionSignature;
+    const prefix = sk.replace(/^season:/, 'ep:') + ':';
+    for (const k of Object.keys(versionPicks)) if (k.startsWith(prefix)) delete versionPicks[k];
+  } else if (f.versionKey) versionPicks[f.versionKey] = v.mediaKey;
+  const keys = Object.keys(versionPicks);
+  if (keys.length > 500) for (const k of keys.slice(0, keys.length - 500)) delete versionPicks[k];
+  try { localStorage.setItem(VERSION_PICKS, JSON.stringify(versionPicks)); } catch { /* blocked */ }
+  state.library = (state.libraryItems || state.library).map(applyVersion);
+  updateUpNext();
+}
+// A season where episodes have versions: one choice for all of them, by quality and source
+// ("4K · WEB-DL" / "1080p · BluRay"); episodes without that version keep theirs.
+function seasonVersionPick(ready, onPicked) {
+  const versioned = ready.filter((f) => f.versions?.length > 1);
+  if (!versioned.length) return null;
+  const options = new Map();
+  for (const v of versioned.flatMap((f) => f.versions)) {
+    if (!options.has(v.versionSignature)) options.set(v.versionSignature, v.versionLabel.replace(/ · [\d.]+ [GM]B$/, ''));
+  }
+  if (options.size < 2) return null;
+  const counts = new Map();
+  for (const f of versioned) counts.set(f.versionSignature, (counts.get(f.versionSignature) || 0) + 1);
+  const current = [...counts].sort((a, b) => b[1] - a[1])[0][0];
+  const n = versioned.length;
+  return h('div', { class: 'season-versions' }, versionSelect({
+    id: `ver-${versionSeasonKey(versioned[0])}`, label: 'Quality for this season',
+    options: [...options].map(([value, label]) => ({ value, label })), value: current,
+    onPick: (sig) => { setVersionPick(versioned[0], { versionSignature: sig }, { season: true }); patchUnifiedLibrary(); onPicked(); },
+  }), h('p', { class: 'muted version-hint' }, `${plural(n, 'episode has', 'episodes have')} more than one version. Your choice is remembered on this device.`));
+}
+// A film with versions: which one Play starts.
+function filmVersionPick(t, onPicked) {
+  const f = matchesFor(t).find((x) => x.kind === 'lib' && x.versions?.length > 1);
+  if (!f) return null;
+  return versionSelect({
+    id: `ver-${f.versionKey}`, options: f.versions.map((v) => ({ value: v.mediaKey, label: v.versionLabel })), value: f.mediaKey,
+    onPick: (key) => { setVersionPick(f, f.versions.find((v) => v.mediaKey === key)); patchUnifiedLibrary(); onPicked(); },
+  });
+}
+// A small "Quality" select for a title or a season with versions. options: [{ value, label }].
+function versionSelect({ id, label = 'Quality', options, value, onPick }) {
+  const sel = h('select', { class: 'sub-select version-select', id },
+    options.map((o) => h('option', { value: o.value }, o.label)));
+  sel.value = value;
+  sel.addEventListener('change', () => onPick(sel.value));
+  return h('div', { class: 'version-pick' }, h('label', { for: id }, label), sel);
+}
+
 function localFiles() {
   return [
     ...state.library.map((f) => ({ ...f, kind: 'lib', key: f.id, done: true })),
@@ -285,7 +371,9 @@ function resumeKey(f) { return `resume:${f.kind}:${f.key}`; }
 // Library videos go by their media key, which stays the same when the MP4 copy replaces the original.
 const progressRef = (f) => (f.mediaKey ? `m:${f.mediaKey}` : `${f.kind === 'dl' ? 'd' : 'l'}:${f.key}`);
 function savedProgress(f) {
-  const synced = state.progress[progressRef(f)];
+  // Versions share one watch position (the server saves it on all of them): the newest one counts.
+  const synced = (f.versions?.length > 1 ? f.versions.map((v) => state.progress[progressRef(v)]).filter(Boolean)
+    .sort((a, b) => (b.at || 0) - (a.at || 0))[0] : null) || state.progress[progressRef(f)];
   if (synced) return synced;
   try { return JSON.parse(localStorage.getItem(resumeKey(f))); } catch { return null; }
 }
@@ -428,11 +516,12 @@ function expiryBits(f) {
 // Pushes back when these library videos are deleted. Returns the updated items (or [] on failure).
 async function extendItems(files) {
   try {
-    const { entries } = await api('/api/library/extend', jsonPost({ ids: files.map((f) => f.id || f.key) }));
+    const { entries } = await api('/api/library/extend', jsonPost({ ids: [...new Set(allVersions(files).map((f) => f.id || f.key))] }));
     const byKey = new Map(entries.map((e) => [e.key, e]));
     for (const f of state.library) {
       const e = byKey.get(f.mediaKey);
       if (e) Object.assign(f, { expiresAt: e.expiresAt, extensions: e.extensions });
+      for (const v of f.versions || []) { const ve = byKey.get(v.mediaKey); if (ve) Object.assign(v, { expiresAt: ve.expiresAt, extensions: ve.extensions }); }
     }
     toast(files.length === 1 ? `Kept ${extendDays()} more days` : `Kept ${plural(files.length, 'video')} ${extendDays()} more days`);
     if (state.view === 'library') renderLibrary();
@@ -448,7 +537,8 @@ function fileRow(f) {
   const saved = savedProgress(f);
   const pct = saved?.duration ? Math.min(100, (saved.time / saved.duration) * 100) : 0;
   const meta = f.done
-    ? [f.format?.toUpperCase() || (f.name?.match(/\.(\w{2,4})$/)?.[1] || '').toUpperCase(), fmtBytes(f.size)]
+    ? (f.versionKey && (f.versions?.length > 1 || f.versionOf) ? [f.versionLabel]
+      : [f.format?.toUpperCase() || (f.name?.match(/\.(\w{2,4})$/)?.[1] || '').toUpperCase(), fmtBytes(f.size)])
     : [`Downloading ${Math.floor(f.progress * 100)}%`];
   return h('li', { class: 'row' },
     h('div', { class: 'row-text' },
@@ -819,7 +909,8 @@ function loadLibrary() {
       const signature = libraryContentSignature(data);
       const changed = signature !== librarySignature || state.libraryError !== null;
       if (signature !== librarySignature) {
-        state.library = data.items;
+        state.libraryItems = data.items;
+        state.library = data.items.map(applyVersion);
         state.server = data.server || [];
         state.libraryShows = data.shows || [];
         librarySignature = signature;
@@ -1335,6 +1426,7 @@ function renderShow() {
     for (const {d,ep} of byEpisode.values()) rows.push({ number: ep.episode, node: h('li', { class: 'row episode-row pending-episode', 'data-transfer-hash': d.hash, 'data-episode-number': ep.episode, 'data-episode-season': ep.season }, thumb(ep.episode), h('div', { class: 'row-text' }, h('div', { class: 'row-title' }, epTitle(ep.episode)), h('div', { class: 'row-meta episode-transfer-state' }, ep.available ? 'Ready in download details' : `${transferState(d)}${Number.isFinite(ep.progress) ? ` · ${Math.floor(ep.progress*100)}%` : ''}`)), h('button', { class: 'chip', onclick: e => openTransferDetails({ ...entry, transfers: [d] }, e.currentTarget) }, 'Details')) });
     if (Number.isInteger(open.total) && open.total > 0 && open.total <= 1000) for (let number = open.first || 1; number < (open.first || 1) + open.total; number++) if (!rows.some(row => row.number === number)) rows.push({ number, node: h('li', { class: 'row episode-row missing-episode' }, thumb(number), h('div', { class: 'row-text' }, h('div', { class: 'row-title' }, epTitle(number)), h('div', { class: 'row-meta' }, 'Not in library')), tvId && episodeDownload(tvId, open.number, number)) });
     content = [!single && h('button', { class: 'chip season-back', onclick: () => pick(null) }, icon('back'), 'All seasons'), h('h3', {}, open.name),
+      seasonVersionPick(ready, () => renderShow()),
       h('div', { class: 'season-summary' }, h('p', { class: 'muted' }, `${open.total ? `${episodeCount(ready)} of ${open.total}` : episodeCount(ready)} episodes ready`),
         ready.length > 0 && h('button', { type: 'button', class: 'chip delete-many travel-season', onclick: e => openTravelSeason(ready, `${show.title} · ${open.name}`, e.currentTarget) }, icon('phone'), 'Season to phone'), deleteSeason),
       ...pendingFor(open.number).filter(d => !(d.episodes || []).some(ep => ep.season === open.number)).map(d => h('div', { class: 'pack-transfer' }, h('strong', {}, `${open.name} pack`), h('p', {}, 'Episode availability is shown when individual files are verified.'), h('button', { class: 'chip', onclick: e => openTransferDetails({ ...entry, transfers: [d] }, e.currentTarget) }, 'Season pack details'))),
@@ -1820,7 +1912,8 @@ function renderDetails(t) {
     ? h('div', { class: 'title-actions' }, tv && h('div', { class: 'action-row' }, tv.toggle), tv?.panel,
       transferSummary(() => titleState(t).transfers, t.title))
     : filmActions(t);
-  const versions = !isTv && files.filter((f) => f.kind === 'lib').length > 1;
+  const versionFiles = isTv ? [] : allVersions(files.filter((f) => f.kind === 'lib'));
+  const versions = versionFiles.length > 1;
   $('#sheet-body').replaceChildren(
     detailsHero(t),
     h('div', { class: 'sheet-content' },
@@ -1831,14 +1924,15 @@ function renderDetails(t) {
         t.rating && h('li', {}, `★ ${t.rating}`)),
       social.rateRow(titleKeyOf(t), t.title),
       actions,
+      !isTv && filmVersionPick(t, () => renderDetails(t)),
       state.status.search && t.id && watchBox(t),
       t.overview && h('p', { class: 'overview' }, t.overview),
       // Without download rights, episodes someone else has here can still be added (no copy is made).
       isTv && !canGet() && onServer.length > 0 && serverOffer(t, onServer),
       isTv && files.length > 0 && h('h3', {}, 'In your library'),
       isTv && files.length > 0 && seasonGroups(files),
-      versions && h('h3', {}, 'Your copies'),
-      versions && h('ul', { class: 'rows' }, files.map(fileRow))));
+      versions && h('h3', {}, 'Your versions'),
+      versions && h('ul', { class: 'rows' }, versionFiles.map((v) => fileRow(libraryFile({ ...v, versionOf: true }))))));
 }
 
 // "Already on the server": a row per version of a film, or per season of a show, each with an Add
@@ -2538,7 +2632,7 @@ async function openDelete(f, opener) {
       const r = await api('/api/library/delete', jsonPost({ id, scope, everyone }));
       closeTopOverlay();
       toast(r.kept ? 'Removed from your library' : scope === 'torrent' && pack ? `Deleted all ${t.videos} videos` : 'Deleted');
-      state.library = state.library.filter((x) => x.id !== id);
+      dropFromLibrary([id]);
       // Refresh after the server finishes cleaning up.
       setTimeout(async () => { await Promise.all([loadLibrary(), loadDownloads()]); if (state.view === 'library') renderLibrary(); if (state.view === 'downloads') renderDownloads(); }, 5000);
       if (state.view === 'library') renderLibrary();
@@ -2581,13 +2675,21 @@ async function openDelete(f, opener) {
   const actions = pack
     ? [button('Delete this video only', 'del-confirm', 'file'), button(`Delete all ${t.videos} videos (${fmtBytes(t.size)})`, 'del-confirm del-secondary', 'torrent')]
     : [button('Delete', 'del-confirm', t ? 'torrent' : 'file')];
+  // A title with versions: this deletes the one shown; the others stay (or all of them go at once).
+  const otherVersions = (f.versions || []).filter((v) => v.id !== id);
+  if (otherVersions.length) {
+    lines.splice(1, 0, h('p', { class: 'muted' }, `This is the ${f.versionLabel || 'chosen'} version. ${otherVersions.length === 1
+      ? `The other one (${otherVersions[0].versionLabel}) stays.` : `The other ${otherVersions.length} versions stay.`}`));
+    actions.push(h('button', { class: 'del-confirm del-secondary', onclick: () => { closeTopOverlay(); openDeleteMany({ files: f.versions, what: 'every version', label }, opener); } },
+      `Delete all ${f.versions.length} versions`));
+  }
   body.replaceChildren(h('h2', { id: 'picker-title' }, 'Delete this?'), ...lines, h('div', { class: 'del-actions' }, ...actions, cancel), status);
   cancel.focus();
 }
 
 // A whole season or show: every version of every episode in it, in one go (see deleteMany on the server).
 async function openDeleteMany({ files, what, label, onDone }, opener) {
-  const ids = [...new Set(files.map((f) => f.id).filter(Boolean))];
+  const ids = [...new Set(allVersions(files).map((f) => f.id).filter(Boolean))];
   const body = $('#picker-body');
   body.replaceChildren(h('h2', { id: 'picker-title' }, `Delete ${what}`), h('p', { class: 'muted' }, 'Checking…'));
   pushOverlay(showSheet($('#picker'), $('#picker-backdrop'), () => opener?.focus({ preventScroll: true })));
@@ -2611,7 +2713,7 @@ async function openDeleteMany({ files, what, label, onDone }, opener) {
     try {
       const r = await api('/api/library/delete-many', jsonPost({ ids, everyone }));
       const gone = new Set(ids);
-      state.library = state.library.filter((x) => !gone.has(x.id));
+      dropFromLibrary(gone);
       await dismissTopOverlay().catch(() => {});
       toast(r.failed ? `${r.deleted + r.removed} deleted, ${r.failed} kept: ${r.error}`
         : r.deleted ? `Deleted ${label}` : `Removed ${label} from your library`);
@@ -2793,8 +2895,12 @@ function torrentBrowser({ query = '', type = 'all', movieId = null, tvId = null,
     list.replaceChildren(...shown.map(torrentRow));
   }
 
+  // A film you already have: releases in a resolution you have are marked (the server refuses them).
+  const ownedQualities = () => new Set(movieId ? allVersions(state.library.filter((f) => Number(f.tmdbId) === Number(movieId)))
+    .map((f) => f.versionQuality).filter(Boolean) : []);
   function torrentRow(t) {
     const health = t.seeders >= 50 ? 'good' : t.seeders >= 5 ? 'ok' : 'poor';
+    const owned = t.quality && ownedQualities().has(t.quality);
     const status = h('span', { class: 'device-status' });
     const meta = [
       h('span', { class: `seeds seeds-${health}` }, `${t.seeders.toLocaleString()} seeding`),
@@ -2802,6 +2908,7 @@ function torrentBrowser({ query = '', type = 'all', movieId = null, tvId = null,
       t.quality && t.quality !== 'SD' && (t.quality === '2160p' ? '4K' : t.quality),
       ...t.tags,
       t.cam && h('span', { class: 'tor-warn' }, 'Cinema recording'),
+      owned && h('span', { class: 'tor-have' }, 'You have this quality'),
       SOURCE_NAMES[t.source],
       fmtAgo(t.added) || t.addedText,
     ].filter(Boolean).map((m) => (m instanceof Node ? m : h('span', {}, m)));
@@ -4667,9 +4774,12 @@ function closeQualityMenu() { qualityMenu.hidden = true; qualityBtn.setAttribute
 
 function renderQualityMenu() {
   const session = current;
-  qualityBtn.hidden = !qualityAvailable(session);
+  // Versions of this film or episode (src/versions.js): shown on every screen, above the phone streams.
+  const vers = session && !plainMedia(session) && session.versions?.length > 1 ? session.versions : null;
+  const stream = qualityAvailable(session);
+  qualityBtn.hidden = !stream && !vers;
   if (qualityBtn.hidden) { closeQualityMenu(); return; }
-  const phone = phoneQuality(session);
+  const phone = stream ? phoneQuality(session) : null;
   const source = heightName(session.sourceHeight);
   const playing = phone ? `${phone}p, made live from the ${source || 'original'} file` : `Original${source ? ` (${source})` : ''}`;
   const choices = [
@@ -4679,19 +4789,48 @@ function renderQualityMenu() {
     ['720', '720p', 'Data saver'],
   ];
   const focused = qualityMenu.contains(document.activeElement) ? document.activeElement?.dataset?.choice : null;
+  const versionItems = vers ? [
+    h('p', { class: 'audio-title' }, 'Version'),
+    ...vers.map((v) => {
+      const [main, ...rest] = v.versionLabel.split(' · ');
+      const size = /\d (GB|MB)$/.test(rest.at(-1) || '') ? rest.pop() : '';
+      return h('button', { type: 'button', role: 'menuitemradio', class: 'cc-item night-item', tabindex: '-1',
+        'data-choice': `v:${v.mediaKey}`, 'aria-checked': String(v.mediaKey === session.mediaKey), onclick: () => switchVersion(v) },
+      h('span', {}, [main, ...rest].join(' · '), size && h('small', {}, size)));
+    }),
+  ] : [];
   qualityMenu.replaceChildren(
-    h('p', { class: 'audio-title' }, 'Quality'),
-    ...choices.map(([v, label, note]) => h('button', { type: 'button', role: 'menuitemradio', class: 'cc-item night-item', tabindex: '-1',
-      'data-choice': v, 'aria-checked': String(qualityPref === v), onclick: () => setQuality(v) },
-    h('span', {}, label, h('small', {}, note)))),
-    h('p', { class: 'cc-message', role: 'status' }, session.qualityBusy ? 'Switching…' : `Playing: ${playing}`),
+    ...versionItems,
+    ...(stream ? [
+      h('p', { class: 'audio-title' }, vers ? 'Stream' : 'Quality'),
+      ...choices.map(([v, label, note]) => h('button', { type: 'button', role: 'menuitemradio', class: 'cc-item night-item', tabindex: '-1',
+        'data-choice': v, 'aria-checked': String(qualityPref === v), onclick: () => setQuality(v) },
+      h('span', {}, label, h('small', {}, note)))),
+    ] : []),
+    h('p', { class: 'cc-message', role: 'status' }, session.qualityBusy ? 'Switching…' : vers && !stream ? `Playing: ${session.versionLabel}` : `Playing: ${playing}`),
   );
   if (focused && !qualityMenu.hidden) qualityMenu.querySelector(`[data-choice="${focused}"]`)?.focus({ preventScroll: true });
   const badge = $('#quality-badge');
-  badge.textContent = phone || (session.sourceHeight >= 2000 ? '4K' : 'HD');
+  const height = session.sourceHeight || ({ '2160p': 2160, '1440p': 1440, '1080p': 1080, '720p': 720, SD: 480 }[session.versionQuality] || 0);
+  badge.textContent = phone || (height >= 2000 ? '4K' : height && height < 700 ? 'SD' : 'HD');
   badge.style.fontSize = badge.textContent.length > 3 ? '6px' : '';
   qualityBtn.classList.toggle('is-on', Boolean(phone));
-  qualityBtn.setAttribute('aria-label', `Quality: ${playing}`);
+  qualityBtn.setAttribute('aria-label', `Quality: ${vers && !stream ? session.versionLabel : playing}`);
+}
+
+// Another version of what's playing: remembered for this title, and playback carries on at the same spot.
+async function switchVersion(v) {
+  const session = current;
+  closeQualityMenu();
+  if (!session || v.mediaKey === session.mediaKey) return;
+  if (party) { toast('Pick the version before starting Watch Together.'); return; }
+  if (audioCasting()) { toast('Stop casting to switch versions.'); return; }
+  if (v.converting) { toast('That version is being converted. Try again when it finishes.'); return; }
+  const at = video.currentTime || 0;
+  setVersionPick(session, v);
+  saveProgress(true);
+  await loadPlayerMedia(libraryFile({ ...v, versions: session.versions }), { startAt: at });
+  osd(v.versionLabel.replace(/ · [\d.]+ [GM]B$/, ''));
 }
 
 // Saves the choice for next time and switches the playing video over at the same spot.
@@ -5316,6 +5455,7 @@ async function loadPlayerMedia(f, opts = {}) {
   renderQualityMenu();
   setPlayerSource(link.url, session, () => {
     if (party) { party.sync(); return; }
+    if (opts.startAt > 0) { video.currentTime = Math.min(opts.startAt, Math.max(0, video.duration - 1)); return; } // a version switch
     const saved = savedProgress(session);
     if (saved && saved.time > 30 && saved.time < video.duration - 90) {
       video.currentTime = saved.time;

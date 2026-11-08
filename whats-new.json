@@ -1,5 +1,20 @@
 [
   {
+    "id": "2026-11-08-versions",
+    "date": "2026-11-08",
+    "title": "One title, several qualities",
+    "items": [
+      {
+        "title": "Versions instead of double cards",
+        "text": "If a film or an episode is here in two qualities, say 4K and 1080p, it now shows as one title instead of two. A Quality choice on the film's page, the season's page and in the player's quality menu picks which one plays. Your place carries over between them, on the website, TVs and Jellyfin. Phones start with the lighter version unless you pick another; your choice is remembered on each device."
+      },
+      {
+        "title": "No more accidental second copies",
+        "text": "Downloading a film or episode you already have in the same quality is refused, with what's already here. Releases in a quality you have are marked in the release list. Another quality is fine: it becomes a version. A season pack only downloads the episodes you don't already have in that quality."
+      }
+    ]
+  },
+  {
     "id": "2026-11-08-upgrade-quality",
     "date": "2026-11-08",
     "title": "Better picture, and an Upgrade button",
