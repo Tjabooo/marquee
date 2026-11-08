@@ -1,4 +1,5 @@
 // Marquee web client. Plain ES modules, no build step.
+import { T, lang, langTag, locale, LANGUAGES, saveLanguage, translatePage } from './i18n.js';
 import { WatchSession, offsetCues } from './watch-sync.js';
 import { createNotesView } from './notes-view.js';
 import { nextLibraryEpisode, isNextEpisodeTime, AUTOPLAY_SECONDS, AUTOPLAY_CHAIN, tvIntroShowing, tvNextShowing, tvFinished } from './player-next.js';
@@ -14,6 +15,8 @@ import { libraryUnion, libraryAvailability, filterLibrary, transferState, transf
 import { createSocial, titleKeyOf, REACTIONS, countdownText, startLabel, namesText } from './social.js';
 import { createPeople } from './people.js';
 
+translatePage();
+saveLanguage(lang);
 const $ = (sel, el = document) => el.querySelector(sel);
 
 // DOM builder. Text is always inserted as text, never parsed as HTML.
@@ -80,15 +83,15 @@ const TAB_ID = Math.random().toString(36).slice(2, 12);
 async function api(path, opts = {}) {
   let r;
   try {
-    r = await fetch(path, { ...opts, headers: { ...opts.headers, 'X-Marquee-Client': CLIENT_ID, 'X-Marquee-Tab': TAB_ID } });
+    r = await fetch(path, { ...opts, headers: { ...opts.headers, 'X-Marquee-Client': CLIENT_ID, 'X-Marquee-Tab': TAB_ID, 'X-Marquee-Lang': lang } });
   } catch (err) {
-    if (err.name !== 'AbortError' && await signedOut()) throw new Error('You’ve been signed out. Sign in again to carry on.');
+    if (err.name !== 'AbortError' && await signedOut()) throw new Error(T('You’ve been signed out. Sign in again to carry on.'));
     throw err;
   }
   let data = {};
   try { data = await r.json(); } catch { /* non-JSON */ }
-  if (r.status === 401 && data.signin) { toSignIn(); throw Object.assign(new Error('Sign in to carry on.'), { status: 401 }); }
-  if (!r.ok) throw Object.assign(new Error(data.error || `The server responded with ${r.status}.`), { status: r.status });
+  if (r.status === 401 && data.signin) { toSignIn(); throw Object.assign(new Error(T('Sign in to carry on.')), { status: 401 }); }
+  if (!r.ok) throw Object.assign(new Error(data.error || T('The server responded with {0}.', r.status)), { status: r.status });
   return data;
 }
 
@@ -108,8 +111,8 @@ async function signedOut() {
   if (!signedOutShown) {
     signedOutShown = true;
     document.body.append(h('div', { class: 'signed-out', role: 'alert' },
-      h('p', {}, h('strong', {}, 'You’ve been signed out.'), ' Your sign-in ran out; sign in again to carry on where you were.'),
-      h('button', { class: 'play-btn', onclick: () => location.reload() }, 'Sign in again')));
+      h('p', {}, h('strong', {}, T('You’ve been signed out.')), T(' Your sign-in ran out; sign in again to carry on where you were.')),
+      h('button', { class: 'play-btn', onclick: () => location.reload() }, T('Sign in again'))));
   }
   return true;
 }
@@ -123,10 +126,10 @@ function fmtBytes(n) {
 }
 function fmtEta(s) {
   if (s == null) return null;
-  if (s < 60) return 'under a minute left';
-  if (s < 3600) return `${Math.round(s / 60)} min left`;
+  if (s < 60) return T('under a minute left');
+  if (s < 3600) return T('{0} min left', Math.round(s / 60));
   const hrs = Math.floor(s / 3600);
-  return `${hrs} h ${Math.round((s % 3600) / 60)} min left`;
+  return T('{0} h {1} min left', hrs, Math.round((s % 3600) / 60));
 }
 function fmtTime(s) {
   s = Math.floor(s);
@@ -138,13 +141,13 @@ function fmtAgo(ms) {
   const days = (Date.now() - ms) / 86400000;
   if (days < 1) return 'today';
   if (days < 2) return 'yesterday';
-  if (days < 45) return `${Math.round(days)} days ago`;
-  if (days < 365) return `${Math.round(days / 30)} months ago`;
+  if (days < 45) return T('{0} days ago', Math.round(days));
+  if (days < 365) return T('{0} months ago', Math.round(days / 30));
   const yrs = Math.round(days / 365);
-  return `${yrs} year${yrs > 1 ? 's' : ''} ago`;
+  return (yrs > 1 ? T('{0} years ago', yrs) : T('{0} year ago', yrs));
 }
 const pad2 = (n) => String(n).padStart(2, '0');
-const episodeLabel = (f) => (f.season != null ? f.episode != null ? `S${pad2(f.season)} E${pad2(f.episode)}` : `Season ${f.season}` : null);
+const episodeLabel = (f) => (f.season != null ? f.episode != null ? `S${pad2(f.season)} E${pad2(f.episode)}` : T('Season {0}', f.season) : null);
 const norm = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   .toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, '');
 
@@ -235,10 +238,10 @@ function seasonVersionPick(ready, onPicked) {
   const current = [...counts].sort((a, b) => b[1] - a[1])[0][0];
   const n = versioned.length;
   return h('div', { class: 'season-versions' }, versionSelect({
-    id: `ver-${versionSeasonKey(versioned[0])}`, label: 'Quality for this season',
+    id: `ver-${versionSeasonKey(versioned[0])}`, label: T('Quality for this season'),
     options: [...options].map(([value, label]) => ({ value, label })), value: current,
     onPick: (sig) => { setVersionPick(versioned[0], { versionSignature: sig }, { season: true }); patchUnifiedLibrary(); onPicked(); },
-  }), h('p', { class: 'muted version-hint' }, `${plural(n, 'episode has', 'episodes have')} more than one version. Your choice is remembered on this device.`));
+  }), h('p', { class: 'muted version-hint' }, T('{0} more than one version. Your choice is remembered on this device.', plural(n, T('episode has'), T('episodes have')))));
 }
 // A film with versions: which one Play starts.
 function filmVersionPick(t, onPicked) {
@@ -250,7 +253,7 @@ function filmVersionPick(t, onPicked) {
   });
 }
 // A small "Quality" select for a title or a season with versions. options: [{ value, label }].
-function versionSelect({ id, label = 'Quality', options, value, onPick }) {
+function versionSelect({ id, label = T('Quality'), options, value, onPick }) {
   const sel = h('select', { class: 'sub-select version-select', id },
     options.map((o) => h('option', { value: o.value }, o.label)));
   sel.value = value;
@@ -294,16 +297,16 @@ function serverMatchesFor(t) {
 // colours before this script loads (no flash of the default theme).
 const THEMES = {
   marquee: { name: 'Marquee', bg: '#1F1019', surface: '#2B1724', raised: '#3A2031', line: '#4B2C3F', text: '#F6EADF', muted: '#BA9DAD', accent: '#F4C152', alert: '#FF9B85' },
-  midnight: { name: 'Midnight', bg: '#0E1320', surface: '#161D2E', raised: '#1F2840', line: '#2A3552', text: '#E8EEF8', muted: '#96A3BD', accent: '#5CC8FF', alert: '#FF8A8A' },
-  forest: { name: 'Forest', bg: '#0F1A14', surface: '#16241C', raised: '#1E3127', line: '#2A4134', text: '#E9F2EA', muted: '#9DB5A4', accent: '#9BE07A', alert: '#FF9B85' },
-  ember: { name: 'Ember', bg: '#161312', surface: '#221D1B', raised: '#2E2724', line: '#3D3430', text: '#F5EDE8', muted: '#B3A49C', accent: '#FF7A3D', alert: '#FF8A8A' },
-  lagoon: { name: 'Lagoon', bg: '#0B1A1C', surface: '#112629', raised: '#183337', line: '#22444A', text: '#E3F4F4', muted: '#93B8BA', accent: '#3DDBC4', alert: '#FF9B85' },
-  synth: { name: 'Synthwave', bg: '#140F24', surface: '#1D1633', raised: '#281E45', line: '#352858', text: '#F0EAFF', muted: '#A99BC9', accent: '#FF5FA2', alert: '#FFB36B' },
-  noir: { name: 'Noir', bg: '#111111', surface: '#1B1B1B', raised: '#262626', line: '#333333', text: '#F2F2F2', muted: '#A0A0A0', accent: '#E8E8E8', alert: '#FF8A8A' },
-  paper: { name: 'Paper', bg: '#F7F2EA', surface: '#FFFDF9', raised: '#EFE7DB', line: '#DDD2C2', text: '#241A14', muted: '#6E6157', accent: '#C2410C', alert: '#B42318' },
-  daylight: { name: 'Daylight', bg: '#F2F5FA', surface: '#FFFFFF', raised: '#E5EBF4', line: '#D2DAE7', text: '#141B2B', muted: '#5A6478', accent: '#2563EB', alert: '#C0262D' },
+  midnight: { name: T('Midnight'), bg: '#0E1320', surface: '#161D2E', raised: '#1F2840', line: '#2A3552', text: '#E8EEF8', muted: '#96A3BD', accent: '#5CC8FF', alert: '#FF8A8A' },
+  forest: { name: T('Forest'), bg: '#0F1A14', surface: '#16241C', raised: '#1E3127', line: '#2A4134', text: '#E9F2EA', muted: '#9DB5A4', accent: '#9BE07A', alert: '#FF9B85' },
+  ember: { name: T('Ember'), bg: '#161312', surface: '#221D1B', raised: '#2E2724', line: '#3D3430', text: '#F5EDE8', muted: '#B3A49C', accent: '#FF7A3D', alert: '#FF8A8A' },
+  lagoon: { name: T('Lagoon'), bg: '#0B1A1C', surface: '#112629', raised: '#183337', line: '#22444A', text: '#E3F4F4', muted: '#93B8BA', accent: '#3DDBC4', alert: '#FF9B85' },
+  synth: { name: T('Synthwave'), bg: '#140F24', surface: '#1D1633', raised: '#281E45', line: '#352858', text: '#F0EAFF', muted: '#A99BC9', accent: '#FF5FA2', alert: '#FFB36B' },
+  noir: { name: T('Noir'), bg: '#111111', surface: '#1B1B1B', raised: '#262626', line: '#333333', text: '#F2F2F2', muted: '#A0A0A0', accent: '#E8E8E8', alert: '#FF8A8A' },
+  paper: { name: T('Paper'), bg: '#F7F2EA', surface: '#FFFDF9', raised: '#EFE7DB', line: '#DDD2C2', text: '#241A14', muted: '#6E6157', accent: '#C2410C', alert: '#B42318' },
+  daylight: { name: T('Daylight'), bg: '#F2F5FA', surface: '#FFFFFF', raised: '#E5EBF4', line: '#D2DAE7', text: '#141B2B', muted: '#5A6478', accent: '#2563EB', alert: '#C0262D' },
 };
-const THEME_FIELDS = [['bg', 'Background'], ['surface', 'Panels'], ['text', 'Text'], ['accent', 'Accent']];
+const THEME_FIELDS = [['bg', T('Background')], ['surface', T('Panels')], ['text', T('Text')], ['accent', T('Accent')]];
 
 const hexRgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
 const rgbHex = (rgb) => `#${rgb.map((v) => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0')).join('')}`;
@@ -320,7 +323,7 @@ function themeColors(theme) {
   const { bg, surface, text, accent } = theme.colors;
   const light = luminance(bg) > 0.5;
   return {
-    name: 'Custom', bg, surface, text, accent,
+    name: T('Custom'), bg, surface, text, accent,
     raised: mix(surface, text, 0.08), line: mix(surface, text, 0.16), muted: mix(text, bg, 0.38),
     alert: light ? '#B42318' : '#FF9B85',
   };
@@ -349,7 +352,7 @@ function notice(title, text, retry) {
   return h('div', { class: 'notice' },
     h('h3', {}, title),
     h('p', {}, text),
-    retry && h('button', { class: 'retry', onclick: retry }, 'Try again'));
+    retry && h('button', { class: 'retry', onclick: retry }, T('Try again')));
 }
 
 function skeletonGrid(n = 8) {
@@ -424,15 +427,15 @@ function watchBox(t) {
     const auto = Boolean(item?.auto) && watch.autoDownload;
     const inLibrary = !isTv && matchesFor(t).some((f) => f.done);
     const save = h('button', { type: 'button', class: `chip watch-toggle${saved ? ' is-on' : ''}`, 'aria-pressed': String(saved),
-      onclick: () => act({ saved: !saved }, (i) => (i?.saved ? 'Saved for later' : 'Removed from Saved')) }, icon('bookmark'), saved ? 'Saved' : 'Save');
+      onclick: () => act({ saved: !saved }, (i) => (i?.saved ? T('Saved for later') : T('Removed from Saved'))) }, icon('bookmark'), saved ? T('Saved') : T('Save'));
     const followBtn = isTv && h('button', { type: 'button', class: `chip watch-toggle${follow ? ' is-on' : ''}`, 'aria-pressed': String(follow),
-      onclick: () => act({ follow: !follow }, (i) => (i?.follow ? (i.auto ? 'Following. New episodes arrive as they air.' : 'Following') : 'Stopped following')) },
-      icon('bell'), follow ? 'Following' : 'Follow');
+      onclick: () => act({ follow: !follow }, (i) => (i?.follow ? (i.auto ? T('Following. New episodes arrive as they air.') : T('Following')) : T('Stopped following'))) },
+      icon('bell'), follow ? T('Following') : T('Follow'));
     // Films: wait for the release. Shows: new episodes as they air (only while following).
     const offerAuto = watch.autoDownload && (isTv ? follow : saved && !inLibrary && item?.state !== 'got');
     const autoSwitch = offerAuto && h('label', { class: 'watch-auto' },
       h('input', { type: 'checkbox', checked: auto, onchange: (e) => act({ auto: e.currentTarget.checked }) }),
-      h('span', {}, isTv ? 'Add new episodes as they air' : 'Add it when a good copy is out'));
+      h('span', {}, isTv ? T('Add new episodes as they air') : T('Add it when a good copy is out')));
     const line = watchStatus(item, { today: todayIso(), autoDownload: watch.autoDownload, inLibrary });
     box.replaceChildren(...[h('div', { class: 'watch-buttons' }, save, followBtn), autoSwitch, line && h('p', { class: 'watch-status', role: 'status' }, line)].filter(Boolean));
   };
@@ -444,8 +447,8 @@ function watchBox(t) {
 function savedShelf() {
   const items = watch.items.filter((i) => i.saved && (disc.type === 'all' || disc.type === i.type));
   if (!items.length) return h('div', { class: 'saved-shelf', hidden: true });
-  const list = h('ul', { class: 'shelf-items', tabindex: '0', 'aria-label': 'Saved for later' }, items.map(titleCard));
-  const node = carousel('Saved for later', list);
+  const list = h('ul', { class: 'shelf-items', tabindex: '0', 'aria-label': T('Saved for later') }, items.map(titleCard));
+  const node = carousel(T('Saved for later'), list);
   node.classList.add('saved-shelf');
   return node;
 }
@@ -460,7 +463,7 @@ function comingUpShelf() {
     .filter((c) => state.libFilter === 'all' || state.libFilter === c.item.type)
     .filter((c) => !state.query.trim() || norm(c.item.title).includes(norm(state.query))).slice(0, 20);
   if (!list.length) return null;
-  return libraryShelf('Coming up', list.map((c) => h('li', { class: 'library-card continue-card coming-card' },
+  return libraryShelf(T('Coming up'), list.map((c) => h('li', { class: 'library-card continue-card coming-card' },
     h('button', { type: 'button', class: 'title-card', onclick: (e) => openDetails(c.item, e.currentTarget) },
       (() => { const art = wideArt([c.item.backdrop, { src: c.item.poster, contain: true }], '', CONTINUE_SIZES); art.append(h('span', { class: 'coming-date' }, c.when)); return art; })(),
       h('div', { class: 'name' }, c.item.title),
@@ -485,10 +488,10 @@ function markShowSeen(tmdbId) {
 // 7 days unless changed). The countdown shows on each one, with a button to keep it longer.
 function timeLeft(ms) {
   const hours = (ms - Date.now()) / 3600000;
-  if (hours <= 0) return 'Deleting soon';
-  if (hours < 1) return 'Deleted within the hour';
-  if (hours < 48) return `${Math.floor(hours)} h left`;
-  return `${Math.round(hours / 24)} days left`;
+  if (hours <= 0) return T('Deleting soon');
+  if (hours < 1) return T('Deleted within the hour');
+  if (hours < 48) return T('{0} h left', Math.floor(hours));
+  return T('{0} days left', Math.round(hours / 24));
 }
 const canExtend = (f) => f.expiresAt != null && (!state.rules?.maxExtensions || (f.extensions || 0) < state.rules.maxExtensions);
 const extendDays = () => state.rules?.extendDays || 7;
@@ -498,9 +501,9 @@ function expiryBits(f) {
   if (f.expiresAt == null) return null;
   const soon = f.expiresAt - Date.now() < 86400000;
   const wrap = h('span', { class: 'expiry-wrap' },
-    h('span', { class: `expiry${soon ? ' is-soon' : ''}`, title: `Deleted ${new Date(f.expiresAt).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}` }, timeLeft(f.expiresAt)),
+    h('span', { class: `expiry${soon ? ' is-soon' : ''}`, title: T('Deleted {0}', new Date(f.expiresAt).toLocaleString(locale, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })) }, timeLeft(f.expiresAt)),
     canExtend(f) && h('button', {
-      type: 'button', class: 'keep-btn', 'aria-label': `Keep ${f.title}${episodeLabel(f) ? ` ${episodeLabel(f)}` : ''} ${extendDays()} more days`,
+      type: 'button', class: 'keep-btn', 'aria-label': T('Keep {0}{1} {2} more days', f.title, episodeLabel(f) ? ` ${episodeLabel(f)}` : '', extendDays()),
       onclick: async (e) => {
         e.stopPropagation();
         const b = e.currentTarget;
@@ -509,7 +512,7 @@ function expiryBits(f) {
         if (updated) wrap.replaceWith(expiryBits({ ...f, ...updated }) || '');
         else b.disabled = false;
       },
-    }, `Keep ${extendDays()} more days`));
+    }, T('Keep {0} more days', extendDays())));
   return wrap;
 }
 
@@ -523,7 +526,7 @@ async function extendItems(files) {
       if (e) Object.assign(f, { expiresAt: e.expiresAt, extensions: e.extensions });
       for (const v of f.versions || []) { const ve = byKey.get(v.mediaKey); if (ve) Object.assign(v, { expiresAt: ve.expiresAt, extensions: ve.extensions }); }
     }
-    toast(files.length === 1 ? `Kept ${extendDays()} more days` : `Kept ${plural(files.length, 'video')} ${extendDays()} more days`);
+    toast(files.length === 1 ? T('Kept {0} more days', extendDays()) : T('Kept {0} {1} more days', plural(files.length, 'video'), extendDays()));
     if (state.view === 'library') renderLibrary();
     return files.map((f) => state.library.find((x) => x.mediaKey === f.mediaKey)).filter(Boolean);
   } catch (err) {
@@ -539,20 +542,20 @@ function fileRow(f) {
   const meta = f.done
     ? (f.versionKey && (f.versions?.length > 1 || f.versionOf) ? [f.versionLabel]
       : [f.format?.toUpperCase() || (f.name?.match(/\.(\w{2,4})$/)?.[1] || '').toUpperCase(), fmtBytes(f.size)])
-    : [`Downloading ${Math.floor(f.progress * 100)}%`];
+    : [T('Downloading {0}%', Math.floor(f.progress * 100))];
   return h('li', { class: 'row' },
     h('div', { class: 'row-text' },
       h('div', { class: 'row-title' }, title),
       h('div', { class: 'row-meta' }, meta.filter(Boolean).map((m) => h('span', {}, m)), f.kind === 'lib' && expiryBits(f)),
-      pct > 1 && h('div', { class: 'resume-track', title: 'Watched so far' }, h('i', { style: `width:${pct}%` }))),
+      pct > 1 && h('div', { class: 'resume-track', title: T('Watched so far') }, h('i', { style: `width:${pct}%` }))),
     f.done && h('div', { class: 'row-actions' },
-      f.kind === 'lib' && h('button', { class: 'cast-btn del-btn', 'aria-label': `Delete ${title}`, title: 'Delete', onclick: (e) => openDelete(f, e.currentTarget) }, icon('trash')),
-      f.kind === 'lib' && h('button', { class: 'cast-btn', 'aria-label': `Download ${title} to a phone`, title: 'Download to phone', onclick: (e) => openTravel(f, e.currentTarget) }, icon('phone')),
-      h('button', { class: 'cast-btn', 'aria-label': `Play ${title} on a TV`, title: 'Play on TV', onclick: (e) => openPicker(f, e.currentTarget) }, icon('tv')),
-      f.kind === 'lib' && h('button', { class: 'cast-btn', 'aria-label': `Plan a watch party for ${title}`, title: 'Plan a watch party', onclick: (e) => openPlanParty(f, e.currentTarget) }, icon('party')),
+      f.kind === 'lib' && h('button', { class: 'cast-btn del-btn', 'aria-label': T('Delete {0}', title), title: T('Delete'), onclick: (e) => openDelete(f, e.currentTarget) }, icon('trash')),
+      f.kind === 'lib' && h('button', { class: 'cast-btn', 'aria-label': T('Download {0} to a phone', title), title: T('Download to phone'), onclick: (e) => openTravel(f, e.currentTarget) }, icon('phone')),
+      h('button', { class: 'cast-btn', 'aria-label': T('Play {0} on a TV', title), title: T('Play on TV'), onclick: (e) => openPicker(f, e.currentTarget) }, icon('tv')),
+      f.kind === 'lib' && h('button', { class: 'cast-btn', 'aria-label': T('Plan a watch party for {0}', title), title: T('Plan a watch party'), onclick: (e) => openPlanParty(f, e.currentTarget) }, icon('party')),
       f.converting
-        ? h('button', { class: 'play-btn round is-disabled', 'aria-disabled': 'true', title: 'Getting ready to play', 'aria-label': `${title}: getting ready to play`, onclick: () => toast('Almost ready. It can be played in a moment.') }, icon('play'))
-        : h('button', { class: 'play-btn round', 'aria-label': `Play ${title} here`, onclick: () => openPlayer(f) }, icon('play'))));
+        ? h('button', { class: 'play-btn round is-disabled', 'aria-disabled': 'true', title: T('Getting ready to play'), 'aria-label': T('{0}: getting ready to play', title), onclick: () => toast(T('Almost ready. It can be played in a moment.')) }, icon('play'))
+        : h('button', { class: 'play-btn round', 'aria-label': T('Play {0} here', title), onclick: () => openPlayer(f) }, icon('play'))));
 }
 
 // ---------- Download to phone (travel.js; the server makes the copies, src/travel.js) ----------
@@ -571,7 +574,7 @@ function travelOverlay(opener, draw) {
     pushOverlay(showSheet($('#picker'), $('#picker-backdrop'), () => { travelView.open = null; opener?.focus({ preventScroll: true }); }));
   }
 }
-const travelLink = (url, label = 'Download') => h('a', { class: 'chip travel-get', href: url, download: '' }, icon('download'), label);
+const travelLink = (url, label = T('Download')) => h('a', { class: 'chip travel-get', href: url, download: '' }, icon('download'), label);
 async function askTravel(items, quality, btn) {
   if (btn) btn.disabled = true;
   try {
@@ -595,7 +598,7 @@ function openTravel(file, opener) {
     if (travelView.open === draw) draw();
   };
   function draw() {
-    const rows = !data ? [h('li', { class: 'searching', role: 'status' }, error || 'Working out the sizes…')]
+    const rows = !data ? [h('li', { class: 'searching', role: 'status' }, error || T('Working out the sizes…'))]
       : [...data.qualities.map((q) => {
         const mine = travelView.items.find((i) => i.kind === f.kind && i.id === id && i.quality === q.quality);
         const item = { ...q, ...(mine || {}) };
@@ -603,7 +606,7 @@ function openTravel(file, opener) {
           : item.state === 'making' || item.state === 'queued' ? null
             : h('button', { type: 'button', class: 'chip', onclick: async (e) => {
               if (await askTravel([{ kind: f.kind, id, title }], q.quality, e.currentTarget)) fetchOptions();
-            } }, item.state === 'ready' ? 'Get it' : item.state === 'failed' ? 'Try again' : 'Make it');
+            } }, item.state === 'ready' ? T('Get it') : item.state === 'failed' ? T('Try again') : T('Make it'));
         return h('li', { class: 'row travel-row' },
           h('div', { class: 'row-text' },
             h('div', { class: 'row-title' }, `${q.label} · ${q.height}p`),
@@ -613,15 +616,15 @@ function openTravel(file, opener) {
       }),
       h('li', { class: 'row travel-row' },
         h('div', { class: 'row-text' },
-          h('div', { class: 'row-title' }, 'Full quality'),
-          h('div', { class: 'row-meta' }, [data.original.size && fmtBytes(data.original.size), 'The file as it is, ready now'].filter(Boolean).map((t) => h('span', {}, t)))),
+          h('div', { class: 'row-title' }, T('Full quality')),
+          h('div', { class: 'row-meta' }, [data.original.size && fmtBytes(data.original.size), T('The file as it is, ready now')].filter(Boolean).map((t) => h('span', {}, t)))),
         h('div', { class: 'row-actions' }, travelLink(data.original.url)))];
     $('#picker-body').replaceChildren(
-      h('h2', { id: 'picker-title' }, 'Download to phone'),
+      h('h2', { id: 'picker-title' }, T('Download to phone')),
       h('p', { class: 'muted picker-sub' }, title),
       h('ul', { class: 'rows travel-list' }, rows),
-      h('p', { class: 'muted travel-note' }, 'Small and Standard are made on the server first, so you can close this and come back (with notifications on, you’ll hear when one is ready). They play in your phone’s own video player, subtitles included, and stay here for a week after your last download.'),
-      travelView.items.length > 0 && h('button', { type: 'button', class: 'retry', onclick: () => openTravelList() }, 'All phone copies'));
+      h('p', { class: 'muted travel-note' }, T('Small and Standard are made on the server first, so you can close this and come back (with notifications on, you’ll hear when one is ready). They play in your phone’s own video player, subtitles included, and stay here for a week after your last download.')),
+      travelView.items.length > 0 && h('button', { type: 'button', class: 'retry', onclick: () => openTravelList() }, T('All phone copies')));
   }
   travelOverlay(opener, draw);
   if (!travelView.loaded) loadTravel();
@@ -633,17 +636,17 @@ function openTravelSeason(files, label, opener) {
   const items = files.map((f) => ({ kind: 'lib', id: f.id, title: travelTitle(f) }));
   function draw() {
     $('#picker-body').replaceChildren(
-      h('h2', { id: 'picker-title' }, 'Season to phone'),
-      h('p', { class: 'muted picker-sub' }, `${label} · ${items.length} episode${items.length === 1 ? '' : 's'}`),
+      h('h2', { id: 'picker-title' }, T('Season to phone')),
+      h('p', { class: 'muted picker-sub' }, (items.length === 1 ? T('{0} · {1} episode', label, items.length) : T('{0} · {1} episodes', label, items.length))),
       h('ul', { class: 'rows travel-list' }, ['small', 'standard'].map((quality) => {
-        const q = quality === 'small' ? { label: 'Small · 480p', note: 'About 230 MB per half hour' } : { label: 'Standard · 720p', note: 'About 520 MB per half hour' };
+        const q = quality === 'small' ? { label: T('Small · 480p'), note: T('About 230 MB per half hour') } : { label: T('Standard · 720p'), note: T('About 520 MB per half hour') };
         return h('li', { class: 'row travel-row' },
           h('div', { class: 'row-text' }, h('div', { class: 'row-title' }, q.label), h('div', { class: 'row-meta' }, h('span', {}, q.note))),
           h('div', { class: 'row-actions' }, h('button', { type: 'button', class: 'chip', onclick: async (e) => {
             if (await askTravel(items, quality, e.currentTarget)) openTravelList();
-          } }, 'Make them')));
+          } }, T('Make them'))));
       })),
-      h('p', { class: 'muted travel-note' }, 'Episodes are made one at a time. Each gets its own Download button in the list when it’s ready.'));
+      h('p', { class: 'muted travel-note' }, T('Episodes are made one at a time. Each gets its own Download button in the list when it’s ready.')));
   }
   travelOverlay(opener, draw);
 }
@@ -653,24 +656,24 @@ function openTravelList(opener) {
   function draw() {
     const items = travelOrder(travelView.items);
     $('#picker-body').replaceChildren(
-      h('h2', { id: 'picker-title' }, 'For your phone'),
-      h('p', { class: 'muted picker-sub' }, travelSummary(items).replace(' for your phone', items.length === 1 ? ' copy' : ' copies') || 'Nothing yet. Open a film or episode and choose Download to phone.'),
+      h('h2', { id: 'picker-title' }, T('For your phone')),
+      h('p', { class: 'muted picker-sub' }, travelSummary(items).replace(' for your phone', items.length === 1 ? ' copy' : ' copies') || T('Nothing yet. Open a film or episode and choose Download to phone.')),
       h('ul', { class: 'rows travel-list' }, items.map((item) => h('li', { class: 'row travel-row' },
         h('div', { class: 'row-text' },
           h('div', { class: 'row-title' }, item.title),
           h('div', { class: `row-meta${item.state === 'failed' ? ' is-error' : ''}` }, [item.label, sizeWords(item, fmtBytes), stateWords(item),
-            item.downloadedAt && 'Downloaded'].filter(Boolean).map((t) => h('span', {}, t))),
+            item.downloadedAt && T('Downloaded')].filter(Boolean).map((t) => h('span', {}, t))),
           travelProgress(item)),
         h('div', { class: 'row-actions' },
-          item.state === 'failed' && h('button', { type: 'button', class: 'chip', onclick: (e) => askTravel([{ kind: item.kind, id: item.id, title: item.title }], item.quality, e.currentTarget).then(draw) }, 'Try again'),
+          item.state === 'failed' && h('button', { type: 'button', class: 'chip', onclick: (e) => askTravel([{ kind: item.kind, id: item.id, title: item.title }], item.quality, e.currentTarget).then(draw) }, T('Try again')),
           item.url && travelLink(item.url),
-          h('button', { type: 'button', class: 'cast-btn del-btn', title: 'Remove', 'aria-label': `Remove ${item.title} (${item.label}) from your phone list`, onclick: async (e) => {
+          h('button', { type: 'button', class: 'cast-btn del-btn', title: T('Remove'), 'aria-label': T('Remove {0} ({1}) from your phone list', item.title, item.label), onclick: async (e) => {
             e.currentTarget.disabled = true;
             try { travelView.items = (await api('/api/travel/remove', jsonPost({ kind: item.kind, id: item.id, quality: item.quality }))).items; } catch (err) { toast(err.message); }
             draw();
             if (state.view === 'library') renderLibrary();
           } }, icon('trash')))))),
-      items.length > 0 && h('p', { class: 'muted travel-note' }, 'Removing one here doesn’t touch the copy already on your phone. Copies leave the server a week after you last download them.'));
+      items.length > 0 && h('p', { class: 'muted travel-note' }, T('Removing one here doesn’t touch the copy already on your phone. Copies leave the server a week after you last download them.')));
   }
   travelOverlay(opener, draw);
   loadTravel();
@@ -680,8 +683,8 @@ function openTravelList(opener) {
 let searchCtrl;
 let searchTimer;
 const disc = { type: 'all', genre: null, sort: 'popular', list: null, genres: null, cache: new Map() };
-const TYPE_LABELS = [['all', 'All'], ['movie', 'Films'], ['tv', 'Shows']];
-const SORT_LABELS = [['popular', 'Popular'], ['rating', 'Top rated'], ['newest', 'Newest']];
+const TYPE_LABELS = [['all', T('All')], ['movie', T('Films')], ['tv', T('Shows')]];
+const SORT_LABELS = [['popular', T('Popular')], ['rating', T('Top rated')], ['newest', T('Newest')]];
 
 async function cachedApi(url, signal) {
   if (disc.cache.has(url)) return disc.cache.get(url);
@@ -693,8 +696,8 @@ async function cachedApi(url, signal) {
 
 // "In your library", or "On server" when someone else has it here (it can be added, not downloaded).
 function ownershipBadge(t) {
-  if (matchesFor(t).some((f) => f.done)) return h('span', { class: 'on-server' }, 'In your library');
-  if (serverMatchesFor(t).length) return h('span', { class: 'on-server is-other' }, 'On server');
+  if (matchesFor(t).some((f) => f.done)) return h('span', { class: 'on-server' }, T('In your library'));
+  if (serverMatchesFor(t).length) return h('span', { class: 'on-server is-other' }, T('On server'));
   return null;
 }
 
@@ -706,9 +709,9 @@ function titleCard(t) {
           ? h('img', { src: t.poster, alt: '', loading: 'lazy', decoding: 'async' })
           : h('div', { class: 'poster-fallback' }, t.title),
         ownershipBadge(t),
-        t.rating && h('span', { class: 'rating', 'aria-label': `Rated ${t.rating} out of 10` }, `★ ${t.rating.toFixed(1)}`)),
+        t.rating && h('span', { class: 'rating', 'aria-label': T('Rated {0} out of 10', t.rating) }, `★ ${t.rating.toFixed(1)}`)),
       h('div', { class: 'name' }, t.title),
-      h('div', { class: 'sub' }, [t.year, t.type === 'tv' ? 'Series' : 'Film'].filter(Boolean).join(', '))));
+      h('div', { class: 'sub' }, [t.year, t.type === 'tv' ? T('Series') : T('Film')].filter(Boolean).join(', '))));
 }
 const titleGrid = (items) => h('ul', { class: 'grid' }, items.map(titleCard));
 
@@ -731,18 +734,18 @@ function discoverFilters() {
     window.scrollTo({ top: 0 });
     renderDiscover();
   };
-  const chips = h('div', { class: 'genre-chips', role: 'group', 'aria-label': 'Genre' },
-    h('button', { type: 'button', class: 'chip', 'aria-pressed': String(!disc.genre), onclick: () => pick({ genre: null }) }, 'All genres'),
+  const chips = h('div', { class: 'genre-chips', role: 'group', 'aria-label': T('Genre') },
+    h('button', { type: 'button', class: 'chip', 'aria-pressed': String(!disc.genre), onclick: () => pick({ genre: null }) }, T('All genres')),
     (disc.genres || []).filter(genreFits).map((g) => h('button', {
       type: 'button', class: 'chip', 'aria-pressed': String(disc.genre?.name === g.name), onclick: () => pick({ genre: g }),
     }, g.name)));
   requestAnimationFrame(() => chips.querySelector('[aria-pressed="true"]')?.scrollIntoView({ block: 'nearest', inline: 'center' }));
   return h('div', { class: 'discover-filters' },
-    segmented(TYPE_LABELS, disc.type, (type) => pick({ type }), 'Show'), chips);
+    segmented(TYPE_LABELS, disc.type, (type) => pick({ type }), T('Show')), chips);
 }
 
 function heroSlide(t) {
-  const meta = [t.year, t.type === 'tv' ? 'Series' : 'Film', t.rating && `★ ${t.rating.toFixed(1)}`, ...genreNames(t)].filter(Boolean);
+  const meta = [t.year, t.type === 'tv' ? T('Series') : T('Film'), t.rating && `★ ${t.rating.toFixed(1)}`, ...genreNames(t)].filter(Boolean);
   return h('li', { class: 'hero-slide' },
     h('button', { class: 'hero-card', onclick: (e) => openDetails(t, e.currentTarget) },
       h('img', { src: t.backdrop, alt: '', decoding: 'async' }),
@@ -756,8 +759,8 @@ function heroSlide(t) {
 function carousel(title, list, seeAll = null, cls = '') {
   const move = (direction) => list.scrollBy({ left: direction * Math.max(160, list.clientWidth * 0.85),
     behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
-  const prev = h('button', { type: 'button', class: 'carousel-arrow', disabled: true, 'aria-label': `Previous in ${title}`, onclick: () => move(-1) }, icon('back'));
-  const next = h('button', { type: 'button', class: 'carousel-arrow next', 'aria-label': `Next in ${title}`, onclick: () => move(1) }, icon('back'));
+  const prev = h('button', { type: 'button', class: 'carousel-arrow', disabled: true, 'aria-label': T('Previous in {0}', title), onclick: () => move(-1) }, icon('back'));
+  const next = h('button', { type: 'button', class: 'carousel-arrow next', 'aria-label': T('Next in {0}', title), onclick: () => move(1) }, icon('back'));
   let section, observer, shown = false;
   const update = () => {
     // Library shelves are rebuilt in place; a removed one stops watching its size.
@@ -780,22 +783,22 @@ function carousel(title, list, seeAll = null, cls = '') {
 
 function row(r) {
   return carousel(r.title, h('ul', { class: 'shelf-items', tabindex: '0', 'aria-label': r.title }, r.items.map(titleCard)),
-    h('button', { class: 'see-all', onclick: () => { disc.list = { key: r.key, title: r.title }; window.scrollTo({ top: 0 }); renderDiscover(); } }, 'See all'));
+    h('button', { class: 'see-all', onclick: () => { disc.list = { key: r.key, title: r.title }; window.scrollTo({ top: 0 }); renderDiscover(); } }, T('See all')));
 }
 
 // Paged grid for a genre or a "See all" list, with a Load more button.
 async function pagedGrid(content, urlFor, signal) {
   const seen = new Set();
   const grid = h('ul', { class: 'grid' });
-  const more = h('button', { class: 'load-more', hidden: true }, 'Load more');
+  const more = h('button', { class: 'load-more', hidden: true }, T('Load more'));
   let page = 0;
   const load = async () => {
     more.disabled = true;
-    more.textContent = 'Loading…';
+    more.textContent = T('Loading…');
     try {
       const data = await cachedApi(urlFor(page + 1), signal);
       if (page === 0) {
-        if (!data.results.length) { content.replaceChildren(notice('Nothing here', 'Try another genre or type.')); return; }
+        if (!data.results.length) { content.replaceChildren(notice(T('Nothing here'), T('Try another genre or type.'))); return; }
         content.replaceChildren(grid, more);
       }
       page = data.page;
@@ -805,11 +808,11 @@ async function pagedGrid(content, urlFor, signal) {
       more.hidden = page >= data.totalPages;
     } catch (err) {
       if (err.name === 'AbortError') return;
-      if (page === 0) content.replaceChildren(notice('Couldn’t load this', err.message, () => { content.replaceChildren(skeletonGrid()); load(); }));
+      if (page === 0) content.replaceChildren(notice(T('Couldn’t load this'), err.message, () => { content.replaceChildren(skeletonGrid()); load(); }));
       else toast(err.message);
     } finally {
       more.disabled = false;
-      more.textContent = 'Load more';
+      more.textContent = T('Load more');
     }
   };
   more.addEventListener('click', load);
@@ -821,12 +824,12 @@ async function renderDiscover() {
   const body = $('#discover-body');
   const heading = $('#discover-heading');
   const q = state.query.trim();
-  heading.textContent = q ? `Results for “${q}”` : 'Discover';
+  heading.textContent = q ? T('Results for “{0}”', q) : T('Discover');
   heading.classList.toggle('sr-only', !q);
 
   if (!state.status.search) {
-    body.replaceChildren(notice('Discover isn’t set up yet',
-      'Add a free TMDB token as TMDB_TOKEN in the .env file, then restart the server.'));
+    body.replaceChildren(notice(T('Discover isn’t set up yet'),
+      T('Add a free TMDB token as TMDB_TOKEN in the .env file, then restart the server.')));
     return;
   }
 
@@ -840,9 +843,9 @@ async function renderDiscover() {
       const data = await api(`/api/search?q=${encodeURIComponent(q)}`, { signal });
       body.replaceChildren(data.results.length
         ? titleGrid(data.results)
-        : notice(`No matches for “${q}”`, 'Check the spelling, or try the original title.'));
+        : notice(T('No matches for “{0}”', q), T('Check the spelling, or try the original title.')));
     } catch (err) {
-      if (err.name !== 'AbortError') body.replaceChildren(notice('Search didn’t work', err.message, renderDiscover));
+      if (err.name !== 'AbortError') body.replaceChildren(notice(T('Search didn’t work'), err.message, renderDiscover));
     }
     return;
   }
@@ -856,7 +859,7 @@ async function renderDiscover() {
 
   if (disc.list) {
     content.before(h('div', { class: 'discover-head' },
-      h('button', { class: 'back-link', onclick: () => { disc.list = null; renderDiscover(); } }, '‹ Discover'),
+      h('button', { class: 'back-link', onclick: () => { disc.list = null; renderDiscover(); } }, T('‹ Discover')),
       h('h3', {}, disc.list.title)));
     return pagedGrid(content, (page) => `/api/discover/list?key=${disc.list.key}&page=${page}`, signal);
   }
@@ -865,7 +868,7 @@ async function renderDiscover() {
     const g = disc.genre;
     content.before(h('div', { class: 'discover-head' },
       h('h3', {}, g.name),
-      segmented(SORT_LABELS, disc.sort, (sort) => { disc.sort = sort; renderDiscover(); }, 'Sort by')));
+      segmented(SORT_LABELS, disc.sort, (sort) => { disc.sort = sort; renderDiscover(); }, T('Sort by'))));
     return pagedGrid(content, (page) => `/api/discover/genre?type=${disc.type}&movie=${g.movie || ''}&tv=${g.tv || ''}&sort=${disc.sort}&page=${page}`, signal);
   }
 
@@ -875,14 +878,14 @@ async function renderDiscover() {
     // Popular on Marquee arrives separately (it's quick, but shouldn't hold up TMDB's rows).
     const popularSlot = h('div', { class: 'popular-slot' });
     content.replaceChildren(...[
-      data.featured.length && carousel('Trending this week', h('ul', { class: 'hero', tabindex: '0', 'aria-label': 'Trending this week' }, data.featured.map(heroSlide))),
+      data.featured.length && carousel(T('Trending this week'), h('ul', { class: 'hero', tabindex: '0', 'aria-label': T('Trending this week') }, data.featured.map(heroSlide))),
       savedShelf(),
       popularSlot,
       ...data.rows.map(row),
     ].filter(Boolean));
     social.popularShelf(disc.type, { carousel, titleCard, signal }).then((shelf) => { if (shelf && !signal.aborted) popularSlot.replaceWith(shelf); });
   } catch (err) {
-    if (err.name !== 'AbortError') content.replaceChildren(notice('Couldn’t load Discover', err.message, renderDiscover));
+    if (err.name !== 'AbortError') content.replaceChildren(notice(T('Couldn’t load Discover'), err.message, renderDiscover));
   }
 }
 
@@ -952,10 +955,10 @@ async function loadConvert() {
 // What each conversion job is for (src/convert.js sets `purpose`): one file can get two jobs,
 // an MP4 for Apple devices and later an H.264 copy for browsers that can't play HEVC.
 const CONVERT_PURPOSE = {
-  apple: 'Making an MP4 copy that plays on iPhone and Apple TV',
-  'browser-h264': 'Making a one-time H.264 copy for browsers that can\u2019t play HEVC. You can already watch it.',
-  'browser-audio': 'Making a browser copy with audio every browser can play. You can already watch it.',
-  subtitles: 'Saving the original\u2019s subtitles before it\u2019s removed',
+  apple: T('Making an MP4 copy that plays on iPhone and Apple TV'),
+  'browser-h264': T('Making a one-time H.264 copy for browsers that can’t play HEVC. You can already watch it.'),
+  'browser-audio': T('Making a browser copy with audio every browser can play. You can already watch it.'),
+  subtitles: T('Saving the original’s subtitles before it’s removed'),
 };
 
 // Conversion progress banner shown at the top of the library.
@@ -968,24 +971,24 @@ function renderConvertBanner() {
   if (running.length) {
     running.forEach((cur, i) => {
       const bits = [h('strong', {}, `${cur.percent || 0}%`),
-        cur.mode === 'Re-encoding' ? 're-encoding' : cur.mode === 'Saving subtitles' ? 'saving subtitles' : 'quick repackage',
-        cur.speed && `${cur.speed} speed`,
+        cur.mode === 'Re-encoding' ? T('re-encoding') : cur.mode === 'Saving subtitles' ? T('saving subtitles') : T('quick repackage'),
+        cur.speed && T('{0} speed', cur.speed),
         cur.eta != null && fmtEta(cur.eta),
-        i === running.length - 1 && c.queued > 0 && `${c.queued} more waiting`];
+        i === running.length - 1 && c.queued > 0 && T('{0} more waiting', c.queued)];
       parts.push(h('div', { class: 'convert-job' },
-        h('div', { class: 'row-title' }, `Preparing playback: ${cur.name}`),
+        h('div', { class: 'row-title' }, T('Preparing playback: {0}', cur.name)),
         h('div', { class: 'dl-state' }, CONVERT_PURPOSE[cur.purpose] || CONVERT_PURPOSE.apple),
         h('div', { class: 'bulbs', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100',
-          'aria-valuenow': String(Math.floor(cur.percent || 0)), 'aria-label': 'Conversion progress',
+          'aria-valuenow': String(Math.floor(cur.percent || 0)), 'aria-label': T('Conversion progress'),
           style: `--p:${cur.percent || 0}%` }, h('i')),
         h('div', { class: 'dl-stats' }, bits.filter(Boolean).map((b) => (b instanceof Node ? b : h('span', {}, b))))));
     });
   } else if (c && !c.enabled && c.reason && !/turned off/i.test(c.reason)) {
-    parts.push(h('div', { class: 'dl-state' }, `Automatic MP4 conversion is off. ${c.reason}`));
+    parts.push(h('div', { class: 'dl-state' }, T('Automatic MP4 conversion is off. {0}', c.reason)));
   }
   if (c?.recentFailures?.length) {
     parts.push(h('details', { class: 'convert-failures' },
-      h('summary', {}, `${c.recentFailures.length} file${c.recentFailures.length > 1 ? 's' : ''} couldn’t be converted`),
+      h('summary', {}, (c.recentFailures.length > 1 ? T('{0} files couldn’t be converted', c.recentFailures.length) : T('{0} file couldn’t be converted', c.recentFailures.length))),
       h('ul', {}, c.recentFailures.map((f) => h('li', {}, h('strong', {}, f.name), ` ${f.error}`)))));
   }
   el.hidden = !parts.length;
@@ -996,7 +999,7 @@ const libraryCards = new Map();
 let libraryUI = null;
 const unifiedLibrary = () => libraryUnion(state.library, state.libraryShows, state.downloads);
 // "Pappa", "Pappa and Anita", "Pappa, Anita and Home network"
-const nameList = (names) => names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+const nameList = (names) => names.length < 2 ? names.join('') : T('{0} and {1}', names.slice(0, -1).join(', '), names[names.length - 1]);
 // The people this person shares one library with (the owner sets it in Settings → People).
 const libraryMates = () => (state.me?.sharedWith || []).map((m) => m.name);
 
@@ -1004,16 +1007,16 @@ function renderLibrary() {
   libraryRenderPending = false;
   const body = $('#library-body');
   if (!libraryUI || !body.contains(libraryUI.root)) {
-    const filters = segmented(LIB_FILTERS, state.libFilter, v => { state.libFilter = v; renderLibrary(); }, 'Show');
-    const availability = select([['all', 'All titles'], ['ready', 'Ready to watch'], ['downloading', 'On the way'], ['attention', 'Needs attention']], state.libAvailability, v => { state.libAvailability = v; renderLibrary(); }, 'Availability');
+    const filters = segmented(LIB_FILTERS, state.libFilter, v => { state.libFilter = v; renderLibrary(); }, T('Show'));
+    const availability = select([['all', T('All titles')], ['ready', T('Ready to watch')], ['downloading', T('On the way')], ['attention', T('Needs attention')]], state.libAvailability, v => { state.libAvailability = v; renderLibrary(); }, T('Availability'));
     const groups = new Map(['movie', 'tv', 'unknown'].map(type => {
       const list = h('ul', { class: 'grid library-grid' });
-      return [type, { list, section: h('section', { class: 'lib-group' }, h('h3', { class: 'lib-subhead' }, { movie: 'Films', tv: 'Shows', unknown: 'Unidentified' }[type]), list) }];
+      return [type, { list, section: h('section', { class: 'lib-group' }, h('h3', { class: 'lib-subhead' }, { movie: T('Films'), tv: T('Shows'), unknown: T('Unidentified') }[type]), list) }];
     }));
     const root = h('div', { class: 'unified-library' });
     libraryUI = { root, groups, filters, availability, shared: h('p', { class: 'library-shared muted', hidden: true }), notices: h('div'), travel: h('button', { type: 'button', class: 'library-summary travel-summary', hidden: true, onclick: (e) => openTravelList(e.currentTarget) }), parties: h('div', { class: 'parties-slot' }), shelves: h('div'), summary: h('button', { class: 'library-summary', onclick: () => { state.libAvailability = 'downloading'; renderLibrary(); } }), empty: h('div') };
     root.append(h('div', { class: 'dl convert-banner', id: 'convert-banner', hidden: true }),
-      h('div', { class: 'library-toolbar' }, filters, h('label', { class: 'library-availability' }, 'Availability', availability)), libraryUI.shared, libraryUI.summary, libraryUI.travel, libraryUI.notices, libraryUI.parties, libraryUI.shelves, ...[...groups.values()].map(g => g.section), libraryUI.empty);
+      h('div', { class: 'library-toolbar' }, filters, h('label', { class: 'library-availability' }, T('Availability'), availability)), libraryUI.shared, libraryUI.summary, libraryUI.travel, libraryUI.notices, libraryUI.parties, libraryUI.shelves, ...[...groups.values()].map(g => g.section), libraryUI.empty);
     body.replaceChildren(root);
     loadParties();
     libraryCards.clear();
@@ -1027,13 +1030,13 @@ function renderLibrary() {
   ui.summary.hidden = !active;
   const mates = libraryMates();
   ui.shared.hidden = !mates.length;
-  const sharedText = mates.length ? `Shared library with ${nameList(mates)}: you all see and manage the same titles.` : '';
+  const sharedText = mates.length ? T('Shared library with {0}: you all see and manage the same titles.', nameList(mates)) : '';
   if (ui.shared.textContent !== sharedText) ui.shared.textContent = sharedText;
-  ui.summary.textContent = `${active} downloading${attention ? ` · ${attention} needs attention` : ''}`;
+  ui.summary.textContent = T('{0} downloading{1}', active, attention ? T(' · {0} needs attention', attention) : '');
   const phone = travelSummary(travelView.items);
   ui.travel.hidden = !phone;
   if (ui.travel.textContent !== phone) ui.travel.replaceChildren(icon('phone'), h('span', {}, phone));
-  const errors = [state.libraryError && `Library scan unavailable: ${state.libraryError}`, state.downloadsError && `Downloads unavailable: ${state.downloadsError}`, !state.status.library && 'No media folder is configured. Downloads will still appear here.'].filter(Boolean);
+  const errors = [state.libraryError && T('Library scan unavailable: {0}', state.libraryError), state.downloadsError && T('Downloads unavailable: {0}', state.downloadsError), !state.status.library && T('No media folder is configured. Downloads will still appear here.')].filter(Boolean);
   const noticeText = errors.join(' ');
   if (ui.notices.textContent !== noticeText) ui.notices.replaceChildren(...errors.map(message => h('p', { class: 'library-source-notice', role: 'status' }, message)));
   const seen = new Set(), positions = new Map(), aliases = new Map(), latestByKey = new Map(all.map(entry => [entry.key, entry])), latestByAlias = new Map(), focusedAnchors = new Map();
@@ -1070,8 +1073,8 @@ function renderLibrary() {
     card.remove(); libraryCards.delete(key);
   }
   for (const group of ui.groups.values()) group.section.hidden = !group.list.children.length;
-  const emptyText = entries.length || [...libraryCards.values()].some(c => c.contains(document.activeElement)) ? '' : all.length ? 'No titles match these filters.' : 'Nothing here yet. Find something in Discover and press Add to start watching.';
-  if (ui.empty.textContent !== emptyText) ui.empty.replaceChildren(emptyText ? notice(all.length ? 'No matching titles' : 'Your library is empty', emptyText) : '');
+  const emptyText = entries.length || [...libraryCards.values()].some(c => c.contains(document.activeElement)) ? '' : all.length ? T('No titles match these filters.') : T('Nothing here yet. Find something in Discover and press Add to start watching.');
+  if (ui.empty.textContent !== emptyText) ui.empty.replaceChildren(emptyText ? notice(all.length ? T('No matching titles') : T('Your library is empty'), emptyText) : '');
   // Shelves use ready files only; transfers never create fake playback progress.
   const shelfKey = JSON.stringify([librarySignature, state.libFilter, state.query, libraryProgressRevision, watch.revision, todayIso()]);
   // Also rebuilt when this page changed the list itself (a delete), before the server's copy catches up.
@@ -1080,7 +1083,7 @@ function renderLibrary() {
     const q = norm(state.query), ready = state.library.filter(f => (!q || norm(`${f.title} ${f.filmTitle || ''} ${f.file}`).includes(q)) && (state.libFilter === 'all' || (state.libFilter === 'tv') === (f.season != null)));
     const watching = ready.map(f => ({ f, progress: savedProgress(libraryFile(f)) })).filter(x => partlyWatched(x.progress)).sort((a,b) => (b.progress.at || 0) - (a.progress.at || 0)).slice(0,12);
     const leaving = libraryEntries(ready.filter(f => f.expiresAt != null && f.expiresAt - Date.now() < 48 * 3600000));
-    ui.shelves.replaceChildren(...[watching.length && continueShelf(watching.map(({f, progress}) => continueCard(f, progress))), comingUpShelf(), leaving.length && libraryShelf('Leaving soon', leaving.map(e => libraryCard(e, true)))].filter(Boolean));
+    ui.shelves.replaceChildren(...[watching.length && continueShelf(watching.map(({f, progress}) => continueCard(f, progress))), comingUpShelf(), leaving.length && libraryShelf(T('Leaving soon'), leaving.map(e => libraryCard(e, true)))].filter(Boolean));
   }
   ui.shelves.hidden = state.libAvailability !== 'all' && state.libAvailability !== 'ready';
   if (showView.id) updateOpenShow();
@@ -1093,7 +1096,7 @@ function makeUnifiedCard(entry) {
     h('div', { class: 'poster' }), h('div', { class: 'name' }), h('div', { class: 'sub' }));
   const panel = h('div', { class: 'library-transfer' }, h('div', { class: 'transfer-line' }, h('span', { class: 'transfer-state' }), h('span', { class: 'transfer-percent' })),
     h('div', { class: 'transfer-track', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100' }, h('i')));
-  card.append(button, panel, h('button', { class: 'library-more', type: 'button', 'aria-label': `Download details for ${entry.name}`, onclick: e => openTransferDetails(card._entry, e.currentTarget) }, '•••'));
+  card.append(button, panel, h('button', { class: 'library-more', type: 'button', 'aria-label': T('Download details for {0}', entry.name), onclick: e => openTransferDetails(card._entry, e.currentTarget) }, '•••'));
   return card;
 }
 function updateUnifiedCard(card, entry) {
@@ -1109,27 +1112,27 @@ function updateUnifiedCard(card, entry) {
   $('.sub', card).textContent = libraryAvailability(entry);
   const next = nextExpiry(entry.files), hours = (next-Date.now())/3600000;
   let expiry = $('.poster-expiry', card);
-  if (Number.isFinite(next)) { if (!expiry) { expiry = h('span', { class: 'poster-expiry' }); poster.append(expiry); } expiry.textContent = hours < 1 ? 'Leaving soon' : hours < 48 ? `${Math.ceil(hours)}h left` : `${Math.ceil(hours/24)}d left`; expiry.classList.toggle('is-soon', hours < 24); } else expiry?.remove();
+  if (Number.isFinite(next)) { if (!expiry) { expiry = h('span', { class: 'poster-expiry' }); poster.append(expiry); } expiry.textContent = hours < 1 ? T('Leaving soon') : hours < 48 ? T('{0}h left', Math.ceil(hours)) : T('{0}d left', Math.ceil(hours/24)); expiry.classList.toggle('is-soon', hours < 24); } else expiry?.remove();
   let watched = $('.poster-progress', card);
   const progress = entry.files[0] && savedProgress(libraryFile(entry.files[0]));
-  if (partlyWatched(progress)) { if (!watched) { watched = h('span', { class: 'poster-progress' }, h('i')); poster.append(watched); } watched.setAttribute('aria-label', `${Math.round(progress.time/progress.duration*100)}% watched`); watched.firstChild.style.width = `${progress.time/progress.duration*100}%`; } else watched?.remove();
+  if (partlyWatched(progress)) { if (!watched) { watched = h('span', { class: 'poster-progress' }, h('i')); poster.append(watched); } watched.setAttribute('aria-label', T('{0}% watched', Math.round(progress.time/progress.duration*100))); watched.firstChild.style.width = `${progress.time/progress.duration*100}%`; } else watched?.remove();
   panel.hidden = !entry.active.length && !entry.preparing;
   $('.library-more', card).hidden = !entry.transfers.length;
-  $('.library-more', card).setAttribute('aria-label', `Download details for ${entry.name}`);
+  $('.library-more', card).setAttribute('aria-label', T('Download details for {0}', entry.name));
   $('.transfer-state', card).textContent = entry.state;
   $('.transfer-percent', card).textContent = entry.progress == null ? '' : `${Math.floor(entry.progress * 100)}%`;
-  panel.classList.toggle('is-paused', entry.state === 'Paused'); panel.classList.toggle('is-error', entry.attention);
+  panel.classList.toggle('is-paused', entry.state === T('Paused')); panel.classList.toggle('is-error', entry.attention);
   const track = $('.transfer-track', card);
-  track.setAttribute('aria-label', `${entry.name} download progress`);
+  track.setAttribute('aria-label', T('{0} download progress', entry.name));
   track.setAttribute('aria-valuetext', `${entry.state}${entry.progress == null ? '' : `, ${Math.floor(entry.progress*100)} percent`}`);
   if (entry.progress == null) track.removeAttribute('aria-valuenow'); else track.setAttribute('aria-valuenow', String(Math.floor(entry.progress*100)));
   track.firstChild.style.width = entry.progress == null ? '0%' : `${entry.progress*100}%`;
   let pill = $('.transfer-pill', poster);
-  const pillText = entry.attention ? 'Needs attention' : entry.state === 'Paused' ? 'Paused' : /Preparing|Checking/.test(entry.state) ? 'Preparing' : '';
+  const pillText = entry.attention ? T('Needs attention') : entry.state === T('Paused') ? T('Paused') : [T('Preparing playback'), T('Checking files')].includes(entry.state) ? T('Preparing') : '';
   if (pillText) { if (!pill) { pill = h('span', { class: 'transfer-pill' }); poster.append(pill); } pill.textContent = pillText; } else pill?.remove();
   let badge = $('.new-badge', poster);
-  if (fresh) { if (!badge) { badge = h('span', { class: 'new-badge' }); poster.append(badge); } badge.textContent = fresh === 1 ? 'New' : `${fresh} new`; badge.setAttribute('aria-label', `${fresh} new episode${fresh === 1 ? '' : 's'}`); } else badge?.remove();
-  if (old && (old.ready !== entry.ready || old.attention !== entry.attention)) $('#library-live').textContent = `${entry.name}: ${entry.attention ? 'needs attention' : entry.ready ? 'ready to watch' : entry.state}`;
+  if (fresh) { if (!badge) { badge = h('span', { class: 'new-badge' }); poster.append(badge); } badge.textContent = fresh === 1 ? T('New') : T('{0} new', fresh); badge.setAttribute('aria-label', (fresh === 1 ? T('{0} new episode', fresh) : T('{0} new episodes', fresh))); } else badge?.remove();
+  if (old && (old.ready !== entry.ready || old.attention !== entry.attention)) $('#library-live').textContent = `${entry.name}: ${entry.attention ? T('needs attention') : entry.ready ? T('ready to watch') : entry.state}`;
 }
 function openUnifiedTitle(entry, opener) {
   if (entry.show) { showView.hashes = entry.transfers.map(d => d.hash); return openShow(entry.show.id, opener); }
@@ -1139,11 +1142,11 @@ function openUnifiedTitle(entry, opener) {
   renderFilm();
   pushOverlay(showSheet($('#sheet'), $('#sheet-backdrop'), () => { filmView.id = null; opener?.focus({ preventScroll: true }); }));
 }
-const LIB_FILTERS = [['all', 'All'], ['movie', 'Films'], ['tv', 'Shows']];
+const LIB_FILTERS = [['all', T('All')], ['movie', T('Films')], ['tv', T('Shows')]];
 // ---------- Library: shows ----------
-const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? T(one) : T(many)}`;
 const episodeCount = (files) => new Set(files.map((f) => `${f.season}:${f.episode}`)).size;
-const seasonName = (n) => (n === 0 ? 'Specials' : `Season ${n}`);
+const seasonName = (n) => (n === 0 ? T('Specials') : T('Season {0}', n));
 
 // Library cards share the same identity as playback, including old browser resume points.
 const libraryFile = (f) => ({ ...f, kind: 'lib', key: f.id, done: true });
@@ -1170,7 +1173,7 @@ function libraryEntries(items) {
 function libraryGroups(entries) {
   const films = entries.filter((e) => !e.show && e.files[0].season == null);
   const series = entries.filter((e) => e.show || e.files[0].season != null);
-  const groups = films.length && series.length ? [['Films', films], ['Shows', series]] : [[null, entries]];
+  const groups = films.length && series.length ? [[T('Films'), films], [T('Shows'), series]] : [[null, entries]];
   return groups.map(([label, list]) => h('div', { class: 'lib-group' },
     label && h('h4', { class: 'lib-subhead' }, label),
     h('ul', { class: 'grid library-grid' }, list.map((e) => libraryCard(e)))));
@@ -1182,8 +1185,8 @@ function libraryShelf(title, cards, cls = '') {
 }
 // Continue watching scrolls like the Discover rows: arrows beside the title, hidden while every card fits.
 function continueShelf(cards) {
-  return carousel('Continue watching',
-    h('ul', { class: 'shelf-items', tabindex: '0', 'aria-label': 'Continue watching' }, cards), null, 'library-shelf continue-shelf');
+  return carousel(T('Continue watching'),
+    h('ul', { class: 'shelf-items', tabindex: '0', 'aria-label': T('Continue watching') }, cards), null, 'library-shelf continue-shelf');
 }
 
 // 16:9 artwork (episode stills, backdrops). Each source is tried in turn, then a themed placeholder.
@@ -1207,14 +1210,14 @@ const CONTINUE_SIZES = '(max-width: 420px) 200px, 240px'; // matches .continue-s
 function continueCard(f, progress) {
   const show = state.libraryShows.find((s) => s.id === f.show);
   const name = show?.title || f.filmTitle || f.title;
-  const left = `${Math.max(1, Math.ceil((progress.duration - progress.time) / 60))} min left`;
+  const left = T('{0} min left', Math.max(1, Math.ceil((progress.duration - progress.time) / 60)));
   const pct = progress.time / progress.duration * 100;
   const next = nextExpiry([f]), hours = (next - Date.now()) / 3600000;
   const art = f.season != null ? episodeArt(f.still, show, '', CONTINUE_SIZES) : wideArt([f.backdrop, { src: f.poster, contain: true }]);
   art.append(...[
     Number.isFinite(next) && h('span', { class: `poster-expiry${hours < 24 ? ' is-soon' : ''}`, title: timeLeft(next) },
-      hours <= 0 ? 'Leaving soon' : hours < 1 ? '<1h left' : hours < 48 ? `${Math.ceil(hours)}h left` : `${Math.ceil(hours / 24)}d left`),
-    h('span', { class: 'poster-progress', 'aria-label': `${Math.round(pct)}% watched` }, h('i', { style: `width:${pct}%` }))].filter(Boolean));
+      hours <= 0 ? T('Leaving soon') : hours < 1 ? T('<1h left') : hours < 48 ? T('{0}h left', Math.ceil(hours)) : T('{0}d left', Math.ceil(hours / 24))),
+    h('span', { class: 'poster-progress', 'aria-label': T('{0}% watched', Math.round(pct)) }, h('i', { style: `width:${pct}%` }))].filter(Boolean));
   return h('li', { class: 'library-card continue-card' },
     h('button', { type: 'button', class: 'title-card', 'data-library-focus': `play-${f.id}`, onclick: () => openPlayer(libraryFile(f)) },
       art, h('div', { class: 'name' }, name),
@@ -1226,14 +1229,14 @@ function libraryCard(entry, keep = false) {
   const { show, files, name } = entry;
   const f = files[0];
   const seasons = [...new Set(files.map((f) => f.season))];
-  const subtitle = entry.subtitle || (f.movieAmbiguous ? 'Film needs identifying' : show
+  const subtitle = entry.subtitle || (f.movieAmbiguous ? T('Film needs identifying') : show
     ? `${seasons.length === 1 ? seasonName(seasons[0]) : plural(seasons.length, 'season')} · ${plural(episodeCount(files), 'episode')}`
-    : [f.year, f.season != null ? episodeLabel(f) : 'Film'].filter(Boolean).join(' · '));
+    : [f.year, f.season != null ? episodeLabel(f) : T('Film')].filter(Boolean).join(' · '));
   const poster = entry.poster || show?.poster || f.poster;
   const progress = savedProgress(libraryFile(f));
   const next = nextExpiry(files);
   const hours = (next - Date.now()) / 3600000;
-  const expiry = hours <= 0 ? 'Leaving soon' : hours < 1 ? '<1h left' : hours < 48 ? `${Math.ceil(hours)}h left` : `${Math.ceil(hours / 24)}d left`;
+  const expiry = hours <= 0 ? T('Leaving soon') : hours < 1 ? T('<1h left') : hours < 48 ? T('{0}h left', Math.ceil(hours)) : T('{0}d left', Math.ceil(hours / 24));
   const eligible = files.filter(canExtend);
   return h('li', { class: 'library-card' },
     h('button', { type: 'button', class: 'title-card', 'data-library-focus': `play-${f.id}`, onclick: (e) => entry.resume
@@ -1242,7 +1245,7 @@ function libraryCard(entry, keep = false) {
         poster ? h('img', { src: poster, alt: '', loading: 'lazy', decoding: 'async', onerror: (e) => e.currentTarget.replaceWith(h('div', { class: 'poster-fallback' }, name)) })
           : h('div', { class: 'poster-fallback' }, name),
         Number.isFinite(next) && h('span', { class: `poster-expiry${hours < 24 ? ' is-soon' : ''}`, title: timeLeft(next) }, expiry),
-        partlyWatched(progress) && h('span', { class: 'poster-progress', 'aria-label': `${Math.round(progress.time / progress.duration * 100)}% watched` },
+        partlyWatched(progress) && h('span', { class: 'poster-progress', 'aria-label': T('{0}% watched', Math.round(progress.time / progress.duration * 100)) },
           h('i', { style: `width:${progress.time / progress.duration * 100}%` }))),
       h('div', { class: 'name' }, name), h('div', { class: 'sub' }, subtitle)),
     keep && eligible.length > 0 && h('button', { type: 'button', class: 'chip library-keep', 'data-library-focus': `keep-${f.id}`, onclick: async (e) => {
@@ -1250,25 +1253,25 @@ function libraryCard(entry, keep = false) {
       btn.disabled = true;
       await extendItems(eligible);
       if (btn.isConnected) btn.disabled = false;
-    } }, `Keep ${extendDays()} more days`));
+    } }, T('Keep {0} more days', extendDays())));
 }
 
 // These controls appear above the seasons, so extending a show doesn't require finding an episode.
 function keepBar(files, onDone) {
   const timed = files.filter((f) => f.expiresAt != null).sort((a, b) => a.expiresAt - b.expiresAt);
-  if (!timed.length) return h('div', { class: 'library-keep-bar is-kept' }, h('p', {}, 'Kept in your library'),
-    h('p', { class: 'muted' }, 'No automatic deletion scheduled.'));
+  if (!timed.length) return h('div', { class: 'library-keep-bar is-kept' }, h('p', {}, T('Kept in your library')),
+    h('p', { class: 'muted' }, T('No automatic deletion scheduled.')));
   const next = timed[0];
   const eligible = timed.filter(canExtend);
-  const text = files.length > 1 ? `Next to go: ${episodeLabel(next) || next.title} · ${timeLeft(next.expiresAt)}` : timeLeft(next.expiresAt);
+  const text = files.length > 1 ? T('Next to go: {0} · {1}', episodeLabel(next) || next.title, timeLeft(next.expiresAt)) : timeLeft(next.expiresAt);
   return h('div', { class: 'library-keep-bar' },
     h('div', {}, h('p', { class: 'keep-countdown' }, text),
-      h('p', { class: 'muted' }, eligible.length ? 'Keep it longer if you’re not finished watching.' : 'The extension limit has been reached.')),
+      h('p', { class: 'muted' }, eligible.length ? T('Keep it longer if you’re not finished watching.') : T('The extension limit has been reached.'))),
     eligible.length > 0 && h('button', { type: 'button', class: 'play-btn', onclick: async (e) => {
       e.currentTarget.disabled = true;
       await extendItems(eligible);
       onDone();
-    } }, eligible.length > 1 ? `Keep all ${eligible.length} · ${extendDays()} more days` : `Keep ${extendDays()} more days`));
+    } }, eligible.length > 1 ? T('Keep all {0} · {1} more days', eligible.length, extendDays()) : T('Keep {0} more days', extendDays())));
 }
 
 const filmView = { id: null };
@@ -1296,7 +1299,7 @@ function renderFilm() {
     $('#sheet-body').replaceChildren(h('div', { class: `sheet-hero${d?.backdrop ? '' : ' no-image'}`, style: d?.backdrop ? `background-image:url("${d.backdrop}")` : null }), h('div', { class: 'sheet-content' }, h('h2', { id: 'sheet-title' }, entry.name), h('ul', { class: 'facts' }, h('li', {}, libraryAvailability(entry))), h('div', { class: 'sheet-transfer' }, transferPanel(entry)))); return;
   }
   if (!f) {
-    $('#sheet-body').replaceChildren(h('div', { class: 'sheet-content' }, h('h2', { id: 'sheet-title' }, 'Removed from your library')));
+    $('#sheet-body').replaceChildren(h('div', { class: 'sheet-content' }, h('h2', { id: 'sheet-title' }, T('Removed from your library'))));
     return;
   }
   const file = libraryFile(f);
@@ -1305,22 +1308,22 @@ function renderFilm() {
     h('div', { class: `sheet-hero${f.backdrop ? '' : ' no-image'}`, style: f.backdrop ? `background-image:url("${f.backdrop}")` : null }),
     h('div', { class: 'sheet-content' },
       h('h2', { id: 'sheet-title' }, f.filmTitle || f.title),
-      h('ul', { class: 'facts' }, [f.year, f.season != null ? episodeLabel(f) : 'Film', f.rating && `★ ${f.rating}`, f.format?.toUpperCase(), fmtBytes(f.size)]
+      h('ul', { class: 'facts' }, [f.year, f.season != null ? episodeLabel(f) : T('Film'), f.rating && `★ ${f.rating}`, f.format?.toUpperCase(), fmtBytes(f.size)]
         .filter(Boolean).map((text) => h('li', {}, text))),
       social.rateRow(f.season == null && f.tmdbId ? `movie:${f.tmdbId}` : titleKeyOf(f), f.filmTitle || f.title),
       transferPanel(unifiedLibrary().find(e => e.files.some(file => file.id === f.id))),
       keepBar([f], renderFilm),
       f.movieAmbiguous && h('p', { class: 'identity-note' }, state.me?.isOwner
-        ? 'Several films match this filename. Choose “Identify film” to select the right one.'
-        : 'Several films match this filename. The server’s owner can identify this file.'),
+        ? T('Several films match this filename. Choose “Identify film” to select the right one.')
+        : T('Several films match this filename. The server’s owner can identify this file.')),
       h('div', { class: 'library-film-actions' },
         h('button', { class: 'play-btn', disabled: f.converting, onclick: () => openPlayer(file) }, icon('play'),
-          f.converting ? 'Preparing playback…' : partlyWatched(progress) ? `Resume at ${fmtTime(progress.time)}` : 'Play'),
-        h('button', { class: 'chip', onclick: (e) => openPicker(file, e.currentTarget) }, icon('tv'), 'Play on TV'),
-        !f.converting && h('button', { class: 'chip', onclick: (e) => openPlanParty(file, e.currentTarget) }, icon('party'), 'Watch party'),
-        h('button', { class: 'chip', onclick: (e) => openTravel(file, e.currentTarget) }, icon('phone'), 'To phone'),
-        h('button', { class: 'chip', onclick: (e) => openDelete(file, e.currentTarget) }, icon('trash'), 'Delete'),
-        state.me?.isOwner && h('button', { class: 'chip', onclick: (e) => openFilmIdentity(f, e.currentTarget) }, 'Identify film')),
+          f.converting ? T('Preparing playback…') : partlyWatched(progress) ? T('Resume at {0}', fmtTime(progress.time)) : T('Play')),
+        h('button', { class: 'chip', onclick: (e) => openPicker(file, e.currentTarget) }, icon('tv'), T('Play on TV')),
+        !f.converting && h('button', { class: 'chip', onclick: (e) => openPlanParty(file, e.currentTarget) }, icon('party'), T('Watch party')),
+        h('button', { class: 'chip', onclick: (e) => openTravel(file, e.currentTarget) }, icon('phone'), T('To phone')),
+        h('button', { class: 'chip', onclick: (e) => openDelete(file, e.currentTarget) }, icon('trash'), T('Delete')),
+        state.me?.isOwner && h('button', { class: 'chip', onclick: (e) => openFilmIdentity(f, e.currentTarget) }, T('Identify film'))),
       f.overview && h('p', { class: 'overview' }, f.overview)));
 }
 
@@ -1329,9 +1332,9 @@ function openFilmIdentity(f, opener) {
   let request = 0;
   const list = h('ul', { class: 'rows identity-results' });
   const status = h('p', { class: 'muted', role: 'status' });
-  const input = h('input', { type: 'search', 'aria-label': 'Film title', value: f.title });
+  const input = h('input', { type: 'search', 'aria-label': T('Film title'), value: f.title });
   const form = h('form', { class: 'identity-search', onsubmit: (e) => { e.preventDefault(); search(); } }, input,
-    h('button', { class: 'chip', type: 'submit' }, 'Search'));
+    h('button', { class: 'chip', type: 'submit' }, T('Search')));
   const draw = (results) => {
     list.replaceChildren(...results.map((t) => h('li', {}, h('button', { class: 'row identity-result', type: 'button', onclick: async (e) => {
       const btn = e.currentTarget;
@@ -1341,25 +1344,25 @@ function openFilmIdentity(f, opener) {
         if (!closed) closeTopOverlay();
         await loadLibrary();
         if (state.view === 'library') renderLibrary();
-        toast('Film identified');
+        toast(T('Film identified'));
       } catch (err) { status.textContent = err.message; btn.disabled = false; }
     } },
     t.poster && h('img', { src: t.poster, alt: '', loading: 'lazy' }),
     h('span', { class: 'row-text' }, h('span', { class: 'row-title' }, t.title),
-      h('span', { class: 'row-meta' }, t.releaseDate || t.year || 'Release date unknown'),
-      h('span', { class: 'identity-overview' }, t.overview || 'No description available.'))))));
-    status.textContent = results.length ? 'Choose the poster and description that match your film.' : 'No films found. Try a different title.';
+      h('span', { class: 'row-meta' }, t.releaseDate || t.year || T('Release date unknown')),
+      h('span', { class: 'identity-overview' }, t.overview || T('No description available.')))))));
+    status.textContent = results.length ? T('Choose the poster and description that match your film.') : T('No films found. Try a different title.');
   };
   async function search() {
     const currentRequest = ++request;
-    status.textContent = 'Searching…';
+    status.textContent = T('Searching…');
     try {
       const data = await api(`/api/library/identify?id=${encodeURIComponent(f.id)}&q=${encodeURIComponent(input.value.trim())}`);
       if (!closed && currentRequest === request) draw(data.results);
     } catch (err) { if (!closed && currentRequest === request) status.textContent = err.message; }
   }
-  $('#picker-body').replaceChildren(h('h2', { id: 'picker-title' }, 'Identify film'),
-    h('p', { class: 'muted' }, `File: ${f.file}`), form, status, list);
+  $('#picker-body').replaceChildren(h('h2', { id: 'picker-title' }, T('Identify film')),
+    h('p', { class: 'muted' }, T('File: {0}', f.file)), form, status, list);
   pushOverlay(showSheet($('#picker'), $('#picker-backdrop'), () => { closed = true; opener?.focus({ preventScroll: true }); }));
   if (f.filmCandidates?.length) draw(f.filmCandidates); else search();
 }
@@ -1388,14 +1391,14 @@ function updateOpenShow() {
 }
 // A title's downloads in its sheet: state, percentage, Pause/Resume and Details (speed, files, peers).
 function transferPanel(entry) {
-  if (!entry?.active.length) return entry?.preparing ? h('p', { class: 'pack-transfer' }, 'Preparing playback. It plays here as soon as the MP4 copy is ready.') : null;
+  if (!entry?.active.length) return entry?.preparing ? h('p', { class: 'pack-transfer' }, T('Preparing playback. It plays here as soon as the MP4 copy is ready.')) : null;
   const { key, aliases } = entry;
   return transferSummary(() => unifiedLibrary().find((e) => e.key === key || e.aliases.some((a) => aliases.includes(a)))?.transfers || [], entry.name);
 }
 function renderShow() {
   const entry = showEntry(), show = entry?.show;
   const files = entry?.files || [];
-  if (!show) { $('#sheet-body').replaceChildren(h('div', { class: 'sheet-content' }, h('h2', { id: 'sheet-title' }, 'Show'), h('p', {}, 'This show is no longer in your library.'))); return; }
+  if (!show) { $('#sheet-body').replaceChildren(h('div', { class: 'sheet-content' }, h('h2', { id: 'sheet-title' }, T('Show')), h('p', {}, T('This show is no longer in your library.')))); return; }
   const numbers = new Set(files.map(f => f.season));
   for (const d of entry.transfers) { if (d.season != null) numbers.add(d.season); for (const ep of d.episodes || []) if (ep.season != null) numbers.add(ep.season); }
   const seasons = [...numbers].sort((a,b) => a-b).map(number => ({ ...(show.seasons || []).find(se => se.number === number), number, name: (show.seasons || []).find(se => se.number === number)?.name || seasonName(number) }));
@@ -1405,13 +1408,13 @@ function renderShow() {
   const pendingFor = n => entry.transfers.filter(d => d.season === n || (d.episodes || []).some(ep => ep.season === n));
   // One click (plus a confirmation) for a whole season or the whole show.
   const seasonFiles = open ? files.filter(f => f.season === open.number) : [];
-  const deleteShow = files.length > 0 && h('button', { type: 'button', class: 'chip delete-many', onclick: e => openDeleteMany({ files, what: 'show', label: show.title, onDone: closeTopOverlay }, e.currentTarget) }, icon('trash'), 'Delete show');
-  const deleteSeason = !single && seasonFiles.length > 0 && h('button', { type: 'button', class: 'chip delete-many', onclick: e => openDeleteMany({ files: seasonFiles, what: 'season', label: `${show.title} · ${open.name}`, onDone: () => { showView.season = null; renderShow(); } }, e.currentTarget) }, icon('trash'), 'Delete season');
+  const deleteShow = files.length > 0 && h('button', { type: 'button', class: 'chip delete-many', onclick: e => openDeleteMany({ files, what: 'show', label: show.title, onDone: closeTopOverlay }, e.currentTarget) }, icon('trash'), T('Delete show'));
+  const deleteSeason = !single && seasonFiles.length > 0 && h('button', { type: 'button', class: 'chip delete-many', onclick: e => openDeleteMany({ files: seasonFiles, what: 'season', label: `${show.title} · ${open.name}`, onDone: () => { showView.season = null; renderShow(); } }, e.currentTarget) }, icon('trash'), T('Delete season'));
   let content;
-  if (!open) content = [h('h3', {}, 'Seasons'), h('ul', { class: 'grid season-grid' }, seasons.map(se => {
+  if (!open) content = [h('h3', {}, T('Seasons')), h('ul', { class: 'grid season-grid' }, seasons.map(se => {
     const ready = episodeCount(files.filter(f => f.season === se.number)), transfers = pendingFor(se.number).filter(d => !d.done);
     const pending = new Set(transfers.flatMap(d => (d.episodes || []).filter(ep => ep.season === se.number && !ep.available).map(ep => ep.episode))).size;
-    return h('li', {}, h('button', { class: 'title-card', onclick: () => pick(se.number) }, h('div', { class: 'poster' }, se.poster ? h('img', { src: se.poster, alt: '', loading: 'lazy' }) : h('div', { class: 'poster-fallback' }, se.name)), h('div', { class: 'name' }, se.name), h('div', { class: 'sub' }, `${se.total ? `${ready} of ${se.total}` : ready} ready${pending ? ` · ${pending} downloading` : transfers.length ? ' · Season pack downloading' : ''}`)));
+    return h('li', {}, h('button', { class: 'title-card', onclick: () => pick(se.number) }, h('div', { class: 'poster' }, se.poster ? h('img', { src: se.poster, alt: '', loading: 'lazy' }) : h('div', { class: 'poster-fallback' }, se.name)), h('div', { class: 'name' }, se.name), h('div', { class: 'sub' }, T('{0} ready{1}', se.total ? T('{0} of {1}', ready, se.total) : ready, pending ? T(' · {0} downloading', pending) : transfers.length ? T(' · Season pack downloading') : ''))));
   }))];
   else {
     const versions = files.filter(f => f.season === open.number).sort((a,b) => a.episode-b.episode || String(a.id).localeCompare(String(b.id)));
@@ -1419,23 +1422,23 @@ function renderShow() {
     const byEpisode = new Map();
     for (const d of pendingFor(open.number)) for (const ep of d.episodes || []) if (ep.season === open.number && !ready.some(f => f.episode === ep.episode) && !byEpisode.has(ep.episode)) byEpisode.set(ep.episode, { d, ep });
     const tmdbEp = n => open.episodes?.[n] || {};
-    const epTitle = (n, name) => `${n}. ${name || tmdbEp(n).name || `Episode ${n}`}`;
+    const epTitle = (n, name) => `${n}. ${name || tmdbEp(n).name || T('Episode {0}', n)}`;
     const thumb = (n, still) => episodeArt(still || tmdbEp(n).still, show, 'episode-thumb');
     const rows = ready.map(f => ({ number: f.episode, node: (() => { const row = fileRow(libraryFile(f)); row.classList.add('episode-row'); row.prepend(thumb(f.episode, f.still)); $('.row-title', row).textContent = epTitle(f.episode, f.episodeName); $('.row-title', row).title = f.file; return row; })() }));
     const tvId = { id: show.tmdbId ?? null, title: show.title, type: 'tv' }; // episodeDownload decides Add / Download / nothing
-    for (const {d,ep} of byEpisode.values()) rows.push({ number: ep.episode, node: h('li', { class: 'row episode-row pending-episode', 'data-transfer-hash': d.hash, 'data-episode-number': ep.episode, 'data-episode-season': ep.season }, thumb(ep.episode), h('div', { class: 'row-text' }, h('div', { class: 'row-title' }, epTitle(ep.episode)), h('div', { class: 'row-meta episode-transfer-state' }, ep.available ? 'Ready · watch it from Details' : `${transferState(d)}${Number.isFinite(ep.progress) ? ` · ${Math.floor(ep.progress*100)}%` : ''}`)), h('button', { class: 'chip', onclick: e => openTransferDetails({ ...entry, transfers: [d] }, e.currentTarget) }, 'Details')) });
-    if (Number.isInteger(open.total) && open.total > 0 && open.total <= 1000) for (let number = open.first || 1; number < (open.first || 1) + open.total; number++) if (!rows.some(row => row.number === number)) rows.push({ number, node: h('li', { class: 'row episode-row missing-episode' }, thumb(number), h('div', { class: 'row-text' }, h('div', { class: 'row-title' }, epTitle(number)), h('div', { class: 'row-meta' }, 'Not added yet')), tvId && episodeDownload(tvId, open.number, number)) });
-    content = [!single && h('button', { class: 'chip season-back', onclick: () => pick(null) }, icon('back'), 'All seasons'), h('h3', {}, open.name),
+    for (const {d,ep} of byEpisode.values()) rows.push({ number: ep.episode, node: h('li', { class: 'row episode-row pending-episode', 'data-transfer-hash': d.hash, 'data-episode-number': ep.episode, 'data-episode-season': ep.season }, thumb(ep.episode), h('div', { class: 'row-text' }, h('div', { class: 'row-title' }, epTitle(ep.episode)), h('div', { class: 'row-meta episode-transfer-state' }, ep.available ? T('Ready · watch it from Details') : `${transferState(d)}${Number.isFinite(ep.progress) ? ` · ${Math.floor(ep.progress*100)}%` : ''}`)), h('button', { class: 'chip', onclick: e => openTransferDetails({ ...entry, transfers: [d] }, e.currentTarget) }, T('Details'))) });
+    if (Number.isInteger(open.total) && open.total > 0 && open.total <= 1000) for (let number = open.first || 1; number < (open.first || 1) + open.total; number++) if (!rows.some(row => row.number === number)) rows.push({ number, node: h('li', { class: 'row episode-row missing-episode' }, thumb(number), h('div', { class: 'row-text' }, h('div', { class: 'row-title' }, epTitle(number)), h('div', { class: 'row-meta' }, T('Not added yet'))), tvId && episodeDownload(tvId, open.number, number)) });
+    content = [!single && h('button', { class: 'chip season-back', onclick: () => pick(null) }, icon('back'), T('All seasons')), h('h3', {}, open.name),
       seasonVersionPick(ready, () => renderShow()),
-      h('div', { class: 'season-summary' }, h('p', { class: 'muted' }, `${open.total ? `${episodeCount(ready)} of ${open.total}` : episodeCount(ready)} episodes ready`),
-        ready.length > 0 && h('button', { type: 'button', class: 'chip delete-many travel-season', onclick: e => openTravelSeason(ready, `${show.title} · ${open.name}`, e.currentTarget) }, icon('phone'), 'Season to phone'), deleteSeason),
-      ...pendingFor(open.number).filter(d => !(d.episodes || []).some(ep => ep.season === open.number)).map(d => h('div', { class: 'pack-transfer' }, h('strong', {}, `${open.name} pack`), h('p', {}, 'Episode availability is shown when individual files are verified.'), h('button', { class: 'chip', onclick: e => openTransferDetails({ ...entry, transfers: [d] }, e.currentTarget) }, 'Season pack details'))),
+      h('div', { class: 'season-summary' }, h('p', { class: 'muted' }, T('{0} episodes ready', open.total ? T('{0} of {1}', episodeCount(ready), open.total) : episodeCount(ready))),
+        ready.length > 0 && h('button', { type: 'button', class: 'chip delete-many travel-season', onclick: e => openTravelSeason(ready, `${show.title} · ${open.name}`, e.currentTarget) }, icon('phone'), T('Season to phone')), deleteSeason),
+      ...pendingFor(open.number).filter(d => !(d.episodes || []).some(ep => ep.season === open.number)).map(d => h('div', { class: 'pack-transfer' }, h('strong', {}, T('{0} pack', open.name)), h('p', {}, T('Episode availability is shown when individual files are verified.')), h('button', { class: 'chip', onclick: e => openTransferDetails({ ...entry, transfers: [d] }, e.currentTarget) }, T('Season pack details')))),
       h('ul', { class: 'rows' }, rows.sort((a,b) => a.number-b.number).map(r => r.node))];
   }
   // The same Download panel as in Discover, opened on the season you're looking at.
   const tv = canGet() && show.tmdbId ? showDownload({ id: show.tmdbId, title: show.title, type: 'tv' }, { season: open?.number ?? null }) : null;
   $('#sheet-body').replaceChildren(h('div', { class: `sheet-hero${show.backdrop ? '' : ' no-image'}`, style: show.backdrop ? `background-image:url("${show.backdrop}")` : null }),
-    h('div', { class: 'sheet-content' }, h('h2', { id: 'sheet-title' }, show.title), h('ul', { class: 'facts' }, [show.year, 'Series', libraryAvailability(entry)].filter(Boolean).map(text => h('li', {}, text))),
+    h('div', { class: 'sheet-content' }, h('h2', { id: 'sheet-title' }, show.title), h('ul', { class: 'facts' }, [show.year, T('Series'), libraryAvailability(entry)].filter(Boolean).map(text => h('li', {}, text))),
       show.tmdbId && social.rateRow(`tv:${show.tmdbId}`, show.title),
       h('div', { class: 'title-actions' }, (tv || deleteShow) && h('div', { class: 'action-row' }, tv?.toggle, deleteShow), tv?.panel, transferPanel(entry)),
       state.status.search && show.tmdbId && watchBox({ id: show.tmdbId, type: 'tv', title: show.title }),
@@ -1478,7 +1481,7 @@ function loadDownloads() {
     const badge = $('#dl-badge');
     badge.hidden = !active;
     badge.textContent = active;
-    badge.setAttribute('aria-label', `${active} unfinished downloads`);
+    badge.setAttribute('aria-label', T('{0} unfinished downloads', active));
   })();
   downloadsRequest = { scope, promise };
   return promise;
@@ -1492,21 +1495,21 @@ function makeDlCard(d) {
         refs.title = h('div', { class: 'row-title' }),
         refs.state = h('div', { class: 'dl-state' })),
       refs.actions = h('div', { class: 'row-actions' },
-        refs.cast = h('button', { class: 'cast-btn', title: 'Play on TV', onclick: () => openPicker({ ...refs.data, kind: 'dl', key: refs.data.hash }, refs.cast) }, icon('tv')),
+        refs.cast = h('button', { class: 'cast-btn', title: T('Play on TV'), onclick: () => openPicker({ ...refs.data, kind: 'dl', key: refs.data.hash }, refs.cast) }, icon('tv')),
         refs.play = h('button', { class: 'play-btn', onclick: () => {
-          if (refs.data.converting) { toast('Almost ready. It can be played in a moment.'); return; }
+          if (refs.data.converting) { toast(T('Almost ready. It can be played in a moment.')); return; }
           openPlayer({ ...refs.data, kind: 'dl', key: refs.data.hash });
-        } }, icon('play'), 'Play'))),
+        } }, icon('play'), T('Play')))),
     refs.release = h('p', { class: 'transfer-release' }),
-    refs.files = h('details', { class: 'transfer-files' }, h('summary', {}, 'Files'), h('ul')),
+    refs.files = h('details', { class: 'transfer-files' }, h('summary', {}, T('Files')), h('ul')),
     refs.error = h('p', { class: 'transfer-action-error', role: 'status' }),
     refs.bar = h('div', { class: 'bulbs', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100' }, h('i')),
     h('div', { class: 'dl-foot' },
       refs.stats = h('div', { class: 'dl-stats' }),
       h('div', { class: 'dl-controls' },
         refs.pause = h('button', { type: 'button', class: 'chip dl-ctl', onclick: () => togglePause(refs.data, refs.pause) }),
-        refs.del = h('button', { type: 'button', class: 'chip dl-ctl', onclick: (e) => openDeleteDownload(refs.data, e.currentTarget) }, 'Delete'),
-        refs.retry = h('button', { type: 'button', class: 'chip dl-ctl', onclick: () => { if (transferOperations.get(refs.data.hash)?.label) return; transferOperations.delete(refs.data.hash); runTransferAction(refs.data, 'retry'); } }, 'Retry'))));
+        refs.del = h('button', { type: 'button', class: 'chip dl-ctl', onclick: (e) => openDeleteDownload(refs.data, e.currentTarget) }, T('Delete')),
+        refs.retry = h('button', { type: 'button', class: 'chip dl-ctl', onclick: () => { if (transferOperations.get(refs.data.hash)?.label) return; transferOperations.delete(refs.data.hash); runTransferAction(refs.data, 'retry'); } }, T('Retry')))));
   el._refs = refs;
   return el;
 }
@@ -1517,7 +1520,7 @@ const transferOperations = new Map();
 async function runTransferAction(d, action) {
   if (d.canManage === false || transferOperations.has(d.hash)) return;
   const opener = document.activeElement, actionCard = opener?.closest?.('.dl');
-  const operation = { label: action === 'pause' ? 'Pausing…' : action === 'resume' ? 'Resuming…' : 'Checking files…' };
+  const operation = { label: action === 'pause' ? T('Pausing…') : action === 'resume' ? T('Resuming…') : T('Checking files…') };
   transferOperations.set(d.hash, operation); patchTransferNodes();
   try {
     await api(`/api/downloads/${encodeURIComponent(d.hash)}/${action}`, jsonPost({}));
@@ -1544,12 +1547,12 @@ function openDeleteDownload(d, opener) {
   const label = [d.title, episodeLabel(d), d.year && !d.season ? `(${d.year})` : null].filter(Boolean).join(' ');
   const run = async (files, btn) => {
     body.querySelectorAll('button').forEach((b) => { b.disabled = true; });
-    btn.textContent = 'Deleting…';
+    btn.textContent = T('Deleting…');
     try {
       await api(`/api/downloads/${d.hash}/delete`, jsonPost({ files }));
       invalidateDownloadsRead();
       if (!restoreManager) closeTopOverlay();
-      toast(files ? 'Download and files deleted' : 'Removed from downloads; files kept');
+      toast(files ? T('Download and files deleted') : T('Removed from downloads; files kept'));
       state.downloads = state.downloads.filter((x) => x.hash !== d.hash);
       restoreManager?.();
       if (state.view === 'library') renderLibrary();
@@ -1568,19 +1571,19 @@ function openDeleteDownload(d, opener) {
     b.addEventListener('click', () => run(files, b));
     return b;
   };
-  const cancel = h('button', { class: 'del-cancel', onclick: () => restoreManager ? restoreManager() : closeTopOverlay() }, 'Keep it');
+  const cancel = h('button', { class: 'del-cancel', onclick: () => restoreManager ? restoreManager() : closeTopOverlay() }, T('Keep it'));
   body.replaceChildren(...[
-    h('h2', { id: 'picker-title' }, d.done ? 'Delete this download?' : 'Cancel this download?'),
+    h('h2', { id: 'picker-title' }, d.done ? T('Delete this download?') : T('Cancel this download?')),
     h('p', { class: 'del-name' }, label),
     h('p', { class: 'muted' }, d.name),
-    d.season != null && d.episode == null && h('p', { class: 'muted' }, 'This action affects every file in this season pack.'),
-    d.libraryIds?.length && h('p', { class: 'muted' }, 'Files still used by another person’s library are protected. The server will refuse file deletion while they are shared.'),
+    d.season != null && d.episode == null && h('p', { class: 'muted' }, T('This action affects every file in this season pack.')),
+    d.libraryIds?.length && h('p', { class: 'muted' }, T('Files still used by another person’s library are protected. The server will refuse file deletion while they are shared.')),
     h('p', { class: 'muted' }, d.done
-      ? `Removes it from qBittorrent, so it stops seeding, and deletes its files (${fmtBytes(d.size)}). This can’t be undone.`
-      : `Stops the download and deletes what has been downloaded so far (${Math.floor(d.progress * 100)}% of ${fmtBytes(d.size)}).`),
+      ? T('Removes it from qBittorrent, so it stops seeding, and deletes its files ({0}). This can’t be undone.', fmtBytes(d.size))
+      : T('Stops the download and deletes what has been downloaded so far ({0}% of {1}).', Math.floor(d.progress * 100), fmtBytes(d.size))),
     h('div', { class: 'del-actions' },
-      button(d.done ? 'Remove transfer and delete files' : 'Cancel and delete downloaded files', 'del-confirm', true),
-      button('Remove from list, keep files', 'del-confirm del-secondary', false),
+      button(d.done ? T('Remove transfer and delete files') : T('Cancel and delete downloaded files'), 'del-confirm', true),
+      button(T('Remove from list, keep files'), 'del-confirm del-secondary', false),
       cancel),
     status].filter(Boolean));
   if (!restoreManager) pushOverlay(showSheet($('#picker'), $('#picker-backdrop'), () => opener?.focus({ preventScroll: true })));
@@ -1592,8 +1595,8 @@ function seedersChip(d) {
   if (!Number.isFinite(d.seeds)) return null;
   const swarm = Number.isFinite(d.swarmSeeds) && d.swarmSeeds > d.seeds ? d.swarmSeeds : null;
   const health = d.seeds >= 10 ? 'good' : d.seeds >= 1 ? 'ok' : 'poor';
-  const text = swarm != null ? `${d.seeds.toLocaleString()} of ${swarm.toLocaleString()} seeders` : `${d.seeds.toLocaleString()} ${d.seeds === 1 ? 'seeder' : 'seeders'}`;
-  return h('span', { class: `seeds seeds-${health}`, title: swarm != null ? `Connected to ${d.seeds.toLocaleString()} of the ${swarm.toLocaleString()} seeders the trackers report` : 'Seeders connected right now' }, text);
+  const text = swarm != null ? T('{0} of {1} seeders', d.seeds.toLocaleString(locale), swarm.toLocaleString(locale)) : `${d.seeds.toLocaleString(locale)} ${d.seeds === 1 ? 'seeder' : 'seeders'}`;
+  return h('span', { class: `seeds seeds-${health}`, title: swarm != null ? T('Connected to {0} of the {1} seeders the trackers report', d.seeds.toLocaleString(locale), swarm.toLocaleString(locale)) : T('Seeders connected right now') }, text);
 }
 
 function updateDlCard(el, d) {
@@ -1602,24 +1605,24 @@ function updateDlCard(el, d) {
   r.data = d;
   const pct = Math.floor(Math.max(0, Math.min(1, Number(d.progress) || 0)) * 100);
   const operation = transferOperations.get(d.hash);
-  const label = operation?.label || (d.ready ? (d.converting ? 'Preparing playback' : 'Ready to watch') : transferState(d));
+  const label = operation?.label || (d.ready ? (d.converting ? T('Preparing playback') : T('Ready to watch')) : transferState(d));
   r.release.textContent = d.name;
-  r.error.textContent = operation?.error || (d.ready && d.mediaType === 'tv' && d.episode == null && !(d.libraryIds || []).length ? 'Verified files are outside the media library. Add the download folder to the media library to play individual episodes.' : '') || (d.canManage === false ? 'Shared download. Only the person who started it can change the transfer.' : '');
+  r.error.textContent = operation?.error || (d.ready && d.mediaType === 'tv' && d.episode == null && !(d.libraryIds || []).length ? T('Verified files are outside the media library. Add the download folder to the media library to play individual episodes.') : '') || (d.canManage === false ? T('Shared download. Only the person who started it can change the transfer.') : '');
   const fileKey = JSON.stringify(d.files || []);
-  if (r.fileKey !== fileKey) { r.fileKey = fileKey; r.files.hidden = !(d.files || []).length; r.files.querySelector('ul').replaceChildren(...(d.files || []).map(f => h('li', {}, `${f.name} · ${fmtBytes(f.size)} · ${f.available ? 'File ready' : `${Math.floor((f.progress || 0)*100)}%`}`))); }
-  r.title.textContent = [d.canonicalTitle || d.title, d.season != null && d.episode == null ? `${seasonName(d.season)} pack` : episodeLabel(d), d.year && !d.season ? `(${d.year})` : null].filter(Boolean).join(' ');
+  if (r.fileKey !== fileKey) { r.fileKey = fileKey; r.files.hidden = !(d.files || []).length; r.files.querySelector('ul').replaceChildren(...(d.files || []).map(f => h('li', {}, `${f.name} · ${fmtBytes(f.size)} · ${f.available ? T('File ready') : `${Math.floor((f.progress || 0)*100)}%`}`))); }
+  r.title.textContent = [d.canonicalTitle || d.title, d.season != null && d.episode == null ? T('{0} pack', seasonName(d.season)) : episodeLabel(d), d.year && !d.season ? `(${d.year})` : null].filter(Boolean).join(' ');
   r.title.title = d.name;
-  r.state.textContent = state.dlScope === 'all' && d.owner ? `${label} · for ${d.owner}` : label;
+  r.state.textContent = state.dlScope === 'all' && d.owner ? T('{0} · for {1}', label, d.owner) : label;
   r.state.classList.toggle('is-error', d.state === 'error' || d.state === 'missingFiles');
   r.actions.hidden = !d.ready || d.mediaType === 'tv' && d.episode == null;
-  r.play.setAttribute('aria-label', `Play ${d.title} here`);
-  r.cast.setAttribute('aria-label', `Play ${d.title} on a TV`);
+  r.play.setAttribute('aria-label', T('Play {0} here', d.title));
+  r.cast.setAttribute('aria-label', T('Play {0} on a TV', d.title));
   r.bar.hidden = d.done;
   r.bar.style.setProperty('--p', `${pct}%`);
   if (Number.isFinite(d.progress) && d.size > 0) r.bar.setAttribute('aria-valuenow', String(Math.floor(pct))); else r.bar.removeAttribute('aria-valuenow');
   r.bar.setAttribute('aria-valuetext', `${label}${Number.isFinite(d.progress) && d.size > 0 ? `, ${pct} percent` : ''}`);
-  r.bar.setAttribute('aria-label', `${d.title} download progress`);
-  const SUB_STATE = { waiting: 'subtitles when done', ready: 'subtitles ready', missing: 'subtitles not found', error: 'subtitles failed' };
+  r.bar.setAttribute('aria-label', T('{0} download progress', d.title));
+  const SUB_STATE = { waiting: T('subtitles when done'), ready: T('subtitles ready'), missing: T('subtitles not found'), error: T('subtitles failed') };
   const subs = (d.subs || []).map((x) => h('span', { class: `sub-state sub-${x.state}` }, `${x.name} ${SUB_STATE[x.state] || ''}`));
   const stats = d.done
     ? [fmtBytes(d.size), ...subs]
@@ -1627,15 +1630,15 @@ function updateDlCard(el, d) {
   r.stats.replaceChildren(...stats.filter(Boolean).map((s) => (s instanceof Node ? s : h('span', {}, s))));
   r.pause.hidden = d.done;
   r.del.hidden = d.canManage === false;
-  r.del.textContent = d.done ? 'Remove transfer' : d.season != null && d.episode == null ? 'Cancel season pack' : 'Cancel download';
+  r.del.textContent = d.done ? T('Remove transfer') : d.season != null && d.episode == null ? T('Cancel season pack') : T('Cancel download');
   r.pause.disabled = d.canManage === false; r.del.disabled = false;
   r.pause.setAttribute('aria-disabled', String(d.canManage === false || Boolean(operation?.label))); r.del.setAttribute('aria-disabled', String(Boolean(operation?.label)));
   r.retry.hidden = !transferAttention(d) && !operation?.error; r.retry.disabled = d.canManage === false; r.retry.setAttribute('aria-disabled', String(d.canManage === false || Boolean(operation?.label)));
   r.play.classList.toggle('is-disabled', Boolean(d.converting));
   r.play.setAttribute('aria-disabled', String(Boolean(d.converting)));
-  r.play.title = d.converting ? 'Getting ready to play' : '';
-  r.pause.textContent = operation?.label || (isPaused(d) ? 'Resume' : 'Pause');
-  r.pause.setAttribute('aria-label', `${isPaused(d) ? 'Resume' : 'Pause'} ${d.title}`);
+  r.play.title = d.converting ? T('Getting ready to play') : '';
+  r.pause.textContent = operation?.label || (isPaused(d) ? T('Resume') : T('Pause'));
+  r.pause.setAttribute('aria-label', `${isPaused(d) ? T('Resume') : T('Pause')} ${d.title}`);
 }
 
 let managerView = null;
@@ -1653,9 +1656,9 @@ function renderDownloads() { if (state.view === 'downloads') { state.libAvailabi
 function openTransferDetails(entry, opener) {
   const list = h('ul', { class: 'rows transfer-detail-list' });
   const scope = h('div');
-  $('#picker-body').replaceChildren(h('h2', { id: 'picker-title' }, entry ? `${entry.name} downloads` : 'Manage server downloads'), scope, list);
+  $('#picker-body').replaceChildren(h('h2', { id: 'picker-title' }, entry ? T('{0} downloads', entry.name) : T('Manage server downloads')), scope, list);
   managerView = { list, entryKey: entry?.key || null, hashes: entry?.transfers.map(d => d.hash) || null, scope };
-  if (!entry && state.me?.isOwner) scope.append(segmented([['mine', 'Mine'], ['all', 'Everyone']], state.dlScope, async v => { state.dlScope = v; scope.querySelectorAll('button').forEach((b,i) => b.setAttribute('aria-pressed', String((i ? 'all' : 'mine') === v))); await loadDownloads(); drawTransferDetails(); }, 'Whose downloads'));
+  if (!entry && state.me?.isOwner) scope.append(segmented([['mine', T('Mine')], ['all', T('Everyone')]], state.dlScope, async v => { state.dlScope = v; scope.querySelectorAll('button').forEach((b,i) => b.setAttribute('aria-pressed', String((i ? 'all' : 'mine') === v))); await loadDownloads(); drawTransferDetails(); }, T('Whose downloads')));
   drawTransferDetails();
   pushOverlay(showSheet($('#picker'), $('#picker-backdrop'), () => { managerView = null; if (state.dlScope !== 'mine') { state.dlScope = 'mine'; loadDownloads().then(patchUnifiedLibrary); } opener?.focus({ preventScroll: true }); }));
 }
@@ -1670,7 +1673,7 @@ function drawTransferDetails() {
     transferNodes.add(card); updateDlCard(card,d); seen.add(d.hash); if (list.children[index] !== card) list.insertBefore(card,list.children[index] || null);
   }
   for (const child of [...list.children]) if (child._refs && !seen.has(child._refs.data.hash)) child.remove();
-  if (!items.length && !list.children.length) list.append(h('li', { class: 'muted' }, state.downloadsError || 'No downloads in this view.'));
+  if (!items.length && !list.children.length) list.append(h('li', { class: 'muted' }, state.downloadsError || T('No downloads in this view.')));
 }
 function patchTransferNodes() {
   for (const node of transferNodes) {
@@ -1679,7 +1682,7 @@ function patchTransferNodes() {
   }
   for (const row of document.querySelectorAll('.pending-episode')) {
     const d = state.downloads.find(d => d.hash === row.dataset.transferHash), ep = d?.episodes?.find(ep => String(ep.season) === row.dataset.episodeSeason && String(ep.episode) === row.dataset.episodeNumber);
-    if (ep) $('.episode-transfer-state', row).textContent = ep.available ? 'Ready · watch it from Details' : `${transferState(d)}${Number.isFinite(ep.progress) ? ` · ${Math.floor(ep.progress*100)}%` : ''}`;
+    if (ep) $('.episode-transfer-state', row).textContent = ep.available ? T('Ready · watch it from Details') : `${transferState(d)}${Number.isFinite(ep.progress) ? ` · ${Math.floor(ep.progress*100)}%` : ''}`;
   }
   drawTransferDetails();
   refreshCommandViews();
@@ -1818,7 +1821,7 @@ function dismissTopOverlay() {
   if (!overlayStack.length) return Promise.resolve();
   return new Promise((resolve, reject) => {
     const done = () => { clearTimeout(timer); resolve(); };
-    const timer = setTimeout(() => { window.removeEventListener('popstate', done); reject(new Error('Couldn’t close the previous screen. Please try joining again.')); }, 3000);
+    const timer = setTimeout(() => { window.removeEventListener('popstate', done); reject(new Error(T('Couldn’t close the previous screen. Please try joining again.'))); }, 3000);
     window.addEventListener('popstate', done, { once: true });
     closeTopOverlay();
   });
@@ -1885,8 +1888,8 @@ function detailsHero(t) {
   if (!t.id || !['movie', 'tv'].includes(t.type)) return hero;
   cachedFor(`/api/title/${t.type}/${t.id}/trailer`, 60 * 60 * 1000).then(({ trailer }) => {
     if (!trailer || !hero.isConnected) return;
-    const label = trailer.type === 'Teaser' ? 'Teaser' : 'Trailer';
-    const play = h('button', { type: 'button', class: 'trailer-btn', 'aria-label': `Play ${label.toLowerCase()}: ${t.title}` },
+    const label = trailer.type === 'Teaser' ? T('Teaser') : T('Trailer');
+    const play = h('button', { type: 'button', class: 'trailer-btn', 'aria-label': T('Play {0}: {1}', label.toLowerCase(), t.title) },
       icon('play'), h('span', {}, label));
     play.addEventListener('click', () => {
       const src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(trailer.key)}?autoplay=1&rel=0&playsinline=1`;
@@ -1920,7 +1923,7 @@ function renderDetails(t) {
       h('h2', { id: 'sheet-title' }, t.title),
       h('ul', { class: 'facts' },
         t.year && h('li', {}, t.year),
-        h('li', {}, t.type === 'tv' ? 'Series' : 'Film'),
+        h('li', {}, t.type === 'tv' ? T('Series') : T('Film')),
         t.rating && h('li', {}, `★ ${t.rating}`)),
       social.rateRow(titleKeyOf(t), t.title),
       actions,
@@ -1929,9 +1932,9 @@ function renderDetails(t) {
       t.overview && h('p', { class: 'overview' }, t.overview),
       // Without download rights, episodes someone else has here can still be added (no copy is made).
       isTv && !canGet() && onServer.length > 0 && serverOffer(t, onServer),
-      isTv && files.length > 0 && h('h3', {}, 'In your library'),
+      isTv && files.length > 0 && h('h3', {}, T('In your library')),
       isTv && files.length > 0 && seasonGroups(files),
-      versions && h('h3', {}, 'Your versions'),
+      versions && h('h3', {}, T('Your versions')),
       versions && h('ul', { class: 'rows' }, versionFiles.map((v) => fileRow(libraryFile({ ...v, versionOf: true }))))));
 }
 
@@ -1946,7 +1949,7 @@ function serverOffer(t, list) {
     try {
       await api('/api/library/add', jsonPost({ ids: files.map((f) => f.id) }));
       await loadLibrary();
-      toast(files.length === 1 ? 'Added to your library' : `Added ${plural(files.length, 'episode')} to your library`);
+      toast(files.length === 1 ? T('Added to your library') : T('Added {0} to your library', plural(files.length, 'episode')));
       if (state.view === 'library') renderLibrary();
       renderDetails(t);
       if (play) {
@@ -1971,8 +1974,8 @@ function serverOffer(t, list) {
         h('div', { class: 'row-title' }, f.title + (f.year ? ` (${f.year})` : '')),
         h('div', { class: 'row-meta' }, h('span', {}, f.format?.toUpperCase()), h('span', {}, fmtBytes(f.size)))),
       h('div', { class: 'row-actions' },
-        button('Add', 'chip', [f]),
-        button('Add & play', 'play-btn', [f], true))));
+        button(T('Add'), 'chip', [f]),
+        button(T('Add & play'), 'play-btn', [f], true))));
   } else {
     const bySeason = new Map();
     for (const f of list) {
@@ -1985,18 +1988,18 @@ function serverOffer(t, list) {
       const span = nums.length > 1 ? `E${pad2(nums[0])}–E${pad2(nums.at(-1))}` : nums.length ? `E${pad2(nums[0])}` : null;
       return h('li', { class: 'row' },
         h('div', { class: 'row-text' },
-          h('div', { class: 'row-title' }, n < 0 ? 'Other videos' : seasonName(n)),
+          h('div', { class: 'row-title' }, n < 0 ? T('Other videos') : seasonName(n)),
           h('div', { class: 'row-meta' }, h('span', {}, plural(episodeCount(eps), 'episode')), span && h('span', {}, span))),
-        h('div', { class: 'row-actions' }, button(n < 0 ? 'Add' : 'Add season', 'chip', eps)));
+        h('div', { class: 'row-actions' }, button(n < 0 ? T('Add') : T('Add season'), 'chip', eps)));
     });
   }
   return h('div', { class: 'server-offer' },
     h('div', { class: 'server-offer-head' },
-      h('h3', {}, 'Ready to watch now'),
-      isTv && rows.length > 1 && button(`Add all ${plural(episodeCount(list), 'episode')}`, 'play-btn', list)),
+      h('h3', {}, T('Ready to watch now')),
+      isTv && rows.length > 1 && button(T('Add all {0}', plural(episodeCount(list), 'episode')), 'play-btn', list)),
     h('p', { class: 'muted' }, isTv
-      ? 'These are already here. Add them to your library and watch right away.'
-      : 'This is already here. Add it to your library and watch right away.'),
+      ? T('These are already here. Add them to your library and watch right away.')
+      : T('This is already here. Add it to your library and watch right away.')),
     h('ul', { class: 'rows' }, rows),
     status);
 }
@@ -2016,7 +2019,7 @@ function seasonGroups(files) {
       return h('details', { class: 'season-group' },
         h('summary', {},
           h('span', { class: 'row-title' }, seasonName(n)),
-          h('span', { class: 'row-meta' }, h('span', {}, plural(episodeCount(eps), 'episode')), busy > 0 && h('span', {}, `${busy} downloading`))),
+          h('span', { class: 'row-meta' }, h('span', {}, plural(episodeCount(eps), 'episode')), busy > 0 && h('span', {}, T('{0} downloading', busy)))),
         h('ul', { class: 'rows' }, eps.map(fileRow)));
     }));
 }
@@ -2037,8 +2040,8 @@ const tvSeasons = (id) => cachedFor(`/api/tv/${id}/seasons`, 30 * 60 * 1000).the
 // One command for films, seasons and single episodes. Films: Download picks a release straight away.
 // Shows: Download opens a small panel (season, quality, Download Season). Manual releases and an
 // exact resolution live under Advanced options. Progress shows where the title is, never as a list.
-const PROFILE_OPTIONS = [['save', 'Save Space'], ['balanced', 'Balanced · 1080p'], ['best', 'Best Quality']];
-const EXACT_OPTIONS = [['', 'Use the quality setting'], ['2160p', '4K only'], ['1440p', '1440p only'], ['1080p', '1080p only'], ['720p', '720p only']];
+const PROFILE_OPTIONS = [['save', T('Save Space')], ['balanced', T('Balanced · 1080p')], ['best', T('Best Quality')]];
+const EXACT_OPTIONS = [['', T('Use the quality setting')], ['2160p', T('4K only')], ['1440p', T('1440p only')], ['1080p', T('1080p only')], ['720p', T('720p only')]];
 const savedProfile = () => {
   const p = prefs();
   return ['save', 'balanced', 'best'].includes(p.downloadProfile) ? p.downloadProfile
@@ -2053,7 +2056,7 @@ const commandViews = new Set();     // nodes with _update(), refreshed on comman
 function refreshCommandViews() {
   for (const node of commandViews) { if (!node.isConnected) commandViews.delete(node); else node._update(); }
 }
-const commandStep = (cmd) => (/^Starting/.test(cmd?.job?.step || '') ? 'Adding…' : 'Finding the best copy…');
+const commandStep = (cmd) => (/^Starting/.test(cmd?.job?.step || '') ? T('Adding…') : T('Finding the best copy…'));
 
 async function runDownloadCommand(body) {
   const key = commandKey(body);
@@ -2075,7 +2078,7 @@ async function runDownloadCommand(body) {
   await loadDownloads();
   patchUnifiedLibrary();
   refreshCommandViews();
-  if (['started', 'partial'].includes(cmd.job?.outcome)) toast(body.upgrade ? `${cmd.job.title}: upgrading season ${cmd.job.season}` : cmd.job.type === 'tv' ? `${cmd.job.title}: ${cmd.job.message}` : `${cmd.job.title} is on its way. It’ll be ready to watch soon.`);
+  if (['started', 'partial'].includes(cmd.job?.outcome)) toast(body.upgrade ? T('{0}: upgrading season {1}', cmd.job.title, cmd.job.season) : cmd.job.type === 'tv' ? `${cmd.job.title}: ${cmd.job.message}` : T('{0} is on its way. It’ll be ready to watch soon.', cmd.job.title));
   return cmd;
 }
 // A command's result in plain words, or null while there's nothing to say.
@@ -2096,7 +2099,7 @@ async function addFromServer(files) {
   await api('/api/library/add', jsonPost({ ids: files.map((f) => f.id) }));
   await loadLibrary();
   const eps = episodeCount(files.filter((f) => f.episode != null));
-  toast(eps > 1 ? `Added ${plural(eps, 'episode')} to your library` : 'Added to your library');
+  toast(eps > 1 ? T('Added {0} to your library', plural(eps, 'episode')) : T('Added to your library'));
   patchUnifiedLibrary();
   refreshCommandViews();
 }
@@ -2124,10 +2127,10 @@ function titleState(t) {
 // State, percentage and a slim bar for one title's downloads, with Pause/Resume, Retry and Details.
 function transferSummary(getTransfers, name) {
   const stateEl = h('span', { class: 'transfer-state' }), pct = h('span', { class: 'transfer-percent' });
-  const track = h('div', { class: 'transfer-track', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-label': `${name} download progress` }, h('i'));
+  const track = h('div', { class: 'transfer-track', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-label': T('{0} download progress', name) }, h('i'));
   const pause = h('button', { type: 'button', class: 'chip transfer-ctl' });
-  const retry = h('button', { type: 'button', class: 'chip transfer-ctl' }, 'Retry');
-  const details = h('button', { type: 'button', class: 'link-btn transfer-details' }, 'Details');
+  const retry = h('button', { type: 'button', class: 'chip transfer-ctl' }, T('Retry'));
+  const details = h('button', { type: 'button', class: 'link-btn transfer-details' }, T('Details'));
   const el = h('div', { class: 'transfer-summary' }, h('div', { class: 'transfer-line' }, stateEl, pct), track, h('div', { class: 'transfer-controls' }, pause, retry, details));
   const list = () => getTransfers().filter((d) => !d.done || d.converting || transferAttention(d));
   pause.addEventListener('click', () => {
@@ -2144,8 +2147,8 @@ function transferSummary(getTransfers, name) {
     const attention = active.some(transferAttention);
     const known = active.every((d) => Number.isFinite(d.size) && d.size > 0 && Number.isFinite(d.progress));
     const progress = known ? active.reduce((n, d) => n + d.size * Math.max(0, Math.min(1, d.progress)), 0) / active.reduce((n, d) => n + d.size, 0) : null;
-    const label = attention ? 'Needs attention' : active.length === 1 ? transferState(active[0])
-      : active.every((d) => isPaused(d)) ? 'Paused' : `Downloading · ${plural(active.length, 'download')}`;
+    const label = attention ? T('Needs attention') : active.length === 1 ? transferState(active[0])
+      : active.every((d) => isPaused(d)) ? T('Paused') : T('Downloading · {0}', plural(active.length, 'download'));
     stateEl.textContent = label;
     pct.textContent = progress == null ? '' : `${Math.floor(progress * 100)}%`;
     track.firstChild.style.width = progress == null ? '0%' : `${progress * 100}%`;
@@ -2155,8 +2158,8 @@ function transferSummary(getTransfers, name) {
     const mine = active.filter((d) => d.canManage !== false && !transferAttention(d));
     const resume = mine.length > 0 && mine.every((d) => isPaused(d));
     pause.hidden = !mine.length;
-    pause.textContent = resume ? 'Resume' : 'Pause';
-    pause.setAttribute('aria-label', `${resume ? 'Resume' : 'Pause'} ${name}`);
+    pause.textContent = resume ? T('Resume') : T('Pause');
+    pause.setAttribute('aria-label', `${resume ? T('Resume') : T('Pause')} ${name}`);
     retry.hidden = !attention;
   };
   commandViews.add(el);
@@ -2171,7 +2174,7 @@ function advancedOptions(key, { exact, onExact, browse }) {
   exactSel.value = exact;
   exactSel.addEventListener('change', () => onExact(exactSel.value));
   const browser = h('div', { class: 'adv-browser' });
-  const browseBtn = h('button', { type: 'button', class: 'chip stroke-icon' }, icon('search'), 'Choose a release yourself');
+  const browseBtn = h('button', { type: 'button', class: 'chip stroke-icon' }, icon('search'), T('Choose a release yourself'));
   browseBtn.addEventListener('click', () => {
     browseBtn.hidden = true;
     const b = torrentBrowser(browse());
@@ -2179,10 +2182,10 @@ function advancedOptions(key, { exact, onExact, browse }) {
     b.start();
   });
   const box = h('details', { class: 'advanced' },
-    h('summary', {}, 'Advanced options'),
+    h('summary', {}, T('Advanced options')),
     h('div', { class: 'adv-body' },
-      h('div', { class: 'adv-field' }, h('label', { for: `adv-exact-${key}` }, 'Exact quality'), exactSel,
-        h('p', { class: 'adv-hint' }, 'Only this resolution is looked for. If there’s none, nothing else is picked instead.')),
+      h('div', { class: 'adv-field' }, h('label', { for: `adv-exact-${key}` }, T('Exact quality')), exactSel,
+        h('p', { class: 'adv-hint' }, T('Only this resolution is looked for. If there’s none, nothing else is picked instead.'))),
       browseBtn, browser));
   box.open = Boolean(advancedOpen.get(key));
   box.addEventListener('toggle', () => advancedOpen.set(key, box.open));
@@ -2194,10 +2197,10 @@ const filmExact = new Map(); // tmdb id -> exact resolution for this session
 function filmActions(t) {
   const body = () => ({ type: 'movie', tmdbId: t.id, ...(filmExact.get(t.id) ? { quality: filmExact.get(t.id) } : {}) });
   const play = h('button', { type: 'button', class: 'play-btn action-btn' });
-  const get = h('button', { type: 'button', class: 'play-btn action-btn stroke-icon' }, icon('plus'), h('span', {}, 'Add to library'));
+  const get = h('button', { type: 'button', class: 'play-btn action-btn stroke-icon' }, icon('plus'), h('span', {}, T('Add to library')));
   const row = h('div', { class: 'action-row' }, play, get);
   const status = h('p', { class: 'action-status', role: 'status' });
-  const retry = h('button', { type: 'button', class: 'chip action-retry' }, 'Try again');
+  const retry = h('button', { type: 'button', class: 'chip action-retry' }, T('Try again'));
   const progress = transferSummary(() => titleState(t).transfers, t.title);
   const root = h('div', { class: 'title-actions' }, row, progress, h('div', { class: 'action-result' }, status, retry));
   if (canGet() && t.id) root.append(advancedOptions(`movie-${t.id}`, {
@@ -2238,14 +2241,14 @@ function filmActions(t) {
     if (playable) {
       const saved = file && savedProgress(file);
       const converting = file && !s.ready.some((f) => !f.converting);
-      play.replaceChildren(icon('play'), h('span', {}, converting ? 'Preparing playback…' : partlyWatched(saved) ? `Resume at ${fmtTime(saved.time)}` : 'Play'));
+      play.replaceChildren(icon('play'), h('span', {}, converting ? T('Preparing playback…') : partlyWatched(saved) ? T('Resume at {0}', fmtTime(saved.time)) : T('Play')));
       play.setAttribute('aria-disabled', String(Boolean(converting || playing)));
     }
     // "Add to library" either way: someone else's copy here is added at once, otherwise Marquee fetches one.
     // Shown only when there's nothing to play and nothing on its way; while it runs it says what it's doing.
     const addable = !file && s.onServer.length > 0;
     get.hidden = addable ? false : playable || !canGet() || !t.id || (s.active.length > 0 && !cmd?.busy);
-        get.lastChild.textContent = adding ? 'Adding…' : cmd?.busy ? commandStep(cmd) : 'Add to library';
+        get.lastChild.textContent = adding ? T('Adding…') : cmd?.busy ? commandStep(cmd) : T('Add to library');
     get.setAttribute('aria-disabled', String(Boolean(cmd?.busy || adding)));
     root.setAttribute('aria-busy', String(Boolean(cmd?.busy)));
     const result = !playable && commandResult(cmd);
@@ -2269,24 +2272,24 @@ function showDownload(t, { season = null } = {}) {
   if (!ps) { ps = { open: false, season, profile: savedProfile(), exact: '', last: {}, ranges: {} }; showPanels.set(t.id, ps); }
   else if (season != null && !ps.touched) ps.season = season;
   const panelId = `dl-panel-${t.id}`;
-  const toggle = h('button', { type: 'button', class: 'play-btn action-btn stroke-icon', 'aria-expanded': String(ps.open), 'aria-controls': panelId }, icon('plus'), h('span', {}, 'Add to library'));
-  const seasonSel = h('select', { class: 'sub-select', id: `${panelId}-season`, disabled: true }, h('option', {}, 'Loading seasons…'));
+  const toggle = h('button', { type: 'button', class: 'play-btn action-btn stroke-icon', 'aria-expanded': String(ps.open), 'aria-controls': panelId }, icon('plus'), h('span', {}, T('Add to library')));
+  const seasonSel = h('select', { class: 'sub-select', id: `${panelId}-season`, disabled: true }, h('option', {}, T('Loading seasons…')));
   const profileSel = h('select', { class: 'sub-select', id: `${panelId}-quality` }, PROFILE_OPTIONS.map(([v, text]) => h('option', { value: v }, text)));
   profileSel.value = ps.profile;
   const avail = h('p', { class: 'dl-avail' });
   const note = h('p', { class: 'dl-note' });
   // Episodes: the whole season, or a range of it ("150 to 200") when the season is long.
   const scopeSel = h('select', { class: 'sub-select', id: `${panelId}-scope` },
-    h('option', { value: 'all' }, 'Whole season'), h('option', { value: 'range' }, 'Choose a range'));
+    h('option', { value: 'all' }, T('Whole season')), h('option', { value: 'range' }, T('Choose a range')));
   const numInput = (id, label) => h('input', { type: 'number', class: 'dl-num', id, inputmode: 'numeric', step: '1', 'aria-label': label });
-  const fromIn = numInput(`${panelId}-from`, 'First episode'), toIn = numInput(`${panelId}-to`, 'Last episode');
-  const rangeRow = h('div', { class: 'dl-field dl-range' }, h('label', { for: fromIn.id }, 'From – to'),
+  const fromIn = numInput(`${panelId}-from`, T('First episode')), toIn = numInput(`${panelId}-to`, T('Last episode'));
+  const rangeRow = h('div', { class: 'dl-field dl-range' }, h('label', { for: fromIn.id }, T('From – to')),
     h('div', { class: 'dl-range-boxes' }, fromIn, h('span', { class: 'dl-range-dash', 'aria-hidden': 'true' }, '–'), toIn));
-  const scopeField = h('div', { class: 'dl-field dl-scope' }, h('label', { for: scopeSel.id }, 'Episodes'), scopeSel);
-  const submit = h('button', { type: 'button', class: 'play-btn dl-submit' }, h('span', {}, 'Add Season'));
+  const scopeField = h('div', { class: 'dl-field dl-scope' }, h('label', { for: scopeSel.id }, T('Episodes')), scopeSel);
+  const submit = h('button', { type: 'button', class: 'play-btn dl-submit' }, h('span', {}, T('Add Season')));
   const quiet = h('p', { class: 'dl-quiet' });
   // Upgrade quality: the season is here but looks soft. A clearly better pack replaces it episode by episode.
-  const upBtn = h('button', { type: 'button', class: 'chip dl-upgrade stroke-icon' }, icon('upgrade'), h('span', {}, 'Upgrade quality'));
+  const upBtn = h('button', { type: 'button', class: 'chip dl-upgrade stroke-icon' }, icon('upgrade'), h('span', {}, T('Upgrade quality')));
   const upNote = h('p', { class: 'dl-note dl-upgrade-note' });
   const upStatus = h('p', { class: 'dl-status dl-upgrade-status', role: 'status' });
   const upgradeBox = h('div', { class: 'dl-upgrade-box' }, upBtn, upNote, upStatus);
@@ -2294,8 +2297,8 @@ function showDownload(t, { season = null } = {}) {
   const retry = h('button', { type: 'button', class: 'chip dl-retry' });
   const panel = h('div', { class: 'dl-panel', id: panelId, hidden: !ps.open },
     h('div', { class: 'dl-fields' },
-      h('div', { class: 'dl-field' }, h('label', { for: seasonSel.id }, 'Season'), seasonSel),
-      h('div', { class: 'dl-field' }, h('label', { for: profileSel.id }, 'Quality'), profileSel), scopeField, rangeRow),
+      h('div', { class: 'dl-field' }, h('label', { for: seasonSel.id }, T('Season')), seasonSel),
+      h('div', { class: 'dl-field' }, h('label', { for: profileSel.id }, T('Quality')), profileSel), scopeField, rangeRow),
     note, avail, submit, quiet, h('div', { class: 'dl-result' }, status, retry), upgradeBox,
     advancedOptions(`tv-${t.id}`, {
       exact: ps.exact, onExact: (v) => { ps.exact = v; },
@@ -2309,14 +2312,14 @@ function showDownload(t, { season = null } = {}) {
       seasons = list;
       const s = titleState(t), have = (n) => episodeCount([...s.ready, ...s.onServer].filter((f) => f.season === n && f.episode != null));
       seasonSel.replaceChildren(...list.map((se) => h('option', { value: String(se.number), disabled: se.upcoming && !have(se.number) ? true : null },
-        `${se.name}${se.upcoming && !have(se.number) ? ' · Not released' : ''}`)));
+        `${se.name}${se.upcoming && !have(se.number) ? T(' · Not released') : ''}`)));
       const extra = new Set(serverOnlyEpisodes(s).map((f) => f.season)); // seasons someone else has here
       const pick = list.find((se) => se.number === ps.season) || list.find((se) => extra.has(se.number))
         || list.find((se) => !se.upcoming && !(se.episodes && have(se.number) >= se.episodes)) || list.find((se) => !se.upcoming) || list[0];
       if (pick) { ps.season = pick.number; seasonSel.value = String(pick.number); }
       seasonSel.disabled = false;
       panel._update();
-    }).catch((err) => { seasons = null; seasonSel.replaceChildren(h('option', {}, 'Seasons unavailable')); status.textContent = err.message; });
+    }).catch((err) => { seasons = null; seasonSel.replaceChildren(h('option', {}, T('Seasons unavailable'))); status.textContent = err.message; });
   };
   toggle.addEventListener('click', (e) => {
     ps.open = !ps.open;
@@ -2393,9 +2396,9 @@ function showDownload(t, { season = null } = {}) {
     const downloading = new Set(s.active.flatMap((d) => (d.episodes || []).filter((ep) => ep.season === n && !ep.available).map((ep) => ep.episode)).filter((e) => !ready.has(e)));
     const packBusy = s.active.some((d) => d.season === n && !(d.episodes || []).length);
     const total = se?.episodes || null;
-    const parts = [ready.size && (total ? `${ready.size} of ${total} episodes ready` : `${plural(ready.size, 'episode')} ready`),
-      downloading.size ? `${downloading.size} on the way` : packBusy && 'Season on its way',
-      server.size && `${server.size} ready to add`].filter(Boolean);
+    const parts = [ready.size && (total ? T('{0} of {1} episodes ready', ready.size, total) : T('{0} ready', plural(ready.size, 'episode'))),
+      downloading.size ? T('{0} on the way', downloading.size) : packBusy && T('Season on its way'),
+      server.size && T('{0} ready to add', server.size)].filter(Boolean);
     avail.textContent = parts.join(' · ');
     avail.hidden = !parts.length;
     const complete = total && ready.size >= total;
@@ -2405,17 +2408,17 @@ function showDownload(t, { season = null } = {}) {
     const locked = Boolean(cmd?.busy);
     submit._add = addOnly && !locked ? serverOnlyEpisodes(s, n).filter((f) => server.has(f.episode)) : null;
     submit.hidden = Boolean(complete || covered) && !locked;
-    quiet.textContent = complete ? 'This season is ready to watch' : covered ? 'The rest are on their way' : '';
+    quiet.textContent = complete ? T('This season is ready to watch') : covered ? T('The rest are on their way') : '';
     quiet.hidden = !submit.hidden;
-    const rangeText = picked?.length ? (picked.length === 1 ? `Add Episode ${picked[0]}` : `Add Episodes ${picked[0]}–${picked.at(-1)}`) : 'Choose episodes';
-    submit.firstChild.textContent = locked ? commandStep(cmd) : submit._add ? (adding ? 'Adding…' : `Add Season ${n} to library`)
-      : useRange ? rangeText : `Add Season ${n ?? ''}`.trim();
+    const rangeText = picked?.length ? (picked.length === 1 ? T('Add Episode {0}', picked[0]) : T('Add Episodes {0}–{1}', picked[0], picked.at(-1))) : T('Choose episodes');
+    submit.firstChild.textContent = locked ? commandStep(cmd) : submit._add ? (adding ? T('Adding…') : T('Add Season {0} to library', n))
+      : useRange ? rangeText : (n == null ? T('Add season') : T('Add Season {0}', n));
     submit.setAttribute('aria-disabled', String(locked || adding || !n || Boolean(useRange && !picked.length)));
-    note.textContent = submit._add ? 'Someone already has this season here. Adding it makes no copy, so it’s ready to watch right away.'
-      : useRange ? `${plural(picked.length, 'episode')} of ${bounds().first}–${bounds().last}. A season batch still serves a range: episodes outside it are skipped.`
-      : 'Marquee picks a good copy of the season and skips episodes you already have.';
+    note.textContent = submit._add ? T('Someone already has this season here. Adding it makes no copy, so it’s ready to watch right away.')
+      : useRange ? T('{0} of {1}–{2}. A season batch still serves a range: episodes outside it are skipped.', plural(picked.length, 'episode'), bounds().first, bounds().last)
+      : T('Marquee picks a good copy of the season and skips episodes you already have.');
     // The show's button: "Add to library" until some of it is yours, then "More episodes" for the rest.
-    const toggleText = s.ready.length && !serverOnlyEpisodes(s).length ? 'More episodes' : 'Add to library';
+    const toggleText = s.ready.length && !serverOnlyEpisodes(s).length ? T('More episodes') : T('Add to library');
     if (toggle._mode !== toggleText) {
       toggle._mode = toggleText;
       toggle.replaceChildren(icon('plus'), h('span', {}, toggleText));
@@ -2430,15 +2433,15 @@ function showDownload(t, { season = null } = {}) {
     status.classList.toggle('is-error', Boolean(addError || (result?.retry && !result.partial)));
     retry._episodes = result?.episodes?.length ? result.episodes : null;
     retry.hidden = !result?.retry;
-    retry.textContent = retry._episodes ? 'Retry unavailable' : 'Try again';
+    retry.textContent = retry._episodes ? T('Retry unavailable') : T('Try again');
     // Upgrade quality: offered once some of the season is here and nothing of it is downloading.
     const up = downloadCommands.get(ps.up[n]);
     const upJob = up && !up.busy ? up.job : null;
     upgradeBox.hidden = !(canGet() && ready.size > 0 && !submit._add && ((!downloading.size && !packBusy) || up));
     upBtn.setAttribute('aria-disabled', String(Boolean(locked || up?.busy || downloading.size || packBusy)));
-    upBtn.lastChild.textContent = up?.busy ? 'Looking for better quality…' : 'Upgrade quality';
+    upBtn.lastChild.textContent = up?.busy ? T('Looking for better quality…') : T('Upgrade quality');
     upBtn.hidden = Boolean(upJob && ['started', 'queued'].includes(upJob.outcome));
-    upNote.textContent = 'Looks soft? Finds a clearly better release of this season and swaps each episode as the new one finishes. Watch progress carries over.';
+    upNote.textContent = T('Looks soft? Finds a clearly better release of this season and swaps each episode as the new one finishes. Watch progress carries over.');
     upNote.hidden = Boolean(up);
     const upText = up?.error || upJob?.message || '';
     if (upStatus.textContent !== upText) upStatus.textContent = upText;
@@ -2455,7 +2458,7 @@ function episodeDownload(t, seasonNo, episode) {
   const b = { type: 'tv', tmdbId: t.id, season: seasonNo, episodes: [episode], profile: savedProfile() };
   const onServer = () => serverMatchesFor(t).find((f) => f.season === seasonNo && f.episode === episode);
   if (!onServer() && !(canGet() && t.id)) return null;
-  const btn = h('button', { type: 'button', class: 'chip episode-get stroke-icon' }, icon('download'), h('span', {}, 'Download'));
+  const btn = h('button', { type: 'button', class: 'chip episode-get stroke-icon' }, icon('download'), h('span', {}, T('Download')));
   let adding = false, error = '';
   btn.addEventListener('click', async () => {
     if (btn.getAttribute('aria-disabled') === 'true') return;
@@ -2467,10 +2470,10 @@ function episodeDownload(t, seasonNo, episode) {
   btn._update = () => {
     const cmd = downloadCommands.get(commandKey(b)), result = commandResult(cmd), add = Boolean(onServer());
     if (btn._mode !== add) { btn._mode = add; btn.firstChild.replaceWith(icon(add ? 'plus' : 'download')); }
-    btn.setAttribute('aria-label', `Add episode ${episode} to your library`);
+    btn.setAttribute('aria-label', T('Add episode {0} to your library', episode));
     btn.setAttribute('aria-disabled', String(Boolean(cmd?.busy || adding)));
-    btn.lastChild.textContent = add ? (adding ? 'Adding…' : error ? 'Try again' : 'Add to library')
-      : cmd?.busy ? 'Finding…' : result?.retry ? 'Try again' : 'Add';
+    btn.lastChild.textContent = add ? (adding ? T('Adding…') : error ? T('Try again') : T('Add to library'))
+      : cmd?.busy ? T('Finding…') : result?.retry ? T('Try again') : T('Add');
     btn.title = add ? error : result?.text || '';
   };
   commandViews.add(btn);
@@ -2503,7 +2506,7 @@ function openPicker(file, opener) {
   const name = [file.title, episodeLabel(file)].filter(Boolean).join(' ');
   const list = h('ul', { class: 'rows device-list' });
   const notes = h('div', { class: 'picker-notes' });
-  const again = h('button', { class: 'retry', onclick: () => load(true) }, 'Search again');
+  const again = h('button', { class: 'retry', onclick: () => load(true) }, T('Search again'));
   // The phone's own AirPlay / Chromecast list: works on whatever network the phone is on.
   const nearby = canCastFromBrowser && h('button', {
     class: 'device device-nearby',
@@ -2511,20 +2514,20 @@ function openPicker(file, opener) {
   },
   h('span', { class: 'device-icon' }, icon('airplay')),
   h('span', { class: 'row-text' },
-    h('span', { class: 'row-title' }, hasAirPlay ? 'AirPlay to a TV near you' : 'Cast to a TV near you'),
-    h('span', { class: 'row-meta' }, h('span', {}, 'Pick a TV from this phone’s own list. The TV streams straight from the server.'))));
-  const nearbyWrap = h('div', { class: 'nearby', hidden: true }, h('p', { class: 'muted nearby-label' }, 'Or from this phone'), nearby);
+    h('span', { class: 'row-title' }, hasAirPlay ? T('AirPlay to a TV near you') : T('Cast to a TV near you')),
+    h('span', { class: 'row-meta' }, h('span', {}, T('Pick a TV from this phone’s own list. The TV streams straight from the server.')))));
+  const nearbyWrap = h('div', { class: 'nearby', hidden: true }, h('p', { class: 'muted nearby-label' }, T('Or from this phone')), nearby);
   $('#picker-body').replaceChildren(
-    h('h2', { id: 'picker-title' }, 'Play on TV'),
+    h('h2', { id: 'picker-title' }, T('Play on TV')),
     h('p', { class: 'muted picker-sub' }, name),
     ...[list, notes, again, nearby && nearbyWrap].filter(Boolean));
-  if (restoreManager) $('#picker-body').prepend(h('button', { class: 'chip', onclick: restoreManager }, icon('back'), 'Back to downloads'));
+  if (restoreManager) $('#picker-body').prepend(h('button', { class: 'chip', onclick: restoreManager }, icon('back'), T('Back to downloads')));
   else pushOverlay(showSheet($('#picker'), $('#picker-backdrop'), () => opener?.focus({ preventScroll: true })));
 
   async function load(refresh) {
     again.disabled = true;
     notes.replaceChildren();
-    if (refresh) list.replaceChildren(h('li', { class: 'searching', role: 'status' }, 'Looking for TVs on your network…'));
+    if (refresh) list.replaceChildren(h('li', { class: 'searching', role: 'status' }, T('Looking for TVs on your network…')));
     try {
       const data = await api(`/api/cast/devices${refresh ? '?refresh=1' : ''}`);
       if (data.away) {
@@ -2532,10 +2535,10 @@ function openPicker(file, opener) {
         if (nearby) {
           nearbyWrap.hidden = true;
           list.replaceChildren(h('li', {}, nearby));
-          notes.replaceChildren(h('p', { class: 'muted' }, 'You’re away from home, so the TVs there aren’t listed.'));
+          notes.replaceChildren(h('p', { class: 'muted' }, T('You’re away from home, so the TVs there aren’t listed.')));
         } else {
-          list.replaceChildren(h('li', {}, notice('You’re away from home',
-            'The TVs at home aren’t available from here, and this browser can’t cast to TVs near you. Open Marquee in Safari (AirPlay) or Chrome (Chromecast) to use one, or press Play to watch here.')));
+          list.replaceChildren(h('li', {}, notice(T('You’re away from home'),
+            T('The TVs at home aren’t available from here, and this browser can’t cast to TVs near you. Open Marquee in Safari (AirPlay) or Chrome (Chromecast) to use one, or press Play to watch here.'))));
         }
         return;
       }
@@ -2543,12 +2546,12 @@ function openPicker(file, opener) {
       if (!refresh && !data.devices.length) return load(true); // empty cache: scan now
       list.replaceChildren(...data.devices.map(deviceRow));
       if (!data.devices.length) {
-        list.replaceChildren(h('li', {}, notice('No TVs found',
-          'Check the TV is switched on and on the same network as the server. On Samsung and LG TVs, screen sharing / DLNA may need turning on in the settings.')));
+        list.replaceChildren(h('li', {}, notice(T('No TVs found'),
+          T('Check the TV is switched on and on the same network as the server. On Samsung and LG TVs, screen sharing / DLNA may need turning on in the settings.'))));
       }
       notes.replaceChildren(...data.notes.map((n) => h('p', { class: 'muted' }, n)));
     } catch (err) {
-      list.replaceChildren(h('li', {}, notice('Couldn’t search for TVs', err.message)));
+      list.replaceChildren(h('li', {}, notice(T('Couldn’t search for TVs'), err.message)));
     } finally {
       again.disabled = false;
     }
@@ -2558,14 +2561,14 @@ function openPicker(file, opener) {
     const status = h('span', { class: 'device-status' });
     // A TV that's already playing also gets a button for its remote (yours, or to stop someone else's).
     const remote = d.session && h('button', { type: 'button', class: 'chip device-remote', onclick: () => openRemote(d.session, { replace: true }) },
-      d.session.mine ? 'Open remote' : 'Open its remote');
+      d.session.mine ? T('Open remote') : T('Open its remote'));
     const btn = h('button', { class: 'device', onclick: () => start(d, btn, status) },
       h('span', { class: 'device-icon' }, icon('tv')),
       h('span', { class: 'row-text' },
         h('span', { class: 'row-title' }, d.name),
-        h('span', { class: 'row-meta' }, h('span', {}, d.kind === 'airplay' ? 'Apple TV' : (d.model || 'Smart TV')),
-          d.session ? h('span', {}, d.session.mine ? `Playing ${d.session.title}` : 'Someone else is watching')
-            : d.playing && h('span', {}, 'Playing something now')),
+        h('span', { class: 'row-meta' }, h('span', {}, d.kind === 'airplay' ? T('Apple TV') : (d.model || T('Smart TV'))),
+          d.session ? h('span', {}, d.session.mine ? T('Playing {0}', d.session.title) : T('Someone else is watching'))
+            : d.playing && h('span', {}, T('Playing something now'))),
         status));
     return h('li', {}, btn, remote);
   }
@@ -2575,16 +2578,16 @@ function openPicker(file, opener) {
     if (d.session && !d.session.mine && !btn.dataset.confirm) {
       btn.dataset.confirm = '1';
       status.className = 'device-status is-error';
-      status.textContent = `Someone is watching ${d.session.title} on this TV. Tap again to play here instead.`;
+      status.textContent = T('Someone is watching {0} on this TV. Tap again to play here instead.', d.session.title);
       return;
     }
     btn.disabled = true;
     status.className = 'device-status';
-    status.textContent = 'Starting on the TV…';
+    status.textContent = T('Starting on the TV…');
     try {
       // Apple TV can't show subtitle files over AirPlay; smart TVs start with the player's default subtitles.
       const sub = d.kind === 'airplay' ? null : await castSubFor(file);
-      if (sub) status.textContent = `Starting on the TV with ${sub.name} subtitles…`;
+      if (sub) status.textContent = T('Starting on the TV with {0} subtitles…', sub.name);
       const play = (code) => api('/api/cast/play', jsonPost({ deviceId: d.id, kind: file.kind, id: file.key, ...(code ? { sub: code } : {}) }));
       let result;
       // Subtitles that can't be fetched shouldn't stop the video: start without them.
@@ -2607,14 +2610,14 @@ function openPicker(file, opener) {
 async function openDelete(f, opener) {
   const id = f.id || f.key;
   const body = $('#picker-body');
-  body.replaceChildren(h('h2', { id: 'picker-title' }, 'Delete'), h('p', { class: 'muted' }, 'Checking…'));
+  body.replaceChildren(h('h2', { id: 'picker-title' }, T('Delete')), h('p', { class: 'muted' }, T('Checking…')));
   pushOverlay(showSheet($('#picker'), $('#picker-backdrop'), () => opener?.focus({ preventScroll: true })));
 
   let info;
   try {
     info = await api(`/api/library/delete-info?id=${encodeURIComponent(id)}`);
   } catch (err) {
-    body.replaceChildren(h('h2', { id: 'picker-title' }, 'Can’t delete this'), h('p', { class: 'muted' }, err.message));
+    body.replaceChildren(h('h2', { id: 'picker-title' }, T('Can’t delete this')), h('p', { class: 'muted' }, err.message));
     return;
   }
   const label = [info.title || info.name, episodeLabel(info) || (info.year && `(${info.year})`)].filter(Boolean).join(' ');
@@ -2624,13 +2627,13 @@ async function openDelete(f, opener) {
 
   const run = async (scope, btn, everyone = false) => {
     body.querySelectorAll('button').forEach((b) => { b.disabled = true; });
-    btn.textContent = everyone || !info.others ? 'Deleting…' : 'Removing…';
+    btn.textContent = everyone || !info.others ? T('Deleting…') : T('Removing…');
     status.className = 'device-status';
     status.textContent = '';
     try {
       const r = await api('/api/library/delete', jsonPost({ id, scope, everyone }));
       closeTopOverlay();
-      toast(r.kept ? 'Removed from your library' : scope === 'torrent' && pack ? `Deleted all ${t.videos} videos` : 'Deleted');
+      toast(r.kept ? T('Removed from your library') : scope === 'torrent' && pack ? T('Deleted all {0} videos', t.videos) : T('Deleted'));
       dropFromLibrary([id]);
       // Refresh after the server finishes cleaning up.
       setTimeout(async () => { await Promise.all([loadLibrary(), loadDownloads()]); if (state.view === 'library') renderLibrary(); if (state.view === 'downloads') renderDownloads(); }, 5000);
@@ -2647,16 +2650,16 @@ async function openDelete(f, opener) {
     b.addEventListener('click', () => run(scope, b, everyone));
     return b;
   };
-  const cancel = h('button', { class: 'del-cancel', onclick: () => closeTopOverlay() }, 'Keep it');
+  const cancel = h('button', { class: 'del-cancel', onclick: () => closeTopOverlay() }, T('Keep it'));
   // Someone else has it too: it only leaves your library (the owner can still delete the file).
   if (info.others) {
-    body.replaceChildren(h('h2', { id: 'picker-title' }, 'Remove from your library?'),
+    body.replaceChildren(h('h2', { id: 'picker-title' }, T('Remove from your library?')),
       h('p', { class: 'del-name' }, label),
-      h('p', { class: 'muted' }, `${plural(info.others, 'other person has', 'other people have')} this in their library, so the file stays on the server. You can add it back from Discover.`),
-      info.sharedWith > 0 && h('p', { class: 'muted' }, `It also leaves the library you share with ${nameList(libraryMates())}.`),
+      h('p', { class: 'muted' }, T('{0} this in their library, so the file stays on the server. You can add it back from Discover.', plural(info.others, T('other person has'), T('other people have')))),
+      info.sharedWith > 0 && h('p', { class: 'muted' }, T('It also leaves the library you share with {0}.', nameList(libraryMates()))),
       h('div', { class: 'del-actions' },
-        button('Remove from my library', 'del-confirm', 'file'),
-        info.canDeleteForEveryone && button(`Delete the file for everyone (${fmtBytes(info.size)})`, 'del-confirm del-secondary', 'file', true),
+        button(T('Remove from my library'), 'del-confirm', 'file'),
+        info.canDeleteForEveryone && button(T('Delete the file for everyone ({0})', fmtBytes(info.size)), 'del-confirm del-secondary', 'file', true),
         cancel),
       status);
     cancel.focus();
@@ -2666,23 +2669,23 @@ async function openDelete(f, opener) {
   const lines = [
     h('p', { class: 'del-name' }, label),
     h('p', { class: 'muted' }, pack
-      ? `This is one of ${t.videos} videos in the torrent “${t.name}”. Deleting all of them also removes the torrent from qBittorrent.`
-      : t ? `This also removes the torrent from qBittorrent, so it stops seeding. ${fmtBytes(t.size)} will be freed.`
-        : `${fmtBytes(info.size)} will be freed. This can’t be undone.`),
-    info.sharedWith > 0 && h('p', { class: 'muted' }, `You share this library with ${nameList(libraryMates())}, so it goes for them too.`),
+      ? T('This is one of {0} videos in the torrent “{1}”. Deleting all of them also removes the torrent from qBittorrent.', t.videos, t.name)
+      : t ? T('This also removes the torrent from qBittorrent, so it stops seeding. {0} will be freed.', fmtBytes(t.size))
+        : T('{0} will be freed. This can’t be undone.', fmtBytes(info.size))),
+    info.sharedWith > 0 && h('p', { class: 'muted' }, T('You share this library with {0}, so it goes for them too.', nameList(libraryMates()))),
   ];
   const actions = pack
-    ? [button('Delete this video only', 'del-confirm', 'file'), button(`Delete all ${t.videos} videos (${fmtBytes(t.size)})`, 'del-confirm del-secondary', 'torrent')]
-    : [button('Delete', 'del-confirm', t ? 'torrent' : 'file')];
+    ? [button(T('Delete this video only'), 'del-confirm', 'file'), button(T('Delete all {0} videos ({1})', t.videos, fmtBytes(t.size)), 'del-confirm del-secondary', 'torrent')]
+    : [button(T('Delete'), 'del-confirm', t ? 'torrent' : 'file')];
   // A title with versions: this deletes the one shown; the others stay (or all of them go at once).
   const otherVersions = (f.versions || []).filter((v) => v.id !== id);
   if (otherVersions.length) {
-    lines.splice(1, 0, h('p', { class: 'muted' }, `This is the ${f.versionLabel || 'chosen'} version. ${otherVersions.length === 1
-      ? `The other one (${otherVersions[0].versionLabel}) stays.` : `The other ${otherVersions.length} versions stay.`}`));
-    actions.push(h('button', { class: 'del-confirm del-secondary', onclick: () => { closeTopOverlay(); openDeleteMany({ files: f.versions, what: 'every version', label }, opener); } },
-      `Delete all ${f.versions.length} versions`));
+    lines.splice(1, 0, h('p', { class: 'muted' }, T('This is the {0} version. {1}', f.versionLabel || T('chosen'), otherVersions.length === 1
+      ? T('The other one ({0}) stays.', otherVersions[0].versionLabel) : T('The other {0} versions stay.', otherVersions.length))));
+    actions.push(h('button', { class: 'del-confirm del-secondary', onclick: () => { closeTopOverlay(); openDeleteMany({ files: f.versions, what: T('every version'), label }, opener); } },
+      T('Delete all {0} versions', f.versions.length)));
   }
-  body.replaceChildren(h('h2', { id: 'picker-title' }, 'Delete this?'), ...lines, h('div', { class: 'del-actions' }, ...actions, cancel), status);
+  body.replaceChildren(h('h2', { id: 'picker-title' }, T('Delete this?')), ...lines, h('div', { class: 'del-actions' }, ...actions, cancel), status);
   cancel.focus();
 }
 
@@ -2690,14 +2693,14 @@ async function openDelete(f, opener) {
 async function openDeleteMany({ files, what, label, onDone }, opener) {
   const ids = [...new Set(allVersions(files).map((f) => f.id).filter(Boolean))];
   const body = $('#picker-body');
-  body.replaceChildren(h('h2', { id: 'picker-title' }, `Delete ${what}`), h('p', { class: 'muted' }, 'Checking…'));
+  body.replaceChildren(h('h2', { id: 'picker-title' }, T('Delete {0}', what)), h('p', { class: 'muted' }, T('Checking…')));
   pushOverlay(showSheet($('#picker'), $('#picker-backdrop'), () => opener?.focus({ preventScroll: true })));
 
   let info;
   try {
     info = await api('/api/library/delete-many-info', jsonPost({ ids }));
   } catch (err) {
-    body.replaceChildren(h('h2', { id: 'picker-title' }, `Can’t delete this ${what}`), h('p', { class: 'muted' }, err.message));
+    body.replaceChildren(h('h2', { id: 'picker-title' }, T('Can’t delete this {0}', what)), h('p', { class: 'muted' }, err.message));
     return;
   }
   const episodes = plural(episodeCount(files), 'episode');
@@ -2706,7 +2709,7 @@ async function openDeleteMany({ files, what, label, onDone }, opener) {
 
   const run = async (btn, everyone = false) => {
     body.querySelectorAll('button').forEach((b) => { b.disabled = true; });
-    btn.textContent = !everyone && allShared ? 'Removing…' : 'Deleting…';
+    btn.textContent = !everyone && allShared ? T('Removing…') : T('Deleting…');
     status.className = 'device-status';
     status.textContent = '';
     try {
@@ -2714,8 +2717,8 @@ async function openDeleteMany({ files, what, label, onDone }, opener) {
       const gone = new Set(ids);
       dropFromLibrary(gone);
       await dismissTopOverlay().catch(() => {});
-      toast(r.failed ? `${r.deleted + r.removed} deleted, ${r.failed} kept: ${r.error}`
-        : r.deleted ? `Deleted ${label}` : `Removed ${label} from your library`);
+      toast(r.failed ? T('{0} deleted, {1} kept: {2}', r.deleted + r.removed, r.failed, r.error)
+        : r.deleted ? T('Deleted {0}', label) : T('Removed {0} from your library', label));
       onDone?.();
       // Refresh after the server finishes cleaning up.
       setTimeout(async () => { await Promise.all([loadLibrary(), loadDownloads()]); if (state.view === 'library') renderLibrary(); if (state.view === 'downloads') renderDownloads(); }, 5000);
@@ -2731,28 +2734,28 @@ async function openDeleteMany({ files, what, label, onDone }, opener) {
     b.addEventListener('click', () => run(b, everyone));
     return b;
   };
-  const cancel = h('button', { class: 'del-cancel', 'data-label': 'Keep it', onclick: () => closeTopOverlay() }, 'Keep it');
-  const forEveryone = info.canDeleteForEveryone && button(`Delete the files for everyone (${fmtBytes(info.sizeForEveryone)})`, 'del-confirm del-secondary', true);
+  const cancel = h('button', { class: 'del-cancel', 'data-label': T('Keep it'), onclick: () => closeTopOverlay() }, T('Keep it'));
+  const forEveryone = info.canDeleteForEveryone && button(T('Delete the files for everyone ({0})', fmtBytes(info.sizeForEveryone)), 'del-confirm del-secondary', true);
 
   if (allShared) {
-    body.replaceChildren(h('h2', { id: 'picker-title' }, `Remove this ${what} from your library?`),
-      h('p', { class: 'del-name' }, label), h('p', { class: 'muted' }, `${episodes}. Other people have ${info.videos === 1 ? 'it' : 'these'} in their library too, so the files stay on the server. You can add them back from Discover.`),
-      h('div', { class: 'del-actions' }, button(`Remove ${what} from my library`, 'del-confirm'), forEveryone, cancel), status);
+    body.replaceChildren(h('h2', { id: 'picker-title' }, T('Remove this {0} from your library?', what)),
+      h('p', { class: 'del-name' }, label), h('p', { class: 'muted' }, T('{0}. Other people have {1} in their library too, so the files stay on the server. You can add them back from Discover.', episodes, info.videos === 1 ? T('it') : T('these'))),
+      h('div', { class: 'del-actions' }, button(T('Remove {0} from my library', what), 'del-confirm'), forEveryone, cancel), status);
   } else {
-    const lines = [`${episodes} · ${fmtBytes(info.size)} will be freed.`,
-      info.downloads && `This also removes ${info.downloads === 1 ? 'its download' : `${info.downloads} downloads`} from qBittorrent, so ${info.downloads === 1 ? 'it stops' : 'they stop'} seeding.`,
-      info.shared && `${plural(info.shared, 'video')} that other people also have only ${info.shared === 1 ? 'leaves' : 'leave'} your library.`,
-      'This can’t be undone.'].filter(Boolean);
-    body.replaceChildren(h('h2', { id: 'picker-title' }, `Delete this ${what}?`),
+    const lines = [T('{0} · {1} will be freed.', episodes, fmtBytes(info.size)),
+      info.downloads && T('This also removes {0} from qBittorrent, so {1} seeding.', info.downloads === 1 ? T('its download') : T('{0} downloads', info.downloads), info.downloads === 1 ? T('it stops') : T('they stop')),
+      info.shared && T('{0} that other people also have only {1} your library.', plural(info.shared, 'video'), info.shared === 1 ? 'leaves' : 'leave'),
+      T('This can’t be undone.')].filter(Boolean);
+    body.replaceChildren(h('h2', { id: 'picker-title' }, T('Delete this {0}?', what)),
       h('p', { class: 'del-name' }, label), h('p', { class: 'muted' }, lines.join(' ')),
-      h('div', { class: 'del-actions' }, button(`Delete ${what}`, 'del-confirm'), forEveryone, cancel), status);
+      h('div', { class: 'del-actions' }, button(T('Delete {0}', what), 'del-confirm'), forEveryone, cancel), status);
   }
   cancel.focus();
 }
 
 // ---------- torrent search ----------
 const SOURCE_NAMES = { tpb: 'The Pirate Bay', '1337x': '1337x', nyaa: 'Nyaa' };
-const QUALITY_FILTERS = [['all', 'All'], ['2160p', '4K'], ['1440p', '1440p'], ['1080p', '1080p'], ['720p', '720p']];
+const QUALITY_FILTERS = [['all', T('All')], ['2160p', '4K'], ['1440p', '1440p'], ['1080p', '1080p'], ['720p', '720p']];
 
 // navigator.clipboard requires HTTPS; fall back to execCommand on plain HTTP.
 async function copyText(text) {
@@ -2777,7 +2780,7 @@ async function magnetOf(t) {
 async function sendToQbit(link, extra = {}) {
   await api('/api/downloads/add', jsonPost({ link, ...extra }));
   loadDownloads().then(patchUnifiedLibrary);
-  toast('Added to Library');
+  toast(T('Added to Library'));
 }
 
 // The release list: search 1337x, The Pirate Bay and Nyaa and pick one yourself. It sits inside a title's
@@ -2789,12 +2792,12 @@ function torrentBrowser({ query = '', type = 'all', movieId = null, tvId = null,
   const added = new Set();
 
   const input = h('input', { type: 'search', enterkeyhint: 'search', autocomplete: 'off', autocorrect: 'off', spellcheck: 'false',
-    'aria-label': 'Torrent search', placeholder: 'Title, or paste a magnet link' });
+    'aria-label': T('Torrent search'), placeholder: T('Title, or paste a magnet link') });
   input.value = query;
   const form = h('form', { class: 'search tor-search', role: 'search' },
     h('span', { class: 'search-icon', 'aria-hidden': 'true' }, icon('search')), input,
-    h('button', { type: 'submit', class: 'tor-go' }, 'Search'));
-  const chips = h('div', { class: 'tor-filters quality-rail', role: 'group', 'aria-label': 'Quality' },
+    h('button', { type: 'submit', class: 'tor-go' }, T('Search')));
+  const chips = h('div', { class: 'tor-filters quality-rail', role: 'group', 'aria-label': T('Quality') },
     QUALITY_FILTERS.map(([key, text]) => h('button', {
       type: 'button', class: 'chip', 'aria-pressed': String(key === filter),
       onclick: (e) => {
@@ -2809,7 +2812,7 @@ function torrentBrowser({ query = '', type = 'all', movieId = null, tvId = null,
   const subId = `tor-sub-${Math.random().toString(36).slice(2, 8)}`;
   const subSelect = h('select', { class: 'sub-select', id: subId });
   const subRow = h('div', { class: 'tor-subs', hidden: true },
-    h('label', { for: subId }, 'Subtitles'), subSelect,
+    h('label', { for: subId }, T('Subtitles')), subSelect,
     h('span', { class: 'muted tor-subs-note' }));
   subSelect.addEventListener('change', () => { try { localStorage.setItem('subs:dlLang', subSelect.value); } catch { /* blocked */ } });
   const el = h('div', { class: 'tor-browser' }, form, subRow, chips, info, list);
@@ -2818,9 +2821,9 @@ function torrentBrowser({ query = '', type = 'all', movieId = null, tvId = null,
     if (!state.status.subtitles) return;
     const note = subRow.querySelector('.tor-subs-note');
     subRow.hidden = false;
-    subSelect.replaceChildren(h('option', { value: '' }, 'None'));
+    subSelect.replaceChildren(h('option', { value: '' }, T('None')));
     subSelect.disabled = true;
-    note.textContent = 'Checking OpenSubtitles…';
+    note.textContent = T('Checking OpenSubtitles…');
     try {
       const data = await api(`/api/subs/langs?q=${encodeURIComponent(q)}&type=${type}`);
       subSelect.append(...data.languages.map((l) => h('option', { value: l.code }, l.name)));
@@ -2828,7 +2831,7 @@ function torrentBrowser({ query = '', type = 'all', movieId = null, tvId = null,
       try { pref = localStorage.getItem('subs:dlLang') || ''; } catch { /* blocked */ }
       pref ||= prefs().subLang || ''; // Settings → subtitles
       if (data.languages.some((l) => l.code === pref)) subSelect.value = pref;
-      note.textContent = data.languages.length ? '' : 'None found for this title';
+      note.textContent = data.languages.length ? '' : T('None found for this title');
     } catch (err) {
       note.textContent = err.message;
     } finally {
@@ -2842,10 +2845,10 @@ function torrentBrowser({ query = '', type = 'all', movieId = null, tvId = null,
     const q = input.value.trim();
     ctrl?.abort();
     if (/^magnet:\?/i.test(q)) return addPastedMagnet(q);
-    if (q.length < 2) { results = []; list.replaceChildren(); info.textContent = 'Type a title to search 1337x, The Pirate Bay and Nyaa (anime).'; return; }
+    if (q.length < 2) { results = []; list.replaceChildren(); info.textContent = T('Type a title to search 1337x, The Pirate Bay and Nyaa (anime).'); return; }
     ctrl = new AbortController();
     const { signal } = ctrl;
-    info.textContent = 'Searching 1337x, The Pirate Bay and Nyaa…';
+    info.textContent = T('Searching 1337x, The Pirate Bay and Nyaa…');
     list.replaceChildren(...Array.from({ length: 5 }, () => h('li', { class: 'row tor skeleton-row', 'aria-hidden': 'true' })));
     try {
       // The title's TMDB id lets the server search anime by its romanised name too (Nyaa).
@@ -2858,17 +2861,17 @@ function torrentBrowser({ query = '', type = 'all', movieId = null, tvId = null,
       if (err.name === 'AbortError') return;
       results = [];
       info.textContent = '';
-      list.replaceChildren(h('li', {}, notice('Search didn’t work', err.message, run)));
+      list.replaceChildren(h('li', {}, notice(T('Search didn’t work'), err.message, run)));
     }
   }
 
   async function addPastedMagnet(link) {
     list.replaceChildren();
-    if (!state.status.downloads) { info.textContent = 'Downloads aren’t connected, so there’s nowhere to send it. Set up qBittorrent in .env.'; return; }
-    info.textContent = 'Sending to qBittorrent…';
+    if (!state.status.downloads) { info.textContent = T('Downloads aren’t connected, so there’s nowhere to send it. Set up qBittorrent in .env.'); return; }
+    info.textContent = T('Sending to qBittorrent…');
     try {
       await sendToQbit(link);
-      info.textContent = 'Added. It appears in your Library.';
+      info.textContent = T('Added. It appears in your Library.');
       input.value = '';
     } catch (err) {
       info.textContent = err.message;
@@ -2880,15 +2883,15 @@ function torrentBrowser({ query = '', type = 'all', movieId = null, tvId = null,
     const bits = [];
     if (results.length) {
       bits.push(shown.length === results.length
-        ? `${results.length} result${results.length === 1 ? '' : 's'}, most seeded first.`
-        : `${shown.length} of ${results.length} results.`);
+        ? (results.length === 1 ? T('{0} result, most seeded first.', results.length) : T('{0} results, most seeded first.', results.length))
+        : T('{0} of {1} results.', shown.length, results.length));
     }
-    if (problems.length) bits.push(`Skipped ${problems.join(' ')}`);
+    if (problems.length) bits.push(T('Skipped {0}', problems.join(' ')));
     info.textContent = bits.join(' ');
     if (!shown.length) {
       list.replaceChildren(h('li', {}, results.length
-        ? notice('Nothing in that quality', 'Try another filter.')
-        : notice('No torrents found', 'Try fewer words, or the original title. For series, add the season, like “S02”.')));
+        ? notice(T('Nothing in that quality'), T('Try another filter.'))
+        : notice(T('No torrents found'), T('Try fewer words, or the original title. For series, add the season, like “S02”.'))));
       return;
     }
     list.replaceChildren(...shown.map(torrentRow));
@@ -2902,25 +2905,25 @@ function torrentBrowser({ query = '', type = 'all', movieId = null, tvId = null,
     const owned = t.quality && ownedQualities().has(t.quality);
     const status = h('span', { class: 'device-status' });
     const meta = [
-      h('span', { class: `seeds seeds-${health}` }, `${t.seeders.toLocaleString()} seeding`),
+      h('span', { class: `seeds seeds-${health}` }, T('{0} seeding', t.seeders.toLocaleString(locale))),
       t.size && fmtBytes(t.size),
       t.quality && t.quality !== 'SD' && (t.quality === '2160p' ? '4K' : t.quality),
       ...t.tags,
-      t.cam && h('span', { class: 'tor-warn' }, 'Cinema recording'),
-      owned && h('span', { class: 'tor-have' }, 'You have this quality'),
+      t.cam && h('span', { class: 'tor-warn' }, T('Cinema recording')),
+      owned && h('span', { class: 'tor-have' }, T('You have this quality')),
       SOURCE_NAMES[t.source],
       fmtAgo(t.added) || t.addedText,
     ].filter(Boolean).map((m) => (m instanceof Node ? m : h('span', {}, m)));
 
-    const copyBtn = h('button', { class: 'cast-btn', title: 'Copy magnet link', 'aria-label': `Copy magnet link for ${t.name}`, onclick: copy }, icon('copy'));
-    const getBtn = canDownload() && h('button', { class: 'play-btn', 'aria-label': `Download ${t.name}`, onclick: get }, icon('download'), 'Get');
+    const copyBtn = h('button', { class: 'cast-btn', title: T('Copy magnet link'), 'aria-label': T('Copy magnet link for {0}', t.name), onclick: copy }, icon('copy'));
+    const getBtn = canDownload() && h('button', { class: 'play-btn', 'aria-label': T('Download {0}', t.name), onclick: get }, icon('download'), T('Get'));
     if (getBtn && added.has(t.id)) markAdded();
 
     async function copy() {
       copyBtn.disabled = true;
       try {
         const ok = await copyText(await magnetOf(t));
-        toast(ok ? 'Magnet link copied' : 'Couldn’t copy on this device');
+        toast(ok ? T('Magnet link copied') : T('Couldn’t copy on this device'));
       } catch (err) {
         toast(err.message);
       } finally {
@@ -2929,7 +2932,7 @@ function torrentBrowser({ query = '', type = 'all', movieId = null, tvId = null,
     }
     async function get() {
       getBtn.disabled = true;
-      getBtn.replaceChildren('Adding…');
+      getBtn.replaceChildren(T('Adding…'));
       status.className = 'device-status';
       status.textContent = '';
       try {
@@ -2943,10 +2946,10 @@ function torrentBrowser({ query = '', type = 'all', movieId = null, tvId = null,
         added.add(t.id);
         markAdded();
         const subName = sub && subSelect.selectedOptions[0]?.textContent;
-        toast(subName ? `Added. ${subName} subtitles come when it finishes.` : 'Added to Library');
+        toast(subName ? T('Added. {0} subtitles come when it finishes.', subName) : T('Added to Library'));
       } catch (err) {
         getBtn.disabled = false;
-        getBtn.replaceChildren(icon('download'), 'Get');
+        getBtn.replaceChildren(icon('download'), T('Get'));
         status.className = 'device-status is-error';
         status.textContent = err.message;
       }
@@ -2954,7 +2957,7 @@ function torrentBrowser({ query = '', type = 'all', movieId = null, tvId = null,
     function markAdded() {
       getBtn.disabled = true;
       getBtn.classList.add('is-added');
-      getBtn.replaceChildren(icon('check'), 'Added');
+      getBtn.replaceChildren(icon('check'), T('Added'));
     }
 
     return h('li', { class: 'row tor' },
@@ -2968,14 +2971,14 @@ function torrentBrowser({ query = '', type = 'all', movieId = null, tvId = null,
   return {
     el,
     abort: () => ctrl?.abort(),
-    start: () => { if (query) run(); else { info.textContent = 'Type a title to search 1337x, The Pirate Bay and Nyaa (anime).'; input.focus(); } },
+    start: () => { if (query) run(); else { info.textContent = T('Type a title to search 1337x, The Pirate Bay and Nyaa (anime).'); input.focus(); } },
   };
 }
 
 // Find torrents (Discover search): the release list on its own, for anything you search by name.
 function openTorrents({ query = '', opener } = {}) {
   const browser = torrentBrowser({ query });
-  $('#picker-body').replaceChildren(h('h2', { id: 'picker-title' }, 'Find torrents'), browser.el);
+  $('#picker-body').replaceChildren(h('h2', { id: 'picker-title' }, T('Find torrents')), browser.el);
   pushOverlay(showSheet($('#picker'), $('#picker-backdrop'), () => { browser.abort(); opener?.focus({ preventScroll: true }); }));
   browser.start();
 }
@@ -2992,15 +2995,15 @@ function renderNowbar() {
   bar.hidden = !s || !$('#remote').hidden;
   document.body.classList.toggle('has-nowbar', !bar.hidden);
   if (!s) return;
-  const more = state.sessions.length > 1 ? ` (+${state.sessions.length - 1} more)` : '';
+  const more = state.sessions.length > 1 ? T(' (+{0} more)', state.sessions.length - 1) : '';
   bar.replaceChildren(
     h('span', { class: 'nowbar-icon' }, icon('tv')),
-    h('span', { class: 'nowbar-text' }, h('strong', {}, s.title), h('span', {}, `on ${s.deviceName}${more}`)),
-    h('span', { class: 'nowbar-open' }, 'Remote'));
+    h('span', { class: 'nowbar-text' }, h('strong', {}, s.title), h('span', {}, T('on {0}{1}', s.deviceName, more))),
+    h('span', { class: 'nowbar-open' }, T('Remote')));
   bar.onclick = () => openRemote(s);
 }
 
-const STATE_TEXT = { playing: 'Playing', paused: 'Paused', loading: 'Loading on the TV…', stopped: 'Stopped', unknown: '' };
+const STATE_TEXT = { playing: T('Playing'), paused: T('Paused'), loading: T('Loading on the TV…'), stopped: T('Stopped'), unknown: '' };
 let activeRemote = null; // the open remote; a replaced one must not hide its successor when it closes
 
 function openRemote(session, { replace = false } = {}) {
@@ -3016,34 +3019,34 @@ function openRemote(session, { replace = false } = {}) {
 
   $('#remote-body').replaceChildren(
     h('div', { class: 'remote-top' },
-      h('button', { class: 'icon-btn', id: 'remote-close', 'aria-label': 'Close remote', onclick: closeTopOverlay }, icon('back')),
+      h('button', { class: 'icon-btn', id: 'remote-close', 'aria-label': T('Close remote'), onclick: closeTopOverlay }, icon('back')),
       h('p', { class: 'remote-where' }, icon('tv'), h('span', {}, session.deviceName))),
     h('div', { class: 'remote-main' },
       h('h2', { id: 'remote-title' }, session.title),
       session.subtitle && h('p', { class: 'remote-sub' }, session.subtitle),
-      r.state = h('p', { class: 'remote-state', role: 'status' }, 'Connecting…'),
+      r.state = h('p', { class: 'remote-state', role: 'status' }, T('Connecting…')),
       h('div', { class: 'scrub' },
-        r.seek = h('input', { type: 'range', min: '0', max: '0', step: '1', value: '0', 'aria-label': 'Position', disabled: true }),
+        r.seek = h('input', { type: 'range', min: '0', max: '0', step: '1', value: '0', 'aria-label': T('Position'), disabled: true }),
         h('div', { class: 'scrub-times' }, r.pos = h('span', {}, '0:00'), r.dur = h('span', {}, '–:––'))),
       h('div', { class: 'transport' },
-        h('button', { class: 'skip-btn', 'aria-label': 'Back 10 seconds', onclick: () => jump(-10) }, '−10s'),
+        h('button', { class: 'skip-btn', 'aria-label': T('Back 10 seconds'), onclick: () => jump(-10) }, '−10s'),
         r.toggle = h('button', { class: 'toggle-btn', onclick: toggle }),
-        h('button', { class: 'skip-btn', 'aria-label': 'Forward 30 seconds', onclick: () => jump(30) }, '+30s')),
+        h('button', { class: 'skip-btn', 'aria-label': T('Forward 30 seconds'), onclick: () => jump(30) }, '+30s')),
       r.skipIntro = h('button', { class: 'remote-skip-intro', type: 'button', hidden: true, onclick: () => skipIntroOnTv() },
-        'Skip intro', icon('skip')),
-      r.upNext = h('section', { class: 'remote-up-next', hidden: true, 'aria-label': 'Up next' },
+        T('Skip intro'), icon('skip')),
+      r.upNext = h('section', { class: 'remote-up-next', hidden: true, 'aria-label': T('Up next') },
         h('div', { class: 'up-next-copy' },
           r.upNextArt = h('div', { class: 'up-next-art', 'aria-hidden': 'true' }),
-          h('div', {}, h('p', { class: 'up-next-label' }, 'Up next'), r.upNextTitle = h('h3', {}))),
+          h('div', {}, h('p', { class: 'up-next-label' }, T('Up next')), r.upNextTitle = h('h3', {}))),
         h('div', { class: 'up-next-actions' },
-          r.upNextPlay = h('button', { class: 'up-next-play', type: 'button', onclick: () => playNextOnTv() }, 'Next episode'),
-          r.upNextDismiss = h('button', { class: 'up-next-dismiss', type: 'button', onclick: () => { cue.dismissed = true; renderCues(); } }, 'Keep watching')),
+          r.upNextPlay = h('button', { class: 'up-next-play', type: 'button', onclick: () => playNextOnTv() }, T('Next episode')),
+          r.upNextDismiss = h('button', { class: 'up-next-dismiss', type: 'button', onclick: () => { cue.dismissed = true; renderCues(); } }, T('Keep watching'))),
         r.upNextError = h('p', { class: 'up-next-error', hidden: true })),
       r.cueStatus = h('p', { class: 'sr-only', role: 'status' }),
       r.volWrap = h('label', { class: 'volume', hidden: true }, icon('volume'),
-        r.vol = h('input', { type: 'range', min: '0', max: '100', step: '1', 'aria-label': 'TV volume' })),
+        r.vol = h('input', { type: 'range', min: '0', max: '100', step: '1', 'aria-label': T('TV volume') })),
       r.subs = h('div', { class: 'remote-subs', hidden: true }),
-      h('button', { class: 'stop-btn', onclick: stop }, 'Stop playing on the TV')));
+      h('button', { class: 'stop-btn', onclick: stop }, T('Stop playing on the TV'))));
 
   r.sync = h('div', { class: 'remote-sync' });
   r.seek.addEventListener('pointerdown', () => { dragging = true; });
@@ -3059,7 +3062,7 @@ function openRemote(session, { replace = false } = {}) {
     r.state.textContent = STATE_TEXT[st.state] ?? '';
     const playing = st.state === 'playing' || st.state === 'loading';
     r.toggle.replaceChildren(icon(playing ? 'pause' : 'play'));
-    r.toggle.setAttribute('aria-label', playing ? 'Pause' : 'Play');
+    r.toggle.setAttribute('aria-label', playing ? T('Pause') : T('Play'));
     if (st.duration) {
       r.seek.disabled = false;
       r.seek.max = String(Math.floor(st.duration));
@@ -3120,15 +3123,15 @@ function openRemote(session, { replace = false } = {}) {
     }
     const left = cue.autoLeft == null ? null : Math.max(1, Math.ceil(cue.autoLeft));
     r.upNextPlay.disabled = cue.busy;
-    r.upNextPlay.textContent = cue.busy ? 'Starting on the TV…' : left ? `Next episode in ${left}` : 'Next episode';
+    r.upNextPlay.textContent = cue.busy ? T('Starting on the TV…') : left ? T('Next episode in {0}', left) : T('Next episode');
     r.upNextPlay.classList.toggle('counting', left != null);
     r.upNextPlay.style.setProperty('--auto-progress', left == null ? '0' : String(1 - cue.autoLeft / AUTOPLAY_SECONDS));
-    r.upNextDismiss.textContent = ended ? 'Dismiss' : 'Keep watching';
+    r.upNextDismiss.textContent = ended ? T('Dismiss') : T('Keep watching');
     r.upNextError.textContent = cue.error;
     r.upNextError.hidden = !cue.error;
     if (cue.announced !== next.id) {
       cue.announced = next.id;
-      r.cueStatus.textContent = `Up next: ${title}.`;
+      r.cueStatus.textContent = T('Up next: {0}.', title);
     }
   }
 
@@ -3137,7 +3140,7 @@ function openRemote(session, { replace = false } = {}) {
     cue.introDone = true; // once per cast: seeking back to watch it is left alone
     st.position = cue.intro.end;
     send('seek', cue.intro.end);
-    toast(auto ? 'Intro skipped' : 'Skipped the intro');
+    toast(auto ? T('Intro skipped') : T('Skipped the intro'));
   }
 
   // Real seconds while the credits play on the TV (or after it finished); paused on the TV = paused here.
@@ -3182,7 +3185,7 @@ function openRemote(session, { replace = false } = {}) {
       if (activeRemote === token) openRemote(s, { replace: true });
     } catch (err) {
       cue.busy = false;
-      cue.error = `${err.message} Try Next episode again.`;
+      cue.error = T('{0} Try Next episode again.', err.message);
       r.cueStatus.textContent = cue.error;
       renderCues();
     }
@@ -3234,21 +3237,21 @@ function openRemote(session, { replace = false } = {}) {
     if (session.kind === 'airplay') {
       if (!state.status.subtitles) return;
       r.subs.hidden = false;
-      r.subs.replaceChildren(h('h3', {}, 'Subtitles'),
-        h('p', { class: 'muted' }, 'Apple TV can’t show separate subtitle files over AirPlay. Play it on the phone for subtitles, or use a smart TV.'));
+      r.subs.replaceChildren(h('h3', {}, T('Subtitles')),
+        h('p', { class: 'muted' }, T('Apple TV can’t show separate subtitle files over AirPlay. Play it on the phone for subtitles, or use a smart TV.')));
       return;
     }
     let data;
     try { data = await api(`/api/subs/langs?kind=${ref.kind}&id=${encodeURIComponent(ref.id)}`); } catch { return; }
     if (!data.languages.length && !data.configured) return;
     r.subs.hidden = false;
-    const note = h('p', { class: 'muted remote-subs-note', role: 'status' }, data.languages.length ? '' : data.problem || 'No subtitles found for this.');
-    const options = [{ code: null, name: 'Off' }, ...data.languages];
+    const note = h('p', { class: 'muted remote-subs-note', role: 'status' }, data.languages.length ? '' : data.problem || T('No subtitles found for this.'));
+    const options = [{ code: null, name: T('Off') }, ...data.languages];
     const chips = h('div', { class: 'tor-filters' }, options.map((l) => h('button', {
       type: 'button', class: 'chip', 'aria-pressed': String((session.sub || null) === l.code),
       onclick: () => pickSub(l, chips, note, options),
     }, l.name)));
-    r.subs.replaceChildren(...[h('h3', {}, 'Subtitles'), data.languages.length ? chips : null, note, r.sync].filter(Boolean));
+    r.subs.replaceChildren(...[h('h3', {}, T('Subtitles')), data.languages.length ? chips : null, note, r.sync].filter(Boolean));
     subUi = { chips, note, options };
     renderOffset();
   }
@@ -3256,16 +3259,16 @@ function openRemote(session, { replace = false } = {}) {
   async function pickSub(l, chips, note, options, { reload = false } = {}) {
     if (!reload && (session.sub || null) === l.code) return;
     chips.querySelectorAll('.chip').forEach((c) => { c.disabled = true; });
-    note.textContent = reload ? 'Sending the new subtitle timing to the TV…'
-      : l.code ? `Getting ${l.name} subtitles and restarting on the TV…` : 'Restarting on the TV without subtitles…';
+    note.textContent = reload ? T('Sending the new subtitle timing to the TV…')
+      : l.code ? T('Getting {0} subtitles and restarting on the TV…', l.name) : T('Restarting on the TV without subtitles…');
     lastAction = Date.now() + 8000; // pause status polling while the TV reloads
     try {
       const { session: next } = await api(`/api/cast/${id}/subtitles`, jsonPost({ lang: l.code }));
       session.sub = next.sub;
       state.sessions = [next, ...state.sessions.filter((s) => s.deviceId !== next.deviceId)];
       chips.querySelectorAll('.chip').forEach((c, i) => c.setAttribute('aria-pressed', String((options[i].code || null) === (session.sub || null))));
-      note.textContent = reload ? 'The TV has the new subtitle timing.'
-        : l.code ? `${l.name} subtitles on. If they don’t appear, this TV may not support subtitle files over the network.` : '';
+      note.textContent = reload ? T('The TV has the new subtitle timing.')
+        : l.code ? T('{0} subtitles on. If they don’t appear, this TV may not support subtitle files over the network.', l.name) : '';
     } catch (err) {
       note.textContent = err.message;
     } finally {
@@ -3289,9 +3292,9 @@ function openRemote(session, { replace = false } = {}) {
   }
   function drawOffset(s, lang, pending = false) {
     r.sync.replaceChildren(...[
-      subSyncBusy(s) ? h('p', { class: 'muted remote-subs-note' }, 'Checking the timing…')
+      subSyncBusy(s) ? h('p', { class: 'muted remote-subs-note' }, T('Checking the timing…'))
         : nudgeRow(s.manual || 0, (n) => nudgeOnTv(lang, n)),
-      pending && h('p', { class: 'muted remote-subs-note' }, 'Updating the TV in a moment…'),
+      pending && h('p', { class: 'muted remote-subs-note' }, T('Updating the TV in a moment…')),
     ].filter(Boolean));
   }
   function nudgeOnTv(lang, seconds) {
@@ -3349,20 +3352,20 @@ roomDocks.addEventListener?.('change', () => { if (party) renderParty(); });
 // One line about the room, with a tone for its colour: live, count, wait or alert.
 function roomStatus(room, host) {
   const counting = party.startsIn != null && party.startsIn > 0;
-  if (!party.connected || !party.online) return ['alert', 'Reconnecting… playback is paused'];
-  if (counting) return ['count', `Starts ${startLabel(room.startsAt)}${party.blocked ? ' · tap Ready so it can start for you' : ''}`];
-  if (party.blocked) return ['alert', 'Press Play to join playback'];
-  if (room.waitingFor.length) return ['wait', `Waiting for ${namesText(room.waitingFor)}`];
-  if (room.playing) return ['live', `Playing for ${room.members.length === 1 ? 'you' : `all ${room.members.length}`}`];
-  return ['wait', party.isHost ? 'Paused · press Play when everyone’s ready' : `Paused · ${host} has the remote`];
+  if (!party.connected || !party.online) return ['alert', T('Reconnecting… playback is paused')];
+  if (counting) return ['count', T('Starts {0}{1}', startLabel(room.startsAt), party.blocked ? T(' · tap Ready so it can start for you') : '')];
+  if (party.blocked) return ['alert', T('Press Play to join playback')];
+  if (room.waitingFor.length) return ['wait', T('Waiting for {0}', namesText(room.waitingFor))];
+  if (room.playing) return ['live', T('Playing for {0}', room.members.length === 1 ? 'you' : T('all {0}', room.members.length))];
+  return ['wait', party.isHost ? T('Paused · press Play when everyone’s ready') : T('Paused · {0} has the remote', host)];
 }
 // Where one viewer is: ready, getting ready, needs a tap, or still connecting.
 function memberState(m) {
-  if (!m.connected) return ['away', 'Connecting…'];
-  if (m.blocked) return ['wait', 'Needs to press Play'];
-  if (m.buffering) return ['wait', 'Loading…'];
-  if (!m.ready) return ['wait', 'Getting ready'];
-  return ['ready', 'Ready'];
+  if (!m.connected) return ['away', T('Connecting…')];
+  if (m.blocked) return ['wait', T('Needs to press Play')];
+  if (m.buffering) return ['wait', T('Loading…')];
+  if (!m.ready) return ['wait', T('Getting ready')];
+  return ['ready', T('Ready')];
 }
 let roomDrawn = '';
 function renderRoster(room) {
@@ -3376,9 +3379,9 @@ function renderRoster(room) {
   roomDrawn = key;
   list.replaceChildren(...rows.map(({ m, tone, text, me, host }) => h('li', { class: `room-member is-${tone}${host ? ' is-host' : ''}${me ? ' is-me' : ''}` },
     h('span', { class: 'room-member-face' }, people.face(m, { size: 46 }),
-      host && h('span', { class: 'room-crown', title: 'Host', 'aria-hidden': 'true' }, icon('crown'))),
-    h('span', { class: 'room-member-name' }, me ? 'You' : personName(m)),
-    h('span', { class: 'room-member-state' }, host ? (tone === 'ready' ? 'Host' : `Host · ${text.toLowerCase()}`) : text))));
+      host && h('span', { class: 'room-crown', title: T('Host'), 'aria-hidden': 'true' }, icon('crown'))),
+    h('span', { class: 'room-member-name' }, me ? T('You') : personName(m)),
+    h('span', { class: 'room-member-state' }, host ? (tone === 'ready' ? T('Host') : T('Host · {0}', text.toLowerCase())) : text))));
   $('#watch-count').textContent = room.members.length > 1 ? `· ${room.members.length}` : '';
 }
 // The Room button in the control row: faces of who's in, plus unread messages.
@@ -3392,11 +3395,11 @@ function renderRoomButton(room) {
     roomButtonDrawn = key;
     $('#watch-btn-faces').replaceChildren(...(party ? [people.faces(faces, { size: 22, max: 3 })] : [icon('party')]).filter(Boolean));
   }
-  $('#watch-btn-label').textContent = party ? 'Room' : 'Watch together';
+  $('#watch-btn-label').textContent = party ? T('Room') : T('Watch together');
   const badge = $('#watch-btn-badge');
   badge.hidden = !(party && partyUnread && !watchPanelOpen);
   badge.textContent = partyUnread > 9 ? '9+' : String(partyUnread);
-  btn.setAttribute('aria-label', party ? `Watch Together room${partyUnread && !watchPanelOpen ? `, ${partyUnread} new ${partyUnread === 1 ? 'message' : 'messages'}` : ''}` : 'Start Watch Together');
+  btn.setAttribute('aria-label', party ? T('Watch Together room{0}', partyUnread && !watchPanelOpen ? T(', {0} new {1}', partyUnread, partyUnread === 1 ? T('message') : T('messages')) : '') : T('Start Watch Together'));
 }
 
 function renderParty() {
@@ -3424,7 +3427,7 @@ function renderParty() {
   $('#watch-later').hidden = !party.isHost || counting;
   $('#watch-start-now').hidden = $('#watch-clear-start').hidden = !party.isHost || !counting;
   const hostMember = room.members.find((m) => m.id === room.host);
-  const host = hostMember ? personName(hostMember) : 'The host';
+  const host = hostMember ? personName(hostMember) : T('The host');
   const [tone, status] = roomStatus(room, host);
   const statusEl = $('#watch-status');
   if (statusEl.textContent !== status) statusEl.textContent = status;
@@ -3432,8 +3435,8 @@ function renderParty() {
   const title = current ? [current.filmTitle || current.title, episodeLabel(current)].filter(Boolean).join(' · ') : '';
   if ($('#watch-title').textContent !== title) $('#watch-title').textContent = title;
   renderRoster(room);
-  $('#watch-hint').textContent = party.isHost ? 'You have the remote: everyone follows your play, pause and seeking.'
-    : `${host} has the remote: play, pause and seeking follow them.`;
+  $('#watch-hint').textContent = party.isHost ? T('You have the remote: everyone follows your play, pause and seeking.')
+    : T('{0} has the remote: play, pause and seeking follow them.', host);
   $('#watch-ready').hidden = !party.blocked;
   playerEl.classList.toggle('party-guest', !party.isHost);
   airplayBtn.hidden = true;
@@ -3442,9 +3445,9 @@ function renderParty() {
   seekEl.tabIndex = party.isHost ? 0 : -1;
   for (const b of playBtns) {
     b.disabled = !party.isHost && !party.blocked;
-    b.title = party.blocked ? 'Join playback' : party.isHost ? '' : 'The host controls playback';
+    b.title = party.blocked ? T('Join playback') : party.isHost ? '' : T('The host controls playback');
   }
-  for (const b of playerEl.querySelectorAll('.pc-skip')) { b.disabled = !party.isHost; b.title = party.isHost ? '' : 'The host controls seeking'; }
+  for (const b of playerEl.querySelectorAll('.pc-skip')) { b.disabled = !party.isHost; b.title = party.isHost ? '' : T('The host controls seeking'); }
 }
 
 function leaveWatchRoom(notify = true) {
@@ -3489,7 +3492,7 @@ function attachWatchRoom(room) {
 
 async function hostWatchRoom() {
   if (!current || current.kind !== 'lib' || party) return;
-  if (onTvVersion || video.remote?.state === 'connected') { toast('Watch Together uses the browser player. Stop casting first.'); return; }
+  if (onTvVersion || video.remote?.state === 'connected') { toast(T('Watch Together uses the browser player. Stop casting first.')); return; }
   const btn = $('#watch-btn'); btn.disabled = true;
   const media = current;
   try {
@@ -3499,14 +3502,14 @@ async function hostWatchRoom() {
     await session.start();
     showPlayerUi();
     setWatchPanel(true); // straight to inviting people
-    toast('Room ready. Invite people from here.');
+    toast(T('Room ready. Invite people from here.'));
   } catch (err) { leaveWatchRoom(); toast(err.message); }
   finally { btn.disabled = false; }
 }
 
 async function offerWatchRoom(token) {
-  if (party?.state.token === token) { toast('You’re already in this room'); return; }
-  if (!/^[A-Za-z0-9_-]{24}$/.test(token)) { toast('Invalid watch-room link'); return; }
+  if (party?.state.token === token) { toast(T('You’re already in this room')); return; }
+  if (!/^[A-Za-z0-9_-]{24}$/.test(token)) { toast(T('Invalid watch-room link')); return; }
   try {
     const preview = await api(`/api/watch/${token}/preview`, { signal: AbortSignal.timeout(10000) });
     let closed = false;
@@ -3514,7 +3517,7 @@ async function offerWatchRoom(token) {
     const join = h('button', { class: 'play-btn room-join', onclick: async () => {
       if (join.disabled) return;
       join.disabled = true;
-      join.textContent = 'Joining…';
+      join.textContent = T('Joining…');
       join.setAttribute('aria-busy', 'true');
       let joined = false;
       try {
@@ -3530,26 +3533,26 @@ async function offerWatchRoom(token) {
           await openPlayer({ ...room.media, key: room.media.id, done: true }, { watchRoom: room, replace: true });
         }
       } catch (err) {
-        status.textContent = err.name === 'TimeoutError' ? 'Joining took too long. Please try again.' : err.message;
+        status.textContent = err.name === 'TimeoutError' ? T('Joining took too long. Please try again.') : err.message;
         if (joined && party?.state.token !== token) api(`/api/watch/${token}/leave`, jsonPost({ clientId: watchClient })).catch(() => {});
-      } finally { join.disabled = false; join.textContent = 'Join and watch'; join.removeAttribute('aria-busy'); }
-    } }, 'Join and watch');
+      } finally { join.disabled = false; join.textContent = T('Join and watch'); join.removeAttribute('aria-busy'); }
+    } }, T('Join and watch'));
     const here = (preview.faces || []).filter((f) => f.name !== preview.host);
     const ticket = h('div', { class: 'room-ticket' },
-      h('div', { class: 'room-sign', 'aria-hidden': 'true' }, h('span', { class: 'room-bulbs' }), h('span', { class: 'room-kicker' }, 'You’re invited'), h('span', { class: 'room-bulbs' })),
+      h('div', { class: 'room-sign', 'aria-hidden': 'true' }, h('span', { class: 'room-bulbs' }), h('span', { class: 'room-kicker' }, T('You’re invited')), h('span', { class: 'room-bulbs' })),
       h('div', { class: 'room-ticket-host' },
         h('span', { class: 'room-member-face' }, people.face({ name: preview.host, avatar: preview.hostAvatar }, { size: 64 }),
           h('span', { class: 'room-crown', 'aria-hidden': 'true' }, icon('crown'))),
         h('div', {},
           h('p', { class: 'room-ticket-title' }, [preview.media.title, episodeLabel(preview.media)].filter(Boolean).join(' · ')),
-          h('p', { class: 'room-ticket-by' }, `${preview.host} is hosting`))),
-      preview.startsAt && h('p', { class: 'room-ticket-when' }, `Starts ${startLabel(preview.startsAt)}`, h('small', {}, countdownText(preview.startsAt - Date.now()))),
+          h('p', { class: 'room-ticket-by' }, T('{0} is hosting', preview.host)))),
+      preview.startsAt && h('p', { class: 'room-ticket-when' }, T('Starts {0}', startLabel(preview.startsAt)), h('small', {}, countdownText(preview.startsAt - Date.now()))),
       here.length > 0 && h('p', { class: 'room-ticket-here' }, people.faces(here, { size: 26, max: 5 }),
-        h('span', {}, `${namesText(here.map((f) => f.name))} ${here.length === 1 ? 'is' : 'are'} already here`)));
-    $('#picker-body').replaceChildren(h('h2', { id: 'picker-title', class: 'sr-only' }, 'Watch together'), ticket,
+        h('span', {}, T('{0} {1} already here', namesText(here.map((f) => f.name)), here.length === 1 ? T('is') : T('are')))));
+    $('#picker-body').replaceChildren(h('h2', { id: 'picker-title', class: 'sr-only' }, T('Watch together')), ticket,
       h('p', { class: 'muted room-ticket-note' }, preview.startsAt
-        ? 'Join any time before it starts. There’s a countdown, and playback starts by itself for everyone in the room.'
-        : 'Playback stays in step with everyone. Subtitles and volume are just for you.'), join, status);
+        ? T('Join any time before it starts. There’s a countdown, and playback starts by itself for everyone in the room.')
+        : T('Playback stays in step with everyone. Subtitles and volume are just for you.')), join, status);
     pushOverlay(showSheet($('#picker'), $('#picker-backdrop'), () => { closed = true; }));
   } catch (err) { toast(err.message); }
 }
@@ -3579,7 +3582,7 @@ function partyChat(message) {
     partyUnread++; renderParty();
   }
 }
-$('#reaction-bar').append(...REACTIONS.map((emoji) => h('button', { type: 'button', class: 'reaction-btn', 'aria-label': `React ${emoji}`,
+$('#reaction-bar').append(...REACTIONS.map((emoji) => h('button', { type: 'button', class: 'reaction-btn', 'aria-label': T('React {0}', emoji),
   onclick: (e) => {
     if (!party) return;
     const b = e.currentTarget; b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop');
@@ -3609,14 +3612,14 @@ function updatePartyCountdown() {
     const seen = new Set();
     const faces = here.filter((m) => !seen.has(m.name) && seen.add(m.name));
     el.replaceChildren(
-      h('div', { class: 'room-sign', 'aria-hidden': 'true' }, h('span', { class: 'room-bulbs' }), h('span', { class: 'room-kicker' }, 'Watch party starts in'), h('span', { class: 'room-bulbs' })),
+      h('div', { class: 'room-sign', 'aria-hidden': 'true' }, h('span', { class: 'room-bulbs' }), h('span', { class: 'room-kicker' }, T('Watch party starts in')), h('span', { class: 'room-bulbs' })),
       h('strong', { class: 'party-countdown-time' }, text),
       h('span', { class: 'party-countdown-title' }, [current?.filmTitle || current?.title, current && episodeLabel(current)].filter(Boolean).join(' · ')),
       faces.length ? h('span', { class: 'party-countdown-here' }, people.faces(faces, { size: 28, max: 5 }),
-        h('span', {}, `${namesText(faces.map((m) => personName(m)))} ${faces.length === 1 ? 'is' : 'are'} here`))
-        : h('span', { class: 'party-countdown-here muted' }, 'Nobody else is here yet'),
-      party.blocked ? h('button', { type: 'button', class: 'play-btn', onclick: () => party?.unlock() }, 'I’m ready')
-        : h('span', { class: 'muted' }, party.isHost ? 'Playback starts by itself. You can start early from the room.' : 'You’re ready. Playback starts by itself.'));
+        h('span', {}, T('{0} {1} here', namesText(faces.map((m) => personName(m))), faces.length === 1 ? T('is') : T('are'))))
+        : h('span', { class: 'party-countdown-here muted' }, T('Nobody else is here yet')),
+      party.blocked ? h('button', { type: 'button', class: 'play-btn', onclick: () => party?.unlock() }, T('I’m ready'))
+        : h('span', { class: 'muted' }, party.isHost ? T('Playback starts by itself. You can start early from the room.') : T('You’re ready. Playback starts by itself.')));
     el.dataset.blocked = String(party.blocked); el.dataset.here = hereKey;
   }
   const time = el.querySelector('.party-countdown-time');
@@ -3641,10 +3644,10 @@ async function openWrapped(year, opener) {
   const bars = h('div', { class: 'wr-bars', 'aria-hidden': 'true' }, slides.map(() => h('i')));
   const stage = h('div', { class: 'wr-stage', 'aria-live': 'polite' });
   const years = data.years?.filter((y) => y !== year) || [];
-  const close = h('button', { type: 'button', class: 'icon-btn wr-close', 'aria-label': 'Close Wrapped', onclick: closeTopOverlay }, icon('back'));
-  const prev = h('button', { type: 'button', class: 'wr-tap wr-prev', 'aria-label': 'Previous' });
-  const next = h('button', { type: 'button', class: 'wr-tap wr-next', 'aria-label': 'Next' });
-  const el = h('div', { class: 'wrapped', role: 'dialog', 'aria-modal': 'true', 'aria-label': `Marquee Wrapped ${year}`, tabindex: '-1' },
+  const close = h('button', { type: 'button', class: 'icon-btn wr-close', 'aria-label': T('Close Wrapped'), onclick: closeTopOverlay }, icon('back'));
+  const prev = h('button', { type: 'button', class: 'wr-tap wr-prev', 'aria-label': T('Previous') });
+  const next = h('button', { type: 'button', class: 'wr-tap wr-next', 'aria-label': T('Next') });
+  const el = h('div', { class: 'wrapped', role: 'dialog', 'aria-modal': 'true', 'aria-label': T('Marquee Wrapped {0}', year), tabindex: '-1' },
     bars, close, stage, prev, next,
     years.length > 0 && h('div', { class: 'wr-years' }, years.map((y) => h('button', { type: 'button', class: 'chip', onclick: async () => {
       await dismissTopOverlay(); openWrapped(y, opener);
@@ -3683,7 +3686,7 @@ const partyLink = (token) => `${location.origin}/c/w/${token}`;
 const partyTitle = (m) => [m.filmTitle || m.title, episodeLabel(m)].filter(Boolean).join(' · ');
 function openPlanParty(f, opener) {
   const title = partyTitle(f);
-  const copy = (link) => copyWithToast(link, 'Invite copied. Everyone uses their usual Marquee sign-in.');
+  const copy = (link) => copyWithToast(link, T('Invite copied. Everyone uses their usual Marquee sign-in.'));
   $('#picker-body').replaceChildren(...social.planPartyBody({ file: f, title, onPlanned: (room) => {
     $('#picker-body').replaceChildren(...social.plannedBody({ room, title, link: partyLink(room.token), copy }));
     loadParties();
@@ -3699,11 +3702,11 @@ async function loadParties() {
   const shelf = social.partiesShelf(parties, {
     label: partyTitle,
     join: (p) => offerWatchRoom(p.token),
-    copy: (p) => copyWithToast(partyLink(p.token), 'Invite copied. Everyone uses their usual Marquee sign-in.'),
+    copy: (p) => copyWithToast(partyLink(p.token), T('Invite copied. Everyone uses their usual Marquee sign-in.')),
     cancel: async (p, btn) => {
-      if (!confirm(`Cancel the watch party for ${partyTitle(p.media)}? The invite stops working.`)) return;
+      if (!confirm(T('Cancel the watch party for {0}? The invite stops working.', partyTitle(p.media)))) return;
       btn.disabled = true;
-      try { await api(`/api/watch/${p.token}/cancel`, jsonPost({})); toast('Watch party cancelled'); loadParties(); }
+      try { await api(`/api/watch/${p.token}/cancel`, jsonPost({})); toast(T('Watch party cancelled')); loadParties(); }
       catch (err) { btn.disabled = false; toast(err.message); }
     },
   });
@@ -3719,9 +3722,9 @@ document.addEventListener('click', (event) => {
 $('#watch-ready').addEventListener('click', () => party?.unlock());
 $('#watch-copy').addEventListener('click', () => {
   // /c/w/ shows a preview in Discord and other chats, then forwards to /?watch=
-  if (party) copyWithToast(`${location.origin}/c/w/${party.state.token}`, 'Room link copied. Everyone uses their usual Marquee sign-in.');
+  if (party) copyWithToast(`${location.origin}/c/w/${party.state.token}`, T('Room link copied. Everyone uses their usual Marquee sign-in.'));
 });
-$('#watch-leave').addEventListener('click', () => { leaveWatchRoom(); video.pause(); toast('You left the room'); });
+$('#watch-leave').addEventListener('click', () => { leaveWatchRoom(); video.pause(); toast(T('You left the room')); });
 // Invite: people with Watch Together invites on get a notification that opens the room.
 const inviteList = $('#watch-invite-list');
 function closeInviteList() { inviteList.hidden = true; $('#watch-invite').setAttribute('aria-expanded', 'false'); }
@@ -3730,29 +3733,29 @@ $('#watch-invite').addEventListener('click', async () => {
   if (!party) return;
   const token = party.state.token;
   inviteList.hidden = false; $('#watch-invite').setAttribute('aria-expanded', 'true');
-  inviteList.replaceChildren(h('p', { class: 'room-hint' }, 'Finding people…'));
+  inviteList.replaceChildren(h('p', { class: 'room-hint' }, T('Finding people…')));
   try {
     const { people: invitees } = await api(`/api/watch/${token}/invitees?clientId=${encodeURIComponent(watchClient)}`);
     if (party?.state.token !== token) return;
     if (!invitees.length) {
-      inviteList.replaceChildren(h('p', { class: 'room-hint' }, 'Nobody else has notifications on yet. Copy the link and send it instead.'));
+      inviteList.replaceChildren(h('p', { class: 'room-hint' }, T('Nobody else has notifications on yet. Copy the link and send it instead.')));
       return;
     }
-    inviteList.replaceChildren(h('p', { class: 'room-hint' }, 'Tap someone to send them a notification.'),
+    inviteList.replaceChildren(h('p', { class: 'room-hint' }, T('Tap someone to send them a notification.')),
       h('ul', { class: 'room-invitee-grid' }, invitees.map((u) => {
-        const state = h('span', { class: 'room-invitee-state' }, 'Invite');
-        const tile = h('button', { class: 'room-invitee', type: 'button', 'aria-label': `Invite ${u.name}` },
+        const state = h('span', { class: 'room-invitee-state' }, T('Invite'));
+        const tile = h('button', { class: 'room-invitee', type: 'button', 'aria-label': T('Invite {0}', u.name) },
           people.face(u, { size: 44 }), h('span', { class: 'room-invitee-name' }, u.name), state);
         tile.addEventListener('click', async () => {
           if (tile.dataset.state === 'sent' || tile.disabled) return;
-          tile.disabled = true; tile.dataset.state = 'sending'; state.textContent = 'Sending…';
+          tile.disabled = true; tile.dataset.state = 'sending'; state.textContent = T('Sending…');
           try {
             const r = await api(`/api/watch/${token}/invite`, jsonPost({ clientId: watchClient, userIds: [u.id] }));
             tile.dataset.state = r.sent ? 'sent' : 'failed';
-            state.replaceChildren(...(r.sent ? [icon('check'), 'Invited'] : ['Not reached']));
-            tile.setAttribute('aria-label', r.sent ? `${u.name} invited` : `${u.name} wasn’t reached`);
-            if (!r.sent) { tile.disabled = false; toast(`${u.name}’s devices didn’t accept the notification. Copy the link instead.`); }
-          } catch (err) { tile.disabled = false; tile.dataset.state = ''; state.textContent = 'Invite'; toast(err.message); }
+            state.replaceChildren(...(r.sent ? [icon('check'), T('Invited')] : [T('Not reached')]));
+            tile.setAttribute('aria-label', r.sent ? T('{0} invited', u.name) : T('{0} wasn’t reached', u.name));
+            if (!r.sent) { tile.disabled = false; toast(T('{0}’s devices didn’t accept the notification. Copy the link instead.', u.name)); }
+          } catch (err) { tile.disabled = false; tile.dataset.state = ''; state.textContent = T('Invite'); toast(err.message); }
         });
         return h('li', {}, tile);
       })));
@@ -3819,7 +3822,7 @@ let onTvVersion = false;   // AirPlay is playing the TV version (original audio)
 let castWatch = null;
 let castGeneration = 0;
 
-airplayBtn.setAttribute('aria-label', hasAirPlay ? 'AirPlay' : 'Cast to a TV');
+airplayBtn.setAttribute('aria-label', hasAirPlay ? 'AirPlay' : T('Cast to a TV'));
 airplayBtn.addEventListener('click', () => {
   airplayBtn.classList.remove('is-hint');
   if (hasAirPlay) video.webkitShowPlaybackTargetPicker();
@@ -3907,7 +3910,7 @@ function swapSource(url, onReady) {
 
 async function onWireless(on) {
   const generation = ++castGeneration;
-  if (on && party) { leaveWatchRoom(); toast('Left Watch Together: casting is not synchronized.'); }
+  if (on && party) { leaveWatchRoom(); toast(T('Left Watch Together: casting is not synchronized.')); }
   const session = current;
   if (!session) return;
   if (on) cancelAudioIntent(session);
@@ -3915,9 +3918,9 @@ async function onWireless(on) {
   renderQualityMenu();
   const note = $('#player-note');
   if (on) {
-    note.textContent = 'Playing on your TV. The controls here work as a remote.';
+    note.textContent = T('Playing on your TV. The controls here work as a remote.');
     note.hidden = false;
-  } else if (note.textContent.startsWith('Playing on your TV')) {
+  } else if (note.textContent.startsWith(T('Playing on your TV'))) {
     note.hidden = true;
   }
   // With AirPlay, switch to the TV version so the TV gets the original surround audio.
@@ -4062,7 +4065,7 @@ ccBtn.addEventListener('click', (e) => {
 document.addEventListener('click', (e) => { if (!ccMenu.hidden && !ccMenu.contains(e.target)) closeCcMenu(); });
 
 function renderCcMenu(f, session, message) {
-  const items = [{ code: null, name: 'Off' }, ...ccLangs];
+  const items = [{ code: null, name: T('Off') }, ...ccLangs];
   ccMenu.replaceChildren(
     ...items.map((l) => h('button', {
       role: 'menuitemradio', class: 'cc-item', 'aria-checked': String(ccActive === l.code),
@@ -4080,21 +4083,21 @@ function renderCcMenu(f, session, message) {
 let ccSync = null;
 let ccSyncTimer = null;
 const SUB_SYNC_TEXT = {
-  queued: 'Checking the timing…',
-  syncing: 'Checking the timing…',
-  ok: 'Timing checked: already in sync.',
-  unsure: 'Couldn’t check the timing automatically.',
-  exact: 'Made for this exact file.',
-  undone: 'Using the original timing.',
+  queued: T('Checking the timing…'),
+  syncing: T('Checking the timing…'),
+  ok: T('Timing checked: already in sync.'),
+  unsure: T('Couldn’t check the timing automatically.'),
+  exact: T('Made for this exact file.'),
+  undone: T('Using the original timing.'),
 };
 const subSyncBusy = (s) => s?.state === 'queued' || s?.state === 'syncing';
 const fmtSubShift = (s) => `${Math.round(Math.abs(s) * 100) / 100} s ${s < 0 ? 'earlier' : 'later'}`;
 
 function subSyncText(s) {
-  if (s.state === 'failed') return `Timing check failed: ${s.error || 'unknown error'}`;
+  if (s.state === 'failed') return T('Timing check failed: {0}', s.error || T('unknown error'));
   if (s.state !== 'synced') return SUB_SYNC_TEXT[s.state];
   return s.offset != null
-    ? `Timing fixed: lines moved ${fmtSubShift(s.offset)}${s.ratio && s.ratio !== 1 ? ', adjusted for frame rate' : ''}${s.parts > 1 ? `, in ${s.parts} parts (the subtitles were made for a differently cut version)` : ''}.`
+    ? T('Timing fixed: lines moved {0}{1}{2}.', fmtSubShift(s.offset), s.ratio && s.ratio !== 1 ? T(', adjusted for frame rate') : '', s.parts > 1 ? T(', in {0} parts (the subtitles were made for a differently cut version)', s.parts) : '')
     : null;
 }
 
@@ -4102,19 +4105,19 @@ function subSyncText(s) {
 const NUDGES = [-1, -0.25, 0.25, 1];
 function nudgeRow(manual, onNudge) {
   return h('div', { class: 'cc-nudge' },
-    h('span', { class: 'cc-nudge-label' }, 'Subtitle offset',
+    h('span', { class: 'cc-nudge-label' }, T('Subtitle offset'),
       h('b', {}, manual ? ` ${manual > 0 ? '+' : '−'}${Math.round(Math.abs(manual) * 100) / 100} s` : ' 0 s')),
     h('div', { class: 'cc-nudge-buttons' }, NUDGES.map((n) => h('button', {
-      type: 'button', 'aria-label': `Show subtitles ${Math.abs(n)} seconds ${n < 0 ? 'earlier' : 'later'}`, onclick: () => onNudge(n),
+      type: 'button', 'aria-label': T('Show subtitles {0} seconds {1}', Math.abs(n), n < 0 ? T('earlier') : T('later')), onclick: () => onNudge(n),
     }, `${n < 0 ? '−' : '+'}${Math.abs(n) === 0.25 ? '¼' : Math.abs(n)} s`))),
-    h('span', { class: 'cc-nudge-hint' }, '− earlier · + later'),
-    manual ? h('button', { type: 'button', class: 'cc-nudge-reset', onclick: () => onNudge(-manual) }, 'Reset offset') : null);
+    h('span', { class: 'cc-nudge-hint' }, T('− earlier · + later')),
+    manual ? h('button', { type: 'button', class: 'cc-nudge-reset', onclick: () => onNudge(-manual) }, T('Reset offset')) : null);
 }
 
 function subSyncItems(f, session) {
   if (party && ccActive) return [
     h('div', { class: 'cc-divider', role: 'separator' }),
-    h('p', { class: 'cc-message' }, 'Only your subtitles change. Other viewers keep their own settings.'),
+    h('p', { class: 'cc-message' }, T('Only your subtitles change. Other viewers keep their own settings.')),
     nudgeRow(party.offsets[ccActive] || 0, (seconds) => {
       party.offsets[ccActive] = Math.round(((party.offsets[ccActive] || 0) + seconds) * 1000) / 1000;
       applySubModes(); renderCcMenu(f, session);
@@ -4129,8 +4132,8 @@ function subSyncItems(f, session) {
     h('div', { class: 'cc-divider', role: 'separator' }),
     text && h('p', { class: 'cc-message' }, text),
     !subSyncBusy(s) && nudgeRow(s.manual || 0, (n) => subSyncNudge(f, session, lang, n)),
-    s.canUndo && s.offset != null && action('Undo timing fix', 'undo'),
-    s.canSync && action(['synced', 'ok', 'unsure'].includes(s.state) ? 'Check timing again' : 'Fix timing', 'sync'),
+    s.canUndo && s.offset != null && action(T('Undo timing fix'), 'undo'),
+    s.canSync && action(['synced', 'ok', 'unsure'].includes(s.state) ? T('Check timing again') : T('Fix timing'), 'sync'),
   ].filter(Boolean);
 }
 
@@ -4156,7 +4159,7 @@ async function subSyncAction(f, session, l, act) {
     const result = await api('/api/subs/sync', jsonPost({ kind: f.kind, id: mediaId(f), lang: l.code, action: act }));
     if (current !== session || generation !== subtitleGeneration || ccActive !== l.code) return;
     ccSync = result;
-    if (act === 'undo') { reloadSubTrack(l); toast('Back to the original subtitle timing'); }
+    if (act === 'undo') { reloadSubTrack(l); toast(T('Back to the original subtitle timing')); }
     renderCcMenu(f, session);
     if (subSyncBusy(ccSync)) watchSubSync(f, session, l, true);
   } catch (err) { if (current === session && generation === subtitleGeneration && ccActive === l.code) toast(err.message); }
@@ -4173,9 +4176,9 @@ async function watchSubSync(f, session, l, wasBusy = false) {
     ccSyncTimer = setTimeout(() => watchSubSync(f, session, l, true), 3000);
   } else if (wasBusy && ['synced', 'ok'].includes(s.state)) {
     reloadSubTrack(l);
-    toast(s.state === 'ok' ? 'Subtitle timing checked' : `Subtitle timing fixed (${fmtSubShift(s.offset)})`);
+    toast(s.state === 'ok' ? T('Subtitle timing checked') : T('Subtitle timing fixed ({0})', fmtSubShift(s.offset)));
   } else if (wasBusy && s.state === 'failed') {
-    toast('Couldn’t check the subtitle timing');
+    toast(T('Couldn’t check the subtitle timing'));
   }
   renderCcMenu(f, session);
 }
@@ -4202,7 +4205,7 @@ async function setupPlayerSubs(f, session) {
   ccLangs = data.languages;
   if (!ccLangs.length && !data.configured) return; // nothing local and no API key
   ccBtn.hidden = false;
-  renderCcMenu(f, session, ccLangs.length ? null : (data.problem || 'No subtitles found for this.'));
+  renderCcMenu(f, session, ccLangs.length ? null : (data.problem || T('No subtitles found for this.')));
   // Re-enable the last used language if it's already saved locally (no download quota used).
   // Or the language picked in Settings, which is fetched when it isn't saved yet.
   let pref = null;
@@ -4229,7 +4232,7 @@ async function pickPlayerSub(f, session, l, { quiet = false } = {}) {
   dropFirstSub();
   const generation = subtitleGeneration;
   if (!l.code) { dropSecondSub(); renderCcMenu(f, session); return; } // Off means no text at all
-  if (!quiet) toast(`Getting ${l.name} subtitles…`);
+  if (!quiet) toast(T('Getting {0} subtitles…', l.name));
   try {
     const { url } = await api('/api/subs/fetch', jsonPost({ kind: f.kind, id: mediaId(f), lang: l.code }));
     if (current !== session || generation !== subtitleGeneration) return;
@@ -4240,7 +4243,7 @@ async function pickPlayerSub(f, session, l, { quiet = false } = {}) {
     track.addEventListener('load', applySubModes);
     l.saved = true;
     renderCcMenu(f, session);
-    if (!quiet) toast(`${l.name} subtitles on`);
+    if (!quiet) toast(T('{0} subtitles on', l.name));
     watchSubSync(f, session, l);
   } catch (err) {
     if (current !== session || generation !== subtitleGeneration) return;
@@ -4259,7 +4262,7 @@ async function pickSecondSub(f, session, l, { quiet = false } = {}) {
   dropSecondSub();
   const generation = secondGeneration;
   if (!l.code || l.code === ccActive) { renderCcMenu(f, session); return; }
-  if (!quiet) toast(`Getting ${l.name} subtitles…`);
+  if (!quiet) toast(T('Getting {0} subtitles…', l.name));
   try {
     const { url } = await api('/api/subs/fetch', jsonPost({ kind: f.kind, id: mediaId(f), lang: l.code }));
     if (current !== session || generation !== secondGeneration || l.code === ccActive) return;
@@ -4270,7 +4273,7 @@ async function pickSecondSub(f, session, l, { quiet = false } = {}) {
     track.addEventListener('load', applySubModes);
     l.saved = true;
     renderCcMenu(f, session);
-    if (!quiet) toast(`${l.name} added as a second language`);
+    if (!quiet) toast(T('{0} added as a second language', l.name));
   } catch (err) {
     if (current !== session || generation !== secondGeneration) return;
     renderCcMenu(f, session, err.message);
@@ -4280,11 +4283,11 @@ async function pickSecondSub(f, session, l, { quiet = false } = {}) {
 function secondSubRow(f, session) {
   const choices = secondChoices(ccLangs, ccActive);
   if (!choices.length) return null;
-  const pick = h('select', { class: 'cc-select', 'aria-label': 'Second subtitle language',
-    onchange: () => pickSecondSub(f, session, choices.find((l) => l.code === pick.value) || { code: null, name: 'Off' }) },
-  h('option', { value: '' }, 'Off'), ...choices.map((l) => h('option', { value: l.code }, l.name)));
+  const pick = h('select', { class: 'cc-select', 'aria-label': T('Second subtitle language'),
+    onchange: () => pickSecondSub(f, session, choices.find((l) => l.code === pick.value) || { code: null, name: T('Off') }) },
+  h('option', { value: '' }, T('Off')), ...choices.map((l) => h('option', { value: l.code }, l.name)));
   pick.value = ccSecond || '';
-  return h('label', { class: 'cc-row' }, h('span', { class: 'cc-nudge-label' }, 'Second'), pick);
+  return h('label', { class: 'cc-row' }, h('span', { class: 'cc-nudge-label' }, T('Second')), pick);
 }
 
 // ---- audio compatibility ----
@@ -4314,12 +4317,12 @@ const audioCasting = () => Boolean(onTvVersion || video.webkitCurrentPlaybackTar
 const audioSuppressed = () => Boolean(party || audioCasting());
 function closeAudioMenu() { audioMenu.hidden = true; audioBtn.setAttribute('aria-expanded', 'false'); }
 function announceAudio(message) { if (audioStatus.textContent !== message) audioStatus.textContent = message; }
-function audioLabel(a, index) { return audioChoices(a.tracks).find(t => t.index === index)?.label || 'Audio'; }
+function audioLabel(a, index) { return audioChoices(a.tracks).find(t => t.index === index)?.label || T('Audio'); }
 function renderAudioControls() {
   const a = current?.audio;
   audioBtn.hidden = !a || a.tracks.length < 2 || audioSuppressed() || nativeSubs;
   if (audioBtn.hidden) closeAudioMenu();
-  audioBtn.setAttribute('aria-label', a?.activeLabel ? `Audio: ${a.activeLabel}` : 'Audio');
+  audioBtn.setAttribute('aria-label', a?.activeLabel ? T('Audio: {0}', a.activeLabel) : T('Audio'));
   if (!a) return;
   const choices = audioChoices(a.tracks);
   const signature = JSON.stringify([a.source, choices]);
@@ -4336,16 +4339,16 @@ function renderAudioControls() {
     });
     audioMessage = h('p', { class: 'cc-message audio-message', hidden: true });
     audioRetry = h('button', { type: 'button', role: 'menuitem', class: 'cc-item audio-retry', tabindex: '-1', hidden: true,
-      onclick: () => { if (current?.audio?.failed != null) selectAudioTrack(current.audio.failed); } }, 'Retry');
-    audioMenu.replaceChildren(h('p', { class: 'audio-title' }, 'Audio'), ...rows, audioMessage, audioRetry);
+      onclick: () => { if (current?.audio?.failed != null) selectAudioTrack(current.audio.failed); } }, T('Retry'));
+    audioMenu.replaceChildren(h('p', { class: 'audio-title' }, T('Audio')), ...rows, audioMessage, audioRetry);
     if (focused != null && !audioMenu.hidden) audioRows.get(Number(focused))?.button.focus({ preventScroll: true });
   }
   for (const [index, row] of audioRows) {
     row.button.setAttribute('aria-checked', String(index === a.actual));
-    const text = index === a.pending ? a.swap ? 'Switching…' : 'Preparing…' : '';
+    const text = index === a.pending ? a.swap ? T('Switching…') : T('Preparing…') : '';
     if (row.status.textContent !== text) row.status.textContent = text;
   }
-  const message = a.error || (a.pending != null ? a.swap ? `Switching to ${audioLabel(a, a.pending)} audio…` : `Preparing ${audioLabel(a, a.pending)} audio. Playback continues.` : '');
+  const message = a.error || (a.pending != null ? a.swap ? T('Switching to {0} audio…', audioLabel(a, a.pending)) : T('Preparing {0} audio. Playback continues.', audioLabel(a, a.pending)) : '');
   if (audioMessage.textContent !== message) audioMessage.textContent = message;
   audioMessage.hidden = !message;
   audioRetry.hidden = !a.error || a.failed == null;
@@ -4409,7 +4412,7 @@ function installAudioMetadata(session, data, reset = false) {
     a.actual = changedChoice ? null : data.defaultAudio;
     a.usingFallback = changedChoice && a.usingFallback;
     a.sourceMatches = !changedChoice;
-    a.error = changedChoice ? 'Audio tracks changed. Choose a track again.' : '';
+    a.error = changedChoice ? T('Audio tracks changed. Choose a track again.') : '';
     a.failed = null;
     if (!changedChoice) { a.userChoice = false; a.activeLabel = null; }
   }
@@ -4471,7 +4474,7 @@ function switchAudioSource(session, a, generation, link, valid) {
     const failed = () => {
       if (!valid() || a.swap !== swap) return;
       cleanup(); a.swap = null;
-      a.error = 'This audio couldn’t play. Restoring your previous audio.';
+      a.error = T('This audio couldn’t play. Restoring your previous audio.');
       a.failed = link.track; a.pending = null;
       $('#player-error').hidden = true;
       restore(); renderAudioControls(); announceAudio(a.error); resolve(false);
@@ -4483,7 +4486,7 @@ function switchAudioSource(session, a, generation, link, valid) {
       a.actual = link.track; a.pending = null; a.failed = null; a.error = ''; a.usingFallback = true;
       a.intentUserChoice = null;
       a.activeLabel = audioLabel(a, a.actual);
-      renderAudioControls(); announceAudio(`${a.activeLabel} audio selected.`); resolve(true);
+      renderAudioControls(); announceAudio(T('{0} audio selected.', a.activeLabel)); resolve(true);
     };
     const swap = { cancel: restoreSource => { cleanup(); if (restoreSource && current === session) restore(); resolve(false); } };
     a.swap = swap;
@@ -4507,7 +4510,7 @@ async function selectAudioTrack(index) {
   a.error = ''; a.failed = null;
   if (index === a.actual) {
     a.userChoice = a.usingFallback || a.actual !== a.default;
-    renderAudioControls(); announceAudio('Audio preparation cancelled.');
+    renderAudioControls(); announceAudio(T('Audio preparation cancelled.'));
     if (!a.userChoice) watchAudio(session, session);
     return;
   }
@@ -4521,7 +4524,7 @@ async function selectAudioTrack(index) {
       if (mapping.get(index).enabled && [...mapping].every(([id, track]) => track.enabled === (id === index))) {
         a.actual = index; a.activeLabel = audioLabel(a, index);
         a.intentUserChoice = null;
-        renderAudioControls(); announceAudio(`${a.activeLabel} audio selected.`); return;
+        renderAudioControls(); announceAudio(T('{0} audio selected.', a.activeLabel)); return;
       }
     } catch { /* use the server-prepared rendition */ }
     for (const [track, enabled] of before) try { track.enabled = enabled; } catch { /* read-only implementation */ }
@@ -4530,7 +4533,7 @@ async function selectAudioTrack(index) {
   const controller = a.abort = new AbortController();
   const valid = () => current === session && session.audio === a && a.generation === generation && !controller.signal.aborted && !audioSuppressed();
   a.pending = index;
-  renderAudioControls(); announceAudio(`Preparing ${audioLabel(a, index)} audio. Playback continues.`);
+  renderAudioControls(); announceAudio(T('Preparing {0} audio. Playback continues.', audioLabel(a, index)));
   let retry = true;
   try {
     while (valid()) {
@@ -4538,7 +4541,7 @@ async function selectAudioTrack(index) {
       if (!valid()) return;
       retry = false;
       if (!link.ready) { await audioPrepareDelay(controller.signal); continue; }
-      if (link.track !== index || link.audioSource !== a.source) throw new Error('Audio tracks changed. Choose a track again.');
+      if (link.track !== index || link.audioSource !== a.source) throw new Error(T('Audio tracks changed. Choose a track again.'));
       await switchAudioSource(session, a, generation, link, valid);
       return;
     }
@@ -4547,8 +4550,8 @@ async function selectAudioTrack(index) {
     if (error.status === 409) {
       const refreshed = await refreshAudioMetadata(session);
       if (current !== session || session.audio !== a || (!refreshed && !valid())) return;
-      a.error = 'Audio tracks changed. Choose a track again.'; a.failed = null;
-    } else { a.error = error.message || 'Couldn’t prepare this audio.'; a.failed = index; }
+      a.error = T('Audio tracks changed. Choose a track again.'); a.failed = null;
+    } else { a.error = error.message || T('Couldn’t prepare this audio.'); a.failed = index; }
     a.pending = null;
     renderAudioControls(); announceAudio(a.error);
     recoverAudioOwnership(session, a);
@@ -4570,7 +4573,7 @@ async function watchAudio(f, session) {
     installAudioMetadata(session, a);
     const videoOk = a.videoSafe !== false;
     if (a.browserSafe && a.aligned && videoOk) {
-      if (changed) switchToFixedAudio(session, videoFixing ? 'Ready to play' : 'Audio fixed');
+      if (changed) switchToFixedAudio(session, videoFixing ? T('Ready to play') : T('Audio fixed'));
       else note.hidden = true;
       return;
     }
@@ -4580,8 +4583,8 @@ async function watchAudio(f, session) {
       videoFixing = true;
       $('#player-error').hidden = true;
       note.textContent = a.fixable
-        ? `This video is ${a.videoCodec}, which this browser can’t play. Making a version that plays here…${progress} It starts by itself when ready.`
-        : `This video is ${a.videoCodec}, which this browser can’t play. ${a.error ? `Marquee couldn’t convert it: ${a.error}` : 'It should still play on a TV.'}`;
+        ? T('This video is {0}, which this browser can’t play. Making a version that plays here…{1} It starts by itself when ready.', a.videoCodec, progress)
+        : T('This video is {0}, which this browser can’t play. {1}', a.videoCodec, a.error ? T('Marquee couldn’t convert it: {0}', a.error) : T('It should still play on a TV.'));
       note.hidden = false;
       if (!a.fixable) return;
       changed = session.compatibilityPending = true;
@@ -4590,14 +4593,14 @@ async function watchAudio(f, session) {
     }
     if (!a.browserSafe && !a.fixable) {
       const name = CODEC_NAMES[a.codec] || String(a.codec).toUpperCase();
-      note.textContent = `No sound? This file’s audio is ${name}, which this browser can’t play. `
-        + (a.error ? `Marquee couldn’t fix it: ${a.error}` : 'It should play with sound on a TV.');
+      note.textContent = T('No sound? This file’s audio is {0}, which this browser can’t play. ', name)
+        + (a.error ? T('Marquee couldn’t fix it: {0}', a.error) : T('It should play with sound on a TV.'));
       note.hidden = false;
       return;
     }
     if (!a.fixable) return; // nothing Marquee can do
-    if (!a.browserSafe) note.textContent = `No sound? This file’s audio is ${CODEC_NAMES[a.codec] || a.codec}, which this browser can’t play. Adding normal stereo sound…${progress} It switches over by itself.`;
-    else note.textContent = `Correcting this file’s audio timing…${progress} It switches over by itself.`;
+    if (!a.browserSafe) note.textContent = T('No sound? This file’s audio is {0}, which this browser can’t play. Adding normal stereo sound…{1} It switches over by itself.', CODEC_NAMES[a.codec] || a.codec, progress);
+    else note.textContent = T('Correcting this file’s audio timing…{0} It switches over by itself.', progress);
     note.hidden = false;
     changed = session.compatibilityPending = true;
     await new Promise((r) => setTimeout(r, 3000));
@@ -4630,7 +4633,7 @@ landscapeQuery.addEventListener('change', (e) => {
     if (localStorage.getItem('tip:homescreen')) return;
     localStorage.setItem('tip:homescreen', '1');
   } catch { return; }
-  toast('Tip: open Marquee from your Home Screen for fullscreen without Safari’s bar');
+  toast(T('Tip: open Marquee from your Home Screen for fullscreen without Safari’s bar'));
 });
 
 // ---- night mode and sleep timer ----
@@ -4648,22 +4651,22 @@ let sleepVolume = null; // the volume before the fade, put back once paused
 // The TV plays the sound itself while casting, so night mode has nothing to work on there.
 const nightAvailable = () => night.supported && !audioCasting();
 const sleepAvailable = () => !party; // pausing one viewer of a Watch Together room would pause the room
-const sleepEndLabel = () => (current?.episode ? 'the end of this episode' : plainMedia(current) ? 'the end of this video' : 'the end of this film');
-const sleepChoiceLabel = (m) => (m < 60 ? `${m} minutes` : m % 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : m === 60 ? '1 hour' : `${m / 60} hours`);
+const sleepEndLabel = () => (current?.episode ? T('the end of this episode') : plainMedia(current) ? T('the end of this video') : T('the end of this film'));
+const sleepChoiceLabel = (m) => (m < 60 ? T('{0} minutes', m) : m % 60 ? T('{0} h {1} min', Math.floor(m / 60), m % 60) : m === 60 ? T('1 hour') : T('{0} hours', m / 60));
 function closeNightMenu() { nightMenu.hidden = true; nightBtn.setAttribute('aria-expanded', 'false'); }
 
 function renderNightMenu() {
   const chosen = !sleep ? 'off' : sleep.kind === 'episode' ? 'episode' : String(sleep.minutes);
-  const choices = [['off', 'Off'], ...SLEEP_MINUTES.map((m) => [String(m), sleepChoiceLabel(m)]),
-    ['episode', current?.episode ? 'End of episode' : 'When this ends']];
+  const choices = [['off', T('Off')], ...SLEEP_MINUTES.map((m) => [String(m), sleepChoiceLabel(m)]),
+    ['episode', current?.episode ? T('End of episode') : T('When this ends')]];
   const focused = nightMenu.contains(document.activeElement) ? document.activeElement?.dataset?.choice : null;
   nightMenu.replaceChildren(...[
-    h('p', { class: 'audio-title' }, 'Bedtime'),
+    h('p', { class: 'audio-title' }, T('Bedtime')),
     nightAvailable() && h('button', { type: 'button', role: 'menuitemcheckbox', class: 'cc-item night-item', tabindex: '-1',
       'data-choice': 'night', 'aria-checked': String(night.on), onclick: () => setNight(!night.on) },
-    h('span', {}, 'Night mode', h('small', {}, 'Softer loud scenes, clearer voices'))),
+    h('span', {}, T('Night mode'), h('small', {}, T('Softer loud scenes, clearer voices')))),
     sleepAvailable() && nightAvailable() && h('div', { class: 'cc-divider', role: 'separator' }),
-    sleepAvailable() && h('p', { class: 'cc-nudge-label night-label' }, 'Sleep timer'),
+    sleepAvailable() && h('p', { class: 'cc-nudge-label night-label' }, T('Sleep timer')),
     ...(sleepAvailable() ? choices.map(([v, label]) => h('button', { type: 'button', role: 'menuitemradio', class: 'cc-item', tabindex: '-1',
       'data-choice': v, 'aria-checked': String(chosen === v), onclick: () => setSleep(v) }, label)) : []),
     sleep && h('p', { class: 'cc-message sleep-left', role: 'status' }, sleepLabel(sleep, Date.now(), sleepEndLabel())),
@@ -4672,17 +4675,17 @@ function renderNightMenu() {
   nightBtn.hidden = !nightAvailable() && !sleepAvailable();
   if (nightBtn.hidden) closeNightMenu();
   nightBtn.classList.toggle('is-on', night.on || Boolean(sleep));
-  nightBtn.setAttribute('aria-label', [night.on && 'Night mode on', sleep && sleepLabel(sleep, Date.now(), sleepEndLabel())].filter(Boolean).join(', ') || 'Bedtime: night mode and sleep timer (N)');
+  nightBtn.setAttribute('aria-label', [night.on && T('Night mode on'), sleep && sleepLabel(sleep, Date.now(), sleepEndLabel())].filter(Boolean).join(', ') || T('Bedtime: night mode and sleep timer (N)'));
 }
 
 // Must run from a click or key press the first time (browsers start Web Audio only from one).
 function setNight(on, feedback = false) {
-  if (on && !nightAvailable()) { if (feedback) osd('Night mode isn’t available here'); return; }
+  if (on && !nightAvailable()) { if (feedback) osd(T('Night mode isn’t available here')); return; }
   const now = night.set(on);
-  if (on && !now) toast('Night mode isn’t available in this browser.');
+  if (on && !now) toast(T('Night mode isn’t available in this browser.'));
   nightWanted = now;
   try { localStorage.setItem('player:night', now ? '1' : ''); } catch { /* blocked */ }
-  if (feedback) osd(now ? 'Night mode on' : 'Night mode off');
+  if (feedback) osd(now ? T('Night mode on') : T('Night mode off'));
   renderNightMenu();
 }
 video.addEventListener('play', () => night.resume()); // iOS suspends the audio when the phone locks
@@ -4700,7 +4703,7 @@ function setSleep(choice) {
   clearSleep();
   if (choice !== 'off' && sleepAvailable()) sleep = sleepTimer(choice);
   if (sleep?.kind === 'minutes') sleepTick = setInterval(sleepStep, 500);
-  osd(sleep ? sleepLabel(sleep, Date.now(), sleepEndLabel()) : 'Sleep timer off');
+  osd(sleep ? sleepLabel(sleep, Date.now(), sleepEndLabel()) : T('Sleep timer off'));
   renderNightMenu();
   updateUpNext();
 }
@@ -4721,8 +4724,8 @@ function sleepPause() {
   clearSleep();
   video.pause();
   autoChain = AUTOPLAY_CHAIN; // no Next episode countdown while they sleep; a key press or tap brings it back
-  osd('Paused by the sleep timer');
-  toast('Paused by the sleep timer. Press play to keep watching.');
+  osd(T('Paused by the sleep timer'));
+  toast(T('Paused by the sleep timer. Press play to keep watching.'));
   renderNightMenu();
 }
 
@@ -4780,16 +4783,16 @@ function renderQualityMenu() {
   if (qualityBtn.hidden) { closeQualityMenu(); return; }
   const phone = stream ? phoneQuality(session) : null;
   const source = heightName(session.sourceHeight);
-  const playing = phone ? `${phone}p, made live from the ${source || 'original'} file` : `Original${source ? ` (${source})` : ''}`;
+  const playing = phone ? T('{0}p, made live from the {1} file', phone, source || 'original') : T('Original{0}', source ? ` (${source})` : '');
   const choices = [
-    ['auto', 'Auto', phoneScreen() ? 'Lighter stream when a file is too big for a phone' : 'The original file on this screen'],
-    ['original', 'Original', 'Full quality, the file as it is'],
-    ['1080', '1080p', 'Smooth on phones and mobile data'],
-    ['720', '720p', 'Data saver'],
+    ['auto', T('Auto'), phoneScreen() ? T('Lighter stream when a file is too big for a phone') : T('The original file on this screen')],
+    ['original', T('Original'), T('Full quality, the file as it is')],
+    ['1080', '1080p', T('Smooth on phones and mobile data')],
+    ['720', '720p', T('Data saver')],
   ];
   const focused = qualityMenu.contains(document.activeElement) ? document.activeElement?.dataset?.choice : null;
   const versionItems = vers ? [
-    h('p', { class: 'audio-title' }, 'Version'),
+    h('p', { class: 'audio-title' }, T('Version')),
     ...vers.map((v) => {
       const [main, ...rest] = v.versionLabel.split(' · ');
       const size = /\d (GB|MB)$/.test(rest.at(-1) || '') ? rest.pop() : '';
@@ -4801,20 +4804,20 @@ function renderQualityMenu() {
   qualityMenu.replaceChildren(
     ...versionItems,
     ...(stream ? [
-      h('p', { class: 'audio-title' }, vers ? 'Stream' : 'Quality'),
+      h('p', { class: 'audio-title' }, vers ? T('Stream') : T('Quality')),
       ...choices.map(([v, label, note]) => h('button', { type: 'button', role: 'menuitemradio', class: 'cc-item night-item', tabindex: '-1',
         'data-choice': v, 'aria-checked': String(qualityPref === v), onclick: () => setQuality(v) },
       h('span', {}, label, h('small', {}, note)))),
     ] : []),
-    h('p', { class: 'cc-message', role: 'status' }, session.qualityBusy ? 'Switching…' : vers && !stream ? `Playing: ${session.versionLabel}` : `Playing: ${playing}`),
+    h('p', { class: 'cc-message', role: 'status' }, session.qualityBusy ? T('Switching…') : vers && !stream ? T('Playing: {0}', session.versionLabel) : T('Playing: {0}', playing)),
   );
   if (focused && !qualityMenu.hidden) qualityMenu.querySelector(`[data-choice="${focused}"]`)?.focus({ preventScroll: true });
   const badge = $('#quality-badge');
   const height = session.sourceHeight || ({ '2160p': 2160, '1440p': 1440, '1080p': 1080, '720p': 720, SD: 480 }[session.versionQuality] || 0);
-  badge.textContent = phone || (height >= 2000 ? '4K' : height && height < 700 ? 'SD' : 'HD');
+  badge.textContent = phone || (height >= 2000 ? '4K' : height && height < 700 ? T('SD') : T('HD'));
   badge.style.fontSize = badge.textContent.length > 3 ? '6px' : '';
   qualityBtn.classList.toggle('is-on', Boolean(phone));
-  qualityBtn.setAttribute('aria-label', `Quality: ${vers && !stream ? session.versionLabel : playing}`);
+  qualityBtn.setAttribute('aria-label', T('Quality: {0}', vers && !stream ? session.versionLabel : playing));
 }
 
 // Another version of what's playing: remembered for this title, and playback carries on at the same spot.
@@ -4822,9 +4825,9 @@ async function switchVersion(v) {
   const session = current;
   closeQualityMenu();
   if (!session || v.mediaKey === session.mediaKey) return;
-  if (party) { toast('Pick the version before starting Watch Together.'); return; }
-  if (audioCasting()) { toast('Stop casting to switch versions.'); return; }
-  if (v.converting) { toast('That version is being converted. Try again when it finishes.'); return; }
+  if (party) { toast(T('Pick the version before starting Watch Together.')); return; }
+  if (audioCasting()) { toast(T('Stop casting to switch versions.')); return; }
+  if (v.converting) { toast(T('That version is being converted. Try again when it finishes.')); return; }
   const at = video.currentTime || 0;
   setVersionPick(session, v);
   saveProgress(true);
@@ -4853,9 +4856,9 @@ async function setQuality(pref) {
     session.quality = link.quality || 'original';
     session.browserName = link.name;
     swapSource(link.url, () => watchAudio(session, session));
-    osd(phoneQuality(session) ? `${session.quality}p` : 'Original quality');
+    osd(phoneQuality(session) ? `${session.quality}p` : T('Original quality'));
   } catch (error) {
-    if (current === session && error.name !== 'AbortError') toast(error.message || 'Couldn’t change the quality.');
+    if (current === session && error.name !== 'AbortError') toast(error.message || T('Couldn’t change the quality.'));
   } finally {
     if (current === session) { session.qualityBusy = false; renderQualityMenu(); }
   }
@@ -4978,7 +4981,7 @@ function updatePlayState() {
   const playing = party ? !party.blocked && party.state.intentPlaying : !video.paused && !video.ended;
   for (const b of playBtns) {
     b.replaceChildren(icon(playing ? 'pause' : 'play'));
-    b.setAttribute('aria-label', party?.blocked ? 'Join playback (Space)' : playing ? 'Pause (Space)' : 'Play (Space)');
+    b.setAttribute('aria-label', party?.blocked ? T('Join playback (Space)') : playing ? T('Pause (Space)') : T('Play (Space)'));
   }
   playerEl.classList.toggle('is-paused', !playing);
 }
@@ -5030,7 +5033,7 @@ for (const ev of ['progress', 'timeupdate', 'emptied']) video.addEventListener(e
 durEl.addEventListener('click', () => {
   showRemaining = !showRemaining;
   try { localStorage.setItem('player:remaining', showRemaining ? '1' : ''); } catch { /* blocked */ }
-  durEl.title = showRemaining ? 'Show duration' : 'Show time remaining';
+  durEl.title = showRemaining ? T('Show duration') : T('Show time remaining');
   updateTime();
 });
 
@@ -5047,7 +5050,7 @@ function showSeekTip(x) {
   seekPreview.place(x - r.left, r.width);
 }
 seekEl.addEventListener('pointerdown', (e) => {
-  if (party && !party.isHost) { toast('The host controls seeking'); return; }
+  if (party && !party.isHost) { toast(T('The host controls seeking')); return; }
   if (!isFinite(video.duration) || !video.duration) return;
   seekEl.setPointerCapture(e.pointerId);
   seeking = seekTimeAt(e.clientX);
@@ -5088,7 +5091,7 @@ try {
 function updateVolume() {
   const level = video.muted ? 0 : video.volume;
   muteBtn.replaceChildren(icon(level === 0 ? 'muted' : level < 0.5 ? 'volume' : 'volumeHigh'));
-  muteBtn.setAttribute('aria-label', video.muted ? 'Unmute (M)' : 'Mute (M)');
+  muteBtn.setAttribute('aria-label', video.muted ? T('Unmute (M)') : T('Mute (M)'));
   if (document.activeElement !== volInput) volInput.value = String(level);
   volInput.style.setProperty('--val', `${level * 100}%`);
   try {
@@ -5105,7 +5108,7 @@ function setVolume(v) {
 function toggleMute() {
   if (video.muted && video.volume === 0) video.volume = 0.5; // unmuting at zero would stay silent
   video.muted = !video.muted;
-  osd(video.muted ? 'Muted' : `Volume ${Math.round(video.volume * 100)}%`);
+  osd(video.muted ? T('Muted') : T('Volume {0}%', Math.round(video.volume * 100)));
 }
 muteBtn.addEventListener('click', toggleMute);
 volInput.addEventListener('input', () => setVolume(Number(volInput.value)));
@@ -5130,7 +5133,7 @@ function updateFullscreen() {
   const on = Boolean(fsElement());
   if (!on) fsExitedAt = Date.now();
   fsBtn.replaceChildren(icon(on ? 'fullscreenExit' : 'fullscreen'));
-  fsBtn.setAttribute('aria-label', on ? 'Exit fullscreen (F)' : 'Fullscreen (F)');
+  fsBtn.setAttribute('aria-label', on ? T('Exit fullscreen (F)') : T('Fullscreen (F)'));
   layoutSubs();
 }
 document.addEventListener('fullscreenchange', updateFullscreen);
@@ -5227,16 +5230,16 @@ function setSubLook(key, v) {
 }
 // One line each: a label, then the choices side by side.
 function subLookRows() {
-  const row = (key, label, options) => h('div', { class: 'cc-row', role: 'group', 'aria-label': `Subtitle ${label.toLowerCase()}`, 'data-look': key },
+  const row = (key, label, options) => h('div', { class: 'cc-row', role: 'group', 'aria-label': T('Subtitle {0}', label.toLowerCase()), 'data-look': key },
     h('span', { class: 'cc-nudge-label' }, label),
     h('div', { class: 'cc-choices' }, options.map(([text, v, name]) => h('button', {
       type: 'button', 'data-value': String(v), 'aria-label': name || text, 'aria-pressed': String(String(look[key]) === String(v)),
       onclick: () => setSubLook(key, v),
     }, text))));
   return [
-    row('size', 'Size', SUB_SIZES.map(([text, v, name]) => [text, v, `${name} subtitles`])),
-    row('background', 'Style', SUB_BACKGROUNDS.map(([v, text]) => [text, v, `${text} behind subtitles`])),
-    row('position', 'Height', SUB_POSITIONS.map(([v, text]) => [text, v, `Subtitles ${text.toLowerCase()} on the picture`])),
+    row('size', T('Size'), SUB_SIZES.map(([text, v, name]) => [text, v, T('{0} subtitles', name)])),
+    row('background', T('Style'), SUB_BACKGROUNDS.map(([v, text]) => [text, v, T('{0} behind subtitles', text)])),
+    row('position', T('Height'), SUB_POSITIONS.map(([v, text]) => [text, v, T('Subtitles {0} on the picture', text.toLowerCase())])),
   ];
 }
 
@@ -5248,8 +5251,8 @@ async function toggleSubs() {
   if (ccActive) {
     lastSubLang = ccActive;
     lastSecondLang = ccSecond;
-    pickPlayerSub(current, current, { code: null, name: 'Off' }, { quiet: true });
-    osd('Subtitles off');
+    pickPlayerSub(current, current, { code: null, name: T('Off') }, { quiet: true });
+    osd(T('Subtitles off'));
     return;
   }
   let pref = lastSubLang;
@@ -5264,24 +5267,24 @@ async function toggleSubs() {
 
 // ---- keyboard ----
 const SHORTCUTS = [
-  ['Space or K', 'Play or pause'],
-  ['← →', 'Back or forward 5 s'],
-  ['J L', 'Back or forward 10 s'],
-  ['↑ ↓', 'Volume'],
-  ['M', 'Mute'],
-  ['F', 'Fullscreen'],
-  ['C', 'Subtitles on or off'],
-  ['N', 'Night mode'],
-  ['S', 'Skip intro (while it shows)'],
-  ['P', 'Picture in picture'],
-  ['I or right-click', 'Stats for nerds'],
-  ['0 – 9', 'Jump to 0% – 90%'],
-  ['?', 'These shortcuts'],
+  [T('Space or K'), T('Play or pause')],
+  ['← →', T('Back or forward 5 s')],
+  ['J L', T('Back or forward 10 s')],
+  ['↑ ↓', T('Volume')],
+  ['M', T('Mute')],
+  ['F', T('Fullscreen')],
+  ['C', T('Subtitles on or off')],
+  ['N', T('Night mode')],
+  ['S', T('Skip intro (while it shows)')],
+  ['P', T('Picture in picture')],
+  [T('I or right-click'), T('Stats for nerds')],
+  ['0 – 9', T('Jump to 0% – 90%')],
+  ['?', T('These shortcuts')],
 ];
 function toggleHelp() {
   if (helpEl.hidden) {
     helpEl.replaceChildren(
-      h('p', { class: 'help-title' }, 'Keyboard shortcuts'),
+      h('p', { class: 'help-title' }, T('Keyboard shortcuts')),
       h('dl', {}, SHORTCUTS.filter(([keys]) => keys !== 'C' || !plainMedia(current)).map(([keys, what]) => h('div', {}, h('dt', {}, keys), h('dd', {}, what)))));
   }
   helpEl.hidden = !helpEl.hidden;
@@ -5295,17 +5298,17 @@ const streamStats = createStreamStats({
   context: () => {
     const session = current;
     const lang = ccLangs.find((l) => l.code === ccActive);
-    const timing = ccSync && [ccSync.state, ccSync.offset ? `fixed ${signed(ccSync.offset)}` : '', ccSync.manual ? `nudged ${signed(ccSync.manual)}` : '',
-      party?.offsets?.[ccActive] ? `room ${signed(party.offsets[ccActive])}` : ''].filter(Boolean).join(', ');
+    const timing = ccSync && [ccSync.state, ccSync.offset ? T('fixed {0}', signed(ccSync.offset)) : '', ccSync.manual ? T('nudged {0}', signed(ccSync.manual)) : '',
+      party?.offsets?.[ccActive] ? T('room {0}', signed(party.offsets[ccActive])) : ''].filter(Boolean).join(', ');
     return {
       title: $('#player-title').textContent,
-      delivery: session?.kind === 'clip' ? 'Clip · direct play' : session?.kind === 'note' ? 'Note video · direct play' : '',
+      delivery: session?.kind === 'clip' ? T('Clip · direct play') : session?.kind === 'note' ? T('Note video · direct play') : '',
       audio: session?.audio?.activeLabel || '',
-      subtitles: lang ? `${lang.name || lang.code}${lang.saved ? ' · saved on the server' : ''}${nativeSubs ? ' · drawn by the browser' : ''}${timing ? ` · timing ${timing}` : ''}` : '',
-      party: party ? [party.isHost ? 'host' : 'guest', party.connected ? 'connected' : 'reconnecting', `clock ${Math.round(party.clockOffset)} ms off`,
-        `rtt ${Math.round(party.rtt)} ms`, $('#watch-members').textContent].filter(Boolean).join(' · ') : '',
-      casting: onTvVersion ? 'AirPlay · TV version' : video.webkitCurrentPlaybackTargetIsWireless ? 'AirPlay'
-        : video.remote?.state === 'connected' ? 'Remote playback' : document.pictureInPictureElement === video ? 'Picture in picture' : '',
+      subtitles: lang ? `${lang.name || lang.code}${lang.saved ? T(' · saved on the server') : ''}${nativeSubs ? T(' · drawn by the browser') : ''}${timing ? T(' · timing {0}', timing) : ''}` : '',
+      party: party ? [party.isHost ? 'host' : 'guest', party.connected ? 'connected' : 'reconnecting', T('clock {0} ms off', Math.round(party.clockOffset)),
+        T('rtt {0} ms', Math.round(party.rtt)), $('#watch-members').textContent].filter(Boolean).join(' · ') : '',
+      casting: onTvVersion ? T('AirPlay · TV version') : video.webkitCurrentPlaybackTargetIsWireless ? 'AirPlay'
+        : video.remote?.state === 'connected' ? T('Remote playback') : document.pictureInPictureElement === video ? T('Picture in picture') : '',
     };
   },
 });
@@ -5319,7 +5322,7 @@ const seekToFraction = (f) => {
 const nudgeVolume = (d) => {
   if (!canSetVolume) return;
   setVolume((video.muted ? 0 : video.volume) + d);
-  osd(`Volume ${Math.round(video.volume * 100)}%`);
+  osd(T('Volume {0}%', Math.round(video.volume * 100)));
 };
 const PLAYER_KEYS = {
   ' ': () => togglePlay(true), k: () => togglePlay(true),
@@ -5391,7 +5394,7 @@ async function preparePlayerSource(f, watchSession, signal) {
     : `/api/play-link?kind=${f.kind}&id=${encodeURIComponent(mediaId(f))}&${ask}`, { signal });
   const response = await fetch(link.url, { headers: { Range: 'bytes=0-0' }, signal });
   if (!response.ok) {
-    let message = `The server responded with ${response.status}.`;
+    let message = T('The server responded with {0}.', response.status);
     try { message = (await response.json()).error || message; } catch { /* keep default */ }
     throw new Error(message);
   }
@@ -5403,9 +5406,9 @@ async function preparePlayerSource(f, watchSession, signal) {
 // e.g. "House · Season 3, Episode 2: Cane & Able". Films and clips keep their own title.
 function playerEpisodeText(f) {
   if (f.season == null) return '';
-  if (f.episode == null) return `Season ${f.season}`;
-  const eps = f.episodeEnd != null && f.episodeEnd > f.episode ? `Episodes ${f.episode}\u2013${f.episodeEnd}` : `Episode ${f.episode}`;
-  return `Season ${f.season}, ${eps}${f.episodeName ? `: ${f.episodeName}` : ''}`;
+  if (f.episode == null) return T('Season {0}', f.season);
+  const eps = f.episodeEnd != null && f.episodeEnd > f.episode ? T('Episodes {0}–{1}', f.episode, f.episodeEnd) : T('Episode {0}', f.episode);
+  return T('Season {0}, {1}{2}', f.season, eps, f.episodeName ? `: ${f.episodeName}` : '');
 }
 function setPlayerTitle(f) {
   const show = f.show != null ? state.libraryShows.find((s) => s.id === f.show) : null;
@@ -5474,15 +5477,15 @@ async function loadPlayerMedia(f, opts = {}) {
     const saved = savedProgress(session);
     if (saved && saved.time > 30 && saved.time < video.duration - 90) {
       video.currentTime = saved.time;
-      toast(`Resuming at ${fmtTime(saved.time)}`);
+      toast(T('Resuming at {0}', fmtTime(saved.time)));
     }
   });
   if (!party) watchCastTargets();
   if (opts.castHint && canCastFromBrowser) {
     const note = $('#player-note');
     note.textContent = hasAirPlay
-      ? 'Tap the AirPlay button in the controls below to pick a TV. No button means there’s no AirPlay TV on this network.'
-      : 'Tap the cast button in the controls below to pick a TV. No button means there’s no Chromecast on this network.';
+      ? T('Tap the AirPlay button in the controls below to pick a TV. No button means there’s no AirPlay TV on this network.')
+      : T('Tap the cast button in the controls below to pick a TV. No button means there’s no Chromecast on this network.');
     note.hidden = false;
     airplayBtn.classList.add('is-hint');
   }
@@ -5568,7 +5571,7 @@ function skipIntro(auto = false) {
   session.introDone = true;
   if (party) party.control('seek', session.intro.end);
   else { video.currentTime = session.intro.end; updateTime(); }
-  osd(auto ? 'Intro skipped' : 'Skipped the intro');
+  osd(auto ? T('Intro skipped') : T('Skipped the intro'));
   updateSkipIntro();
 }
 skipIntroEl.addEventListener('click', (e) => { e.stopPropagation(); skipIntro(); });
@@ -5608,18 +5611,18 @@ function updateUpNext() {
     }
     upNextPlay.disabled = session.upNextBusy;
     const left = session.autoLeft == null ? null : Math.max(1, Math.ceil(session.autoLeft));
-    const label = session.upNextBusy ? 'Starting…' : left ? `Next episode in ${left}` : 'Next episode';
+    const label = session.upNextBusy ? T('Starting…') : left ? T('Next episode in {0}', left) : T('Next episode');
     if (upNextPlay.textContent !== label) upNextPlay.textContent = label;
     upNextPlay.classList.toggle('counting', left != null);
     upNextPlay.style.setProperty('--auto-progress', left == null ? '0' : String(1 - session.autoLeft / AUTOPLAY_SECONDS));
     upNextPlay.setAttribute('aria-busy', String(session.upNextBusy));
-    upNextDismiss.textContent = video.ended ? 'Dismiss' : 'Keep watching';
+    upNextDismiss.textContent = video.ended ? T('Dismiss') : T('Keep watching');
     upNextError.textContent = session.upNextError;
     upNextError.hidden = !session.upNextError;
     if (session.upNextAnnounced !== next.id) {
       session.upNextAnnounced = next.id;
-      upNextStatus.textContent = session.autoLeft == null ? `Up next: ${title}. Next episode is available.`
-        : `Up next: ${title}. Plays in ${AUTOPLAY_SECONDS} seconds unless you choose Keep watching.`;
+      upNextStatus.textContent = session.autoLeft == null ? T('Up next: {0}. Next episode is available.', title)
+        : T('Up next: {0}. Plays in {1} seconds unless you choose Keep watching.', title, AUTOPLAY_SECONDS);
     }
   } else if (!session) upNextStatus.textContent = '';
   const signature = show ? `${next.id}|${video.ended}|${session.upNextBusy}|${session.upNextError}` : '';
@@ -5669,11 +5672,11 @@ async function playNextEpisode() {
     const prepared = await preparePlayerSource(file, null, session.nextAbort.signal);
     if (current !== session || party || session.upNextDismissed) return;
     const stillNext = nextLibraryEpisode(session, state.library, state.libraryShows);
-    if (stillNext?.id !== next.id) throw new Error('This episode is no longer available. Try again after the library updates.');
+    if (stillNext?.id !== next.id) throw new Error(T('This episode is no longer available. Try again after the library updates.'));
     await loadPlayerMedia(file, { prepared });
   } catch (error) {
     if (current !== session || session.upNextDismissed) return;
-    session.upNextError = error.name === 'AbortError' ? 'Starting took too long. Try Next episode again.' : `${error.message} Try Next episode again.`;
+    session.upNextError = error.name === 'AbortError' ? T('Starting took too long. Try Next episode again.') : T('{0} Try Next episode again.', error.message);
     upNextStatus.textContent = session.upNextError;
   } finally {
     clearTimeout(timeout);
@@ -5701,10 +5704,10 @@ video.addEventListener('error', () => {
   if (!current?.sourceUrl || video.currentSrc !== current.sourceUrl) return;
   const err = $('#player-error');
   err.textContent = current.kind === 'note'
-    ? 'This video can’t play in this browser. Its format isn’t supported here; open the file link under the video to download it, or try another browser.'
+    ? T('This video can’t play in this browser. Its format isn’t supported here; open the file link under the video to download it, or try another browser.')
     : current.kind === 'clip'
-    ? 'This clip can’t play in this browser. Its video format (often AV1) isn’t supported here; try another browser, or share it to get a copy that plays everywhere.'
-    : 'This video can’t play in this browser yet. Marquee makes a version that plays here automatically; you can follow its progress in the Library tab.';
+    ? T('This clip can’t play in this browser. Its video format (often AV1) isn’t supported here; try another browser, or share it to get a copy that plays everywhere.')
+    : T('This video can’t play in this browser yet. Marquee makes a version that plays here automatically; you can follow its progress in the Library tab.');
   // When the note below the video says a version is being made, that note is the explanation.
   err.hidden = !$('#player-note').hidden;
 });
@@ -5716,7 +5719,7 @@ window.addEventListener('pageshow', (event) => {
 
 // ---------- search box + tabs ----------
 const input = $('#q');
-const PLACEHOLDERS = { discover: 'Search films and shows', library: 'Filter your library', downloads: 'Filter downloads', activity: 'Filter by person or title', house: 'Filter machines', clips: 'Filter by game or name', settings: 'Search films and shows', notes: 'Search notes by keyword' };
+const PLACEHOLDERS = { discover: T('Search films and shows'), library: T('Filter your library'), downloads: T('Filter downloads'), activity: T('Filter by person or title'), house: T('Filter machines'), clips: T('Filter by game or name'), settings: T('Search films and shows'), notes: T('Search notes by keyword') };
 const notesView = createNotesView({ h, icon, api, jsonPost, toast, copyText, query: () => state.query,
   playVideo: (a) => openPlayer({ kind: 'note', id: a.fileId, key: `note:${a.fileId}`, title: a.name }),
   overlay: { push: pushOverlay, close: closeTopOverlay },
@@ -5743,7 +5746,7 @@ function editPicture({ person, opener }) {
   people.choosePhoto(async (file) => {
     let body;
     try {
-      body = await people.editor({ file, title: mine ? 'Your picture' : `${person.name}’s picture`,
+      body = await people.editor({ file, title: mine ? T('Your picture') : T('{0}’s picture', person.name),
         upload: async (blob) => {
           if (mine) state.me = (await people.saveMine(blob)).me;
           else await people.saveFor(person.id, blob);
@@ -5764,12 +5767,12 @@ async function removePicture({ person }) {
   try {
     if (mine) state.me = (await people.saveMine(null)).me;
     else { await people.saveFor(person.id, null); await loadPeople(); }
-    toast('Picture removed');
+    toast(T('Picture removed'));
     if (state.view === 'settings') renderSettings();
   } catch (err) { toast(err.message); }
 }
 
-async function saveMe(patch, msg = 'Saved') {
+async function saveMe(patch, msg = T('Saved')) {
   try {
     state.me = (await api('/api/me', jsonPost(patch))).me;
     if (msg) toast(msg);
@@ -5778,7 +5781,7 @@ async function saveMe(patch, msg = 'Saved') {
 async function saveRules(patch) {
   try {
     state.rules = (await api('/api/admin/settings', jsonPost(patch))).settings;
-    toast('Saved for everyone');
+    toast(T('Saved for everyone'));
     await loadLibrary(); // countdowns follow the new rules
   } catch (err) { toast(err.message); }
   renderSettings();
@@ -5792,7 +5795,7 @@ async function loadPeople() {
 // popup waits while a video plays or another sheet is open, and closing it marks the update as seen.
 // A page left open across an update offers a reload, since it still runs the old app.
 const whatsNewView = { open: false, retry: null, build: null, staleNoted: false, opener: null };
-const updateDate = (d) => new Date(`${d}T12:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: new Date().getFullYear() === Number(d.slice(0, 4)) ? undefined : 'numeric' });
+const updateDate = (d) => new Date(`${d}T12:00:00`).toLocaleDateString(locale, { day: 'numeric', month: 'long', year: new Date().getFullYear() === Number(d.slice(0, 4)) ? undefined : 'numeric' });
 // The header's What's new button opens the whole history at any time, and lights up while an update
 // hasn't been seen yet.
 function renderWhatsNewButton() {
@@ -5803,7 +5806,7 @@ function renderWhatsNewButton() {
   btn.classList.toggle('has-new', unseen > 0);
   btn.querySelector('.news-count').hidden = !unseen;
   btn.querySelector('.news-count').textContent = unseen;
-  btn.setAttribute('aria-label', unseen ? `What’s new: ${unseen} new ${unseen === 1 ? 'update' : 'updates'}` : 'What’s new: every update to Marquee');
+  btn.setAttribute('aria-label', unseen ? T('What’s new: {0} new {1}', unseen, unseen === 1 ? T('update') : T('updates')) : T('What’s new: every update to Marquee'));
 }
 $('#whats-new-btn').addEventListener('click', () => {
   // unseen updates first, as the popup would show them; otherwise the full history
@@ -5818,7 +5821,7 @@ function maybeShowWhatsNew() {
   whatsNewView.build ??= wn.build;
   const stale = Boolean(wn.build && whatsNewView.build !== wn.build);
   if (!wn.unseen?.length) {
-    if (stale && !whatsNewView.staleNoted) { whatsNewView.staleNoted = true; toast('Marquee was updated. Reload the page to get the new version.'); }
+    if (stale && !whatsNewView.staleNoted) { whatsNewView.staleNoted = true; toast(T('Marquee was updated. Reload the page to get the new version.')); }
     return;
   }
   if (whatsNewView.open) return;
@@ -5838,7 +5841,7 @@ function markUpdatesSeen(latest) {
 function updateEntry(e, heading = true) {
   return h('section', { class: 'update' },
     heading && h('div', { class: 'update-head' },
-      h('h3', {}, e.title || 'Update'),
+      h('h3', {}, e.title || T('Update')),
       h('time', { datetime: e.date }, updateDate(e.date))),
     h('ul', { class: 'update-items' }, e.items.map((i) => h('li', {},
       h('span', { class: 'update-bulb', 'aria-hidden': 'true' }),
@@ -5851,20 +5854,20 @@ function openWhatsNew(updates, { latest = null, stale = false, history = false, 
   whatsNewView.opener = opener;
   whatsNewView.open = true;
   const single = updates.length === 1 && !history;
-  const done = h('button', { class: 'play-btn whats-new-done', type: 'button' }, stale ? 'Reload to update' : history ? 'Close' : 'Got it');
+  const done = h('button', { class: 'play-btn whats-new-done', type: 'button' }, stale ? T('Reload to update') : history ? T('Close') : T('Got it'));
   done.addEventListener('click', () => {
     if (stale) { markUpdatesSeen(latest); setTimeout(() => location.reload(), 150); return; }
     closeTopOverlay();
   });
   // From the popup, the full history is one tap away (closing it marks these updates seen first).
-  const allBtn = h('button', { class: 'chip whats-new-all', type: 'button' }, 'All updates');
+  const allBtn = h('button', { class: 'chip whats-new-all', type: 'button' }, T('All updates'));
   allBtn.addEventListener('click', () => { markUpdatesSeen(latest); showUpdateHistory({ replace: true }); });
   $('#picker-body').replaceChildren(h('div', { class: 'whats-new' },
-    h('p', { class: 'whats-new-eyebrow' }, history ? 'Updates' : 'New in Marquee'),
-    h('h2', { id: 'picker-title' }, history ? 'What’s new' : single ? updates[0].title || 'What’s new' : 'What’s new'),
+    h('p', { class: 'whats-new-eyebrow' }, history ? T('Updates') : T('New in Marquee')),
+    h('h2', { id: 'picker-title' }, history ? T('What’s new') : single ? updates[0].title || T('What’s new') : T('What’s new')),
     single && h('p', { class: 'picker-sub muted' }, updateDate(updates[0].date)),
-    updates.length ? updates.map((e) => updateEntry(e, !single)) : h('p', { class: 'muted' }, 'No updates yet.'),
-    stale && h('p', { class: 'set-hint whats-new-stale' }, 'This page is from before the update. Reload it to use what’s new.'),
+    updates.length ? updates.map((e) => updateEntry(e, !single)) : h('p', { class: 'muted' }, T('No updates yet.')),
+    stale && h('p', { class: 'set-hint whats-new-stale' }, T('This page is from before the update. Reload it to use what’s new.')),
     h('div', { class: 'whats-new-actions' }, !history && allBtn, done)));
   const close = showSheet($('#picker'), $('#picker-backdrop'), () => {
     whatsNewView.open = false;
@@ -5883,6 +5886,26 @@ async function showUpdateHistory({ replace = false } = {}) {
   } catch (err) { toast(err.message); }
 }
 
+// Settings → Language: the whole page is drawn in one language, so changing it reloads the page.
+async function pickLanguage(code) {
+  if (code === lang) return;
+  saveLanguage(code);
+  try { await api('/api/me', jsonPost({ language: code })); } catch { /* it still applies on this device */ }
+  location.reload();
+}
+// The account's language wins on a new device; an account without one takes this device's.
+function syncLanguage() {
+  const wanted = prefs().language;
+  if (!wanted) { api('/api/me', jsonPost({ language: lang })).catch(() => {}); return; }
+  if (wanted === lang) return;
+  try {
+    if (sessionStorage.getItem('marquee:lang-synced') === wanted) return;
+    sessionStorage.setItem('marquee:lang-synced', wanted);
+  } catch { return; }
+  saveLanguage(wanted);
+  location.reload();
+}
+
 const settingsRow = (label, hint, control) => h('div', { class: 'set-row' },
   h('div', { class: 'set-text' }, h('div', { class: 'set-label' }, label), hint && h('div', { class: 'set-hint' }, hint)),
   h('div', { class: 'set-control' }, control));
@@ -5899,11 +5922,11 @@ function select(options, value, onChange, label) {
   el.addEventListener('change', () => onChange(el.value));
   return el;
 }
-const days = (n) => (n ? plural(n, 'day') : 'Never');
+const days = (n) => (n ? plural(n, 'day') : T('Never'));
 
 function themeSwatch(key, t, selected, onPick) {
   return h('button', {
-    type: 'button', class: 'swatch', 'aria-pressed': String(selected), 'aria-label': `${t.name} colours`,
+    type: 'button', class: 'swatch', 'aria-pressed': String(selected), 'aria-label': T('{0} colours', t.name),
     style: `--sw-bg:${t.bg};--sw-surface:${t.surface};--sw-text:${t.text};--sw-accent:${t.accent};--sw-muted:${t.muted}`,
     onclick: () => onPick(key),
   },
@@ -5926,9 +5949,9 @@ function appearanceSection() {
     const c = themeColors(theme);
     return { bg: c.bg.toLowerCase(), surface: c.surface.toLowerCase(), text: c.text.toLowerCase(), accent: c.accent.toLowerCase() };
   };
-  const grid = h('div', { class: 'swatches', role: 'group', 'aria-label': 'Colour themes' },
+  const grid = h('div', { class: 'swatches', role: 'group', 'aria-label': T('Colour themes') },
     Object.entries(THEMES).map(([key, t]) => themeSwatch(key, t, active === key, pick)),
-    themeSwatch('custom', { ...themeColors(theme?.preset === 'custom' ? theme : { preset: 'custom', colors: customColors() }), name: 'Your own' }, active === 'custom', pick));
+    themeSwatch('custom', { ...themeColors(theme?.preset === 'custom' ? theme : { preset: 'custom', colors: customColors() }), name: T('Your own') }, active === 'custom', pick));
 
   let editor = null;
   if (active === 'custom') {
@@ -5937,17 +5960,17 @@ function appearanceSection() {
     const check = () => {
       const ratio = (a, b) => { const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
       const low = ratio(colors.text, colors.bg) < 4.5 || ratio(colors.text, colors.surface) < 4.5;
-      contrast.textContent = low ? 'The text may be hard to read on these backgrounds. Try a lighter or darker text colour.' : '';
+      contrast.textContent = low ? T('The text may be hard to read on these backgrounds. Try a lighter or darker text colour.') : '';
     };
     const commit = () => {
       clearTimeout(saveMeTimer);
-      saveMeTimer = setTimeout(() => saveMe({ theme: { preset: 'custom', colors: { ...colors } } }, 'Colours saved'), 700);
+      saveMeTimer = setTimeout(() => saveMe({ theme: { preset: 'custom', colors: { ...colors } } }, T('Colours saved')), 700);
     };
     editor = h('div', { class: 'custom-colors' },
       THEME_FIELDS.map(([k, label]) => {
         const id = `color-${k}`;
         const picker = h('input', { type: 'color', id, value: colors[k] });
-        const hex = h('input', { type: 'text', class: 'hex-input', value: colors[k], maxlength: '7', spellcheck: 'false', 'aria-label': `${label} colour code` });
+        const hex = h('input', { type: 'text', class: 'hex-input', value: colors[k], maxlength: '7', spellcheck: 'false', 'aria-label': T('{0} colour code', label) });
         const set = (v) => {
           colors[k] = v.toLowerCase();
           picker.value = hex.value = colors[k];
@@ -5958,7 +5981,7 @@ function appearanceSection() {
         picker.addEventListener('input', () => set(picker.value));
         hex.addEventListener('change', () => {
           const v = hex.value.trim().replace(/^#?/, '#');
-          if (/^#[0-9a-f]{6}$/i.test(v)) set(v); else { hex.value = colors[k]; toast('Use a colour code like #1f1019'); }
+          if (/^#[0-9a-f]{6}$/i.test(v)) set(v); else { hex.value = colors[k]; toast(T('Use a colour code like #1f1019')); }
         });
         return h('div', { class: 'color-field' }, h('label', { for: id }, label), h('div', { class: 'color-inputs' }, picker, hex));
       }),
@@ -5966,54 +5989,57 @@ function appearanceSection() {
     check();
   }
   return [
-    h('h3', { class: 'set-head' }, 'Appearance'),
-    h('p', { class: 'set-hint' }, 'Only changes how Marquee looks for you, on every device you use.'),
+    h('h3', { class: 'set-head' }, T('Language')),
+    settingsRow(T('Show Marquee in'), T('Used on every device you sign in on. TMDB descriptions follow it too; titles stay as they are.'),
+      segmented(LANGUAGES.map((l) => [l.code, l.name]), lang, pickLanguage, T('Language'))),
+    h('h3', { class: 'set-head' }, T('Appearance')),
+    h('p', { class: 'set-hint' }, T('Only changes how Marquee looks for you, on every device you use.')),
     grid,
     editor,
   ];
 }
 
 const PROFILE_HINTS = {
-  save: 'Compact 1080p or 720p copies that leave room on the server.',
-  balanced: 'Good-looking 1080p at sensible sizes. Recommended.',
-  best: '4K when there is one, within your size limit.',
+  save: T('Compact 1080p or 720p copies that leave room on the server.'),
+  balanced: T('Good-looking 1080p at sensible sizes. Recommended.'),
+  best: T('4K when there is one, within your size limit.'),
 };
-const MAX_SIZE_OPTIONS = [[0, 'No limit'], [1, '1 GB'], [2, '2 GB'], [4, '4 GB'], [8, '8 GB'], [15, '15 GB'], [30, '30 GB'], [60, '60 GB']];
-const AUDIO_LANGUAGES = [['', 'Original language'], ['en', 'English'], ['sv', 'Swedish'], ['da', 'Danish'], ['no', 'Norwegian'], ['fi', 'Finnish'],
-  ['de', 'German'], ['fr', 'French'], ['es', 'Spanish'], ['it', 'Italian'], ['pt', 'Portuguese'], ['nl', 'Dutch'], ['pl', 'Polish'],
-  ['ru', 'Russian'], ['tr', 'Turkish'], ['hi', 'Hindi'], ['ja', 'Japanese'], ['ko', 'Korean'], ['zh', 'Chinese']];
+const MAX_SIZE_OPTIONS = [[0, T('No limit')], [1, T('1 GB')], [2, T('2 GB')], [4, T('4 GB')], [8, T('8 GB')], [15, T('15 GB')], [30, T('30 GB')], [60, T('60 GB')]];
+const AUDIO_LANGUAGES = [['', T('Original language')], ['en', T('English')], ['sv', T('Swedish')], ['da', T('Danish')], ['no', T('Norwegian')], ['fi', T('Finnish')],
+  ['de', T('German')], ['fr', T('French')], ['es', T('Spanish')], ['it', T('Italian')], ['pt', T('Portuguese')], ['nl', T('Dutch')], ['pl', T('Polish')],
+  ['ru', T('Russian')], ['tr', T('Turkish')], ['hi', T('Hindi')], ['ja', T('Japanese')], ['ko', T('Korean')], ['zh', T('Chinese')]];
 function renderSettings() {
   const body = $('#settings-body');
   const me = state.me;
-  if (!me) { body.replaceChildren(notice('Couldn’t load your settings', 'Reload the page to try again.')); return; }
+  if (!me) { body.replaceChildren(notice(T('Couldn’t load your settings'), T('Reload the page to try again.'))); return; }
   const p = prefs();
   const out = [];
 
   // ---- you ----
-  const nameInput = h('input', { type: 'text', class: 'invite-note set-name', maxlength: '40', value: me.name, 'aria-label': 'Your name', autocomplete: 'nickname' });
-  nameInput.addEventListener('change', () => saveMe({ name: nameInput.value }, 'Name saved'));
-  const pictureBtn = h('button', { type: 'button', class: 'profile-face', 'aria-label': me.avatar ? 'Change your picture' : 'Add a picture',
-    title: me.avatar ? 'Change your picture' : 'Add a picture', onclick: (e) => editPicture({ person: me, opener: e.currentTarget }) },
+  const nameInput = h('input', { type: 'text', class: 'invite-note set-name', maxlength: '40', value: me.name, 'aria-label': T('Your name'), autocomplete: 'nickname' });
+  nameInput.addEventListener('change', () => saveMe({ name: nameInput.value }, T('Name saved')));
+  const pictureBtn = h('button', { type: 'button', class: 'profile-face', 'aria-label': me.avatar ? T('Change your picture') : T('Add a picture'),
+    title: me.avatar ? T('Change your picture') : T('Add a picture'), onclick: (e) => editPicture({ person: me, opener: e.currentTarget }) },
     people.face(me, { size: 64 }), h('span', { class: 'profile-face-edit', 'aria-hidden': 'true' }, icon('camera')));
   out.push(h('div', { class: 'profile' },
     h('div', { class: 'profile-face-col' }, pictureBtn,
-      me.avatar && h('button', { type: 'button', class: 'profile-face-remove', onclick: () => removePicture({ person: me }) }, 'Remove')),
+      me.avatar && h('button', { type: 'button', class: 'profile-face-remove', onclick: () => removePicture({ person: me }) }, T('Remove'))),
     h('div', { class: 'profile-text' },
       nameInput,
-      h('div', { class: 'set-hint' }, !me.email ? 'Home network: everyone at home who opens the server’s local address shares this'
-        : me.via === 'session' ? `Signed in as ${me.email}` : `Signed in as ${me.email} through Cloudflare`),
-      h('div', { class: 'profile-tags' }, me.isOwner && h('span', { class: 'tag' }, 'Owner'), !me.canDownload && h('span', { class: 'tag' }, 'Can’t download')))));
+      h('div', { class: 'set-hint' }, !me.email ? T('Home network: everyone at home who opens the server’s local address shares this')
+        : me.via === 'session' ? T('Signed in as {0}', me.email) : T('Signed in as {0} through Cloudflare', me.email)),
+      h('div', { class: 'profile-tags' }, me.isOwner && h('span', { class: 'tag' }, T('Owner')), !me.canDownload && h('span', { class: 'tag' }, T('Can’t download'))))));
 
   {
     const unseen = state.status?.whatsNew?.unseen?.length || 0;
-    const open = h('button', { class: `chip whats-new-open${unseen ? ' has-new' : ''}`, type: 'button' }, unseen ? `${unseen} new` : 'See updates');
+    const open = h('button', { class: `chip whats-new-open${unseen ? ' has-new' : ''}`, type: 'button' }, unseen ? T('{0} new', unseen) : T('See updates'));
     open.addEventListener('click', showUpdateHistory);
-    out.push(settingsRow('What’s new', 'Everything that changed in Marquee lately.', open));
+    out.push(settingsRow(T('What’s new'), T('Everything that changed in Marquee lately.'), open));
   }
   {
     const year = new Date().getFullYear();
     const open = h('button', { class: 'wrapped-open', type: 'button', onclick: (e) => openWrapped(year, e.currentTarget) },
-      h('span', { class: 'wrapped-open-kicker' }, `Marquee Wrapped ${year}`), h('span', {}, 'Your year in watching so far'));
+      h('span', { class: 'wrapped-open-kicker' }, T('Marquee Wrapped {0}', year)), h('span', {}, T('Your year in watching so far')));
     out.push(open);
   }
 
@@ -6022,43 +6048,43 @@ function renderSettings() {
   out.push(...appearanceSection());
 
   // ---- watching ----
-  out.push(h('h3', { class: 'set-head' }, 'Watching'));
-  out.push(settingsRow('Subtitles', 'Turned on automatically when a video has them in this language.',
-    select([['', 'Off'], ...(state.status.subLangs || []).map((l) => [l.code, l.name])], p.subLang || '', (v) => saveMe({ subLang: v }), 'Default subtitles')));
-  out.push(settingsRow('Intros', p.skipIntro === 'auto' ? 'Opening titles are skipped as they start (not in Watch Together).' : 'A Skip intro button shows during opening titles.',
-    segmented([['button', 'Show a button'], ['auto', 'Skip automatically']], p.skipIntro || 'button', (v) => saveMe({ skipIntro: v }).then(renderSettings), 'Intros')));
-  out.push(settingsRow('Open Marquee on', null,
-    segmented([['discover', 'Discover'], ['library', 'Library']], p.startView === 'downloads' ? 'library' : p.startView || 'discover', (v) => saveMe({ startView: v }).then(renderSettings), 'Open Marquee on')));
+  out.push(h('h3', { class: 'set-head' }, T('Watching')));
+  out.push(settingsRow(T('Subtitles'), T('Turned on automatically when a video has them in this language.'),
+    select([['', T('Off')], ...(state.status.subLangs || []).map((l) => [l.code, l.name])], p.subLang || '', (v) => saveMe({ subLang: v }), T('Default subtitles'))));
+  out.push(settingsRow(T('Intros'), p.skipIntro === 'auto' ? T('Opening titles are skipped as they start (not in Watch Together).') : T('A Skip intro button shows during opening titles.'),
+    segmented([['button', T('Show a button')], ['auto', T('Skip automatically')]], p.skipIntro || 'button', (v) => saveMe({ skipIntro: v }).then(renderSettings), T('Intros'))));
+  out.push(settingsRow(T('Open Marquee on'), null,
+    segmented([['discover', T('Discover')], ['library', T('Library')]], p.startView === 'downloads' ? 'library' : p.startView || 'discover', (v) => saveMe({ startView: v }).then(renderSettings), T('Open Marquee on'))));
   out.push(tvSignInRow());
   out.push(jellyfinRow());
-  out.push(settingsRow('Library order', null,
-    segmented([['newest', 'Newest'], ['expiring', 'Leaving soonest'], ['title', 'A–Z']], p.librarySort || 'newest', (v) => saveMe({ librarySort: v }).then(renderSettings), 'Library order')));
+  out.push(settingsRow(T('Library order'), null,
+    segmented([['newest', T('Newest')], ['expiring', T('Leaving soonest')], ['title', 'A–Z']], p.librarySort || 'newest', (v) => saveMe({ librarySort: v }).then(renderSettings), T('Library order'))));
   out.push(...notificationSettings());
   // ---- downloads: set once, used by every Download ----
   if (canDownload()) {
     const profile = savedProfile();
-    out.push(h('h3', { class: 'set-head' }, 'Downloads'));
-    out.push(settingsRow('Quality', PROFILE_HINTS[profile],
-      select(PROFILE_OPTIONS, profile, (v) => saveMe({ downloadProfile: v }).then(renderSettings), 'Download quality')));
-    out.push(settingsRow('Largest download', 'Per film or episode. Bigger releases are skipped.',
-      select(MAX_SIZE_OPTIONS, p.maxSize || 0, (v) => saveMe({ maxSize: Number(v) }), 'Largest download')));
-    out.push(settingsRow('Audio language', 'Releases in this language come first. Releases dubbed into another language are skipped when there’s a choice.',
-      select(AUDIO_LANGUAGES, p.audioLang || '', (v) => saveMe({ audioLang: v }), 'Audio language')));
+    out.push(h('h3', { class: 'set-head' }, T('Downloads')));
+    out.push(settingsRow(T('Quality'), PROFILE_HINTS[profile],
+      select(PROFILE_OPTIONS, profile, (v) => saveMe({ downloadProfile: v }).then(renderSettings), T('Download quality'))));
+    out.push(settingsRow(T('Largest download'), T('Per film or episode. Bigger releases are skipped.'),
+      select(MAX_SIZE_OPTIONS, p.maxSize || 0, (v) => saveMe({ maxSize: Number(v) }), T('Largest download'))));
+    out.push(settingsRow(T('Audio language'), T('Releases in this language come first. Releases dubbed into another language are skipped when there’s a choice.'),
+      select(AUDIO_LANGUAGES, p.audioLang || '', (v) => saveMe({ audioLang: v }), T('Audio language'))));
   }
 
   // ---- your library ----
   const r = state.rules || {};
   const mine = state.library;
   const next = mine.filter((f) => f.expiresAt != null).sort((a, b) => a.expiresAt - b.expiresAt)[0];
-  out.push(h('h3', { class: 'set-head' }, 'Your library'));
+  out.push(h('h3', { class: 'set-head' }, T('Your library')));
   out.push(h('div', { class: 'set-card' },
     h('p', {}, `${plural(mine.length, 'video')}, ${fmtBytes(mine.reduce((n, f) => n + (f.size || 0), 0))}.`,
-      next ? ` Next to go: ${next.title}${episodeLabel(next) ? ` ${episodeLabel(next)}` : ''}, ${timeLeft(next.expiresAt).replace(' left', '')} left.` : ''),
-    libraryMates().length > 0 && h('p', {}, `Shared with ${nameList(libraryMates())}: you all see the same library and can add, keep or remove titles in it. Watch progress stays your own.`),
-    h('p', { class: 'set-hint' }, me.keep ? 'The owner has set your videos to stay until you delete them.'
+      next ? T(' Next to go: {0}{1}, {2} left.', next.title, episodeLabel(next) ? ` ${episodeLabel(next)}` : '', timeLeft(next.expiresAt).replace(' left', '')) : ''),
+    libraryMates().length > 0 && h('p', {}, T('Shared with {0}: you all see the same library and can add, keep or remove titles in it. Watch progress stays your own.', nameList(libraryMates()))),
+    h('p', { class: 'set-hint' }, me.keep ? T('The owner has set your videos to stay until you delete them.')
       : r.retentionDays
-        ? `Downloads are deleted ${plural(r.retentionDays, 'day')} after they finish, to keep space free on the server. Use “Keep ${r.extendDays} more days” in the Library to hold on to something${r.maxExtensions ? ` (up to ${plural(r.maxExtensions, 'time')} per video)` : ''}.`
-        : 'Nothing is deleted automatically.')));
+        ? T('Downloads are deleted {0} after they finish, to keep space free on the server. Use “Keep {1} more days” in the Library to hold on to something{2}.', plural(r.retentionDays, 'day'), r.extendDays, r.maxExtensions ? T(' (up to {0} per video)', plural(r.maxExtensions, 'time')) : '')
+        : T('Nothing is deleted automatically.'))));
 
   if (me.isOwner) out.push(...ownerSettings());
   body.replaceChildren(...out.filter(Boolean));
@@ -6066,21 +6092,21 @@ function renderSettings() {
 
 // The Marquee app on a TV (tv/tizen) shows a code; entering it here signs that TV in as you.
 function tvSignInRow() {
-  const input = h('input', { type: 'text', class: 'invite-note tv-code', maxlength: '7', placeholder: 'Code on the TV', 'aria-label': 'Code shown on the TV',
+  const input = h('input', { type: 'text', class: 'invite-note tv-code', maxlength: '7', placeholder: T('Code on the TV'), 'aria-label': T('Code shown on the TV'),
     autocomplete: 'off', autocapitalize: 'characters', spellcheck: 'false', enterkeyhint: 'done' });
-  const go = h('button', { type: 'submit', class: 'chip' }, 'Sign in');
+  const go = h('button', { type: 'submit', class: 'chip' }, T('Sign in'));
   const note = h('p', { class: 'set-hint tv-code-note', role: 'status' });
   const form = h('form', { class: 'tv-code-form', onsubmit: async (e) => {
     e.preventDefault();
     const code = input.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
-    if (code.length < 6) { note.textContent = 'The code on the TV has 6 letters and numbers.'; input.focus(); return; }
-    go.disabled = true; note.textContent = 'Signing in the TV…';
+    if (code.length < 6) { note.textContent = T('The code on the TV has 6 letters and numbers.'); input.focus(); return; }
+    go.disabled = true; note.textContent = T('Signing in the TV…');
     try {
       await api('/api/tv/pair/approve', jsonPost({ code }));
-      input.value = ''; note.textContent = 'Done. The TV is signed in as you.';
+      input.value = ''; note.textContent = T('Done. The TV is signed in as you.');
     } catch (err) { note.textContent = err.message; } finally { go.disabled = false; }
   } }, input, go);
-  return settingsRow('Sign in a TV', 'Open the Marquee app on the TV and enter the code it shows. The TV then sees your library.',
+  return settingsRow(T('Sign in a TV'), T('Open the Marquee app on the TV and enter the code it shows. The TV then sees your library.'),
     h('div', { class: 'tv-code-wrap' }, form, note));
 }
 
@@ -6096,32 +6122,32 @@ function loadJellyfin() {
 }
 function jellyfinRow() {
   if (!jellyfinView.links && !jellyfinView.loading) loadJellyfin();
-  const input = h('input', { type: 'text', class: 'invite-note tv-code', maxlength: '7', placeholder: 'Code', 'aria-label': 'Code shown in Jellyfin',
+  const input = h('input', { type: 'text', class: 'invite-note tv-code', maxlength: '7', placeholder: T('Code'), 'aria-label': T('Code shown in Jellyfin'),
     autocomplete: 'off', autocapitalize: 'characters', spellcheck: 'false', enterkeyhint: 'done' });
-  const go = h('button', { type: 'submit', class: 'chip' }, 'Connect');
+  const go = h('button', { type: 'submit', class: 'chip' }, T('Connect'));
   const note = h('p', { class: 'set-hint tv-code-note', role: 'status' });
   const form = h('form', { class: 'tv-code-form', onsubmit: async (e) => {
     e.preventDefault();
     const code = input.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
-    if (code.length < 6) { note.textContent = 'The code in Jellyfin has 6 letters and numbers.'; input.focus(); return; }
-    go.disabled = true; note.textContent = 'Connecting…';
+    if (code.length < 6) { note.textContent = T('The code in Jellyfin has 6 letters and numbers.'); input.focus(); return; }
+    go.disabled = true; note.textContent = T('Connecting…');
     try {
       const r = await api('/api/jellyfin/approve', jsonPost({ code }));
       jellyfinView.links = r.links;
-      toast('Jellyfin is connected. Your library shows up there after its first sync.');
+      toast(T('Jellyfin is connected. Your library shows up there after its first sync.'));
       renderSettings();
     } catch (err) { note.textContent = err.message; go.disabled = false; }
   } }, input, go);
   const list = (jellyfinView.links || []).map((l) => h('li', { class: 'jf-link' },
     h('span', { class: 'jf-link-name' }, l.name),
-    h('span', { class: 'set-hint jf-link-seen' }, `Last synced ${fmtAgo(l.lastSeen) || 'just now'}`),
-    h('button', { type: 'button', class: 'chip', 'aria-label': `Disconnect ${l.name}`, onclick: async (e) => {
+    h('span', { class: 'set-hint jf-link-seen' }, T('Last synced {0}', fmtAgo(l.lastSeen) || T('just now'))),
+    h('button', { type: 'button', class: 'chip', 'aria-label': T('Disconnect {0}', l.name), onclick: async (e) => {
       e.currentTarget.disabled = true;
-      try { jellyfinView.links = (await api(`/api/jellyfin/${l.id}/remove`, jsonPost({}))).links; toast(`${l.name} is disconnected`); }
+      try { jellyfinView.links = (await api(`/api/jellyfin/${l.id}/remove`, jsonPost({}))).links; toast(T('{0} is disconnected', l.name)); }
       catch (err) { toast(err.message); }
       renderSettings();
-    } }, 'Disconnect')));
-  return settingsRow('Jellyfin', 'Watch your library in your own Jellyfin: install the Marquee plugin there, open its settings and enter the code it shows.',
+    } }, T('Disconnect'))));
+  return settingsRow(T('Jellyfin'), T('Watch your library in your own Jellyfin: install the Marquee plugin there, open its settings and enter the code it shows.'),
     h('div', { class: 'tv-code-wrap' }, form, note, list.length > 0 && h('ul', { class: 'jf-links' }, ...list)));
 }
 
@@ -6147,19 +6173,19 @@ async function loadPush() {
 function notificationSettings() {
   const support = pushDevice.pushSupport();
   const p = prefs();
-  const out = [h('h3', { class: 'set-head' }, 'Notifications')];
+  const out = [h('h3', { class: 'set-head' }, T('Notifications'))];
   if (!pushView.loaded) {
-    if (support === 'ok') { loadPush().then(() => { if (state.view === 'settings') renderSettings(); }); out.push(h('p', { class: 'muted' }, 'Loading…')); return out; }
+    if (support === 'ok') { loadPush().then(() => { if (state.view === 'settings') renderSettings(); }); out.push(h('p', { class: 'muted' }, T('Loading…'))); return out; }
     pushView.loaded = true;
   }
   const on = Boolean(pushView.deviceId);
   const why = {
-    insecure: 'Notifications need Marquee opened through its https address, not the local one.',
-    'ios-install': 'On iPhone and iPad, notifications work once Marquee is on your Home Screen: tap Share, then Add to Home Screen, and open Marquee from there.',
-    unsupported: 'This browser can’t show notifications from websites.',
-    denied: 'Notifications are blocked for Marquee in this browser. Allow them in the site settings (the icon next to the address), then reload.',
+    insecure: T('Notifications need Marquee opened through its https address, not the local one.'),
+    'ios-install': T('On iPhone and iPad, notifications work once Marquee is on your Home Screen: tap Share, then Add to Home Screen, and open Marquee from there.'),
+    unsupported: T('This browser can’t show notifications from websites.'),
+    denied: T('Notifications are blocked for Marquee in this browser. Allow them in the site settings (the icon next to the address), then reload.'),
   }[support];
-  if (why) out.push(settingsRow('This device', why, null));
+  if (why) out.push(settingsRow(T('This device'), why, null));
   else {
     const sw = toggle(on, async (want, input) => {
       if (pushView.busy) { input.checked = on; return; }
@@ -6169,41 +6195,41 @@ function notificationSettings() {
           const sub = await pushDevice.subscribe(pushView.publicKey);
           const r = await api('/api/push/subscribe', jsonPost({ subscription: sub.toJSON(), label: pushDevice.deviceLabel(navigator.userAgent) }));
           pushView.deviceId = r.id; pushView.devices = r.devices;
-          toast('Notifications are on for this device');
+          toast(T('Notifications are on for this device'));
         } else {
           const sub = await pushDevice.currentSubscription();
           const r = await api('/api/push/unsubscribe', jsonPost({ endpoint: sub?.endpoint || '', id: pushView.deviceId || '' }));
           await sub?.unsubscribe().catch(() => {});
           pushView.deviceId = null; pushView.devices = r.devices;
-          toast('Notifications are off for this device');
+          toast(T('Notifications are off for this device'));
         }
       } catch (err) { toast(err.message); }
       pushView.busy = false;
       renderSettings();
-    }, 'Notifications on this device');
-    out.push(settingsRow('This device', on ? 'Marquee can tell you about these even when it’s closed.' : 'Get a notification when something’s ready, even with Marquee closed.', sw));
+    }, T('Notifications on this device'));
+    out.push(settingsRow(T('This device'), on ? T('Marquee can tell you about these even when it’s closed.') : T('Get a notification when something’s ready, even with Marquee closed.'), sw));
   }
   if (pushView.devices.length) {
-    out.push(settingsRow('Downloads ready', 'When something you downloaded can be watched.',
-      toggle(p.pushDownload !== false, (v) => saveMe({ pushDownload: v }), 'Notify when downloads are ready')));
-    out.push(settingsRow('New episodes', 'When a new episode of a show you follow or have in your library arrives on Marquee.',
-      toggle(p.pushEpisode !== false, (v) => saveMe({ pushEpisode: v }), 'Notify about new episodes')));
-    out.push(settingsRow('Watch Together invites', 'When someone asks you to join their room. Off: nobody can invite you this way.',
-      toggle(p.pushWatch !== false, (v) => saveMe({ pushWatch: v }), 'Notify about Watch Together invites')));
-    if (state.me?.isOwner) out.push(settingsRow('Agents', 'When a script or AI agent on your home machines asks for your attention.',
-      toggle(p.pushAgent !== false, (v) => saveMe({ pushAgent: v }), 'Notify when an agent needs you')));
-    const test = h('button', { class: 'chip', type: 'button' }, 'Send a test');
+    out.push(settingsRow(T('Downloads ready'), T('When something you downloaded can be watched.'),
+      toggle(p.pushDownload !== false, (v) => saveMe({ pushDownload: v }), T('Notify when downloads are ready'))));
+    out.push(settingsRow(T('New episodes'), T('When a new episode of a show you follow or have in your library arrives on Marquee.'),
+      toggle(p.pushEpisode !== false, (v) => saveMe({ pushEpisode: v }), T('Notify about new episodes'))));
+    out.push(settingsRow(T('Watch Together invites'), T('When someone asks you to join their room. Off: nobody can invite you this way.'),
+      toggle(p.pushWatch !== false, (v) => saveMe({ pushWatch: v }), T('Notify about Watch Together invites'))));
+    if (state.me?.isOwner) out.push(settingsRow(T('Agents'), T('When a script or AI agent on your home machines asks for your attention.'),
+      toggle(p.pushAgent !== false, (v) => saveMe({ pushAgent: v }), T('Notify when an agent needs you'))));
+    const test = h('button', { class: 'chip', type: 'button' }, T('Send a test'));
     test.addEventListener('click', async () => {
       test.disabled = true;
       try {
         const r = await api('/api/push/test', jsonPost({}));
         pushView.devices = r.devices;
-        toast(r.sent ? `Sent to ${plural(r.sent, 'device')}` : 'No device accepted it. Turn notifications off and on again on that device.');
+        toast(r.sent ? T('Sent to {0}', plural(r.sent, 'device')) : T('No device accepted it. Turn notifications off and on again on that device.'));
       } catch (err) { toast(err.message); }
       setTimeout(() => { test.disabled = false; }, 10000);
     });
-    out.push(h('ul', { class: 'rows push-devices', 'aria-label': 'Devices with notifications' }, pushView.devices.map((d) => {
-      const remove = h('button', { class: 'chip', type: 'button', 'aria-label': `Stop notifications on ${d.label}` }, 'Remove');
+    out.push(h('ul', { class: 'rows push-devices', 'aria-label': T('Devices with notifications') }, pushView.devices.map((d) => {
+      const remove = h('button', { class: 'chip', type: 'button', 'aria-label': T('Stop notifications on {0}', d.label) }, T('Remove'));
       remove.addEventListener('click', async () => {
         remove.disabled = true;
         try {
@@ -6214,8 +6240,8 @@ function notificationSettings() {
       });
       return h('li', { class: 'row' },
         h('div', { class: 'row-text' },
-          h('div', { class: 'row-title' }, d.label, d.id === pushView.deviceId && h('span', { class: 'tag' }, 'This device')),
-          h('div', { class: 'row-meta' }, h('span', {}, `Added ${fmtAgo(d.createdAt)}`))),
+          h('div', { class: 'row-title' }, d.label, d.id === pushView.deviceId && h('span', { class: 'tag' }, T('This device'))),
+          h('div', { class: 'row-meta' }, h('span', {}, T('Added {0}', fmtAgo(d.createdAt))))),
         remove);
     })), h('div', { class: 'set-row push-test' }, test));
   }
@@ -6224,9 +6250,9 @@ function notificationSettings() {
 
 // Marquee's own sign-in: change the password, sign out of this browser.
 function accountSection() {
-  const current = h('input', { type: 'password', class: 'invite-note', autocomplete: 'current-password', placeholder: 'Current password', 'aria-label': 'Current password' });
-  const next = h('input', { type: 'password', class: 'invite-note', autocomplete: 'new-password', minlength: '10', placeholder: 'New password (10+ characters)', 'aria-label': 'New password' });
-  const save = h('button', { class: 'chip', type: 'submit' }, 'Change password');
+  const current = h('input', { type: 'password', class: 'invite-note', autocomplete: 'current-password', placeholder: T('Current password'), 'aria-label': T('Current password') });
+  const next = h('input', { type: 'password', class: 'invite-note', autocomplete: 'new-password', minlength: '10', placeholder: T('New password (10+ characters)'), 'aria-label': T('New password') });
+  const save = h('button', { class: 'chip', type: 'submit' }, T('Change password'));
   const msg = h('div', { class: 'set-hint', role: 'status' });
   const form = h('form', { class: 'set-card account-password' }, current, next, save, msg);
   form.addEventListener('submit', async (e) => {
@@ -6235,85 +6261,85 @@ function accountSection() {
     try {
       await api('/api/auth/password', jsonPost({ current: current.value, next: next.value }));
       current.value = next.value = '';
-      msg.textContent = 'Password changed. Other devices were signed out.';
+      msg.textContent = T('Password changed. Other devices were signed out.');
     } catch (err) { msg.textContent = err.message; } finally { save.disabled = false; }
   });
-  const out = h('button', { class: 'chip', type: 'button' }, 'Sign out');
+  const out = h('button', { class: 'chip', type: 'button' }, T('Sign out'));
   out.addEventListener('click', async () => {
     out.disabled = true;
     try { await api('/api/auth/logout', { method: 'POST' }); } catch { /* signed out either way */ }
     location.assign('/signin');
   });
-  return h('div', {}, settingsRow('Sign out', 'Signs this browser out of Marquee.', out),
-    h('details', { class: 'set-details' }, h('summary', {}, 'Change password'), form));
+  return h('div', {}, settingsRow(T('Sign out'), T('Signs this browser out of Marquee.'), out),
+    h('details', { class: 'set-details' }, h('summary', {}, T('Change password')), form));
 }
 
 function ownerSettings() {
   const r = state.rules || {};
-  const out = [h('h3', { class: 'set-head' }, 'Server', h('span', { class: 'tag' }, 'Owner'))];
-  out.push(settingsRow('Delete downloads after', 'Counted from when each download finishes, per person. A video someone else still has stays.',
-    select([0, 1, 3, 7, 14, 30].map((n) => [n, days(n)]), r.retentionDays ?? 7, (v) => saveRules({ retentionDays: Number(v) }), 'Delete downloads after')));
-  out.push(settingsRow('“Keep longer” adds', null,
-    select([1, 3, 7, 14, 30].map((n) => [n, plural(n, 'day')]), r.extendDays ?? 7, (v) => saveRules({ extendDays: Number(v) }), 'Keep longer adds')));
-  out.push(settingsRow('Times a video can be kept longer', null,
-    select([[0, 'No limit'], [1, 'Once'], [2, 'Twice'], [3, '3 times'], [5, '5 times'], [10, '10 times']], r.maxExtensions ?? 0, (v) => saveRules({ maxExtensions: Number(v) }), 'Times a video can be kept longer')));
-  out.push(settingsRow('New people can download', 'Otherwise they can only add what’s already on the server, until you allow them below.',
-    toggle(r.membersCanDownload !== false, (on) => saveRules({ membersCanDownload: on }), 'New people can download')));
-  out.push(settingsRow('Colours for new people', 'Until they pick their own.',
-    select(Object.entries(THEMES).map(([k, t]) => [k, t.name]), r.defaultTheme || 'marquee', (v) => saveRules({ defaultTheme: v }), 'Colours for new people')));
+  const out = [h('h3', { class: 'set-head' }, T('Server'), h('span', { class: 'tag' }, T('Owner')))];
+  out.push(settingsRow(T('Delete downloads after'), T('Counted from when each download finishes, per person. A video someone else still has stays.'),
+    select([0, 1, 3, 7, 14, 30].map((n) => [n, days(n)]), r.retentionDays ?? 7, (v) => saveRules({ retentionDays: Number(v) }), T('Delete downloads after'))));
+  out.push(settingsRow(T('“Keep longer” adds'), null,
+    select([1, 3, 7, 14, 30].map((n) => [n, plural(n, 'day')]), r.extendDays ?? 7, (v) => saveRules({ extendDays: Number(v) }), T('Keep longer adds'))));
+  out.push(settingsRow(T('Times a video can be kept longer'), null,
+    select([[0, T('No limit')], [1, T('Once')], [2, T('Twice')], [3, T('3 times')], [5, T('5 times')], [10, T('10 times')]], r.maxExtensions ?? 0, (v) => saveRules({ maxExtensions: Number(v) }), T('Times a video can be kept longer'))));
+  out.push(settingsRow(T('New people can download'), T('Otherwise they can only add what’s already on the server, until you allow them below.'),
+    toggle(r.membersCanDownload !== false, (on) => saveRules({ membersCanDownload: on }), T('New people can download'))));
+  out.push(settingsRow(T('Colours for new people'), T('Until they pick their own.'),
+    select(Object.entries(THEMES).map(([k, t]) => [k, t.name]), r.defaultTheme || 'marquee', (v) => saveRules({ defaultTheme: v }), T('Colours for new people'))));
   out.push(h('details', { class: 'set-card set-signin' },
-    h('summary', {}, 'Staying signed in'),
-    h('p', {}, 'Marquee has no login of its own: it uses the Cloudflare Access sign-in, so how long people stay signed in is set in Cloudflare. To make it last a month:'),
+    h('summary', {}, T('Staying signed in')),
+    h('p', {}, T('Marquee has no login of its own: it uses the Cloudflare Access sign-in, so how long people stay signed in is set in Cloudflare. To make it last a month:')),
     h('ol', {},
-      h('li', {}, 'Cloudflare dashboard → Zero Trust → Access → Applications → Marquee → Edit.'),
-      h('li', {}, 'Set Session Duration to 1 month (it’s 24 hours now) and save.'),
-      h('li', {}, 'If you’ve set a Global session timeout (Settings → Authentication), raise that too: it caps every app.')),
-    h('p', { class: 'set-hint' }, 'If someone’s sign-in does run out while Marquee is open, it now tells them and signs them back in with one tap.')));
+      h('li', {}, T('Cloudflare dashboard → Zero Trust → Access → Applications → Marquee → Edit.')),
+      h('li', {}, T('Set Session Duration to 1 month (it’s 24 hours now) and save.')),
+      h('li', {}, T('If you’ve set a Global session timeout (Settings → Authentication), raise that too: it caps every app.'))),
+    h('p', { class: 'set-hint' }, T('If someone’s sign-in does run out while Marquee is open, it now tells them and signs them back in with one tap.'))));
 
-  out.push(h('h3', { class: 'set-head' }, 'People'));
+  out.push(h('h3', { class: 'set-head' }, T('People')));
   if (state.peopleError) out.push(h('p', { class: 'muted' }, state.peopleError));
-  else if (!state.people) out.push(h('p', { class: 'muted' }, 'Loading…'));
+  else if (!state.people) out.push(h('p', { class: 'muted' }, T('Loading…')));
   else {
     out.push(h('ul', { class: 'rows people' }, state.people.map((u) => h('li', { class: 'row person' },
-      h('button', { type: 'button', class: 'profile-face small', 'aria-label': `${u.avatar ? 'Change' : 'Add'} ${u.name}’s picture`,
-        title: u.avatar ? 'Change picture (right-click to remove)' : 'Add a picture',
+      h('button', { type: 'button', class: 'profile-face small', 'aria-label': T('{0} {1}’s picture', u.avatar ? T('Change') : T('Add'), u.name),
+        title: u.avatar ? T('Change picture (right-click to remove)') : T('Add a picture'),
         onclick: (e) => editPicture({ person: u, opener: e.currentTarget }),
-        oncontextmenu: (e) => { if (!u.avatar) return; e.preventDefault(); if (confirm(`Remove ${u.name}’s picture?`)) removePicture({ person: u }); } },
+        oncontextmenu: (e) => { if (!u.avatar) return; e.preventDefault(); if (confirm(T('Remove {0}’s picture?', u.name))) removePicture({ person: u }); } },
         people.face(u, { size: 40 }), h('span', { class: 'profile-face-edit', 'aria-hidden': 'true' }, icon('camera'))),
       h('div', { class: 'row-text' },
-        h('div', { class: 'row-title' }, u.name, u.isOwner && h('span', { class: 'tag' }, 'Owner')),
+        h('div', { class: 'row-title' }, u.name, u.isOwner && h('span', { class: 'tag' }, T('Owner'))),
         h('div', { class: 'row-meta' },
           u.email && h('span', {}, u.email),
           h('span', {}, `${plural(u.items, 'video')}, ${fmtBytes(u.size)}`),
           u.lastSeen && h('span', {}, lastSeenText(u.lastSeen)))),
       h('div', { class: 'person-controls' },
-        h('label', { class: 'person-toggle' }, 'Can download',
+        h('label', { class: 'person-toggle' }, T('Can download'),
           toggle(u.canDownload, async (on, input) => {
-            if (u.isOwner) { input.checked = true; toast('The owner can always download'); return; }
+            if (u.isOwner) { input.checked = true; toast(T('The owner can always download')); return; }
             await personUpdate(u, { canDownload: on });
-          }, `${u.name} can download`)),
-        h('label', { class: 'person-toggle' }, 'Never auto-delete',
-          toggle(u.keep, (on) => personUpdate(u, { keep: on }), `Never auto-delete ${u.name}’s videos`)),
-        h('label', { class: 'person-toggle person-library' }, 'Library', libraryShareSelect(u)))))));
+          }, T('{0} can download', u.name))),
+        h('label', { class: 'person-toggle' }, T('Never auto-delete'),
+          toggle(u.keep, (on) => personUpdate(u, { keep: on }), T('Never auto-delete {0}’s videos', u.name))),
+        h('label', { class: 'person-toggle person-library' }, T('Library'), libraryShareSelect(u)))))));
   }
   return out;
 }
 // Own library, or one shared with someone else (joining them joins everyone they already share with).
 function libraryShareSelect(u) {
   const mates = u.sharedWith || [];
-  const options = [['', 'Own library']];
-  if (mates.length) options.push([String(mates[0].id), `Shared with ${nameList(mates.map((m) => m.name))}`]);
+  const options = [['', T('Own library')]];
+  if (mates.length) options.push([String(mates[0].id), T('Shared with {0}', nameList(mates.map((m) => m.name)))]);
   for (const p of state.people) {
     if (p.id === u.id || mates.some((m) => m.id === p.id)) continue;
     const theirs = (p.sharedWith || []).filter((m) => m.id !== u.id).map((m) => m.name);
-    options.push([String(p.id), theirs.length ? `Join ${p.name} (with ${nameList(theirs)})` : `Share with ${p.name}`]);
+    options.push([String(p.id), theirs.length ? T('Join {0} (with {1})', p.name, nameList(theirs)) : T('Share with {0}', p.name)]);
   }
-  return select(options, mates.length ? String(mates[0].id) : '', (v) => personUpdate(u, { libraryWith: v ? Number(v) : null }), `${u.name}’s library`);
+  return select(options, mates.length ? String(mates[0].id) : '', (v) => personUpdate(u, { libraryWith: v ? Number(v) : null }), T('{0}’s library', u.name));
 }
 async function personUpdate(u, patch) {
   try {
     await api(`/api/admin/users/${u.id}`, jsonPost(patch));
-    toast('Saved');
+    toast(T('Saved'));
   } catch (err) { toast(err.message); }
   await loadPeople();
   if (u.id === state.me.id) { state.me = (await api('/api/me')).me; await loadLibrary(); }
@@ -6324,49 +6350,49 @@ async function personUpdate(u, patch) {
 // Who has been using Marquee and what they did, from the server's activity log.
 const ACTIVITY_TEXT = {
   watch: (d) => d,
-  download: (d) => `started downloading ${d}`,
-  delete: (d) => `deleted ${d}`,
-  travel: (d) => `saved ${d}`,
-  pause: (d) => `paused the download of ${d}`,
-  resume: (d) => `resumed the download of ${d}`,
-  play: (d) => `watched ${d}`,
-  cast: (d) => { const [what, tv] = d.split(' → '); return tv ? `put ${what} on ${tv}` : `put ${d} on a TV`; },
-  stop: (d) => `stopped ${d}`,
-  subtitles: (d) => `got ${d}`,
-  share: (d) => `shared the clip ${d}`,
-  trim: (d) => `trimmed the clip ${d}`,
-  invite: (d) => `made an invite link (${d})`,
-  joined: (d) => `joined Marquee (${d})`,
-  revoke: (d) => `removed ${d}’s access`,
-  unshare: (d) => `stopped sharing ${d}`,
-  wake: (d) => `woke ${d}`,
-  restart: (d) => `restarted ${d}`,
-  add: (d) => `added ${d} to their library`,
-  remove: (d) => `removed ${d} from their library`,
-  extend: (d) => `kept ${d} longer`,
-  expire: (d) => `auto-deleted ${d}`,
-  upgrade: (d) => `upgraded the quality of ${d}`,
-  blocked: (d) => `tried to download ${d}, which was blocked`,
-  settings: (d) => `changed the server rules (${d})`,
-  permission: (d) => `changed a permission: ${d}`,
+  download: (d) => T('started downloading {0}', d),
+  delete: (d) => T('deleted {0}', d),
+  travel: (d) => T('saved {0}', d),
+  pause: (d) => T('paused the download of {0}', d),
+  resume: (d) => T('resumed the download of {0}', d),
+  play: (d) => T('watched {0}', d),
+  cast: (d) => { const [what, tv] = d.split(' → '); return tv ? T('put {0} on {1}', what, tv) : T('put {0} on a TV', d); },
+  stop: (d) => T('stopped {0}', d),
+  subtitles: (d) => T('got {0}', d),
+  share: (d) => T('shared the clip {0}', d),
+  trim: (d) => T('trimmed the clip {0}', d),
+  invite: (d) => T('made an invite link ({0})', d),
+  joined: (d) => T('joined Marquee ({0})', d),
+  revoke: (d) => T('removed {0}’s access', d),
+  unshare: (d) => T('stopped sharing {0}', d),
+  wake: (d) => T('woke {0}', d),
+  restart: (d) => T('restarted {0}', d),
+  add: (d) => T('added {0} to their library', d),
+  remove: (d) => T('removed {0} from their library', d),
+  extend: (d) => T('kept {0} longer', d),
+  expire: (d) => T('auto-deleted {0}', d),
+  upgrade: (d) => T('upgraded the quality of {0}', d),
+  blocked: (d) => T('tried to download {0}, which was blocked', d),
+  settings: (d) => T('changed the server rules ({0})', d),
+  permission: (d) => T('changed a permission: {0}', d),
 };
 const personName = (person) => typeof person === 'string' ? person.split('@')[0]
-  : person.name || String(person.user || 'Viewer').split('@')[0];
-const clock = (ms) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  : person.name || String(person.user || T('Viewer')).split('@')[0];
+const clock = (ms) => new Date(ms).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 function dayLabel(ms) {
   const d = new Date(ms);
   const today = new Date();
   const yesterday = new Date(Date.now() - 86400000);
-  if (d.toDateString() === today.toDateString()) return 'Today';
-  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
-  return d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
+  if (d.toDateString() === today.toDateString()) return T('Today');
+  if (d.toDateString() === yesterday.toDateString()) return T('Yesterday');
+  return d.toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' });
 }
 function lastSeenText(ms) {
   const min = (Date.now() - ms) / 60000;
-  if (min < 3) return 'Active now';
-  if (min < 60) return `Seen ${Math.round(min)} min ago`;
-  if (min < 24 * 60) return `Seen ${Math.round(min / 60)} h ago`;
-  return `Seen ${fmtAgo(ms)}`;
+  if (min < 3) return T('Active now');
+  if (min < 60) return T('Seen {0} min ago', Math.round(min));
+  if (min < 24 * 60) return T('Seen {0} h ago', Math.round(min / 60));
+  return T('Seen {0}', fmtAgo(ms));
 }
 
 async function loadActivity() {
@@ -6382,14 +6408,14 @@ async function makeInvite(btn) {
     const inv = await api('/api/access/invite', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ note }) });
     state.newInvite = inv.url;
     state.inviteNote = '';
-    await copyWithToast(inv.url, 'Invite link copied: send it to them');
+    await copyWithToast(inv.url, T('Invite link copied: send it to them'));
   } catch (err) { toast(err.message); }
   await loadActivity();
   renderActivity();
 }
 // copyText() (above) has the iOS fallback; this adds the toast, or shows the link if copying failed
 async function copyWithToast(text, msg) {
-  if (await copyText(text)) toast(msg); else prompt('Copy this link', text);
+  if (await copyText(text)) toast(msg); else prompt(T('Copy this link'), text);
 }
 async function accessAction(path, body, msg) {
   try {
@@ -6402,9 +6428,9 @@ async function accessAction(path, body, msg) {
 
 function accessName(email, name) {
   return inlineName({
-    getName: () => name, label: 'Person', maxLength: 40,
+    getName: () => name, label: T('Person'), maxLength: 40,
     errorId: `person-rename-error-${encodeURIComponent(email)}`, className: 'person-name',
-    successMessage: 'Name saved',
+    successMessage: T('Name saved'),
     save: async (next, previousName) => {
       const { user } = await api('/api/access/rename', jsonPost({ email, name: next, previousName }));
       name = user.name;
@@ -6424,29 +6450,29 @@ function peopleSection(q) {
   const a = state.access || {};
   const out = [];
   if (state.access && !a.configured) {
-    out.push(h('p', { class: 'muted' }, 'Set CF_API_TOKEN, CF_ACCOUNT_ID and CF_ACCESS_LIST_ID in .env to invite people from here (see docs/remote-access.md in the Marquee folder).'));
+    out.push(h('p', { class: 'muted' }, T('Set CF_API_TOKEN, CF_ACCOUNT_ID and CF_ACCESS_LIST_ID in .env to invite people from here (see docs/remote-access.md in the Marquee folder).')));
   } else if (state.access) {
-    const noteInput = h('input', { id: 'invite-note', class: 'invite-note', type: 'text', maxlength: '60', placeholder: 'Who’s it for?', value: state.inviteNote || '',
+    const noteInput = h('input', { id: 'invite-note', class: 'invite-note', type: 'text', maxlength: '60', placeholder: T('Who’s it for?'), value: state.inviteNote || '',
       oninput: (e) => { state.inviteNote = e.currentTarget.value; } });
     out.push(h('div', { class: 'invite-new' }, noteInput,
-      h('button', { class: 'retry', onclick: (e) => makeInvite(e.currentTarget) }, 'Invite someone')));
-    out.push(h('p', { class: 'muted invite-hint' }, 'Makes a one-time link (valid 7 days). They enter their email and can sign in from then on.'));
+      h('button', { class: 'retry', onclick: (e) => makeInvite(e.currentTarget) }, T('Invite someone'))));
+    out.push(h('p', { class: 'muted invite-hint' }, T('Makes a one-time link (valid 7 days). They enter their email and can sign in from then on.')));
     const open = (a.invites || []).filter((i) => i.state === 'open');
     if (open.length) {
       out.push(h('ul', { class: 'rows' }, open.map((i) => {
         const url = `${location.origin}/c/i/${i.token}`;
         return h('li', { class: 'row' },
           h('span', { class: 'row-text' },
-            h('span', { class: 'row-title' }, i.note || 'Invite'),
-            h('span', { class: 'row-meta' }, h('span', {}, `open · expires ${new Date(i.expires).toLocaleDateString([], { day: 'numeric', month: 'short' })}`))),
+            h('span', { class: 'row-title' }, i.note || T('Invite')),
+            h('span', { class: 'row-meta' }, h('span', {}, T('open · expires {0}', new Date(i.expires).toLocaleDateString(locale, { day: 'numeric', month: 'short' }))))),
           h('span', { class: 'row-actions' },
-            h('button', { class: 'retry', onclick: () => copyWithToast(url, 'Invite link copied') }, 'Copy link'),
-            h('button', { class: 'retry', onclick: () => accessAction(`/api/access/invite/${i.id}/revoke`, null, 'Invite cancelled') }, 'Cancel')));
+            h('button', { class: 'retry', onclick: () => copyWithToast(url, T('Invite link copied')) }, T('Copy link')),
+            h('button', { class: 'retry', onclick: () => accessAction(`/api/access/invite/${i.id}/revoke`, null, T('Invite cancelled')) }, T('Cancel'))));
       })));
     }
-    if (a.error) out.push(h('p', { class: 'muted' }, `Couldn’t read the access list: ${a.error}`));
+    if (a.error) out.push(h('p', { class: 'muted' }, T('Couldn’t read the access list: {0}', a.error)));
   }
-  out.push(h('p', { class: 'muted activity-location-note' }, 'Locations are approximate. City names require Cloudflare’s “Add visitor location headers” Managed Transform.'));
+  out.push(h('p', { class: 'muted activity-location-note' }, T('Locations are approximate. City names require Cloudflare’s “Add visitor location headers” Managed Transform.')));
 
   const members = a.members || null;
   const key = (u) => String(u).toLowerCase();
@@ -6472,21 +6498,21 @@ function peopleSection(q) {
         member ? accessName(email, name) : h('span', { class: 'row-title', title: email }, name),
         h('span', { class: 'row-meta' },
           isEmail && h('span', {}, email),
-          owner && h('span', {}, 'owner'),
-          h('span', {}, p ? lastSeenText(p.at) : 'Hasn’t signed in yet'),
+          owner && h('span', {}, T('owner')),
+          h('span', {}, p ? lastSeenText(p.at) : T('Hasn’t signed in yet')),
           p && h('span', {}, activityDevice(p)))),
       member && !owner && h('span', { class: 'row-actions' }, h('button', {
         class: 'retry',
         onclick: (e) => {
           const b = e.currentTarget;
-          if (b.dataset.sure) return accessAction('/api/access/remove', { email }, `${name} can’t sign in any more`);
+          if (b.dataset.sure) return accessAction('/api/access/remove', { email }, T('{0} can’t sign in any more', name));
           b.dataset.sure = '1';
-          b.textContent = 'Sure?';
-          setTimeout(() => { b.textContent = 'Remove'; delete b.dataset.sure; }, 4000);
+          b.textContent = T('Sure?');
+          setTimeout(() => { b.textContent = T('Remove'); delete b.dataset.sure; }, 4000);
         },
-      }, 'Remove')));
-  })) : h('p', { class: 'muted' }, q ? 'Nobody matches.' : 'Nobody yet.'));
-  return foldGroup('people', 'h3', 'activity-head', 'People', rows.length, out, Boolean(q));
+      }, T('Remove'))));
+  })) : h('p', { class: 'muted' }, q ? T('Nobody matches.') : T('Nobody yet.')));
+  return foldGroup('people', 'h3', 'activity-head', T('People'), rows.length, out, Boolean(q));
 }
 
 // Activity sections and days fold open/closed; the folded ones are remembered per browser.
@@ -6506,12 +6532,12 @@ function foldGroup(key, tag, cls, title, count, kids, forceOpen = false) {
     type: 'button',
     class: 'fold-btn',
     'aria-expanded': String(!folded),
-    title: folded ? 'Show' : 'Hide',
+    title: folded ? T('Show') : T('Hide'),
     onclick: () => {
       const open = content.hidden;
       content.hidden = !open;
       btn.setAttribute('aria-expanded', String(open));
-      btn.title = open ? 'Hide' : 'Show';
+      btn.title = open ? T('Hide') : T('Show');
       const set = activityFoldSet();
       set.delete(key);
       if (!open) set.add(key);
@@ -6526,13 +6552,13 @@ function renderActivity() {
   // Rebuilding mid-typing would throw away the box being typed in (invite note, rename).
   if ($('#activity-body .person-name .clip-rename-form') || editingIn('#activity-body')) return;
   const body = $('#activity-body');
-  if (state.activityError) { body.replaceChildren(notice('Couldn’t get activity', state.activityError)); return; }
+  if (state.activityError) { body.replaceChildren(notice(T('Couldn’t get activity'), state.activityError)); return; }
   if (!state.activity) return;
   const q = norm(state.query);
   const events = state.activity.events.filter((e) => !q || norm(`${e.user} ${personName(e)} ${e.subjectName || ''} ${e.detail} ${e.action} ${activityDevice(e)}`).includes(q));
   const out = [...peopleSection(q)];
   const eventKids = [];
-  if (!events.length) eventKids.push(h('p', { class: 'muted' }, q ? 'Nothing matches.' : 'Nothing has happened yet.'));
+  if (!events.length) eventKids.push(h('p', { class: 'muted' }, q ? T('Nothing matches.') : T('Nothing has happened yet.')));
   const days = [];
   for (const e of events) {
     const label = dayLabel(e.at);
@@ -6547,15 +6573,15 @@ function renderActivity() {
         h('span', { class: 'row-meta' }, h('span', {}, activityDevice(e))))));
   }
   for (const d of days) eventKids.push(...foldGroup(d.key, 'p', 'activity-day', d.label, d.n, [d.list], Boolean(q)));
-  out.push(...foldGroup('events', 'h3', 'activity-head', 'What happened', events.length, eventKids, Boolean(q)));
+  out.push(...foldGroup('events', 'h3', 'activity-head', T('What happened'), events.length, eventKids, Boolean(q)));
   body.replaceChildren(...out);
 }
 
 function activityDevice(entry) {
   const loc = entry.location;
   let country = loc?.country || '';
-  if (country) { try { country = new Intl.DisplayNames(['en'], { type: 'region' }).of(country); } catch { /* use country code */ } }
-  return [entry.device, [loc?.city, country].filter(Boolean).join(', ') || 'Location unavailable'].filter(Boolean).join(' · ');
+  if (country) { try { country = new Intl.DisplayNames([lang], { type: 'region' }).of(country); } catch { /* use country code */ } }
+  return [entry.device, [loc?.city, country].filter(Boolean).join(', ') || T('Location unavailable')].filter(Boolean).join(' · ');
 }
 
 // ---------- house (server owner only) ----------
@@ -6572,13 +6598,13 @@ const mbps = (bytesPerSec) => (bytesPerSec * 8) / 1e6;
 function fmtMbit(bytesPerSec, unit = true) {
   const v = mbps(bytesPerSec || 0);
   const t = v >= 1000 ? `${(v / 1000).toFixed(1)} G` : v >= 10 ? `${Math.round(v)}` : v >= 0.05 ? v.toFixed(1) : '0';
-  return unit ? `${t}${t.endsWith('G') ? 'bit/s' : ' Mbit/s'}` : t;
+  return unit ? `${t}${t.endsWith('G') ? 'bit/s' : T(' Mbit/s')}` : t;
 }
 const fmtFor = (ms) => {
   const s = Math.max(0, Math.round(ms / 1000));
   if (s < 60) return `${s} s`;
-  if (s < 3600) return `${Math.floor(s / 60)} min`;
-  return `${Math.floor(s / 3600)} h ${Math.floor((s % 3600) / 60)} min`;
+  if (s < 3600) return T('{0} min', Math.floor(s / 60));
+  return T('{0} h {1} min', Math.floor(s / 3600), Math.floor((s % 3600) / 60));
 };
 // A meter row: name · bar · reading. `parts` are [value, class] segments of `max`.
 function loadRow(name, parts, max, reading, title) {
@@ -6590,7 +6616,7 @@ function loadRow(name, parts, max, reading, title) {
       parts.map(([v, cls]) => h('i', { class: cls || null, style: `width:${max ? Math.min(100, (100 * (v || 0)) / max) : 0}%` }))),
     h('span', { class: 'house-disk-free' }, reading));
 }
-const WHERE = { internet: 'internet', lan: 'home network', tv: 'TV' };
+const WHERE = { internet: 'internet', lan: T('home network'), tv: T('TV') };
 
 // A small history chart (one series), with a readout that follows the pointer.
 function loadChart(title, points, { value, peak, max, fmt, empty }) {
@@ -6609,12 +6635,12 @@ function loadChart(title, points, { value, peak, max, fmt, empty }) {
   svg.setAttribute('preserveAspectRatio', 'none');
   svg.setAttribute('class', 'load-spark');
   svg.setAttribute('role', 'img');
-  svg.setAttribute('aria-label', `${title}: latest ${fmt(value(points[points.length - 1]))}, highest ${fmt(top)}`);
+  svg.setAttribute('aria-label', T('{0}: latest {1}, highest {2}', title, fmt(value(points[points.length - 1])), fmt(top)));
   svg.innerHTML = `<path class="load-area" d="${line}L${W},${H}L0,${H}Z"/><path class="load-line" d="${line}"/>`
     + `<line class="load-cursor" x1="0" x2="0" y1="0" y2="${H}" visibility="hidden"/>`;
   const cursor = svg.lastChild;
-  const stamp = (p) => `${clock(p.t)} · ${fmt(value(p))}${peak(p) != null && peak(p) > (value(p) || 0) ? ` (peak ${fmt(peak(p))})` : ''}`;
-  const latest = () => { read.textContent = `now ${fmt(value(points[points.length - 1]))} · top ${fmt(top)}`; cursor.setAttribute('visibility', 'hidden'); };
+  const stamp = (p) => `${clock(p.t)} · ${fmt(value(p))}${peak(p) != null && peak(p) > (value(p) || 0) ? T(' (peak {0})', fmt(peak(p))) : ''}`;
+  const latest = () => { read.textContent = T('now {0} · top {1}', fmt(value(points[points.length - 1])), fmt(top)); cursor.setAttribute('visibility', 'hidden'); };
   const show = (ev) => {
     const r = svg.getBoundingClientRect();
     const i = Math.max(0, Math.min(points.length - 1, Math.round(((ev.clientX - r.left) / r.width) * (points.length - 1))));
@@ -6631,60 +6657,60 @@ function loadChart(title, points, { value, peak, max, fmt, empty }) {
 }
 
 function sharingSection(L) {
-  const out = [h('div', { class: 'load-head' }, h('h3', { class: 'activity-head' }, 'Sharing'),
-    segmented([[1, 'Last hour'], [24, 'Last day']], state.houseHours || 1, async (hours) => {
+  const out = [h('div', { class: 'load-head' }, h('h3', { class: 'activity-head' }, T('Sharing')),
+    segmented([[1, T('Last hour')], [24, T('Last day')]], state.houseHours || 1, async (hours) => {
       state.houseHours = hours; await loadHouse(); if (state.view === 'house') renderHouse();
-    }, 'History'))];
-  if (!L) { out.push(h('p', { class: 'muted' }, 'Couldn’t read the server’s load.')); return out; }
+    }, T('History')))];
+  if (!L) { out.push(h('p', { class: 'muted' }, T('Couldn’t read the server’s load.'))); return out; }
   const lim = L.limits || {};
 
   const rows = [];
   const inet = L.internet || {};
   const upNow = (inet.streams || 0) + (inet.torrents || 0);
   const upMax = lim.uploadMbps ? (lim.uploadMbps * 1e6) / 8 : null;
-  rows.push(loadRow('Internet upload', [[inet.streams, null], [inet.torrents, 'is-alt']], upMax,
-    `${fmtMbit(upNow, false)}${upMax ? ` of ${lim.uploadMbps}` : ''} Mbit/s`,
-    'Marquee streams going out through Cloudflare, plus qBittorrent seeding. Set UPLOAD_MBPS in .env to the connection’s upload speed.'));
+  rows.push(loadRow(T('Internet upload'), [[inet.streams, null], [inet.torrents, 'is-alt']], upMax,
+    T('{0}{1} Mbit/s', fmtMbit(upNow, false), upMax ? T(' of {0}', lim.uploadMbps) : ''),
+    T('Marquee streams going out through Cloudflare, plus qBittorrent seeding. Set UPLOAD_MBPS in .env to the connection’s upload speed.')));
   rows.push(h('div', { class: 'load-legend muted' },
-    h('span', {}, h('i', { class: 'load-key' }), `streams ${fmtMbit(inet.streams)}`),
-    inet.torrents != null && h('span', {}, h('i', { class: 'load-key is-alt' }), `torrents ${fmtMbit(inet.torrents)}${inet.torrentLimit ? ` (capped at ${fmtMbit(inet.torrentLimit)})` : ''}`),
-    h('span', {}, `home network ${fmtMbit(L.lan?.streams)}`)));
+    h('span', {}, h('i', { class: 'load-key' }), T('streams {0}', fmtMbit(inet.streams))),
+    inet.torrents != null && h('span', {}, h('i', { class: 'load-key is-alt' }), T('torrents {0}{1}', fmtMbit(inet.torrents), inet.torrentLimit ? T(' (capped at {0})', fmtMbit(inet.torrentLimit)) : '')),
+    h('span', {}, T('home network {0}', fmtMbit(L.lan?.streams)))));
   if (L.net) {
     const link = lim.linkMbps ? (lim.linkMbps * 1e6) / 8 : null;
-    rows.push(loadRow('Network card', [[L.net.up, null]], link,
-      `↑ ${fmtMbit(L.net.up, false)} · ↓ ${fmtMbit(L.net.down, false)}${link ? ` of ${Math.round(lim.linkMbps)}` : ''} Mbit/s`,
-      'Everything the server sends and receives, from every program.'));
+    rows.push(loadRow(T('Network card'), [[L.net.up, null]], link,
+      T('↑ {0} · ↓ {1}{2} Mbit/s', fmtMbit(L.net.up, false), fmtMbit(L.net.down, false), link ? T(' of {0}', Math.round(lim.linkMbps)) : ''),
+      T('Everything the server sends and receives, from every program.')));
   }
-  if (L.cpu != null) rows.push(loadRow('CPU', [[L.cpu, null]], 100, `${L.cpu} %${L.marqueeCpu != null ? ` · Marquee ${L.marqueeCpu} %` : ''}`));
+  if (L.cpu != null) rows.push(loadRow(T('CPU'), [[L.cpu, null]], 100, T('{0} %{1}', L.cpu, L.marqueeCpu != null ? T(' · Marquee {0} %', L.marqueeCpu) : '')));
   const g = L.gpu;
   if (g) {
-    rows.push(loadRow('GPU encoder', [[g.enc, null]], 100,
-      `${g.enc ?? 0} % · ${g.sessions ?? 0} of ${lim.nvencSessions} encodes${g.temp != null ? ` · ${g.temp} °C` : ''}`,
-      `${g.name}: NVENC is the hardware encoder conversions use. GPU ${g.busy ?? 0} % busy, decoder ${g.dec ?? 0} %.`));
+    rows.push(loadRow(T('GPU encoder'), [[g.enc, null]], 100,
+      T('{0} % · {1} of {2} encodes{3}', g.enc ?? 0, g.sessions ?? 0, lim.nvencSessions, g.temp != null ? ` · ${g.temp} °C` : ''),
+      T('{0}: NVENC is the hardware encoder conversions use. GPU {1} % busy, decoder {2} %.', g.name, g.busy ?? 0, g.dec ?? 0)));
   }
   for (const d of (L.disks || []).filter((x) => x.label).sort((a, b) => (a.label === 'Media' ? -1 : b.label === 'Media' ? 1 : 0))) {
-    rows.push(loadRow(`${d.label} drive ${d.drive}:`, [[d.busy, null]], 100, `${d.busy} % busy · reads ${fmtBytes(d.read)}/s`,
-      `Writes ${fmtBytes(d.write)}/s. A drive near 100 % busy makes streams from it stutter.`));
+    rows.push(loadRow(T('{0} drive {1}:', T(d.label), d.drive), [[d.busy, null]], 100, T('{0} % busy · reads {1}/s', d.busy, fmtBytes(d.read)),
+      T('Writes {0}/s. A drive near 100 % busy makes streams from it stutter.', fmtBytes(d.write))));
   }
-  if (!L.sampled) rows.push(h('p', { class: 'muted load-note' }, 'Machine readings are starting (or only work on the Windows server); streams and jobs are still counted.'));
+  if (!L.sampled) rows.push(h('p', { class: 'muted load-note' }, T('Machine readings are starting (or only work on the Windows server); streams and jobs are still counted.')));
 
   const hist = L.history || [];
-  const span = (state.houseHours || 1) === 24 ? 'last day' : 'last hour';
+  const span = (state.houseHours || 1) === 24 ? T('last day') : T('last hour');
   out.push(h('div', { class: 'house-card' },
     (L.warnings || []).length > 0 && h('ul', { class: 'load-warnings' }, L.warnings.map((w) => h('li', {}, w))),
     rows,
     h('div', { class: 'load-charts' },
-      loadChart('Internet upload', hist, {
+      loadChart(T('Internet upload'), hist, {
         value: (p) => (p.inet || 0) + (p.tor || 0), peak: (p) => (p.inetMax != null ? p.inetMax + (p.tor || 0) : null),
-        fmt: (v) => fmtMbit(v), empty: `History builds up a minute at a time (${span}).`,
+        fmt: (v) => fmtMbit(v), empty: T('History builds up a minute at a time ({0}).', span),
       }),
-      loadChart('CPU', hist, { value: (p) => p.cpu, peak: (p) => p.cpuMax, max: 100, fmt: (v) => `${Math.round(v || 0)} %`, empty: `History builds up a minute at a time (${span}).` }))));
+      loadChart('CPU', hist, { value: (p) => p.cpu, peak: (p) => p.cpuMax, max: 100, fmt: (v) => `${Math.round(v || 0)} %`, empty: T('History builds up a minute at a time ({0}).', span) }))));
 
   const streams = L.streams || [];
   out.push(h('div', { class: 'house-card' },
-    h('div', { class: 'house-card-head' }, h('span', { class: 'row-title' }, streams.length ? `Streaming now · ${streams.length}` : 'Streaming now'),
-      h('span', { class: 'muted house-seen' }, `checked ${clock(L.at)}`)),
-    !streams.length ? h('p', { class: 'muted' }, 'Nothing is being watched.')
+    h('div', { class: 'house-card-head' }, h('span', { class: 'row-title' }, streams.length ? T('Streaming now · {0}', streams.length) : T('Streaming now')),
+      h('span', { class: 'muted house-seen' }, T('checked {0}', clock(L.at)))),
+    !streams.length ? h('p', { class: 'muted' }, T('Nothing is being watched.'))
       : h('ul', { class: 'load-list' }, streams.map((s) => {
         const slow = s.behind;
         return h('li', {},
@@ -6693,41 +6719,41 @@ function sharingSection(L) {
             h('span', { class: 'row-title' }, s.label),
             h('span', { class: 'row-meta' },
               h('span', {}, [s.who, s.device].filter(Boolean).join(' · ')),
-              h('span', {}, s.where === 'internet' && s.fromHome ? 'internet (from home, via Cloudflare)' : WHERE[s.where] || s.where),
-              h('span', {}, s.waiting ? 'buffered ahead' : `${fmtMbit(s.rate)} now`),
-              s.speed > 0 && h('span', { title: 'How fast it arrives while being sent: the line’s speed for this viewer' }, `arrives at ${fmtMbit(s.speed)}`),
-              h('span', {}, `avg ${fmtMbit(s.avg)}`),
-              s.needs && h('span', { class: slow ? 'load-bad' : null }, `file needs ${fmtMbit(s.needs)}`),
-              h('span', {}, `${fmtBytes(s.sent)} sent · ${fmtFor(Date.now() - s.since)}`))));
+              h('span', {}, s.where === 'internet' && s.fromHome ? T('internet (from home, via Cloudflare)') : WHERE[s.where] || s.where),
+              h('span', {}, s.waiting ? T('buffered ahead') : T('{0} now', fmtMbit(s.rate))),
+              s.speed > 0 && h('span', { title: T('How fast it arrives while being sent: the line’s speed for this viewer') }, T('arrives at {0}', fmtMbit(s.speed))),
+              h('span', {}, T('avg {0}', fmtMbit(s.avg))),
+              s.needs && h('span', { class: slow ? 'load-bad' : null }, T('file needs {0}', fmtMbit(s.needs))),
+              h('span', {}, T('{0} sent · {1}', fmtBytes(s.sent), fmtFor(Date.now() - s.since))))));
       }))));
 
   const jobs = L.jobs || [];
   out.push(h('div', { class: 'house-card' },
-    h('div', { class: 'house-card-head' }, h('span', { class: 'row-title' }, jobs.length ? `Encoding now · ${jobs.length}` : 'Encoding now')),
-    !jobs.length ? h('p', { class: 'muted' }, 'No clip copies, conversions or previews are being made.')
+    h('div', { class: 'house-card-head' }, h('span', { class: 'row-title' }, jobs.length ? T('Encoding now · {0}', jobs.length) : T('Encoding now'))),
+    !jobs.length ? h('p', { class: 'muted' }, T('No clip copies, conversions or previews are being made.'))
       : h('ul', { class: 'load-list' }, jobs.map((j) => h('li', {},
         h('span', { class: 'activity-dot is-on', 'aria-hidden': 'true' }),
         h('div', { class: 'load-item' },
           h('span', { class: 'row-title' }, `${j.kind} · ${j.label}`),
           h('span', { class: 'row-meta' },
             j.encoder && h('span', {}, j.encoder),
-            h('span', {}, j.cpu != null ? `CPU ${j.cpu} %` : 'CPU …'),
-            j.mem && h('span', {}, `RAM ${fmtBytes(j.mem)}`),
+            h('span', {}, j.cpu != null ? T('CPU {0} %', j.cpu) : T('CPU …')),
+            j.mem && h('span', {}, T('RAM {0}', fmtBytes(j.mem))),
             j.percent != null && h('span', {}, `${j.percent} %${j.speed ? ` · ${j.speed}` : ''}`),
-            h('span', {}, `running ${fmtFor(Date.now() - j.since)}`))))))));
+            h('span', {}, T('running {0}', fmtFor(Date.now() - j.since))))))))));
 
   const top = L.top || [];
   if (top.length) {
     out.push(h('div', { class: 'house-card' },
-      h('div', { class: 'house-card-head' }, h('span', { class: 'row-title' }, 'Busiest programs')),
+      h('div', { class: 'house-card-head' }, h('span', { class: 'row-title' }, T('Busiest programs'))),
       h('ul', { class: 'load-top' }, top.map((p) => h('li', {},
-        h('span', { class: 'house-svc-name' }, p.name), h('span', { class: 'muted' }, `${p.cpu} % CPU${p.mem ? ` · ${fmtBytes(p.mem)}` : ''}${p.job ? ' · Marquee job' : ''}`))))));
+        h('span', { class: 'house-svc-name' }, p.name), h('span', { class: 'muted' }, T('{0} % CPU{1}{2}', p.cpu, p.mem ? ` · ${fmtBytes(p.mem)}` : '', p.job ? T(' · Marquee job') : '')))))));
   }
 
   const recent = L.recent || [];
   if (recent.length) {
     out.push(h('details', { class: 'house-card load-recent', open: state.houseRecentOpen || null, ontoggle: (e) => { state.houseRecentOpen = e.currentTarget.open; } },
-      h('summary', { class: 'row-title' }, `Recently finished · ${recent.length}`),
+      h('summary', { class: 'row-title' }, T('Recently finished · {0}', recent.length)),
       h('ul', { class: 'load-list' }, recent.map((r) => h('li', {},
         h('span', { class: `activity-dot${r.type === 'job' && r.ok === false ? ' is-bad' : ''}`, 'aria-hidden': 'true' }),
         h('div', { class: 'load-item' },
@@ -6735,56 +6761,56 @@ function sharingSection(L) {
           h('span', { class: 'row-meta' },
             h('span', {}, `${clock(r.start)}–${clock(r.end)} (${fmtFor(r.end - r.start)})`),
             r.type === 'stream' && h('span', {}, `${r.who} · ${WHERE[r.where] || r.where}`),
-            r.type === 'stream' && h('span', {}, `avg ${fmtMbit(r.avg)} · peak ${fmtMbit(r.peak)}${r.needs ? ` · needs ${fmtMbit(r.needs)}` : ''}`),
-            r.type === 'stream' && h('span', {}, `${fmtBytes(r.sent)} sent`),
+            r.type === 'stream' && h('span', {}, T('avg {0} · peak {1}{2}', fmtMbit(r.avg), fmtMbit(r.peak), r.needs ? T(' · needs {0}', fmtMbit(r.needs)) : '')),
+            r.type === 'stream' && h('span', {}, T('{0} sent', fmtBytes(r.sent))),
             r.type === 'job' && r.encoder && h('span', {}, r.encoder),
-            r.type === 'job' && r.cpu != null && h('span', {}, `CPU avg ${r.cpu} %${r.peak ? `, peak ${r.peak} %` : ''}`),
-            r.type === 'job' && r.ok === false && h('span', { class: 'load-bad' }, 'failed'))))))));
+            r.type === 'job' && r.cpu != null && h('span', {}, T('CPU avg {0} %{1}', r.cpu, r.peak ? T(', peak {0} %', r.peak) : '')),
+            r.type === 'job' && r.ok === false && h('span', { class: 'load-bad' }, T('failed')))))))));
   }
   return out;
 }
 
 function meter(used, size) {
   const pct = size ? Math.round((100 * used) / size) : 0;
-  return h('span', { class: `meter${pct >= 90 ? ' is-full' : ''}`, title: `${pct} % used` }, h('i', { style: `width:${pct}%` }));
+  return h('span', { class: `meter${pct >= 90 ? ' is-full' : ''}`, title: T('{0} % used', pct) }, h('i', { style: `width:${pct}%` }));
 }
 const ago = (ms) => {
   const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
-  if (s < 90) return 'just now';
-  if (s < 5400) return `${Math.round(s / 60)} min ago`;
-  if (s < 129600) return `${Math.round(s / 3600)} h ago`;
-  return `${Math.round(s / 86400)} days ago`;
+  if (s < 90) return T('just now');
+  if (s < 5400) return T('{0} min ago', Math.round(s / 60));
+  if (s < 129600) return T('{0} h ago', Math.round(s / 3600));
+  return T('{0} days ago', Math.round(s / 86400));
 };
-const upFor = (secs) => (secs >= 86400 ? `up ${Math.floor(secs / 86400)} d ${Math.floor((secs % 86400) / 3600)} h` : `up ${Math.floor(secs / 3600)} h ${Math.floor((secs % 3600) / 60)} min`);
-function diskRows(disks, label = (d) => d.label || d.mount) {
+const upFor = (secs) => (secs >= 86400 ? T('up {0} d {1} h', Math.floor(secs / 86400), Math.floor((secs % 86400) / 3600)) : T('up {0} h {1} min', Math.floor(secs / 3600), Math.floor((secs % 3600) / 60)));
+function diskRows(disks, label = (d) => (d.label ? T(d.label) : d.mount)) {
   return disks.map((d) => h('div', { class: 'house-disk' },
     h('span', { class: 'house-disk-name' }, label(d)),
     meter(d.used, d.size),
-    h('span', { class: 'house-disk-free' }, `${fmtBytes(d.size - d.used)} free`)));
+    h('span', { class: 'house-disk-free' }, T('{0} free', fmtBytes(d.size - d.used)))));
 }
 
 function renderHouse() {
   const body = $('#house-body');
   if (state.houseTab === 'screentime') { body.replaceChildren(houseTabs(), ...screenTimeView()); return; }
-  if (state.houseError) { body.replaceChildren(houseTabs(), notice('Couldn’t check the house', state.houseError, () => loadHouse().then(renderHouse))); return; }
+  if (state.houseError) { body.replaceChildren(houseTabs(), notice(T('Couldn’t check the house'), state.houseError, () => loadHouse().then(renderHouse))); return; }
   const r = state.house;
   if (!r) return;
   const q = norm(state.query);
   const out = [houseTabs()];
   out.push(r.issues.length
     ? h('div', { class: 'house-status has-issues' },
-      h('strong', {}, r.issues.length === 1 ? '1 thing needs a look' : `${r.issues.length} things need a look`),
+      h('strong', {}, r.issues.length === 1 ? T('1 thing needs a look') : T('{0} things need a look', r.issues.length)),
       h('ul', {}, r.issues.map((i) => h('li', {}, i))))
-    : h('div', { class: 'house-status' }, h('strong', {}, 'Everything’s fine'), h('span', { class: 'muted' }, ` · checked ${clock(r.checkedAt)}`)));
+    : h('div', { class: 'house-status' }, h('strong', {}, T('Everything’s fine')), h('span', { class: 'muted' }, T(' · checked {0}', clock(r.checkedAt)))));
 
   const sv = r.server;
   if (!q || norm(`server ${sv.name}`).includes(q)) {
-    out.push(h('h3', { class: 'activity-head' }, 'Server'));
+    out.push(h('h3', { class: 'activity-head' }, T('Server')));
     out.push(h('div', { class: 'house-card' },
       h('div', { class: 'house-card-head' },
         h('span', { class: 'row-title' }, sv.name),
-        h('span', { class: 'row-meta' }, h('span', {}, upFor(sv.uptime)), sv.cpu != null && h('span', {}, `CPU ${sv.cpu} %`),
-          h('span', {}, `RAM ${fmtBytes(sv.mem.total - sv.mem.avail)} / ${fmtBytes(sv.mem.total)}`))),
+        h('span', { class: 'row-meta' }, h('span', {}, upFor(sv.uptime)), sv.cpu != null && h('span', {}, T('CPU {0} %', sv.cpu)),
+          h('span', {}, T('RAM {0} / {1}', fmtBytes(sv.mem.total - sv.mem.avail), fmtBytes(sv.mem.total))))),
       diskRows(sv.disks),
       h('ul', { class: 'house-services' }, sv.services.map((x) => h('li', {},
         h('span', { class: `activity-dot${x.ok ? ' is-on' : ' is-bad'}`, 'aria-hidden': 'true' }),
@@ -6793,35 +6819,35 @@ function renderHouse() {
 
   if (!q || norm(`vpn mullvad tunnel torrent ${r.machines.map((m) => m.host).join(' ')}`).includes(q)) {
     const card = vpnCard(r);
-    if (card) out.push(h('h3', { class: 'activity-head' }, 'VPN'), card);
+    if (card) out.push(h('h3', { class: 'activity-head' }, T('VPN')), card);
   }
 
   if (!q || norm('sharing streams streaming encoding upload cpu gpu').includes(q)) out.push(...sharingSection(state.houseLoad));
 
   const powered = (r.power || []).filter((pw) => !q || norm(`power ${pw.host} ${pw.entries.map((e) => e.label).join(' ')}`).includes(q));
   if (powered.length) {
-    out.push(h('h3', { class: 'activity-head' }, 'Power'));
+    out.push(h('h3', { class: 'activity-head' }, T('Power')));
     for (const pw of powered) out.push(powerCard(pw));
   }
 
-  out.push(h('h3', { class: 'activity-head' }, 'Machines'));
+  out.push(h('h3', { class: 'activity-head' }, T('Machines')));
   const machines = r.machines.filter((m) => !q || norm(`${m.host} ${m.kind} ${m.os}`).includes(q));
-  if (!r.agents) out.push(h('p', { class: 'muted' }, 'Set HOUSE_TOKEN in .env and run agents/marquee-house on each machine to see them here.'));
-  else if (!machines.length) out.push(h('p', { class: 'muted' }, q ? 'Nothing matches.' : 'No machine has reported yet.'));
+  if (!r.agents) out.push(h('p', { class: 'muted' }, T('Set HOUSE_TOKEN in .env and run agents/marquee-house on each machine to see them here.')));
+  else if (!machines.length) out.push(h('p', { class: 'muted' }, q ? T('Nothing matches.') : T('No machine has reported yet.')));
   for (const m of machines) {
     const meta = [m.kind, m.os, m.kernel, m.uptime != null && upFor(m.uptime),
-      m.battery && `battery ${m.battery.pct} %${m.battery.status && m.battery.status !== 'Unknown' ? ` (${m.battery.status.toLowerCase()})` : ''}`,
-      m.updates ? `${m.updates} updates` : m.updates === 0 && 'up to date',
-      m.secureBoot != null && `Secure Boot ${m.secureBoot ? 'on' : 'OFF'}`,
-      m.lastBackup ? `backup ${ago(m.lastBackup * 1000)}` : 'no backups'].filter(Boolean);
+      m.battery && T('battery {0} %{1}', m.battery.pct, m.battery.status && m.battery.status !== 'Unknown' ? ` (${m.battery.status.toLowerCase()})` : ''),
+      m.updates ? T('{0} updates', m.updates) : m.updates === 0 && T('up to date'),
+      m.secureBoot != null && T('Secure Boot {0}', m.secureBoot ? 'on' : 'OFF'),
+      m.lastBackup ? T('backup {0}', ago(m.lastBackup * 1000)) : T('no backups')].filter(Boolean);
     out.push(h('div', { class: `house-card${m.away ? ' is-away' : ''}` },
       h('div', { class: 'house-card-head' },
         h('span', { class: `activity-dot${m.away ? '' : m.issues.length ? ' is-bad' : ' is-on'}`, 'aria-hidden': 'true' }),
         h('span', { class: 'row-title' }, m.host),
-        h('span', { class: 'muted house-seen' }, m.away ? `away · last seen ${ago(m.at)}` : `reported ${ago(m.at)}`)),
+        h('span', { class: 'muted house-seen' }, m.away ? T('away · last seen {0}', ago(m.at)) : T('reported {0}', ago(m.at)))),
       h('div', { class: 'row-meta' }, meta.map((t) => h('span', {}, t))),
       diskRows(m.disks, (d) => d.mount),
-      m.failed.length > 0 && h('p', { class: 'house-failed' }, `Failed: ${m.failed.join(', ')}`)));
+      m.failed.length > 0 && h('p', { class: 'house-failed' }, T('Failed: {0}', m.failed.join(', ')))));
   }
   body.replaceChildren(...out);
 }
@@ -6829,19 +6855,19 @@ function renderHouse() {
 // VPN: the server's torrent tunnel (only qBittorrent uses it) and the Mullvad app on each machine.
 // One row each: up/down dot, where it exits, then leaks, drops and watchdog problems underneath.
 function vpnCard(r) {
-  const when = (ms) => (Date.now() - ms < 86400000 ? clock(ms) : new Date(ms).toLocaleDateString([], { day: 'numeric', month: 'short' }));
+  const when = (ms) => (Date.now() - ms < 86400000 ? clock(ms) : new Date(ms).toLocaleDateString(locale, { day: 'numeric', month: 'short' }));
   const where = (v) => [v.city, v.relay, v.exitIp].filter(Boolean).join(' · ');
   const rows = [];
   const sv = r.server.vpn;
   if (sv) {
     rows.push({
       name: `${r.server.name} · torrents`, ok: sv.ok, on: sv.tunnel === 'up',
-      text: sv.tunnel === 'up' ? `Tunnel up · ${where(sv) || 'checking exit'}` : 'Tunnel DOWN · torrents fenced in by the kill switch',
+      text: sv.tunnel === 'up' ? T('Tunnel up · {0}', where(sv) || T('checking exit')) : T('Tunnel DOWN · torrents fenced in by the kill switch'),
       notes: [
-        sv.torrentIp && `qBittorrent public address ${sv.torrentIp}`,
-        sv.mullvadExit === false && 'exit isn’t a Mullvad address',
-        sv.lastDropAt && `last drop ${when(sv.lastDropAt)}`,
-        sv.lastLeakAt && `last leak alarm ${when(sv.lastLeakAt)}`,
+        sv.torrentIp && T('qBittorrent public address {0}', sv.torrentIp),
+        sv.mullvadExit === false && T('exit isn’t a Mullvad address'),
+        sv.lastDropAt && T('last drop {0}', when(sv.lastDropAt)),
+        sv.lastLeakAt && T('last leak alarm {0}', when(sv.lastLeakAt)),
       ].filter(Boolean),
       problems: sv.problems,
     });
@@ -6852,13 +6878,13 @@ function vpnCard(r) {
     const on = v.state === 'connected';
     rows.push({
       name: m.host, ok: v.state !== 'error' && v.mullvadExit !== false, on: on && !m.away, away: m.away,
-      text: on ? `Connected · ${where(v)}` : v.state === 'error' ? 'Blocked (error state)' : v.state === 'connecting' ? 'Connecting…' : 'Disconnected',
+      text: on ? T('Connected · {0}', where(v)) : v.state === 'error' ? T('Blocked (error state)') : v.state === 'connecting' ? T('Connecting…') : T('Disconnected'),
       notes: [
-        v.lockdown != null && `lockdown ${v.lockdown ? 'on' : 'off'}`,
-        v.lastDrop && `last drop ${when(v.lastDrop * 1000)}`,
-        m.away && `away · last seen ${ago(m.at)}`,
+        v.lockdown != null && T('lockdown {0}', v.lockdown ? 'on' : 'off'),
+        v.lastDrop && T('last drop {0}', when(v.lastDrop * 1000)),
+        m.away && T('away · last seen {0}', ago(m.at)),
       ].filter(Boolean),
-      problems: [v.error, v.mullvadExit === false && on && 'exit isn’t a Mullvad address'].filter(Boolean),
+      problems: [v.error, v.mullvadExit === false && on && T('exit isn’t a Mullvad address')].filter(Boolean),
     });
   }
   if (!rows.length) return null;
@@ -6876,11 +6902,11 @@ function vpnCard(r) {
 function powerCard(pw) {
   const p = pw.pending;
   const status = p
-    ? (p.action === 'wake' ? `Waking up${p.label ? ` into ${p.label}` : ''}…` : `Restarting${p.label ? ` into ${p.label}` : ''}…`)
-    : pw.on ? `On · ${pw.os || 'Linux'}` : 'Off, or in Windows';
+    ? (p.action === 'wake' ? T('Waking up{0}…', p.label ? T(' into {0}', p.label) : '') : T('Restarting{0}…', p.label ? T(' into {0}', p.label) : ''))
+    : pw.on ? T('On · {0}', pw.os || 'Linux') : T('Off, or in Windows');
   const sub = !pw.on && !p && (pw.last?.entry && pw.last.at > pw.seen - 120000
-    ? `Last started into ${pw.last.label} from Marquee ${ago(pw.last.at)}`
-    : `Linux last answered ${ago(pw.seen)}`);
+    ? T('Last started into {0} from Marquee {1}', pw.last.label, ago(pw.last.at))
+    : T('Linux last answered {0}', ago(pw.seen)));
   const linuxFirst = [...pw.entries].sort((a, b) => (a.os === 'linux' ? 0 : 1) - (b.os === 'linux' ? 0 : 1));
   let buttons;
   if (pw.on) {
@@ -6892,17 +6918,17 @@ function powerCard(pw) {
         if (b.dataset.sure) { doPower(pw.host, 'restart', entry, b); return; }
         b.dataset.sure = '1';
         b.classList.add('is-sure');
-        b.textContent = 'Tap again to restart';
+        b.textContent = T('Tap again to restart');
         setTimeout(() => { if (b.isConnected && !b.disabled) { delete b.dataset.sure; b.classList.remove('is-sure'); b.textContent = label; } }, 4000);
       },
     }, label);
-    buttons = [...linuxFirst.filter((e) => !e.current).map((e) => sure(`Restart into ${e.label}`, e.title)), sure('Restart', null)];
+    buttons = [...linuxFirst.filter((e) => !e.current).map((e) => sure(T('Restart into {0}', e.label), e.title)), sure(T('Restart'), null)];
   } else {
     buttons = linuxFirst.map((e) => h('button', {
       type: 'button', class: `retry${e.os === 'linux' ? ' is-primary' : ''}`, disabled: !pw.canWake || p?.action === 'wake',
       onclick: (ev) => doPower(pw.host, 'wake', e.title, ev.currentTarget),
-    }, `Start ${e.label}`));
-    if (!buttons.length) buttons = [h('button', { type: 'button', class: 'retry is-primary', disabled: !pw.canWake, onclick: (ev) => doPower(pw.host, 'wake', null, ev.currentTarget) }, 'Turn on')];
+    }, T('Start {0}', e.label)));
+    if (!buttons.length) buttons = [h('button', { type: 'button', class: 'retry is-primary', disabled: !pw.canWake, onclick: (ev) => doPower(pw.host, 'wake', null, ev.currentTarget) }, T('Turn on'))];
   }
   return h('div', { class: 'house-card power-card' },
     h('div', { class: 'house-card-head' },
@@ -6934,7 +6960,7 @@ const stColor = (category) => {
 };
 const localDate = (d = new Date()) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 const shiftDate = (date, n) => { const d = new Date(`${date}T12:00:00`); d.setDate(d.getDate() + n); return localDate(d); };
-const stDate = (date, opts) => new Date(`${date}T12:00:00`).toLocaleDateString('en-GB', opts);
+const stDate = (date, opts) => new Date(`${date}T12:00:00`).toLocaleDateString(langTag, opts);
 function fmtDur(s) {
   s = Math.round(s || 0);
   if (!s) return '0m';
@@ -6962,11 +6988,11 @@ async function stPick(changes) {
 }
 
 function houseTabs() {
-  return h('div', { class: 'house-tabs' }, segmented([['overview', 'Overview'], ['screentime', 'Screen Time']], state.houseTab || 'overview', async (tab) => {
+  return h('div', { class: 'house-tabs' }, segmented([['overview', T('Overview')], ['screentime', T('Screen Time')]], state.houseTab || 'overview', async (tab) => {
     state.houseTab = tab;
     await loadHouse();
     if (state.view === 'house') renderHouse();
-  }, 'House page'));
+  }, T('House page')));
 }
 
 // Top three categories get their colour; everything else is "Other", like iOS.
@@ -6980,7 +7006,7 @@ function stChart(cols, { top, gridLabel, midLabel, avg, axis, label, leaders }) 
   const plot = h('div', { class: 'st-plot' },
     h('i', { class: 'st-gridline is-top' }, h('span', {}, gridLabel)),
     h('i', { class: 'st-gridline is-mid' }, midLabel && h('span', {}, midLabel)),
-    avg != null && avg > 0 && h('i', { class: 'st-avg', style: `bottom:${Math.min(100, (100 * avg) / top)}%` }, h('span', {}, 'avg')));
+    avg != null && avg > 0 && h('i', { class: 'st-avg', style: `bottom:${Math.min(100, (100 * avg) / top)}%` }, h('span', {}, T('avg'))));
   for (const c of cols) {
     const segs = [];
     let other = c.total || 0;
@@ -7013,24 +7039,24 @@ function stMostUsed(apps, categories) {
   const best = items[0]?.seconds || 1;
   const shown = st.more ? items : items.slice(0, 8);
   return h('section', { class: 'st-card' },
-    h('div', { class: 'st-card-head' }, h('h4', {}, 'Most used'),
-      segmented([['apps', 'Apps'], ['categories', 'Categories']], showApps ? 'apps' : 'categories', (list) => { st.list = list; st.more = false; renderHouse(); }, 'Most used by')),
+    h('div', { class: 'st-card-head' }, h('h4', {}, T('Most used')),
+      segmented([['apps', T('Apps')], ['categories', T('Categories')]], showApps ? 'apps' : 'categories', (list) => { st.list = list; st.more = false; renderHouse(); }, T('Most used by'))),
     items.length ? h('ol', { class: 'st-apps' }, shown.map((a) => h('li', {},
       h('span', { class: `st-icon ${stColor(a.category)}`, 'aria-hidden': 'true' }, (a.name || '?').trim().charAt(0).toUpperCase()),
       h('span', { class: 'st-app-main' },
         h('span', { class: 'st-app-line' }, h('span', { class: 'st-app-name' }, a.name), h('span', { class: 'st-app-time' }, fmtDur(a.seconds))),
         h('span', { class: 'st-app-bar' }, h('i', { class: stColor(a.category), style: `width:${Math.max(1.5, (100 * a.seconds) / best)}%` })),
         showApps && h('span', { class: 'st-app-cat muted' }, a.category)))))
-      : h('p', { class: 'muted' }, 'Nothing used yet.'),
-    items.length > 8 && h('button', { type: 'button', class: 'st-more', onclick: () => { st.more = !st.more; renderHouse(); } }, st.more ? 'Show less' : `Show ${items.length - 8} more`));
+      : h('p', { class: 'muted' }, T('Nothing used yet.')),
+    items.length > 8 && h('button', { type: 'button', class: 'st-more', onclick: () => { st.more = !st.more; renderHouse(); } }, st.more ? T('Show less') : T('Show {0} more', items.length - 8)));
 }
 
 function stDayView(D) {
   const s = D.day;
   const out = [];
   if (!s) {
-    out.push(h('section', { class: 'st-card st-hero' }, h('p', { class: 'st-eyebrow' }, 'Screen time'), h('p', { class: 'st-big' }, '0m'),
-      h('p', { class: 'muted' }, D.date === localDate() ? 'Nothing yet today on this device.' : 'Nothing recorded this day.')));
+    out.push(h('section', { class: 'st-card st-hero' }, h('p', { class: 'st-eyebrow' }, T('Screen time')), h('p', { class: 'st-big' }, '0m'),
+      h('p', { class: 'muted' }, D.date === localDate() ? T('Nothing yet today on this device.') : T('Nothing recorded this day.'))));
     return out;
   }
   const leaders = stLeaders(s.categories);
@@ -7039,32 +7065,32 @@ function stDayView(D) {
   const avg = D.week?.average;
   const diff = avg ? Math.round((100 * (s.total - avg)) / avg) : null;
   out.push(h('section', { class: 'st-card st-hero' },
-    h('p', { class: 'st-eyebrow' }, 'Screen time'),
+    h('p', { class: 'st-eyebrow' }, T('Screen time')),
     h('div', { class: 'st-big-row' }, h('p', { class: 'st-big' }, fmtDur(s.total)),
       diff != null && D.week.days.filter((d) => d.total != null).length > 1 && h('span', { class: 'st-pill' },
-        `${diff > 0 ? '↑' : diff < 0 ? '↓' : '='} ${Math.abs(diff)}% ${diff >= 0 ? 'above' : 'below'} this week’s average`)),
+        T('{0} {1}% {2} this week’s average', diff > 0 ? '↑' : diff < 0 ? '↓' : '=', Math.abs(diff), diff >= 0 ? T('above') : T('below')))),
     stChart(s.hourly.map((x, i) => ({ total: x.seconds, parts: x.categories, title: `${pad2(i)}:00 · ${fmtDur(x.seconds)}` })), {
       top, gridLabel: stAxisLabel(top), midLabel: stAxisLabel(top / 2), axis: HOUR_AXIS, leaders,
-      label: `Screen time by hour: ${fmtDur(s.total)} in total, busiest hour ${fmtDur(peak)}`,
+      label: T('Screen time by hour: {0} in total, busiest hour {1}', fmtDur(s.total), fmtDur(peak)),
     }),
     stLegend(s.categories, leaders),
-    h('p', { class: 'st-updated muted' }, `${s.complete ? 'Complete day' : 'Updated'} · ${clock(s.generated * 1000)}${state.st.device === 'all' ? ` · ${D.devices.length} devices` : ''}`)));
+    h('p', { class: 'st-updated muted' }, `${s.complete ? T('Complete day') : T('Updated')} · ${clock(s.generated * 1000)}${state.st.device === 'all' ? T(' · {0} devices', D.devices.length) : ''}`)));
 
   const grid = h('div', { class: 'st-grid' }, stMostUsed(s.apps, s.categories));
   const ptop = Math.max(1, ...s.pickupsHourly);
   grid.append(h('section', { class: 'st-card' },
-    h('div', { class: 'st-card-head' }, h('h4', {}, 'Pickups')),
+    h('div', { class: 'st-card-head' }, h('h4', {}, T('Pickups'))),
     h('div', { class: 'st-stat-row' },
-      h('div', {}, h('p', { class: 'st-num' }, String(s.pickups)), h('p', { class: 'muted' }, 'wakes and unlocks')),
-      h('div', {}, h('p', { class: 'st-num' }, s.firstPickup || '—'), h('p', { class: 'muted' }, 'first pickup'))),
-    h('div', { class: 'st-ticks', role: 'img', 'aria-label': `Pickups by hour, at most ${ptop} in an hour` },
-      s.pickupsHourly.map((n, i) => h('i', { title: `${pad2(i)}:00 · ${n} pickup${n === 1 ? '' : 's'}`, style: `height:${n ? Math.max(12, (100 * n) / ptop) : 0}%` }))),
+      h('div', {}, h('p', { class: 'st-num' }, String(s.pickups)), h('p', { class: 'muted' }, T('wakes and unlocks'))),
+      h('div', {}, h('p', { class: 'st-num' }, s.firstPickup || '—'), h('p', { class: 'muted' }, T('first pickup')))),
+    h('div', { class: 'st-ticks', role: 'img', 'aria-label': T('Pickups by hour, at most {0} in an hour', ptop) },
+      s.pickupsHourly.map((n, i) => h('i', { title: (n === 1 ? T('{0}:00 · {1} pickup', pad2(i), n) : T('{0}:00 · {1} pickups', pad2(i), n)), style: `height:${n ? Math.max(12, (100 * n) / ptop) : 0}%` }))),
     h('div', { class: 'st-axis muted' }, HOUR_AXIS.map((t) => h('span', {}, t || ''))),
-    s.afterPickup.length > 0 && h('div', { class: 'st-after' }, h('p', { class: 'st-sub' }, 'First used after pickup'),
+    s.afterPickup.length > 0 && h('div', { class: 'st-after' }, h('p', { class: 'st-sub' }, T('First used after pickup')),
       h('ul', {}, s.afterPickup.slice(0, 4).map((a) => h('li', {}, h('span', {}, a.name), h('span', { class: 'muted' }, String(a.count)))))),
-    s.longest && h('div', { class: 'st-after' }, h('p', { class: 'st-sub' }, 'Longest session'),
+    s.longest && h('div', { class: 'st-after' }, h('p', { class: 'st-sub' }, T('Longest session')),
       h('p', { class: 'st-longest' }, h('b', {}, fmtDur(s.longest.seconds)),
-        h('span', { class: 'muted' }, ` ${s.longest.start}–${s.longest.end}${s.longest.name ? ` · mostly ${s.longest.name}` : ''}`)))));
+        h('span', { class: 'muted' }, ` ${s.longest.start}–${s.longest.end}${s.longest.name ? T(' · mostly {0}', s.longest.name) : ''}`)))));
   out.push(grid);
   return out;
 }
@@ -7076,23 +7102,23 @@ function stWeekView(D) {
   const top = Math.max(3600, Math.ceil(peak / 3600) * 3600);
   const today = localDate();
   const out = [h('section', { class: 'st-card st-hero' },
-    h('p', { class: 'st-eyebrow' }, 'Daily average'),
+    h('p', { class: 'st-eyebrow' }, T('Daily average')),
     h('div', { class: 'st-big-row' }, h('p', { class: 'st-big' }, fmtDur(w.average)),
-      w.change != null && h('span', { class: 'st-pill' }, `${w.change > 0 ? '↑' : w.change < 0 ? '↓' : '='} ${Math.abs(w.change)}% from last week`)),
+      w.change != null && h('span', { class: 'st-pill' }, T('{0} {1}% from last week', w.change > 0 ? '↑' : w.change < 0 ? '↓' : '=', Math.abs(w.change)))),
     stChart(w.days.map((d) => ({
       total: d.total || 0, parts: d.categories, current: d.date === today,
-      title: `${stDate(d.date, { weekday: 'long', day: 'numeric', month: 'short' })} · ${d.total == null ? 'no data' : fmtDur(d.total)}`,
+      title: `${stDate(d.date, { weekday: 'long', day: 'numeric', month: 'short' })} · ${d.total == null ? T('no data') : fmtDur(d.total)}`,
       onclick: d.total == null ? null : () => stPick({ view: 'day', date: d.date }),
     })), {
       top, gridLabel: stAxisLabel(top), midLabel: stAxisLabel(top / 2), avg: w.average, leaders,
       axis: w.days.map((d) => stDate(d.date, { weekday: 'short' }).slice(0, 1)),
-      label: `Screen time per day: daily average ${fmtDur(w.average)}`,
+      label: T('Screen time per day: daily average {0}', fmtDur(w.average)),
     }),
     stLegend(w.categories, leaders),
     h('div', { class: 'st-week-stats' },
-      h('span', {}, h('b', {}, fmtDur(w.total)), h('span', { class: 'muted' }, ' total')),
-      h('span', {}, h('b', {}, String(w.pickups)), h('span', { class: 'muted' }, ` pickups · ${w.pickupsAverage} a day`)),
-      w.longest && h('span', {}, h('b', {}, fmtDur(w.longest.seconds)), h('span', { class: 'muted' }, ' longest session'))))];
+      h('span', {}, h('b', {}, fmtDur(w.total)), h('span', { class: 'muted' }, T(' total'))),
+      h('span', {}, h('b', {}, String(w.pickups)), h('span', { class: 'muted' }, T(' pickups · {0} a day', w.pickupsAverage))),
+      w.longest && h('span', {}, h('b', {}, fmtDur(w.longest.seconds)), h('span', { class: 'muted' }, T(' longest session')))))];
   out.push(h('div', { class: 'st-grid' }, stMostUsed(w.apps, w.categories)));
   return out;
 }
@@ -7100,28 +7126,28 @@ function stWeekView(D) {
 function screenTimeView() {
   const st = (state.st ||= { view: 'day', list: 'apps' });
   const D = st.data;
-  if (st.error) return [notice('Couldn’t load Screen Time', st.error, () => stPick({}))];
-  if (!D) return [h('p', { class: 'muted' }, 'Loading…')];
+  if (st.error) return [notice(T('Couldn’t load Screen Time'), st.error, () => stPick({}))];
+  if (!D) return [h('p', { class: 'muted' }, T('Loading…'))];
   if (!D.devices.length) {
     return [h('section', { class: 'st-card st-setup' },
-      h('h4', {}, 'No Screen Time yet'),
+      h('h4', {}, T('No Screen Time yet')),
       h('p', { class: 'muted' }, D.configured
-        ? 'Install screentime on a machine and point its push at this server: set [push] url to /api/screentime here and the token to SCREENTIME_TOKEN.'
-        : 'Set SCREENTIME_TOKEN in .env, restart Marquee, then point each machine’s screentime push at /api/screentime with that token.'),
-      h('a', { href: 'https://github.com/Tjabooo/screentime', target: '_blank', rel: 'noopener' }, 'github.com/Tjabooo/screentime'))];
+        ? T('Install screentime on a machine and point its push at this server: set [push] url to /api/screentime here and the token to SCREENTIME_TOKEN.')
+        : T('Set SCREENTIME_TOKEN in .env, restart Marquee, then point each machine’s screentime push at /api/screentime with that token.')),
+      h('a', { href: 'https://github.com/Tjabooo/screentime', target: '_blank', rel: 'noopener' }, T('github.com/Tjabooo/screentime')))];
   }
   const today = localDate();
-  const devices = D.devices.length > 1 ? [['all', 'All devices'], ...D.devices.map((d) => [d.name, d.name])] : D.devices.map((d) => [d.name, d.name]);
+  const devices = D.devices.length > 1 ? [['all', T('All devices')], ...D.devices.map((d) => [d.name, d.name])] : D.devices.map((d) => [d.name, d.name]);
   const week = st.view === 'week';
   const date = D.date;
   let title;
   if (week) {
     const thisWeek = D.week.start <= today && today <= D.week.end;
     const lastWeek = shiftDate(D.week.start, 7) <= today && today <= shiftDate(D.week.end, 7);
-    title = thisWeek ? 'This week' : lastWeek ? 'Last week'
+    title = thisWeek ? T('This week') : lastWeek ? T('Last week')
       : `${stDate(D.week.start, { day: 'numeric', month: 'short' })} – ${stDate(D.week.end, { day: 'numeric', month: 'short' })}`;
   } else {
-    title = date === today ? 'Today' : date === shiftDate(today, -1) ? 'Yesterday' : stDate(date, { weekday: 'long', day: 'numeric', month: 'long' });
+    title = date === today ? T('Today') : date === shiftDate(today, -1) ? T('Yesterday') : stDate(date, { weekday: 'long', day: 'numeric', month: 'long' });
   }
   const step = week ? 7 : 1;
   const first = D.dates[0] || date;
@@ -7130,14 +7156,14 @@ function screenTimeView() {
   const seen = D.devices.find((d) => d.name === D.device);
   const out = [
     h('div', { class: 'st-controls' },
-      segmented(devices, D.device, (device) => stPick({ device }), 'Device'),
-      segmented([['day', 'Day'], ['week', 'Week']], week ? 'week' : 'day', (view) => stPick({ view }), 'Period')),
+      segmented(devices, D.device, (device) => stPick({ device }), T('Device')),
+      segmented([['day', T('Day')], ['week', T('Week')]], week ? 'week' : 'day', (view) => stPick({ view }), T('Period'))),
     h('div', { class: 'st-datebar' },
-      h('button', { type: 'button', class: 'st-step', disabled: !canBack, 'aria-label': week ? 'Previous week' : 'Previous day', onclick: () => stPick({ date: shiftDate(date, -step) }) }, '‹'),
+      h('button', { type: 'button', class: 'st-step', disabled: !canBack, 'aria-label': week ? T('Previous week') : T('Previous day'), onclick: () => stPick({ date: shiftDate(date, -step) }) }, '‹'),
       h('div', { class: 'st-date' }, h('strong', {}, title),
         h('span', { class: 'muted' }, week ? `${stDate(D.week.start, { day: 'numeric', month: 'short' })} – ${stDate(D.week.end, { day: 'numeric', month: 'short' })}`
-          : seen?.lastSeen ? `${seen.name} last reported ${ago(seen.lastSeen)}` : stDate(date, { weekday: 'short', day: 'numeric', month: 'short' }))),
-      h('button', { type: 'button', class: 'st-step', disabled: !canForward, 'aria-label': week ? 'Next week' : 'Next day', onclick: () => stPick({ date: shiftDate(date, step) > today ? today : shiftDate(date, step) }) }, '›')),
+          : seen?.lastSeen ? T('{0} last reported {1}', seen.name, ago(seen.lastSeen)) : stDate(date, { weekday: 'short', day: 'numeric', month: 'short' }))),
+      h('button', { type: 'button', class: 'st-step', disabled: !canForward, 'aria-label': week ? T('Next week') : T('Next day'), onclick: () => stPick({ date: shiftDate(date, step) > today ? today : shiftDate(date, step) }) }, '›')),
   ];
   return out.concat(week ? stWeekView(D) : stDayView(D));
 }
@@ -7155,12 +7181,12 @@ async function shareClip(c, btn) {
     c.share = r;
     c.shareUrl = r.url;
     if (r.ready) await copyLink(r.url);
-    else toast('Preparing a Discord-friendly copy… the link is ready in a minute.');
+    else toast(T('Preparing a Discord-friendly copy… the link is ready in a minute.'));
   } catch (err) { toast(err.message); }
   await loadClips();
   renderClips();
 }
-const copyLink = (url) => copyWithToast(url, 'Link copied: paste it in Discord');
+const copyLink = (url) => copyWithToast(url, T('Link copied: paste it in Discord'));
 // ---------- clip editor (lossless: never a lossy re-encode) ----------
 // The clip is a row of parts on a timeline. Split at the playhead, then remove the parts you don't
 // want; trimming the start or end is the same thing at the edges. What's kept is joined into a new
@@ -7206,12 +7232,12 @@ async function openTrim(c, opener) {
     return out;
   };
   const problem = (list) => {
-    if (!list.length) return 'Everything is removed. Restore a part to keep it.';
+    if (!list.length) return T('Everything is removed. Restore a part to keep it.');
     for (let i = 1; i < list.length; i++) {
-      if (list[i].from < list[i - 1].end - 0.001) return `The cut at ${fmtT(list[i - 1].end)} is too short to remove without re-encoding: the next part has to start on the keyframe at ${fmtT(list[i].from)}. Make the cut longer, or restore it.`;
+      if (list[i].from < list[i - 1].end - 0.001) return T('The cut at {0} is too short to remove without re-encoding: the next part has to start on the keyframe at {1}. Make the cut longer, or restore it.', fmtT(list[i - 1].end), fmtT(list[i].from));
     }
-    if (list.some((r) => r.end - r.start < 0.3)) return 'A kept part is shorter than 0.3 s. Remove it or make it longer.';
-    if (list.reduce((n, r) => n + r.end - r.from, 0) < 1) return 'The edit has to be at least 1 second long.';
+    if (list.some((r) => r.end - r.start < 0.3)) return T('A kept part is shorter than 0.3 s. Remove it or make it longer.');
+    if (list.reduce((n, r) => n + r.end - r.from, 0) < 1) return T('The edit has to be at least 1 second long.');
     return '';
   };
   const pieceAt = (t) => pieces.find((p) => t >= p.start && t < p.end) || pieces.at(-1);
@@ -7227,7 +7253,7 @@ async function openTrim(c, opener) {
     const t = video.currentTime;
     remember();
     const before = JSON.stringify(pieces);
-    if (what === 'split' && !split(t)) toast('Too close to a split already');
+    if (what === 'split' && !split(t)) toast(T('Too close to a split already'));
     if (what === 'toggle') { const p = pieceAt(t); p.keep = !p.keep; }
     if (what === 'start') { split(t); for (const p of pieces) if (p.end <= t + 0.001) p.keep = false; }
     if (what === 'end') { split(t); for (const p of pieces) if (p.start >= t - 0.001) p.keep = false; }
@@ -7240,7 +7266,7 @@ async function openTrim(c, opener) {
   const track = h('div', { class: 'edit-track' });
   const head = h('div', { class: 'edit-head' });
   const hover = h('div', { class: 'edit-hover', hidden: true });
-  const timeline = h('div', { class: 'edit-timeline', role: 'slider', tabindex: 0, 'aria-label': 'Position in the clip', 'aria-valuemin': 0 }, track, head, hover);
+  const timeline = h('div', { class: 'edit-timeline', role: 'slider', tabindex: 0, 'aria-label': T('Position in the clip'), 'aria-valuemin': 0 }, track, head, hover);
   const pos = (t) => `${duration ? (t / duration) * 100 : 0}%`;
   const timeAt = (x) => { const r = timeline.getBoundingClientRect(); return Math.min(Math.max((x - r.left) / r.width, 0), 1) * duration; };
   let scrubbing = false;
@@ -7263,7 +7289,7 @@ async function openTrim(c, opener) {
   timeline.addEventListener('pointerleave', () => { if (!scrubbing) hover.hidden = true; });
 
   // ---- controls ----
-  const playBtn = h('button', { type: 'button', class: 'edit-play', 'aria-label': 'Play (Space)' });
+  const playBtn = h('button', { type: 'button', class: 'edit-play', 'aria-label': T('Play (Space)') });
   const now = h('span', { class: 'edit-now' }, '0:00.0');
   const total = h('span', { class: 'edit-total' }, '');
   const tool = (key, label, what, hint) => {
@@ -7271,30 +7297,30 @@ async function openTrim(c, opener) {
     b.insertAdjacentHTML('afterbegin', EDIT_ICONS[key]);
     return b;
   };
-  const startBtn = tool('start', 'Start here', 'start', 'Remove everything before the playhead ([)');
-  const splitBtn = tool('split', 'Split', 'split', 'Split the clip at the playhead (S)');
-  const endBtn = tool('end', 'End here', 'end', 'Remove everything after the playhead (])');
-  const toggleBtn = tool('remove', 'Remove part', 'toggle', 'Remove or restore the part under the playhead (X)');
-  const undoBtn = h('button', { type: 'button', class: 'edit-tool edit-undo', title: 'Undo (Ctrl+Z)', 'aria-label': 'Undo', onclick: undoLast });
+  const startBtn = tool('start', T('Start here'), 'start', T('Remove everything before the playhead ([)'));
+  const splitBtn = tool('split', T('Split'), 'split', T('Split the clip at the playhead (S)'));
+  const endBtn = tool('end', T('End here'), 'end', T('Remove everything after the playhead (])'));
+  const toggleBtn = tool('remove', T('Remove part'), 'toggle', T('Remove or restore the part under the playhead (X)'));
+  const undoBtn = h('button', { type: 'button', class: 'edit-tool edit-undo', title: T('Undo (Ctrl+Z)'), 'aria-label': T('Undo'), onclick: undoLast });
   undoBtn.innerHTML = EDIT_ICONS.undo;
-  const info = h('p', { class: 'edit-info', role: 'status' }, 'Loading the clip…');
+  const info = h('p', { class: 'edit-info', role: 'status' }, T('Loading the clip…'));
   // Audio: keep or leave out each separate track. Track 1 (the mix every player plays) is rebuilt.
   const trackRow = h('div', { class: 'edit-tracks', hidden: true });
   function renderTracks() {
     const own = tracks.filter((t) => !t.mix);
     trackRow.hidden = own.length < 2 && !tracks.some((t) => t.mix);
     if (trackRow.hidden) return;
-    trackRow.replaceChildren(h('span', { class: 'edit-tracks-label' }, 'Audio'), ...own.map((t) => {
+    trackRow.replaceChildren(h('span', { class: 'edit-tracks-label' }, T('Audio')), ...own.map((t) => {
       const kept = !removed.has(t.index);
-      const label = t.mic ? `${t.label} (mic)` : t.label;
+      const label = t.mic ? T('{0} (mic)', t.label) : t.label;
       return h('button', { type: 'button', class: `edit-chip${kept ? '' : ' is-off'}`, 'aria-pressed': String(kept),
-        title: kept ? `Leave ${label} out of the copy` : `Keep ${label}`,
+        title: kept ? T('Leave {0} out of the copy', label) : T('Keep {0}', label),
         onclick: () => { if (busy) return; if (kept) removed.add(t.index); else removed.delete(t.index); renderTracks(); render(); } }, label);
     }));
   }
   const delOrig = h('input', { type: 'checkbox', id: 'trim-del' });
-  const previewBtn = h('button', { type: 'button', class: 'retry', onclick: () => { const r = runs(); if (!r.length) return; video.currentTime = r[0].from; video.play().catch(() => {}); } }, 'Preview');
-  const save = h('button', { type: 'button', class: 'play-btn edit-save', disabled: true }, 'Save edited copy');
+  const previewBtn = h('button', { type: 'button', class: 'retry', onclick: () => { const r = runs(); if (!r.length) return; video.currentTime = r[0].from; video.play().catch(() => {}); } }, T('Preview'));
+  const save = h('button', { type: 'button', class: 'play-btn edit-save', disabled: true }, T('Save edited copy'));
 
   function updateHead() {
     const t = video.currentTime;
@@ -7307,7 +7333,7 @@ async function openTrim(c, opener) {
     const removing = !p || p.keep;
     toggleBtn.querySelector('svg')?.remove();
     toggleBtn.insertAdjacentHTML('afterbegin', EDIT_ICONS[removing ? 'remove' : 'restore']);
-    toggleBtn.querySelector('.edit-tool-label').textContent = removing ? 'Remove part' : 'Restore part';
+    toggleBtn.querySelector('.edit-tool-label').textContent = removing ? T('Remove part') : T('Restore part');
     toggleBtn.classList.toggle('is-restore', !removing);
   }
   function render() {
@@ -7321,20 +7347,20 @@ async function openTrim(c, opener) {
     list.forEach((r, i) => {
       if (r.from < r.start - 0.01) {
         const clash = i > 0 && r.from < list[i - 1].end - 0.001;
-        out.push(h('div', { class: `edit-lead${clash ? ' is-clash' : ''}`, title: `Starts on the keyframe at ${fmtT(r.from)}`, style: `left:${pos(r.from)};width:${pos(r.start - r.from)}` }));
+        out.push(h('div', { class: `edit-lead${clash ? ' is-clash' : ''}`, title: T('Starts on the keyframe at {0}', fmtT(r.from)), style: `left:${pos(r.from)};width:${pos(r.start - r.from)}` }));
       }
     });
     for (const p of pieces.slice(1)) out.push(h('div', { class: 'edit-split', style: `left:${pos(p.start)}` }));
     track.replaceChildren(...out);
     const length = list.reduce((n, r) => n + r.end - r.from, 0);
     const early = list.some((r) => r.from < r.start - 0.05);
-    total.textContent = `of ${fmtT(duration)}`;
+    total.textContent = T('of {0}', fmtT(duration));
     info.classList.toggle('is-error', Boolean(issue));
-    const gone = tracks.filter((t) => removed.has(t.index)).map((t) => t.mic ? `${t.label} (mic)` : t.label);
+    const gone = tracks.filter((t) => removed.has(t.index)).map((t) => t.mic ? T('{0} (mic)', t.label) : t.label);
     const remix = gone.length && tracks.some((t) => t.mix) && tracks.filter((t) => !t.mix && !removed.has(t.index)).length > 1;
-    info.textContent = issue || `${list.length === 1 ? 'Keeping 1 part' : `Keeping ${list.length} parts`} · ${fmtT(length)} long${early ? ' · striped bits are kept so each part starts on a keyframe' : ''}${gone.length ? ` · without ${gone.join(' and ')}` : ''} · ${exact && list.some((r) => offKey(r.start)) ? `exact cuts, every frame identical to the original${remix ? ', the mix re-encoded' : ''}` : remix ? 'video untouched, only the mix is re-encoded' : 'no re-encoding, same quality'}`;
+    info.textContent = issue || T('{0} · {1} long{2}{3} · {4}', list.length === 1 ? T('Keeping 1 part') : T('Keeping {0} parts', list.length), fmtT(length), early ? T(' · striped bits are kept so each part starts on a keyframe') : '', gone.length ? T(' · without {0}', gone.join(' and ')) : '', exact && list.some((r) => offKey(r.start)) ? T('exact cuts, every frame identical to the original{0}', remix ? T(', the mix re-encoded') : '') : remix ? T('video untouched, only the mix is re-encoded') : T('no re-encoding, same quality'));
     save.disabled = busy || Boolean(issue);
-    save.textContent = busy ? 'Saving…' : list.length > 1 || gone.length ? 'Save edited copy' : 'Save trimmed copy';
+    save.textContent = busy ? T('Saving…') : list.length > 1 || gone.length ? T('Save edited copy') : T('Save trimmed copy');
     previewBtn.disabled = !list.length;
     undoBtn.disabled = !undo.length || busy;
     updateHead();
@@ -7367,7 +7393,7 @@ async function openTrim(c, opener) {
   const syncPlay = () => {
     const playing = !video.paused && !video.ended;
     playBtn.replaceChildren(icon(playing ? 'pause' : 'play'));
-    playBtn.setAttribute('aria-label', playing ? 'Pause (Space)' : 'Play (Space)');
+    playBtn.setAttribute('aria-label', playing ? T('Pause (Space)') : T('Play (Space)'));
   };
   for (const ev of ['play', 'pause', 'ended', 'emptied']) video.addEventListener(ev, syncPlay);
   syncPlay();
@@ -7381,7 +7407,7 @@ async function openTrim(c, opener) {
     busy = true; render();
     try {
       const r = await api(`/api/clips/${c.id}/trim`, jsonPost({ segments: list.map(({ start, end }) => ({ start, end })), removeTracks: [...removed], deleteOriginal: delOrig.checked }));
-      toast(`Saved “${r.title}” in Trimmed Clips`);
+      toast(T('Saved “{0}” in Trimmed Clips', r.title));
       closeTopOverlay();
       await loadClips();
       renderClips();
@@ -7392,7 +7418,7 @@ async function openTrim(c, opener) {
   });
 
   const content = h('div', { class: 'sheet-content edit' },
-    h('h2', { id: 'sheet-title' }, `Edit · ${c.title}`),
+    h('h2', { id: 'sheet-title' }, T('Edit · {0}', c.title)),
     h('div', { class: 'edit-stage' }, video),
     h('div', { class: 'edit-transport' }, playBtn, h('span', { class: 'edit-clock' }, now, ' ', total)),
     timeline,
@@ -7400,8 +7426,8 @@ async function openTrim(c, opener) {
     trackRow,
     info,
     h('div', { class: 'edit-actions' }, previewBtn, save),
-    h('label', { class: 'trim-del', for: 'trim-del' }, delOrig, ' Move the original to Deleted afterwards (kept 30 days)'),
-    h('p', { class: 'edit-keys muted' }, 'Space play · S split · X remove or restore · [ ] start or end here · ← → 1 s · , . one frame · Ctrl+Z undo'));
+    h('label', { class: 'trim-del', for: 'trim-del' }, delOrig, T(' Move the original to Deleted afterwards (kept 30 days)')),
+    h('p', { class: 'edit-keys muted' }, T('Space play · S split · X remove or restore · [ ] start or end here · ← → 1 s · , . one frame · Ctrl+Z undo')));
   // Keys while the editor is open. Text fields and the checkbox keep their own keys.
   const onKey = (e) => {
     if (!content.isConnected || !sheet.classList.contains('open') || e.target.matches?.('input:not([type="checkbox"]), textarea, select')) return;
@@ -7441,19 +7467,19 @@ async function openTrim(c, opener) {
     renderTracks();
     ready(k.duration);
     render();
-  } catch (err) { info.textContent = `Couldn’t read the clip: ${err.message}`; info.classList.add('is-error'); }
+  } catch (err) { info.textContent = T('Couldn’t read the clip: {0}', err.message); info.classList.add('is-error'); }
 }
 
 async function deleteClip(c) {
   try {
     await api(`/api/clips/${c.id}/delete`, { method: 'POST' });
-    toast(`Deleted ${c.title}`);
+    toast(T('Deleted {0}', c.title));
   } catch (err) { toast(err.message); }
   await loadClips();
   renderClips();
 }
 async function unshareClip(c) {
-  try { await api(`/api/clips/${c.id}/unshare`, { method: 'POST' }); toast('Link removed'); } catch (err) { toast(err.message); }
+  try { await api(`/api/clips/${c.id}/unshare`, { method: 'POST' }); toast(T('Link removed')); } catch (err) { toast(err.message); }
   await loadClips();
   renderClips();
 }
@@ -7462,7 +7488,7 @@ const UNLINK_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 1
 function inlineName({ getName, save, label, maxLength, errorId, className = '', successMessage }) {
   const wrap = h('div', { class: `clip-title-wrap ${className}` });
   function display(focus = false) {
-    const button = h('button', { type: 'button', class: 'clip-title row-title', 'aria-label': `Rename ${label.toLowerCase()}: ${getName()}`, title: `Rename ${label.toLowerCase()}` },
+    const button = h('button', { type: 'button', class: 'clip-title row-title', 'aria-label': T('Rename {0}: {1}', label.toLowerCase(), getName()), title: T('Rename {0}', label.toLowerCase()) },
       h('span', {}, getName()));
     button.insertAdjacentHTML('beforeend', '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 4 4M4 20l4-1 12-12a2.8 2.8 0 0 0-4-4L4 15z"/></svg>');
     button.addEventListener('click', edit);
@@ -7495,7 +7521,7 @@ function inlineName({ getName, save, label, maxLength, errorId, className = '', 
       if (outsidePointer) afterPointer = complete;
       else complete();
     };
-    const input = h('input', { type: 'text', maxlength: maxLength, value: getName(), 'aria-label': `${label} name`, autocomplete: 'off' });
+    const input = h('input', { type: 'text', maxlength: maxLength, value: getName(), 'aria-label': T('{0} name', label), autocomplete: 'off' });
     const error = h('p', { id: errorId, class: 'clip-rename-error', role: 'alert', hidden: true });
     const fail = (message) => {
       error.textContent = message; error.hidden = false;
@@ -7505,7 +7531,7 @@ function inlineName({ getName, save, label, maxLength, errorId, className = '', 
       if (committing || settled) return;
       const title = input.value.trim();
       if (title === previousTitle) { finish(fromEnter && document.activeElement === input); return; }
-      if (!title) { fail(`Enter a ${label.toLowerCase()} name.`); return; }
+      if (!title) { fail(T('Enter a {0} name.', label.toLowerCase())); return; }
       committing = true; input.readOnly = true; form.setAttribute('aria-busy', 'true'); error.hidden = true;
       input.removeAttribute('aria-invalid'); input.removeAttribute('aria-describedby');
       try {
@@ -7530,52 +7556,52 @@ function inlineName({ getName, save, label, maxLength, errorId, className = '', 
 }
 function clipTitle(c) {
   return inlineName({
-    getName: () => c.title, label: 'Clip', maxLength: 120,
-    errorId: `clip-rename-error-${c.id}`, successMessage: 'Clip renamed',
+    getName: () => c.title, label: T('Clip'), maxLength: 120,
+    errorId: `clip-rename-error-${c.id}`, successMessage: T('Clip renamed'),
     save: async (next, previousTitle, wrap) => {
       const renamed = await api(`/api/clips/${c.id}/rename`, jsonPost({ title: next, previousTitle }));
       c.title = renamed.title;
       const current = state.clips?.clips.find((item) => item.id === c.id); if (current) current.title = renamed.title;
       const card = wrap.closest('.clip');
-      card?.querySelector('.clip-thumb')?.setAttribute('aria-label', `Play ${c.title}`);
-      card?.querySelector('.clip-delete')?.setAttribute('aria-label', `Delete ${c.title}`);
-      card?.querySelector('.clip-trim')?.setAttribute('aria-label', `Edit ${c.title}`);
+      card?.querySelector('.clip-thumb')?.setAttribute('aria-label', T('Play {0}', c.title));
+      card?.querySelector('.clip-delete')?.setAttribute('aria-label', T('Delete {0}', c.title));
+      card?.querySelector('.clip-trim')?.setAttribute('aria-label', T('Edit {0}', c.title));
     },
   });
 }
 function clipCard(c) {
-  const when = new Date(c.mtime).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
-  const thumb = h('button', { class: 'clip-thumb', 'aria-label': `Play ${c.title}` },
+  const when = new Date(c.mtime).toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' });
+  const thumb = h('button', { class: 'clip-thumb', 'aria-label': T('Play {0}', c.title) },
     h('img', { src: `/api/clips/${c.id}/thumb.jpg`, alt: '', loading: 'lazy' }));
   thumb.insertAdjacentHTML('beforeend', `<span class="clip-play">${ICONS.play}</span>`);
   thumb.addEventListener('click', () => openPlayer({ kind: 'clip', id: c.id, key: c.id, title: c.title }));
   const s = c.share;
   const link = s && `${location.origin}/c/${s.token}`;
   let actions;
-  if (!s) actions = [h('button', { class: 'retry', onclick: (e) => shareClip(c, e.currentTarget) }, 'Share')];
-  else if (s.error) actions = [h('span', { class: 'muted clip-error' }, `Couldn’t prepare it: ${s.error}`), h('button', { class: 'retry', onclick: (e) => shareClip(c, e.currentTarget) }, 'Try again')];
-  else if (!s.ready) actions = [h('span', { class: 'muted clip-working' }, 'Preparing for Discord…')];
+  if (!s) actions = [h('button', { class: 'retry', onclick: (e) => shareClip(c, e.currentTarget) }, T('Share'))];
+  else if (s.error) actions = [h('span', { class: 'muted clip-error' }, T('Couldn’t prepare it: {0}', s.error)), h('button', { class: 'retry', onclick: (e) => shareClip(c, e.currentTarget) }, T('Try again'))];
+  else if (!s.ready) actions = [h('span', { class: 'muted clip-working' }, T('Preparing for Discord…'))];
   // the label hides on narrow cards (style.css), leaving the copy icon; aria-label keeps the name
-  else actions = [h('button', { class: 'retry clip-copy', 'aria-label': 'Copy link', title: 'Copy link', onclick: () => copyLink(link) }, icon('copy'), h('span', { class: 'clip-btn-label' }, 'Copy link'))];
-  if (s) actions.push(h('button', { class: 'icon-btn clip-unshare', 'aria-label': 'Stop sharing', title: 'Stop sharing (the link stops working)', onclick: () => unshareClip(c) }));
+  else actions = [h('button', { class: 'retry clip-copy', 'aria-label': T('Copy link'), title: T('Copy link'), onclick: () => copyLink(link) }, icon('copy'), h('span', { class: 'clip-btn-label' }, T('Copy link')))];
+  if (s) actions.push(h('button', { class: 'icon-btn clip-unshare', 'aria-label': T('Stop sharing'), title: T('Stop sharing (the link stops working)'), onclick: () => unshareClip(c) }));
   // two taps: the first turns the bin into "Delete?", the second deletes (it waits 30 days in .deleted)
   const del = h('button', {
-    class: 'icon-btn clip-delete', 'aria-label': `Delete ${c.title}`, title: 'Delete clip',
+    class: 'icon-btn clip-delete', 'aria-label': T('Delete {0}', c.title), title: T('Delete clip'),
     onclick: (e) => {
       const b = e.currentTarget;
       if (b.dataset.sure) { b.disabled = true; deleteClip(c); return; }
       b.dataset.sure = '1';
       b.classList.add('is-sure');
-      b.textContent = 'Delete?';
+      b.textContent = T('Delete?');
       setTimeout(() => { if (b.isConnected && !b.disabled) { delete b.dataset.sure; b.classList.remove('is-sure'); b.innerHTML = ICONS.trash; } }, 4000);
     },
   });
-  actions.push(h('button', { class: 'icon-btn clip-trim', 'aria-label': `Edit ${c.title}`, title: 'Edit: trim or cut out parts (no quality loss)', onclick: (e) => openTrim(c, e.currentTarget) }));
+  actions.push(h('button', { class: 'icon-btn clip-trim', 'aria-label': T('Edit {0}', c.title), title: T('Edit: trim or cut out parts (no quality loss)'), onclick: (e) => openTrim(c, e.currentTarget) }));
   actions.push(del);
   const card = h('li', { class: 'clip' }, thumb,
     h('div', { class: 'clip-text' },
       clipTitle(c),
-      h('div', { class: 'row-meta' }, h('span', {}, c.game), h('span', {}, when), h('span', {}, fmtBytes(c.size)), s?.ready && h('span', { class: 'clip-shared' }, 'shared'))),
+      h('div', { class: 'row-meta' }, h('span', {}, c.game), h('span', {}, when), h('span', {}, fmtBytes(c.size)), s?.ready && h('span', { class: 'clip-shared' }, T('shared')))),
     h('div', { class: 'clip-actions' }, actions));
   const un = $('.clip-unshare', card);
   if (un) un.innerHTML = UNLINK_ICON;
@@ -7586,12 +7612,12 @@ function clipCard(c) {
 
 function renderClips() {
   const body = $('#clips-body');
-  if (state.clipsError) { body.replaceChildren(notice('Couldn’t load clips', state.clipsError, () => loadClips().then(renderClips))); return; }
+  if (state.clipsError) { body.replaceChildren(notice(T('Couldn’t load clips'), state.clipsError, () => loadClips().then(renderClips))); return; }
   if (!state.clips) return;
-  if (!state.clips.configured) { body.replaceChildren(notice('No clips folder', 'Set CLIPS_DIR in .env to the folder your desktop syncs clips to.')); return; }
+  if (!state.clips.configured) { body.replaceChildren(notice(T('No clips folder'), T('Set CLIPS_DIR in .env to the folder your desktop syncs clips to.'))); return; }
   const q = norm(state.query);
   const list = state.clips.clips.filter((c) => !q || norm(`${c.title} ${c.game}`).includes(q));
-  if (!list.length) { body.replaceChildren(h('p', { class: 'muted' }, q ? 'Nothing matches.' : 'No clips yet.')); return; }
+  if (!list.length) { body.replaceChildren(h('p', { class: 'muted' }, q ? T('Nothing matches.') : T('No clips yet.'))); return; }
   const out = [];
   let game = null;
   let grid = null;
@@ -7616,11 +7642,11 @@ function addAdminTab(view, label, iconSvg) {
   tab.addEventListener('click', () => setView(view));
   $('.tabs').insertBefore(tab, $('.tab[data-view="settings"]')); // Settings stays last
 }
-const enableHouseTab = () => addAdminTab('house', 'House', '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 11 12 4l8.5 7"/><path d="M5.5 9.5V20h13V9.5"/><path d="M10 20v-5h4v5"/></svg>');
-const enableClipsTab = () => addAdminTab('clips', 'Clips', '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5.5" width="18" height="13" rx="2"/><path d="M10 9.5v5l4.5-2.5z"/></svg>');
+const enableHouseTab = () => addAdminTab('house', T('House'), '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 11 12 4l8.5 7"/><path d="M5.5 9.5V20h13V9.5"/><path d="M10 20v-5h4v5"/></svg>');
+const enableClipsTab = () => addAdminTab('clips', T('Clips'), '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5.5" width="18" height="13" rx="2"/><path d="M10 9.5v5l4.5-2.5z"/></svg>');
 
 const enableNotesTab = () => {
-  addAdminTab('notes', 'Notes', '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14v18H5zM8 8h8M8 12h8M8 16h5"/></svg>');
+  addAdminTab('notes', T('Notes'), '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14v18H5zM8 8h8M8 12h8M8 16h5"/></svg>');
   $('.tabs').insertBefore($('.tab[data-view="notes"]'), $('.tab[data-view="library"]'));
 };
 
@@ -7628,7 +7654,7 @@ const enableNotesTab = () => {
 function enableActivityTab() {
   if ($('#view-activity')) return;
   $('#main').append(h('section', { id: 'view-activity', class: 'view', 'aria-labelledby': 'activity-heading', hidden: true },
-    h('h2', { class: 'view-heading', id: 'activity-heading' }, 'Activity'),
+    h('h2', { class: 'view-heading', id: 'activity-heading' }, T('Activity')),
     h('div', { id: 'activity-body' })));
   const tab = h('button', { class: 'tab', 'data-view': 'activity' });
   tab.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M3 19c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5"/><path d="M16 4.8a3.5 3.5 0 0 1 0 6.4M18 13.8c1.8.7 3 2.6 3 5.2"/></svg><span>Activity</span>';
@@ -7751,10 +7777,11 @@ navigator.serviceWorker?.addEventListener('message', async (event) => {
   try {
     state.status = await api('/api/status');
   } catch {
-    $('#discover-body').replaceChildren(notice('Can’t reach the server', 'Make sure server.js is running, then reload this page.', () => location.reload()));
+    $('#discover-body').replaceChildren(notice(T('Can’t reach the server'), T('Make sure server.js is running, then reload this page.'), () => location.reload()));
     return;
   }
   state.me = state.status.me;
+  syncLanguage();
   state.rules = state.status.rules;
   applyTheme(prefs().theme);
   $('#find-torrents').hidden = !state.status.torrents || !canDownload();

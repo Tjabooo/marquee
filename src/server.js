@@ -45,6 +45,7 @@ import * as social from './social.js';
 import { handleWatchPage } from './watch-page.js';
 import { creditsFor, introFor, initCredits } from './credits.js';
 import * as whatsNew from './whats-new.js';
+import { languageOf, inLanguage, currentLanguage, translate } from './i18n.js';
 import { WatchlistStore, runRound as watchlistRound, baselineFrom } from './watchlist.js';
 import { PushStore, KINDS as PUSH_KINDS } from './push.js';
 import { Previews } from './previews.js';
@@ -113,7 +114,16 @@ function notify(userIds, kind, message) {
   const ids = [...new Set(userIds)].filter((id) => id != null && push.hasDevice(id)
     && (kind === 'test' || accounts.userById(id)?.settings?.[PUSH_KINDS[kind]] !== false));
   if (!ids.length) return Promise.resolve(0);
-  return push.send(ids, kind, message).catch((err) => { console.warn(`[push] ${err.message}`); return 0; });
+  // Each person gets it in their own language (Settings → Language).
+  const byLanguage = new Map();
+  for (const id of ids) {
+    const lang = accounts.userById(id)?.settings?.language || 'en';
+    byLanguage.set(lang, [...(byLanguage.get(lang) || []), id]);
+  }
+  return Promise.all([...byLanguage].map(([lang, people]) => push.send(people, kind,
+    { ...message, title: translate(message.title, lang), body: translate(message.body, lang) })
+    .catch((err) => { console.warn(`[push] ${err.message}`); return 0; })))
+    .then((sent) => sent.reduce((total, n) => total + (Number(n) || 0), 0));
 }
 const auth = createAuth({ dataDir: DATA_DIR });
 const tvPairing = createTvPairing();
@@ -302,10 +312,10 @@ function parseFile(full) {
 }
 
 // ---------- TMDB ----------
-async function tmdb(endpoint, params = {}) {
+async function tmdb(endpoint, params = {}, language = TMDB_LANG) {
   const url = new URL(`https://api.themoviedb.org/3${endpoint}`);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-  url.searchParams.set('language', TMDB_LANG);
+  url.searchParams.set('language', language);
   const headers = { accept: 'application/json' };
   if (TMDB_TOKEN) headers.authorization = `Bearer ${TMDB_TOKEN}`;
   else if (TMDB_KEY) url.searchParams.set('api_key', TMDB_KEY);
@@ -345,11 +355,36 @@ const onlyScreen = (x) => x.media_type === 'movie' || x.media_type === 'tv';
 
 // ---------- discover ----------
 const tmdbCache = new Map(); // key -> { at, promise }
+// The same TMDB answer with descriptions and genre names in the viewer's language. Titles stay as they are:
+// the library, Search and finding a release all go by them. What TMDB hasn't translated stays in TMDB_LANG.
+const TMDB_LANGUAGES = { sv: 'sv-SE' };
+const placeholderEpisode = /^(avsnitt|episode) \d+$/i;
+function overlayTmdb(base, local) {
+  if (!base || !local) return base;
+  const out = { ...base };
+  for (const field of ['overview', 'tagline']) if (local[field]) out[field] = local[field];
+  if (base.episode_number != null && local.name && !placeholderEpisode.test(local.name)) out.name = local.name;
+  if (base.season_number != null && base.episode_number == null && local.name) out.name = local.name;
+  if (base.id != null && base.name != null && base.title == null && base.first_air_date == null && base.season_number == null && local.name) out.name = local.name; // genres
+  for (const list of ['results', 'episodes', 'seasons', 'genres']) {
+    if (!Array.isArray(base[list]) || !Array.isArray(local[list])) continue;
+    const byId = new Map(local[list].map((x) => [x.id, x]));
+    out[list] = base[list].map((x) => overlayTmdb(x, byId.get(x.id)));
+  }
+  return out;
+}
+async function tmdbForViewer(endpoint, params = {}) {
+  const language = TMDB_LANGUAGES[currentLanguage()];
+  if (!language || language === TMDB_LANG) return tmdb(endpoint, params);
+  const [base, local] = await Promise.all([tmdb(endpoint, params), tmdb(endpoint, params, language).catch(() => null)]);
+  return overlayTmdb(base, local);
+}
+
 function cachedTmdb(endpoint, params = {}, ttl = 30 * 60 * 1000) {
-  const key = endpoint + JSON.stringify(params);
+  const key = currentLanguage() + endpoint + JSON.stringify(params);
   const hit = tmdbCache.get(key);
   if (hit && Date.now() - hit.at < ttl) return hit.promise;
-  const promise = tmdb(endpoint, params);
+  const promise = tmdbForViewer(endpoint, params);
   tmdbCache.set(key, { at: Date.now(), promise });
   promise.catch(() => tmdbCache.delete(key));
   if (tmdbCache.size > 300) tmdbCache.delete(tmdbCache.keys().next().value);
@@ -406,7 +441,7 @@ async function discoverHome(type) {
   const featured = (lists[0]?.results || []).filter((t) => t.backdrop && t.overview).slice(0, 6);
   return {
     featured,
-    rows: rows.map(([key, title], i) => ({ key, title, items: lists[i]?.results || [] })).filter((r) => r.items.length),
+    rows: rows.map(([key, title], i) => ({ key, title: translate(title), items: lists[i]?.results || [] })).filter((r) => r.items.length),
   };
 }
 
@@ -614,6 +649,22 @@ async function qbit(endpoint) {
   return data;
 }
 // One person's library as the Library tab (and the Jellyfin plugin) sees it.
+// Descriptions in the library come from the shared cache in TMDB_LANG. A viewer in another language gets theirs
+// from a small cache of their own, which fills up a batch at a time, like genres do.
+function localizedLibrary(view) {
+  const lang = currentLanguage();
+  const language = TMDB_LANGUAGES[lang];
+  if (!language || language === TMDB_LANG) return view;
+  const fetchOverview = async (type, id) => (await tmdb(`/${type}/${id}`, {}, language)).overview || '';
+  shows.backfillOverviews(lang, 'tv', view.shows.map((s) => s.tmdbId), fetchOverview).catch(() => {});
+  shows.backfillOverviews(lang, 'movie', view.items.filter((f) => f.season == null).map((f) => f.tmdbId), fetchOverview).catch(() => {});
+  return {
+    ...view,
+    shows: view.shows.map((s) => ({ ...s, overview: shows.localOverview(lang, 'tv', s.tmdbId) || s.overview })),
+    items: view.items.map((f) => (f.season == null && f.overview ? { ...f, overview: shows.localOverview(lang, 'movie', f.tmdbId) || f.overview } : f)),
+  };
+}
+
 async function libraryView(user) {
   const items = await libraryVisibleItems(await scanLibrary(), user);
   if (!items) throw new HttpError(503, 'No media folder is set up. Add MEDIA_DIR to .env and restart.');
@@ -2539,7 +2590,9 @@ async function handleApi(req, res, url) {
 
   if (p === '/api/house') {
     if (!activity.isAdmin(req)) throw new HttpError(403, 'Only the server’s owner can see the house.');
-    return sendJson(res, 200, await house.houseReport());
+    const report = await house.houseReport();
+    if (Array.isArray(report?.server?.services)) report.server = { ...report.server, services: report.server.services.map((x) => ({ ...x, detail: translate(x.detail) })) };
+    return sendJson(res, 200, report);
   }
   if (p === '/api/house/screentime') {
     if (!activity.isAdmin(req)) throw new HttpError(403, 'Only the server’s owner can see Screen Time.');
@@ -2745,10 +2798,10 @@ async function handleApi(req, res, url) {
   if (p === '/api/search') {
     const q = (url.searchParams.get('q') || '').trim().slice(0, 100);
     if (!q) return sendJson(res, 200, { results: [] });
-    const data = await tmdb('/search/multi', { query: q, include_adult: 'false' });
+    const data = await tmdbForViewer('/search/multi', { query: q, include_adult: 'false' });
     return sendJson(res, 200, { results: data.results.filter(onlyScreen).map((x) => mapTitle(x)) });
   }
-  if (p === '/api/library') return sendJson(res, 200, await libraryView(user));
+  if (p === '/api/library') return sendJson(res, 200, localizedLibrary(await libraryView(user)));
   // Add videos already on the server to your library (no copy is made).
   if (p === '/api/library/identify') {
     if (!user.isOwner) throw new HttpError(403, 'Only the server’s owner can change a film’s identity.');
@@ -3233,9 +3286,18 @@ async function sendPreview(res, file, sheet) {
   res.end(await fs.promises.readFile(jpg));
 }
 
+// Messages meant to be read, on their way out in the viewer's language.
+const SPOKEN_FIELDS = ['error', 'message', 'note', 'hint', 'reason', 'warning'];
+function spoken(body) {
+  if (currentLanguage() === 'en' || !body || typeof body !== 'object' || Array.isArray(body)) return body;
+  const out = { ...body };
+  for (const f of SPOKEN_FIELDS) if (typeof out[f] === 'string') out[f] = translate(out[f]);
+  if (out.job && typeof out.job === 'object') out.job = spoken(out.job);
+  return out;
+}
 function sendJson(res, status, body) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-  res.end(JSON.stringify(body));
+  res.end(JSON.stringify(spoken(body)));
 }
 
 // ---------- sign-in (auth.js) ----------
@@ -3260,6 +3322,11 @@ function refuseSignedOut(req, res, url) {
 }
 
 function sendSignIn(req, res, url) {
+  const asked = url.searchParams.get('lang');
+  if (['en', 'sv'].includes(asked)) res.setHeader('Set-Cookie', `marquee_lang=${asked}; Path=/; Max-Age=31536000; SameSite=Lax`);
+  return inLanguage(['en', 'sv'].includes(asked) ? asked : currentLanguage(), () => drawSignIn(req, res, url));
+}
+function drawSignIn(req, res, url) {
   const next = safeNext(url.searchParams.get('next'));
   if (req.auth.via) { res.writeHead(303, { Location: next, 'Cache-Control': 'no-store' }); return res.end(); }
   const errors = { wrong: 'That email and password don’t match.', wait: 'Too many tries. Wait a few minutes and try again.', missing: 'Enter your email and password.' };
@@ -3311,7 +3378,8 @@ async function handleAuth(req, res, p) {
   throw new HttpError(404, 'Not found.');
 }
 
-const server = http.createServer(async (req, res) => {
+const server = http.createServer((req, res) => inLanguage(languageOf(req), () => handleRequest(req, res)));
+async function handleRequest(req, res) {
   try {
     const url = new URL(req.url, 'http://localhost');
     // Liveness for Docker, service managers and setup.js doctor. Says nothing about the library.
@@ -3351,7 +3419,7 @@ const server = http.createServer(async (req, res) => {
     if (!res.headersSent) sendJson(res, status, { error: status === 500 ? 'Something broke on the server. Check the console.' : err.message });
     else res.destroy();
   }
-});
+}
 
 // Video files for the converter: the library plus finished downloads.
 // Files owned by qBittorrent are never deleted after conversion, since they may still be seeding.

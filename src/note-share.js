@@ -4,6 +4,7 @@
 // The preview's media is public though: up to four images and the first video, so the embed shows
 // them to anyone. Videos get an H.264 MP4 copy and a thumbnail (phones record .mov/HEVC, which
 // Discord can't play), and images Discord can't show (HEIC and the like) get a JPEG copy.
+import { translateHtml } from './i18n.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
@@ -135,7 +136,7 @@ export async function handlePublic(req, res, url, { notes, media, nameFor, sendV
   if (!m) return false;
   const send = (status, type, data, extra = {}) => {
     res.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex', 'Referrer-Policy': 'no-referrer', Vary: 'User-Agent', ...extra });
-    res.end(req.method === 'HEAD' ? undefined : data);
+    res.end(req.method === 'HEAD' ? undefined : (String(type).startsWith('text/html') ? translateHtml(data) : data));
     return true;
   };
   const notFound = () => send(404, 'text/plain; charset=utf-8', 'Not found.');

@@ -111,7 +111,7 @@ test('the player wires the Bedtime menu, N shortcut and dual subtitles', async (
     fs.readFile(new URL('../public/index.html', import.meta.url), 'utf8'),
   ]);
   for (const id of ['night-btn', 'night-menu']) assert.match(html, new RegExp(`id="${id}"`));
-  assert.match(app, /\['N', 'Night mode'\]/);
+  assert.match(app, /\['N', T\('Night mode'\)\]/);
   assert.match(app, /n: \(\) => setNight\(!night\.on, true\)/);
   assert.match(app, /sleep\?\.kind === 'episode'[\s\S]{0,200}isNextEpisodeTime/, 'End of episode pauses where Up next would start');
   assert.match(app, /autoChain = AUTOPLAY_CHAIN; \/\/ no Next episode countdown/);

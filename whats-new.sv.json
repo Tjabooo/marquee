@@ -1,0 +1,738 @@
+{
+  "2026-11-08-languages": {
+    "title": "Marquee på svenska",
+    "items": {
+      "Choose your language": {
+        "title": "Välj ditt språk",
+        "text": "Marquee talar nu engelska och svenska. Välj under Inställningar → Språk så gäller det överallt: menyer, spelaren, meddelanden och aviseringar, på alla enheter du loggar in på. Beskrivningar och genrer följer med, medan titlar behåller sina namn."
+      },
+      "One TV app, in Swedish": {
+        "title": "En TV-app, på svenska",
+        "text": "Den nya TV-appen med Upptäck, Sök och genrer har ersatt den gamla. Den är på svenska, och skärmtangentbordet har å, ä och ö."
+      }
+    }
+  },
+  "2026-11-08-auto-translated-subtitles": {
+    "title": "Bättre undertextöversättningar",
+    "items": {
+      "Subtitles written by people come first": {
+        "title": "Undertexter skrivna av människor kommer först",
+        "text": "Marquee väljer nu alltid undertexter skrivna av människor när de finns. När det bara finns en maskinöversättning står det ”maskinöversatt” vid språket så att du vet vad du får, och den byts ut automatiskt när människors undertexter dyker upp."
+      }
+    }
+  },
+  "2026-11-08-skip-intro-ready": {
+    "title": "Hoppa över intro är klart tidigare",
+    "items": {
+      "Ready before you press play": {
+        "title": "Klart innan du trycker på spela",
+        "text": "När nya avsnitt kommer eller en säsong uppgraderas hittar Marquee nu intron och eftertexter i bakgrunden, så Hoppa över intro och Nästa kommer mer sällan för sent första gången du tittar. Uppgraderade avsnitt behåller också det som redan hittats."
+      }
+    }
+  },
+  "2026-11-08-rare-subtitles": {
+    "title": "Ovanliga undertextspråk syns",
+    "items": {
+      "Fewer subtitles missed": {
+        "title": "Färre missade undertexter",
+        "text": "Undertextlistan kunde missa ett språk när en titel hade många undertexter på vanliga språk. Nu hittas de. Ett språk visas fortfarande bara när någon har gjort undertexter på det för det du tittar på."
+      }
+    }
+  },
+  "2026-11-08-player-titles": {
+    "title": "Avsnittsnamn i spelaren",
+    "items": {
+      "Add instead of Download": {
+        "title": "Lägg till i stället för Ladda ner",
+        "text": "Att skaffa något nytt heter nu bara Lägg till: på en film, en serie, en säsong eller ett enskilt avsnitt. Finns det redan här är det klart direkt, annars visas det som På väg och sedan Snart klar tills du kan trycka på Spela upp. En serie du redan tittar på visar Fler avsnitt i stället."
+      },
+      "Georgian and Tagalog subtitles": {
+        "title": "Undertexter på georgiska och tagalog",
+        "text": "Georgiska och tagalog finns nu i undertextlistan bredvid de andra språken, där någon har gjort dem för det du tittar på."
+      },
+      "Proper episode titles": {
+        "title": "Riktiga avsnittstitlar",
+        "text": "När ett avsnitt spelas visar spelaren nu seriens namn och avsnittets riktiga titel, som ”House · Säsong 3, Avsnitt 2: Cane & Able”, i stället för en kort kod som ”house S03 E02”."
+      }
+    }
+  },
+  "2026-11-08-versions": {
+    "title": "En titel, flera kvaliteter",
+    "items": {
+      "Versions instead of double cards": {
+        "title": "Versioner i stället för dubbla kort",
+        "text": "Om en film eller ett avsnitt finns här i två kvaliteter, till exempel 4K och 1080p, visas den nu som en titel i stället för två. Ett kvalitetsval på filmens sida, säsongens sida och i spelarens kvalitetsmeny väljer vilken som spelas. Var du är följer med mellan dem, på webbplatsen, TV-apparater och Jellyfin. Telefoner börjar med den lättare versionen om du inte väljer en annan, och ditt val sparas på varje enhet."
+      },
+      "No more accidental second copies": {
+        "title": "Inga fler oavsiktliga dubbletter",
+        "text": "Att ladda ner en film eller ett avsnitt du redan har i samma kvalitet nekas, och du får se vad som redan finns. Utgåvor i en kvalitet du har markeras i listan. En annan kvalitet går bra: den blir en version. Ett säsongspaket laddar bara ner avsnitten du inte redan har i den kvaliteten."
+      }
+    }
+  },
+  "2026-11-08-upgrade-quality": {
+    "title": "Bättre bild och en uppgraderingsknapp",
+    "items": {
+      "Best Quality means best picture": {
+        "title": "Bästa kvalitet betyder bästa bild",
+        "text": "Med Nedladdningskvalitet på Bästa kvalitet valde Marquee förut den populäraste utgåvan, och det är ofta en pytteliten omkodning som ser suddig ut på en stor skärm. Nu ser den på hur mycket bild en utgåva verkligen har (storleken för upplösningen, var den kommer ifrån och vem som gjort den), så du får en riktig BluRay- eller webbutgåva när en finns. Balanserad hoppar också över utgåvor som är alldeles för små för sin upplösning."
+      },
+      "Upgrade quality": {
+        "title": "Uppgradera kvalitet",
+        "text": "Har du en säsong som ser dålig ut? Öppna Ladda ner på serien, välj säsongen och tryck på Uppgradera kvalitet. Marquee letar efter en klart bättre utgåva, laddar ner den och byter ut varje avsnitt så snart det nya är klart. Var du var i varje avsnitt följer med. Finns inget bättre får du veta det."
+      }
+    }
+  },
+  "2026-11-08-subtitle-fixes": {
+    "title": "Renare engelska undertexter",
+    "items": {
+      "Names and I/l mix-ups fixed": {
+        "title": "Namn och I/l-förväxlingar fixade",
+        "text": "Vissa utgåvor har undertexter som lästs av från skivan av en dator, så namn och förkortningar blir gemener (”cuddy”, ”nicu”) och I och l byter plats (”ls there”, ”l'm”). Marquee fixar nu det här i engelska undertexter medan du tittar, på webbplatsen, TV-apparater och vid casting. Den lär sig hur namn stavas från andra undertexter i biblioteket, så den blir bättre när biblioteket växer."
+      }
+    }
+  },
+  "2026-11-08-episode-ranges": {
+    "title": "Ladda ner ett intervall av avsnitt",
+    "items": {
+      "Episodes 150 to 200": {
+        "title": "Avsnitt 150 till 200",
+        "text": "Långa säsonger (40 avsnitt eller fler, som Black Clover eller One Piece) har nu ett avsnittsval i nedladdningspanelen. Välj ”Välj ett intervall”, skriv första och sista avsnittet, så laddas bara de ner. Ett paket med hela säsongen kan fortfarande användas: avsnitt utanför ditt intervall hoppas helt enkelt över."
+      },
+      "One Piece numbering": {
+        "title": "One Piece-numrering",
+        "text": "One Pieces avsnitt behåller sina riktiga nummer (Wano är avsnitt 892 till 1088), så nedladdningar, biblioteket och avsnittslistan stämmer överens. Sökningar blandar inte längre ihop animen med live action-serien från 2023."
+      }
+    }
+  },
+  "2026-11-08-stuck-episodes": {
+    "title": "Fastnade avsnitt blockerar inte längre en säsong",
+    "items": {
+      "Seasons keep downloading": {
+        "title": "Säsonger fortsätter laddas ner",
+        "text": "När några avsnitt i en säsong inte hittar någon att ladda ner från fortsätter resten av säsongen i stället för att vänta bakom dem. En nedladdning av en hel säsong går också före enskilda avsnitt den redan innehåller."
+      }
+    }
+  },
+  "2026-11-07-anime": {
+    "title": "Mycket bättre anime",
+    "items": {
+      "Anime downloads from Nyaa": {
+        "title": "Anime-nedladdningar från Nyaa",
+        "text": "Marquee söker nu också på Nyaa, där anime släpps. Ladda ner säsong på en anime väljer ett helt paket (en nedladdning för en säsong, även 170 avsnitt) i stället för en torrent per avsnitt, och hittar enskilda avsnitt hur de än är numrerade: ”Black Clover - 176”, ”Black Clover 2nd Season - 06” och ”S02E06” är nu samma avsnitt."
+      },
+      "Anime seasons line up": {
+        "title": "Anime-säsonger stämmer",
+        "text": "Anime som TMDB räknar annorlunda (Frierens två säsonger är en på TMDB, Jujutsu Kaisens tre säsonger också) hamnar på rätt säsong och avsnitt i ditt bibliotek, under sitt rätta namn, och Marquee vet vilka avsnitt du redan har så att inget laddas ner två gånger."
+      },
+      "Subtitles on by default": {
+        "title": "Undertexter på som standard",
+        "text": "Om du aldrig valt undertexter slår anime på de engelska undertexter den kom med, så att japanskt ljud inte blir oöversatt. Välj ett annat språk eller Av i spelaren så gäller det som tidigare."
+      }
+    }
+  },
+  "2026-11-07-jellyfin": {
+    "title": "Marquee i Jellyfin",
+    "items": {
+      "Watch your library in Jellyfin": {
+        "title": "Titta på ditt bibliotek i Jellyfin",
+        "text": "Har du en egen Jellyfin? Installera Marquee-tillägget där, öppna dess inställningar och ange koden det visar under Inställningar → Jellyfin här. Dina filmer och serier syns då i alla Jellyfin-appar, och det du ser där dyker också upp i Fortsätt titta här."
+      }
+    }
+  },
+  "2026-11-07-phone-quality": {
+    "title": "Mjuk 4K på telefoner",
+    "items": {
+      "A lighter stream for big files on your phone": {
+        "title": "En lättare ström för stora filer på telefonen",
+        "text": "4K-filmer och andra väldigt stora filer brukade hacka på telefoner. Nu spelar Marquee dem på en telefon som en lättare 1080p-ström som skapas direkt, så de startar snabbt och flyter på, även på mobildata. Originalfilen på servern förblir precis som den är."
+      },
+      "Pick the quality yourself": {
+        "title": "Välj kvaliteten själv",
+        "text": "Den nya kvalitetsknappen i spelaren (på telefoner och surfplattor) låter dig välja Auto, Original, 1080p eller 720p (datasparläge). Ditt val sparas, och du behåller din plats i videon när du byter."
+      }
+    }
+  },
+  "2026-11-07-tv-preview-browse": {
+    "title": "Bläddra och sök på TV:n (Preview)",
+    "items": {
+      "A bigger Discover in Marquee Preview": {
+        "title": "Ett större Upptäck i Marquee Preview",
+        "text": "I TV-appen Marquee Preview fortsätter raderna i Upptäck nu att laddas medan du rör dig längs dem, slutar i Visa alla (ett helt rutnät) och följs av en rad med genrer och en rad per genre. Flikarna Filmer / Serier högst upp smalnar av, och titeln du står på fyller skärmens övre del med sin beskrivning. Genresidor kan sorteras efter Populärt, Högst betyg eller Nyast."
+      },
+      "Search and genres on the TV": {
+        "title": "Sök och genrer på TV:n",
+        "text": "Marquee Preview har en söksida med skärmtangentbord (ett riktigt tangentbord fungerar också): dina egna titlar visas direkt, allt annat från TMDB en stund senare. Ditt bibliotek på TV:n har nu också en rad för varje genre du har något i."
+      }
+    }
+  },
+  "2026-11-07-tv-subtitles": {
+    "title": "Undertexter på TV:n",
+    "items": {
+      "Play on TV keeps your subtitles": {
+        "title": "Spela på TV behåller dina undertexter",
+        "text": "Spela på TV startar nu med samma undertexter som spelaren skulle slå på åt dig (ditt senaste språk, eller det i Inställningar), så du slipper välja dem igen på TV-fjärrkontrollen. Går de inte att hämta startar videon utan dem. Apple TV kan fortfarande inte visa undertextfiler via AirPlay."
+      }
+    }
+  },
+  "2026-11-06-player-feedback": {
+    "title": "Spelarens tips ur vägen",
+    "items": {
+      "Volume, sleep timer and skip hints": {
+        "title": "Volym, insomningstimer och hopp",
+        "text": "De små meddelandena i spelaren (volym, insomningstimer, hopp, nattläge och så vidare) visas nu strax ovanför bildens mitt, så de inte längre täcker spelaknappen eller laddningsringen på telefonen. Blinket för spela/pausa stannar i mitten, på spelaknappen."
+      }
+    }
+  },
+  "2026-11-06-agent-notify": {
+    "title": "Agenter kan knacka dig på axeln",
+    "items": {
+      "Notifications from your agents": {
+        "title": "Aviseringar från dina agenter",
+        "text": "Ett skript eller en AI-agent på dina datorer hemma kan nu skicka en avisering när den behöver dig. Den använder Huset-token och fungerar bara från hemnätverket. Stäng av under Inställningar › Aviseringar › Agenter."
+      }
+    }
+  },
+  "2026-11-05-cache-space": {
+    "title": "Webbläsarkopior kan inte fylla en enhet",
+    "items": {
+      "Cache on any drive": {
+        "title": "Cache på valfri enhet",
+        "text": "Den nya inställningen CACHE_DIR i .env lägger webbläsarkopior, förhandsvisningar på tidslinjen och delningskopior på en större enhet än Marquees egen mapp."
+      },
+      "A cap and a safety margin": {
+        "title": "En gräns och en säkerhetsmarginal",
+        "text": "Webbläsarkopior håller sig under 150 GB (BROWSER_COPIES_MAX_GB), och de som ingen sett på längst tid får ge plats först. Konverteringar lämnar också 20 GB ledigt på varje enhet (MIN_FREE_GB) och väntar i stället för att fylla den."
+      }
+    }
+  },
+  "2026-11-05-shared-libraries": {
+    "title": "Delade bibliotek",
+    "items": {
+      "One library for the household": {
+        "title": "Ett bibliotek för hushållet",
+        "text": "Ägaren kan nu låta flera personer dela ett bibliotek. Alla i det ser samma filmer och serier, även på TV:n, och alla kan lägga till, behålla eller ta bort titlar. Var du är i det du ser är ditt eget."
+      },
+      "Set it in People": {
+        "title": "Ställ in det i Personer",
+        "text": "Inställningar → Personer har ett biblioteksval för varje person: Eget bibliotek, eller dela med någon (går du med någon som redan delar går du med i hela gruppen)."
+      }
+    }
+  },
+  "2026-11-05-convert-banner-mine": {
+    "title": "Bara konverteringar du väntar på",
+    "items": {
+      "Quieter library": {
+        "title": "Lugnare bibliotek",
+        "text": "Raden ”Förbereder uppspelning” visas nu bara för videor i ditt bibliotek, och bara när din webbläsare faktiskt behöver kopian för att spela dem. Kan du redan titta syns den inte."
+      }
+    }
+  },
+  "2026-11-05-convert-lanes": {
+    "title": "Redo att spela tidigare",
+    "items": {
+      "Two conversions at once": {
+        "title": "Två konverteringar samtidigt",
+        "text": "Marquee gör nu den snabba kopian för iPhone och Apple TV och den långsammare kopian för äldre webbläsare samtidigt, i stället för en i taget. En ny film väntar inte längre bakom en annan films långa konvertering."
+      },
+      "Full quality in more browsers": {
+        "title": "Full kvalitet i fler webbläsare",
+        "text": "Om din webbläsare spelar HEVC (de flesta gör det nu, även Firefox på många datorer) får du alltid originalbilden. Den omkodade kopian används bara av webbläsare som inte kan spela den."
+      }
+    }
+  },
+  "2026-11-05-tv-skip-next": {
+    "title": "Hoppa över intro och Nästa avsnitt på TV:n",
+    "items": {
+      "On your phone's TV remote": {
+        "title": "På telefonens TV-fjärrkontroll",
+        "text": "När du spelar ett avsnitt på TV:n visar fjärrkontrollen på telefonen nu Hoppa över intro under förtexterna och Nästa när eftertexterna börjar. Nästa avsnitt startar det på TV:n, med samma nedräkning på 10 sekunder som på telefonen. Håll fjärrkontrollen öppen under nedräkningen: en låst telefon kan inte starta nästa."
+      }
+    }
+  },
+  "2026-11-05-convert-label": {
+    "title": "Tydligare konverteringsrad",
+    "items": {
+      "Says what it's converting for": {
+        "title": "Säger vad den konverterar för",
+        "text": "Vissa nya filmer får en andra engångskopia som spelas i alla webbläsare. Raden högst upp i biblioteket säger nu det, så det ser inte längre ut som att samma film konverteras två gånger. Du kan titta medan den körs."
+      }
+    }
+  },
+  "2026-11-05-trailers": {
+    "title": "Se trailern",
+    "items": {
+      "Trailers on title pages": {
+        "title": "Trailers på titelsidor",
+        "text": "Öppna en film eller serie i Upptäck och tryck på Trailer på bilden högst upp. Trailern spelas direkt där och stoppas när du stänger sidan."
+      }
+    }
+  },
+  "2026-11-05-content-filter": {
+    "title": "Inga vuxennedladdningar",
+    "items": {
+      "Adult content is blocked": {
+        "title": "Vuxeninnehåll blockeras",
+        "text": "Marquee laddar inte längre ner porr. Det utelämnas från torrentsökningen, och länkar eller .torrent-filer för det nekas. Visar det sig att en nedladdning innehåller det när den startat tas den bort direkt."
+      }
+    }
+  },
+  "2026-11-05-download-seeders": {
+    "title": "Seeders i nedladdningsdetaljer",
+    "items": {
+      "See who's sharing": {
+        "title": "Se vilka som delar",
+        "text": "Nedladdningsdetaljerna visar nu hur många seeders en nedladdning är ansluten till av hur många som finns, som ”12 av 340 seeders”. Pricken lyser när många delar och är tom när ingen gör det, så du kan skilja en långsam nedladdning från en som fastnat."
+      }
+    }
+  },
+  "2026-11-05-continue-arrows": {
+    "title": "Pilar på Fortsätt titta",
+    "items": {
+      "Scroll with arrows": {
+        "title": "Bläddra med pilar",
+        "text": "Fortsätt titta i biblioteket har nu ←→-knappar bredvid rubriken, som raderna i Upptäck. De visas bara när det finns fler kort än vad som får plats."
+      }
+    }
+  },
+  "2026-11-05-sheet-fixes": {
+    "title": "Prydligare paneler",
+    "items": {
+      "Close stays in reach": {
+        "title": "Stäng inom räckhåll",
+        "text": "Krysset ✕ på paneler som den här stannar nu i hörnet när du skrollar, i stället för att följa med texten bort."
+      },
+      "Cleaner bottom edge": {
+        "title": "Renare nederkant",
+        "text": "I Nyheter sticker text inte längre fram under knappen Uppfattat / Stäng."
+      }
+    }
+  },
+  "2026-11-05-faces-room": {
+    "title": "Ansikten och ett nytt Titta tillsammans",
+    "items": {
+      "Add your picture": {
+        "title": "Lägg till din bild",
+        "text": "Inställningar: tryck på cirkeln bredvid ditt namn för att lägga till en profilbild. Dra den på plats, zooma, spara. Den visas där ditt namn gör det: Gillad av, Populärt på Marquee, tittarkvällar, rumschatt och Wrapped."
+      },
+      "Watch Together, redone": {
+        "title": "Titta tillsammans, omgjort",
+        "text": "Rummet öppnas nu som en panel bredvid bilden på större skärmar (en panel underifrån på telefoner): allas ansikten med en guldring när de är redo, värdens krona, chattbubblor, inbjudningar med ett tryck och snabba nedräkningsknappar för värden. Inbjudningar ser ut som en biljett och visar vilka som redan är där."
+      },
+      "Pictures for the family": {
+        "title": "Bilder för familjen",
+        "text": "I Inställningar → Personer trycker du på någons cirkel för att ge personen en bild (högerklicka för att ta bort)."
+      }
+    }
+  },
+  "2026-11-05-invite-fix": {
+    "title": "Inbjudningslänkar fungerar igen",
+    "items": {
+      "Invite links work again": {
+        "title": "Inbjudningslänkar fungerar igen",
+        "text": "Sedan inloggningsuppdateringen visade en inbjudningslänk ”Begäran kom från en annan webbplats” när man tryckte på Få åtkomst. Det är fixat: inbjudningar du redan skickat fungerar som de är."
+      }
+    }
+  },
+  "2026-11-05-setup-wizard": {
+    "title": "Installation i ett fönster",
+    "items": {
+      "Marquee Setup for Windows": {
+        "title": "Marquee Setup för Windows",
+        "text": "Att installera Marquee på Windows kräver inte längre en terminal. Marquee Setup (på Start-menyn, eller MarqueeSetup.exe från utgivningssidan) tar dig genom bibliotek, nätverk, inloggning, tjänster och start vid uppstart, och kontrollerar dina nycklar och portar längs vägen."
+      },
+      "Game clips as an add-on": {
+        "title": "Spelklipp som tillägg",
+        "text": "Slå på Clipper på sidan Spelklipp: installationen lägger in det på den här datorn, eller ger dig ett kommando att klistra in på speldatorn och delar klippmappen åt dig."
+      }
+    }
+  },
+  "2026-11-05-app-icon": {
+    "title": "En ny hemskärmsikon",
+    "items": {
+      "Marquee in lights": {
+        "title": "Marquee i neonljus",
+        "text": "Marquee har en ny ikon när du lägger till den på telefonens hemskärm: ett upplyst M. På Android fyller den nu ikonens form ordentligt i stället för att sitta i en vit cirkel. Har du redan lagt till Marquee? Ta bort den från hemskärmen och lägg till den igen för att få den nya ikonen (iPhone behåller den gamla tills du gör det)."
+      }
+    }
+  },
+  "2026-11-05-phone": {
+    "title": "Ladda ner till telefonen",
+    "items": {
+      "Take it with you": {
+        "title": "Ta den med dig",
+        "text": "Ska du någonstans utan wifi? Öppna en film eller ett avsnitt och tryck på Till telefonen (telefonknappen på avsnittsraderna). Marquee gör en liten kopia (Liten 480p, cirka 450 MB per timme, eller Standard 720p) som spelas i telefonens egen videospelare med inbyggda undertexter. Eller ladda ner filen i full kvalitet."
+      },
+      "A whole season": {
+        "title": "En hel säsong",
+        "text": "Säsong till telefonen skapar alla avsnitt i säsongen du tittar på. De listas under Till din telefon i biblioteket, var och en med egen Ladda ner-knapp när den är klar. Med aviseringar på får du veta när en är färdig."
+      },
+      "Phone copies": {
+        "title": "Telefonkopior",
+        "text": "Kopior görs en i taget med GPU:n om den har NVENC, sparas i cache/travel i 7 dagar efter senaste nedladdning (TRAVEL_KEEP_DAYS) och begränsas till 50 GB (TRAVEL_MAX_GB). HDR tonmappas till SDR."
+      }
+    }
+  },
+  "2026-11-05-seek-look": {
+    "title": "En snyggare förhandsvisning på tidslinjen",
+    "items": {
+      "Scrubbing looks the part": {
+        "title": "Spolning som ser bra ut",
+        "text": "Bilden du ser när du håller över eller drar längs tidslinjen ligger nu i ett litet sammetskort med tiden i guld, och en liten pil visar exakt var du hamnar. Medan en förhandsvisning laddas behåller kortet sin storlek i stället för att hoppa."
+      }
+    }
+  },
+  "2026-11-05-social": {
+    "title": "Gilla, tittarkvällar och Wrapped",
+    "items": {
+      "Thumbs up, thumbs down": {
+        "title": "Tummen upp, tummen ner",
+        "text": "Betygsätt valfri film eller serie från dess sida. Alla ser vilka som gillat något (”Gillad av Anna och Ben”), medan en tumme ner förblir privat."
+      },
+      "Popular on Marquee": {
+        "title": "Populärt på Marquee",
+        "text": "En ny rad högt upp i Upptäck visar vad folk här gillat och sett på senaste tiden."
+      },
+      "Chat and reactions in Watch Together": {
+        "title": "Chatt och reaktioner i Titta tillsammans",
+        "text": "Öppna Rum när ni tittar tillsammans för att skicka emoji som svävar över bilden, eller chatta. Meddelanden dyker upp över videon, även när kontrollerna är dolda."
+      },
+      "Plan a watch party": {
+        "title": "Planera en tittarkväll",
+        "text": "Välj en tid från en films eller ett avsnitts sida (personikonen) och skicka inbjudan. Alla får en nedräkning, och uppspelningen startar av sig själv för dem som är i rummet. Dina tittarkvällar väntar i biblioteket. Värden kan också starta ett pågående rum med en kort nedräkning."
+      },
+      "Marquee Wrapped": {
+        "title": "Marquee Wrapped",
+        "text": "Inställningar → Marquee Wrapped berättar om ditt år: timmar du tittat, topptitlar, årets serie, dina mest aktiva dagar och vilka du tittat med. Den räknar från idag."
+      }
+    }
+  },
+  "2026-11-05-signin": {
+    "title": "Logga in på Marquee",
+    "items": {
+      "Your own password": {
+        "title": "Ditt eget lösenord",
+        "text": "Marquee kan nu logga in dig själv. Om ägaren skapat ett konto åt dig ser du en inloggningssida när du inte är hemma, och i Inställningar kan du byta lösenord eller logga ut."
+      },
+      "Safer from other websites": {
+        "title": "Säkrare mot andra webbplatser",
+        "text": "Marquee ignorerar nu begäranden som andra webbplatser försöker skicka via din webbläsare, så en sida du besöker kan inte starta nedladdningar eller radera något."
+      },
+      "Server security": {
+        "title": "Serversäkerhet",
+        "text": "Skapa inloggningar med node setup.js user add EMAIL. Besökare från internet loggar alltid in, och HOME_NETWORK_ACCESS=signin gör att även de hemma loggar in. På Windows kör du node setup.js service install en gång i en administratörs-PowerShell: det tar bort den gamla SYSTEM-vakten. Clipper-installationer är nu låsta och kontrollsummeverifierade."
+      }
+    }
+  },
+  "2026-11-05-notifications": {
+    "title": "Aviseringar",
+    "items": {
+      "Hear when it's ready": {
+        "title": "Få veta när den är klar",
+        "text": "Slå på aviseringar i Inställningar så säger telefonen eller datorn till när en nedladdning går att titta på, även när Marquee är stängd."
+      },
+      "New episodes": {
+        "title": "Nya avsnitt",
+        "text": "När ett nytt avsnitt av en serie du följer eller har i biblioteket kommer till Marquee får du en avisering. Varje typ av avisering kan stängas av för sig."
+      },
+      "Invite people to watch": {
+        "title": "Bjud in folk att titta",
+        "text": "I ett Titta tillsammans-rum trycker du på Bjud in och väljer någon: personen får en avisering som öppnar rummet."
+      },
+      "On iPhone": {
+        "title": "På iPhone",
+        "text": "Apple tillåter bara aviseringar för appar på hemskärmen: tryck på Dela, sedan Lägg till på hemskärmen, och slå på aviseringar därifrån."
+      }
+    }
+  },
+  "2026-11-05-watchlist": {
+    "title": "Spara till senare och Följ",
+    "items": {
+      "Save for later": {
+        "title": "Spara till senare",
+        "text": "Tryck på Spara på valfri film eller serie för att ha den i raden Sparad till senare högst upp i Upptäck."
+      },
+      "Download when it's out": {
+        "title": "Hämta när den är ute",
+        "text": "Sparat en film som inte är ute än? Kryssa i ”Lägg till när det finns en bra kopia” så hämtas den av sig själv när den släpps, aldrig en biofilmning."
+      },
+      "Follow a show": {
+        "title": "Följ en serie",
+        "text": "Tryck på Följ på en serie så hämtas varje nytt avsnitt av sig självt när det har sänts. Avsnitt du redan har hämtas inte igen, och äldre avsnitt lämnas i fred."
+      },
+      "New and Coming up": {
+        "title": "Nytt och På gång",
+        "text": "Avsnitt som kommit på det här sättet visar ett Nytt-märke på serien tills du öppnar den, och biblioteket har en rad På gång med nästa avsnitt och premiärdatum."
+      }
+    }
+  },
+  "2026-11-05-skip-intro": {
+    "title": "Hoppa över intro",
+    "items": {
+      "Skip the opening titles": {
+        "title": "Hoppa över förtexterna",
+        "text": "En Hoppa över intro-knapp visas nu medan en series förtexter spelas (eller tryck på S). Marquee hittar signaturmelodin genom att jämföra ett avsnitt med sina grannar, så det fungerar även efter en lång inledning."
+      },
+      "Or skip them automatically": {
+        "title": "Eller hoppa över dem automatiskt",
+        "text": "Inställningar → Tittande → Intron kan hoppa över förtexter av sig själv. Spola tillbaka in i dem så spelas de som vanligt."
+      }
+    }
+  },
+  "2026-11-05-bedtime": {
+    "title": "Läggdags och bättre undertexter",
+    "items": {
+      "Night mode": {
+        "title": "Nattläge",
+        "text": "Tryck på månen i spelaren (eller på N) för att jämna ut höga explosioner och tyst dialog, med lyfta röster så att du kan hålla volymen nere."
+      },
+      "Sleep timer": {
+        "title": "Insomningstimer",
+        "text": "Också under månen: pausa efter 15 minuter till en och en halv timme, med ljudet som tonas ut försiktigt, eller vid avsnittets slut så att nästa inte startar medan du sover."
+      },
+      "Subtitles your way": {
+        "title": "Undertexter som du vill ha dem",
+        "text": "Undertextmenyn ställer nu in stilen (en mörk ruta, en mjuk skugga eller en kontur) och hur högt raderna ligger, förutom storleken."
+      },
+      "Two languages at once": {
+        "title": "Två språk samtidigt",
+        "text": "Välj ett andra språk i undertextmenyn för att visa det ovanför det första. Praktiskt för att lära sig ett språk, eller när du tittar med någon som läser ett annat."
+      }
+    }
+  },
+  "2026-11-05": {
+    "title": "Nytt den här veckan",
+    "items": {
+      "What's new, right here": {
+        "title": "Nyheter, här",
+        "text": "Från och med nu visar Marquee vad som ändrats efter varje uppdatering, precis så här. Du kan läsa tidigare uppdateringar när som helst i Inställningar → Nyheter."
+      },
+      "Next episode starts with the credits": {
+        "title": "Nästa avsnitt börjar med eftertexterna",
+        "text": "När eftertexterna rullar räknar ett Nästa-kort ner och spelar nästa avsnitt. Pausa eller tryck på Fortsätt titta för att stanna kvar."
+      },
+      "Stats for nerds": {
+        "title": "Statistik för nördar",
+        "text": "Tryck på I när du tittar, eller högerklicka på bilden, för att se allt om strömmen: upplösning, codecs, HDR, bithastighet, tappade bildrutor, buffert och nedladdningshastighet. Kopiera lägger allt i urklipp."
+      },
+      "Previews while you seek": {
+        "title": "Förhandsvisningar när du spolar",
+        "text": "Dra längs tidslinjen för att se en liten bild av det ögonblicket innan du släpper."
+      },
+      "Subtitles that line up": {
+        "title": "Undertexter som stämmer",
+        "text": "Undertexter kontrolleras mot ljudet och fixas när de glider isär, även när de gjorts för en annan klippning av filmen."
+      },
+      "Always up to date": {
+        "title": "Alltid uppdaterat",
+        "text": "Klara nedladdningar, raderingar och var du slutade titta på en annan enhet syns nu direkt, utan att ladda om."
+      },
+      "Add to library": {
+        "title": "Lägg till i biblioteket",
+        "text": "Om någon annan redan har en titel på servern blir Ladda ner till Lägg till i biblioteket: den är din direkt, utan väntan."
+      },
+      "Exact clip cuts": {
+        "title": "Exakta klipp",
+        "text": "Spelklipp kan nu klippas på vilken bildruta som helst, inte bara närmaste nyckelbild, utan kvalitetsförlust."
+      }
+    }
+  },
+  "2026-11-04": {
+    "title": "Avsnittsbilder och ett prydligare bibliotek",
+    "items": {
+      "A picture for every episode": {
+        "title": "En bild för varje avsnitt",
+        "text": "Avsnitt visar nu en bild från själva avsnittet i säsongslistan, Fortsätt titta och Nästa, så du lätt hittar det du vill se."
+      },
+      "Delete a season or a whole show": {
+        "title": "Radera en säsong eller en hel serie",
+        "text": "På en series sida kan du ta bort en säsong eller hela serien på en gång, i stället för avsnitt för avsnitt."
+      },
+      "Ready to play sooner": {
+        "title": "Redo att spela tidigare",
+        "text": "Nya nedladdningar förbereds för uppspelning ungefär dubbelt så snabbt, och Firefox får sin egen kopia direkt i stället för när du trycker på Spela upp."
+      },
+      "Tidier subtitles": {
+        "title": "Prydligare undertexter",
+        "text": "Undertextrader trängs inte längre mot varandra, och långa rader bryts inte för tidigt i Firefox."
+      },
+      "Steadier TV casting": {
+        "title": "Stabilare casting till TV",
+        "text": "Spela på TV fortsätter spela filen den startade med, även om biblioteket ändras under tiden."
+      },
+      "Notes on your phone": {
+        "title": "Anteckningar på telefonen",
+        "text": "Anteckningar passar nu små skärmar: lättryckta åtgärder med ångra, tangentbordet täcker inte längre det du skriver, och bilder öppnas i helskärm."
+      },
+      "Search inside images": {
+        "title": "Sök inuti bilder",
+        "text": "Text i anteckningsbilder (skärmbilder, kvitton, affischer) läses automatiskt, så att en sökning hittar dem också."
+      },
+      "Notes and clips in Discord": {
+        "title": "Anteckningar och klipp i Discord",
+        "text": "En delad anteckning visas som ett förhandsvisningskort i Discord med sina bilder eller sin video. Delade klipp öppnas i Marquees egen spelare, i full kvalitet."
+      },
+      "Better clip editing": {
+        "title": "Bättre klippredigering",
+        "text": "Klipp bort flera delar i en redigering, och lämna ute ljudspår du inte vill ha, som en brusig mikrofon."
+      },
+      "House: Sharing and Screen Time": {
+        "title": "Huset: Delning och Skärmtid",
+        "text": "Huset → Delning visar vad strömmar och kodningar kostar servern just nu. Skärmtid visar hur länge varje dator hemma har använts, och till vad."
+      }
+    }
+  },
+  "2026-11-03": {
+    "title": "Nedladdningar med ett tryck",
+    "items": {
+      "Download in one press": {
+        "title": "Ladda ner med ett tryck",
+        "text": "Ladda ner väljer den bästa utgåvan åt dig utifrån din kvalitetsinställning, storleksgräns och ditt ljudspråk. För en serie väljer du säsongen och trycker på Ladda ner säsong."
+      },
+      "Episodes in order": {
+        "title": "Avsnitten i ordning",
+        "text": "Avsnitt ett laddas ner först och i full fart, så du kan börja titta medan resten av säsongen blir klar."
+      },
+      "1440p": {
+        "title": "1440p",
+        "text": "Mellan 1080p och 4K finns nu 1440p för skarp bild utan 4K:s storlek."
+      },
+      "One library": {
+        "title": "Ett bibliotek",
+        "text": "Nedladdningar visas på titelns eget kort i biblioteket, avsnitt för avsnitt, så snart vart och ett är klart."
+      },
+      "A library that keeps itself current": {
+        "title": "Ett bibliotek som håller sig självt uppdaterat",
+        "text": "Nya nedladdningar och ändringar dyker upp i biblioteket av sig själva, och när ett avsnitt tar slut erbjuder Marquee nästa."
+      },
+      "Notes": {
+        "title": "Anteckningar",
+        "text": "En delad flik för meddelanden, länkar, foton och videor. Foton och videor som laddas upp från en telefon förblir privata i Marquee."
+      },
+      "Rename clips": {
+        "title": "Byt namn på klipp",
+        "text": "Ge ett klipp ett riktigt namn i stället för inspelarens tidsstämpel."
+      }
+    }
+  },
+  "2026-11-02": {
+    "title": "Ditt eget Marquee",
+    "items": {
+      "Your own account": {
+        "title": "Ditt eget konto",
+        "text": "Alla loggar in på sitt eget Marquee: ditt bibliotek, var du slutade och dina inställningar är dina. Om någon annan redan har en titel på servern lägger du till den i ditt bibliotek i stället för att ladda ner den igen."
+      },
+      "Settings": {
+        "title": "Inställningar",
+        "text": "En flik för färgteman, standardundertexter, föredragen kvalitet, sidan Marquee öppnas på och hur biblioteket sorteras."
+      },
+      "Watch Together": {
+        "title": "Titta tillsammans",
+        "text": "Starta ett rum från spelaren och skicka länken: uppspelningen är i synk för alla, och var och en väljer sina undertexter. Länkar visar en förhandsvisning i Discord."
+      },
+      "Shows by season": {
+        "title": "Serier per säsong",
+        "text": "Serier visas en gång i biblioteket med sina säsonger och avsnittsnamn. När det inte finns någon bra säsongsnedladdning hämtar Marquee den avsnitt för avsnitt."
+      },
+      "Library clean-up": {
+        "title": "Biblioteksstädning",
+        "text": "Videor försvinner från biblioteket 7 dagar efter att nedladdningen blev klar om du inte trycker på Behåll, så gamla nedladdningar inte hopar sig på servern."
+      },
+      "Arrows on Discover": {
+        "title": "Pilar i Upptäck",
+        "text": "Raderna i Upptäck har pilar, så du kan bläddra med musen."
+      },
+      "House": {
+        "title": "Huset",
+        "text": "Fliken Huset visar serverns diskar, nedladdningar och tjänster, plus datorerna hemma. Väck speldatorn och välj Linux eller Windows, eller starta om den till det andra."
+      },
+      "Clips": {
+        "title": "Klipp",
+        "text": "Spelklipp från datorn, grupperade per spel, med delningslänkar som spelas direkt i Discord. Klipp dem utan kvalitetsförlust, eller radera dem du inte vill ha."
+      },
+      "Invite links": {
+        "title": "Inbjudningslänkar",
+        "text": "Skapa en inbjudningslänk för engångsbruk i Aktivitet: personen anger sin e-post och får åtkomst, utan instrumentpanel."
+      }
+    }
+  },
+  "2026-11-01": {
+    "title": "En egen spelare",
+    "items": {
+      "New player controls": {
+        "title": "Nya spelarkontroller",
+        "text": "En spolningslist som visar hur mycket som laddats och tiden under fingret, volym som sparas, och allt på en rad. På telefoner dubbeltrycker du till vänster eller höger för att hoppa 10 sekunder."
+      },
+      "Subtitles that make room": {
+        "title": "Undertexter som ger plats",
+        "text": "Undertexter anpassas till bilden och flyttas precis så långt att de går fria från kontrollerna när de visas. På en stående telefon ligger de i det tomma utrymmet under bilden."
+      },
+      "Keyboard shortcuts": {
+        "title": "Kortkommandon",
+        "text": "Mellanslag för paus, pilar för att hoppa och ändra volym, F för helskärm, C för undertexter med mera. Tryck på ? när du tittar för att se alla."
+      },
+      "Pause or remove downloads": {
+        "title": "Pausa eller ta bort nedladdningar",
+        "text": "Nedladdningar kan pausas, återupptas eller raderas från sitt kort."
+      },
+      "Plays in Firefox": {
+        "title": "Spelas i Firefox",
+        "text": "Webbläsare som inte kan spela HEVC-video, som Firefox, får automatiskt en kopia de kan spela."
+      }
+    }
+  },
+  "2026-10-09": {
+    "title": "Undertexter i synk",
+    "items": {
+      "Subtitles fix themselves": {
+        "title": "Undertexter fixar sig själva",
+        "text": "Undertexter synkas automatiskt mot ljudet när de är ur synk."
+      },
+      "Nudge subtitles": {
+        "title": "Justera undertexter",
+        "text": "Om en rad ändå kommer för tidigt eller sent kan du flytta undertexterna i små steg från spelaren."
+      },
+      "Safari and iPhone": {
+        "title": "Safari och iPhone",
+        "text": "Videor spelas nu i Safari på Mac, iPhone och iPad."
+      },
+      "Theater mode": {
+        "title": "Bioläge",
+        "text": "I bioläge döljer spelarfältet sig självt och videon ligger mitt på skärmen."
+      },
+      "One remote": {
+        "title": "En fjärrkontroll",
+        "text": "När du castar till en TV visas fjärrkontrollen bara på enheten som startade det."
+      },
+      "Activity log": {
+        "title": "Aktivitetslogg",
+        "text": "Ägaren kan se vad som hänt på servern: vem som sett, laddat ner och raderat vad."
+      }
+    }
+  },
+  "2026-10-02": {
+    "title": "Spela på din TV",
+    "items": {
+      "AirPlay and Chromecast": {
+        "title": "AirPlay och Chromecast",
+        "text": "Skicka en film eller ett avsnitt till din TV i full kvalitet."
+      },
+      "Home TVs stay at home": {
+        "title": "TV-apparaterna hemma stannar hemma",
+        "text": "TV-apparaterna hemma erbjuds bara när du är på hemnätverket."
+      },
+      "Ready sooner": {
+        "title": "Redo tidigare",
+        "text": "Nya nedladdningar plockas upp för uppspelning var 30:e sekund i stället för varannan minut."
+      }
+    }
+  },
+  "2026-09-30": {
+    "title": "Marquee öppnar",
+    "items": {
+      "Welcome to Marquee": {
+        "title": "Välkommen till Marquee",
+        "text": "Hitta filmer och serier, ladda ner dem till servern och strömma dem i webbläsaren, på vilken enhet som helst."
+      }
+    }
+  }
+}

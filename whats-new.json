@@ -1,5 +1,20 @@
 [
   {
+    "id": "2026-11-08-languages",
+    "date": "2026-11-08",
+    "title": "Marquee in Swedish",
+    "items": [
+      {
+        "title": "Choose your language",
+        "text": "Marquee now speaks English and Swedish. Pick under Settings → Language and it applies everywhere: menus, the player, messages and notifications, on every device you sign in on. Descriptions and genres follow too, while titles keep their names."
+      },
+      {
+        "title": "One TV app, in Swedish",
+        "text": "The new TV app with Discover, Search and genres has replaced the old one. It's in Swedish, and the on-screen keyboard has å, ä and ö."
+      }
+    ]
+  },
+  {
     "id": "2026-11-08-auto-translated-subtitles",
     "date": "2026-11-08",
     "title": "Better subtitle translations",

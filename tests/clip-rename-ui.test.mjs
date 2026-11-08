@@ -1,3 +1,4 @@
+import { T as englishT } from '../public/i18n.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -46,7 +47,7 @@ function fixture(respond = async (body) => ({ title: body.title }), person = fal
   }
   document = new Element('document'); document.activeElement = null; document.createElement = (tag) => new Element(tag);
   const clip = { id: 'testclip12345678', title: 'An original two-line title' }, calls = [], messages = [];
-  const context = vm.createContext({ document, Node: Element, setTimeout, pad2: (n) => String(n).padStart(2, '0'),
+  const context = vm.createContext({ T: englishT, document, Node: Element, setTimeout, pad2: (n) => String(n).padStart(2, '0'),
     state: { clips: { clips: [clip] }, access: { names: {} }, me: { id: 3, name: 'Original' }, people: [{ id: 3, name: 'Original' }], activity: { people: [{ user: 'viewer@example.test', name: 'Original' }], events: [] } }, jsonPost: (body) => body, toast: (message) => messages.push(message),
     api: async (url, body) => { calls.push({ url, body }); return respond(body); },
   });

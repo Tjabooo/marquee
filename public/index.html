@@ -26,7 +26,16 @@
         document.querySelector('meta[name="theme-color"]').content = t.vars['--velvet'];
       }
     } catch { /* first visit, or storage blocked: default colours */ }
+    // The page below is written in English: keep it hidden until i18n.js has put it in Swedish (never for long).
+    try {
+      const wanted = localStorage.getItem('marquee:lang') || (document.cookie.match(/(?:^|;\s*)marquee_lang=(\w+)/) || [])[1] || (/^sv\b/i.test(navigator.language) ? 'sv' : 'en');
+      if (wanted === 'sv') {
+        document.documentElement.classList.add('i18n-wait');
+        setTimeout(() => document.documentElement.classList.remove('i18n-wait'), 4000);
+      }
+    } catch { /* storage blocked: English until the app has started */ }
   </script>
+  <style>html.i18n-wait body { visibility: hidden; }</style>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎞️</text></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

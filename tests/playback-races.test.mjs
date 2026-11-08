@@ -1,3 +1,4 @@
+import { T as englishT } from '../public/i18n.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -13,7 +14,7 @@ const deferred = () => {
 
 function subtitles() {
   const requests = [], tracks = [], messages = [];
-  const context = vm.createContext({ current: {}, subtitleGeneration: 0, secondGeneration: 0, ccActive: null, ccSecond: null, ccSync: null, ccSyncTimer: null,
+  const context = vm.createContext({ T: englishT, current: {}, subtitleGeneration: 0, secondGeneration: 0, ccActive: null, ccSecond: null, ccSync: null, ccSyncTimer: null,
     localStorage: { setItem() {} }, mediaId: () => 'example', jsonPost: value => value,
     closeCcMenu() {}, applySubModes() {}, renderCcMenu() {}, watchSubSync() {}, clearTimeout() {},
     toast: message => messages.push(message), api: () => { const request = deferred(); requests.push(request); return request.promise; },
@@ -83,7 +84,7 @@ test('a timing response from an earlier selection cannot overwrite a reselected 
 function casting() {
   const requests = [], swaps = [];
   const button = { hidden: false, classList: { remove() {} } };
-  const context = vm.createContext({ current: { kind: 'lib', browserName: 'browser.mp4' }, party: null,
+  const context = vm.createContext({ T: englishT, current: { kind: 'lib', browserName: 'browser.mp4' }, party: null,
     castGeneration: 0, onTvVersion: false, hasAirPlay: true, hasRemotePlayback: false,
     cancelAudioIntent() {}, renderAudioControls() {}, renderQualityMenu() {}, refreshAudioMetadata() {}, mediaId: () => 'example',
     $: () => ({ textContent: '', hidden: false }), airplayBtn: button,

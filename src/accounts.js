@@ -46,7 +46,7 @@ const RETENTION_CHOICES = [0, 1, 3, 7, 14, 30];
 const EXTEND_CHOICES = [1, 3, 7, 14, 30];
 
 // Per-person preferences (Settings tab).
-const USER_DEFAULTS = { theme: null, subLang: '', quality: 'all', downloadProfile: '', maxSize: 0, audioLang: '', startView: 'discover', librarySort: 'newest', seenUpdate: '', skipIntro: 'button',
+const USER_DEFAULTS = { theme: null, language: '', subLang: '', quality: 'all', downloadProfile: '', maxSize: 0, audioLang: '', startView: 'discover', librarySort: 'newest', seenUpdate: '', skipIntro: 'button',
   pushDownload: true, pushEpisode: true, pushWatch: true, pushAgent: true }; // which notifications they get (push.js)
 // Settings → Downloads. quality is the resolution chosen before profiles existed: it maps to a profile until one is chosen.
 const DOWNLOAD_PROFILES = ['save', 'balanced', 'best'];
@@ -350,6 +350,7 @@ export function updateMe(user, patch) {
     name = String(patch.name || '').replace(/\s+/g, ' ').trim().slice(0, 40);
   }
   if ('theme' in patch) s.theme = cleanTheme(patch.theme);
+  if ('language' in patch) s.language = ['en', 'sv'].includes(patch.language) ? patch.language : '';
   if ('subLang' in patch) s.subLang = /^[a-z]{2,3}(-[a-z]{2})?$/.test(String(patch.subLang)) ? String(patch.subLang) : '';
   if ('quality' in patch && QUALITIES.includes(patch.quality)) s.quality = patch.quality;
   if ('downloadProfile' in patch && DOWNLOAD_PROFILES.includes(patch.downloadProfile)) {

@@ -4,8 +4,19 @@ All notable changes to Marquee. Versions follow [Semantic Versioning](https://se
 
 ## [Unreleased]
 
+### Changed
+
+- **One TV app, in Swedish.** The Samsung TV Preview replaced the old TV app: `public/tv` and `tv/tizen` now hold it
+  under the original package `MrqTvApp01.Marquee`, and `tv-preview`/`tizen-preview` are gone. It's in Swedish, with
+  å, ä and ö on the on-screen keyboard. Remove an installed Marquee Preview with `tizen uninstall -p MrqTvPrv01.MarqueePreview`.
+
 ### Added
 
+- **Languages.** Settings → Language switches all of Marquee between English and Svenska: the web app, player,
+  What's new, server messages, notifications, sign-in and share pages. The choice follows the account across
+  devices; a browser set to Swedish starts in Swedish. TMDB descriptions and genre names follow it, titles don't,
+  because the library and release search go by them. Add a line in the code and tests/i18n.test.mjs asks for its
+  Swedish (public/i18n-sv.js, src/i18n-sv.json, whats-new.sv.json).
 - **Jellyfin.** The [Marquee plugin for Jellyfin](https://github.com/Tjabooo/jellyfin-plugin-marquee)
   shows someone's library in their own Jellyfin server. It pairs with a code entered under
   Settings → Jellyfin, reads `/c/jf/v1/library`, streams through per-video HMAC-signed links,

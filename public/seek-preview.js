@@ -4,6 +4,7 @@
 // Once a video's index is in, its sheets download in the background (one at a time, low priority,
 // nearest the hovered spot first), so hovering shows a frame at once instead of waiting on the
 // network for each 25-frame stretch. A film's whole storyboard is about 3 MB.
+import { T } from './i18n.js';
 const POLL_MS = 4000;
 const WARM_DELAY_MS = 1500; // let the video's first bytes go first
 

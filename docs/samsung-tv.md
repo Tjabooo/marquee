@@ -1,19 +1,12 @@
-# Samsung TV Preview: side-by-side install
+# Samsung TV app
 
-Marquee Preview is a second Samsung Tizen app for testing the lightweight TV Discover and Smart Download UI.
-It is intentionally isolated from the stable app:
+Marquee's Samsung TV app is a small Tizen shell (`tv/tizen`, package `MrqTvApp01.Marquee`) that loads the app itself
+from the server (`public/tv`) every time it starts, so a Marquee update reaches the TV without reinstalling.
+The app is in Swedish (`public/tv/sv.js`).
 
-- **Stable app:** `Marquee` → package/application `MrqTvApp01.Marquee` → server files under `/tv/`
-- **Preview app:** `Marquee Preview` → package/application `MrqTvPrv01.MarqueePreview` → server files under `/tv-preview/`
+## 1. Have Marquee running
 
-Installing Preview does **not** replace or update stable Marquee. Both can be installed at the same time, and each
-has separate Tizen app storage/sign-in state. The stable app keeps loading only `/tv/`; Preview keeps loading only
-`/tv-preview/`.
-
-## 1. Put the preview files on the Marquee server
-
-The server checkout must contain `public/tv-preview/`. After this change is merged/pulled, restart Marquee only if
-your normal deployment process requires it; static TV files themselves are read directly from `public/`.
+The TV loads `public/tv/` from the server; those files are read directly, so updating them needs no restart.
 
 Use a LAN URL that the TV can reach, for example `http://192.168.1.10:8080`.
 
@@ -33,15 +26,15 @@ In short:
 If installation is refused even though the TV connects, open Tizen Studio's Device Manager and use
 **Permit to install applications** for the connected TV, then retry.
 
-## 3. Configure the preview build
+## 3. Configure the build
 
 From the repository:
 
 ```bash
-cp tv/tizen-preview/.env.example tv/tizen-preview/.env
+cp tv/tizen/.env.example tv/tizen/.env
 ```
 
-Edit `tv/tizen-preview/.env`:
+Edit `tv/tizen/.env`:
 
 ```text
 MARQUEE_URL=http://192.168.1.10:8080
@@ -53,37 +46,36 @@ TIZEN_PROFILE=marquee
 - `TV`: the TV's LAN IP
 - `TIZEN_PROFILE`: your signing profile if it is not named `marquee`
 
-## 4. Build and install Preview
+## 4. Build and install
 
 Use `bash` explicitly so the script works even if a checkout did not preserve its executable bit:
 
 ```bash
-MARQUEE_URL=http://192.168.1.10:8080 TV=192.168.1.30 bash tv/tizen-preview/build.sh --install
+MARQUEE_URL=http://192.168.1.10:8080 TV=192.168.1.30 bash tv/tizen/build.sh --install
 ```
 
 Or, after filling in `.env`:
 
 ```bash
-bash tv/tizen-preview/build.sh --install
+bash tv/tizen/build.sh --install
 ```
 
 The package is written to:
 
 ```text
-tv/tizen-preview/dist/MarqueePreview.wgt
+tv/tizen/dist/Marquee.wgt
 ```
 
-The install command connects with Samsung's SDB tooling, installs `MarqueePreview.wgt`, and launches
-`MrqTvPrv01.MarqueePreview`.
+The install command connects with Samsung's SDB tooling, installs `Marquee.wgt`, and launches
+`MrqTvApp01.Marquee`.
 
 A normal consumer TV does not accept a raw `.wgt` copied over USB; use the development connection above.
 
 ## 5. First launch
 
-Open **Marquee Preview** from Apps. Pair it just like the stable TV app. Preview has separate app storage, so pairing
-it does not sign out or alter stable Marquee.
+Open **Marquee** from Apps and pair it: the TV shows a code, and you enter it under Settings → Sign in a TV on your phone.
 
-The Preview home screen shows Continue watching, Shows, Films and then one row per genre you own something in.
+The home screen shows Continue watching, Shows, Films and then one row per genre you own something in.
 Press **Up** to reach the top controls:
 
 - **Search** opens an on-screen keyboard (a USB/Bluetooth keyboard and the remote's number keys type too). Your own
@@ -98,9 +90,10 @@ Press **Up** to reach the top controls:
 The TV never performs media searching or transfer work itself. It only renders cards near the screen (posters load
 lazily, rows and grids stop at a cap) and sends the request to Marquee; the server handles TMDB and the download job.
 
-## Rollback / fallback
+## Moving from Marquee Preview
 
-Do nothing to stable Marquee. If Preview has a problem, exit it and launch **Marquee**.
+Earlier versions had a separate Marquee Preview app. It's now the only app, so remove the old one from the TV:
 
-You can uninstall **Marquee Preview** independently because it has a different Tizen package ID. Stable Marquee will
-continue to load its unchanged `/tv/` frontend.
+```bash
+tizen uninstall -p MrqTvPrv01.MarqueePreview -s <tv-address>:26101
+```

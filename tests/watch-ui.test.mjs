@@ -1,3 +1,4 @@
+import { T as englishT } from '../public/i18n.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -20,7 +21,7 @@ const create = ({ existing = false, fail = false } = {}) => {
   const $ = (selector) => { if (!nodes.has(selector)) nodes.set(selector, new Element('div')); return nodes.get(selector); };
   const calls = [];
   const stack = [];
-  const context = vm.createContext({ Node: Element, document: { createElement: (tag) => new Element(tag) }, $, AbortSignal,
+  const context = vm.createContext({ T: englishT, Node: Element, document: { createElement: (tag) => new Element(tag) }, $, AbortSignal,
     party: null, current: existing ? { id: 'old' } : null, watchClient: 'test-client-123456',
     api: async (url) => {
       calls.push(url);
@@ -73,7 +74,7 @@ test('an existing player waits for dismissal before opening the invited title', 
 test('blocked guests can press Play to unlock their browser; ordinary guest playback stays host-controlled', () => {
   const nodes = new Map(); const $ = (selector) => { if (!nodes.has(selector)) nodes.set(selector, new Element('button')); return nodes.get(selector); };
   const play = new Element('button'); let unlocks = 0;
-  const context = vm.createContext({ $, party: { isHost: false, blocked: true, connected: true, online: true,
+  const context = vm.createContext({ T: englishT, $, party: { isHost: false, blocked: true, connected: true, online: true,
     state: { host: 'host', intentPlaying: false, playing: false, waitingFor: [], members: [] }, unlock: () => unlocks++ },
     watchPanelOpen: false, current: { kind: 'lib', id: 'movie' }, state: { library: [] }, mediaId: (f) => f.id,
     playerEl: new Element('div'), playBtns: [play], airplayBtn: new Element('button'), audioBtn: new Element('button'), seekEl: new Element('div'), updatePlayState() {}, updateUpNext() {}, cancelAudioIntent() {}, renderAudioControls() {}, partyUnread: 0, updatePartyCountdown() {},
@@ -91,7 +92,7 @@ test('blocked guests can press Play to unlock their browser; ordinary guest play
 
 test('dismissal waits for the browser popstate before a new player can be pushed', async () => {
   const win = new EventTarget(); let closed = 0;
-  const context = vm.createContext({ window: win, setTimeout, clearTimeout, renderUpdatedLibrary() {},
+  const context = vm.createContext({ T: englishT, window: win, setTimeout, clearTimeout, renderUpdatedLibrary() {},
     history: { pushState() {}, replaceState() {}, back() { setImmediate(() => win.dispatchEvent(new Event('popstate'))); } },
     closed: () => closed++,
   });

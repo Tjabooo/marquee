@@ -21,6 +21,7 @@
 //    by mistake shows a sign-in page instead of the library.
 //
 // 3. gate(): anything but the public paths needs one of those identities.
+import { currentLanguage, tr, translate } from './i18n.js';
 import crypto from 'node:crypto';
 import net from 'node:net';
 import path from 'node:path';
@@ -393,13 +394,14 @@ export function safeNext(next) {
 }
 
 export function signInPage({ next = '/', error = '', hasLogins = true, remote = false } = {}) {
-  const message = error ? `<p class="err" role="alert">${esc(error)}</p>` : '';
+  const message = error ? `<p class="err" role="alert">${esc(translate(error))}</p>` : '';
   const help = hasLogins
-    ? 'Ask the server’s owner if you don’t have a password.'
-    : 'No one can sign in yet. On the server, run <code>node setup.js user add you@example.com</code> to create an account.';
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8">
+    ? tr('Ask the server’s owner if you don’t have a password.')
+    : tr('No one can sign in yet. On the server, run <code>node setup.js user add you@example.com</code> to create an account.');
+  const langLink = (code, name) => (currentLanguage() === code ? `<b>${name}</b>` : `<a href="/signin?lang=${code}&amp;next=${encodeURIComponent(safeNext(next))}">${name}</a>`);
+  return `<!doctype html><html lang="${currentLanguage()}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex">
-<title>Sign in · Marquee</title><style>
+<title>${tr('Sign in · Marquee')}</title><style>
 :root{color-scheme:dark;--bg:#0d0d10;--card:#17171c;--line:#2a2a33;--text:#ecebf0;--dim:#9a99a6;--accent:#f0a83a}
 *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--bg);color:var(--text);font:16px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;padding:24px}
 main{width:100%;max-width:360px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:28px}
@@ -410,11 +412,11 @@ input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:tran
 button{margin-top:20px;width:100%;padding:12px;border:0;border-radius:10px;background:var(--accent);color:#1a1205;font:600 15px system-ui,sans-serif;cursor:pointer}
 .err{color:#ff8a80;background:#2a1414;border-radius:8px;padding:10px 12px;margin:0 0 6px}code{font-size:12px;color:var(--text)}
 .foot{margin:18px 0 0;font-size:12px}</style></head><body><main>
-<h1>Marquee</h1><p>${remote ? 'You’re connecting from outside the home network. ' : ''}Sign in to carry on.</p>${message}
+<h1>Marquee</h1><p>${remote ? tr('You’re connecting from outside the home network. ') : ''}${tr('Sign in to carry on.')}</p>${message}
 <form method="post" action="/api/auth/login">
 <input type="hidden" name="next" value="${esc(safeNext(next))}">
-<label for="email">Email</label><input id="email" name="email" type="email" autocomplete="username" required autofocus>
-<label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required>
-<button type="submit">Sign in</button></form>
-<p class="foot">${help}</p></main></body></html>`;
+<label for="email">${tr('Email')}</label><input id="email" name="email" type="email" autocomplete="username" required autofocus>
+<label for="password">${tr('Password')}</label><input id="password" name="password" type="password" autocomplete="current-password" required>
+<button type="submit">${tr('Sign in')}</button></form>
+<p class="foot">${help}</p><p class="foot">${langLink('en', 'English')} · ${langLink('sv', 'Svenska')}</p></main></body></html>`;
 }

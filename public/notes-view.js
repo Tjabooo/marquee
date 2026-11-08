@@ -1,3 +1,4 @@
+import { T, locale } from './i18n.js';
 import { parseDiscordExport } from './notes-import.js';
 
 export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQuery, copyText, playVideo, overlay }) {
@@ -8,7 +9,7 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
   // images, videos or audio (which made the list jump and restarted playback).
   const cards = new Map(), days = new Map();
   const touch = () => matchMedia('(hover: none) and (pointer: coarse)').matches;
-  const date = (ms) => new Date(ms).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+  const date = (ms) => new Date(ms).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short' });
   const localInput = (ms) => {
     if (!ms) return '';
     const d = new Date(ms); return new Date(ms - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
@@ -31,12 +32,12 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
   // Trash is one tap away on a phone, so it can be taken back for a few seconds.
   function offerUndo(id) {
     clearTimeout(undoTimer);
-    undo.replaceChildren(h('span', {}, 'Moved to trash'), button('Undo', async () => {
+    undo.replaceChildren(h('span', {}, T('Moved to trash')), button(T('Undo'), async () => {
       undo.hidden = true;
       try {
         const { note } = await api(`/api/admin/notes/${id}`);
         await api(`/api/admin/notes/${id}/restore`, jsonPost({ version: note.version }));
-        await load(); toast('Note restored');
+        await load(); toast(T('Note restored'));
       } catch (e) { showError(e.message); }
     }));
     undo.hidden = false;
@@ -61,9 +62,9 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
     try {
       const r = await api(`/api/admin/notes/${note.id}/${stop ? 'unshare' : 'share'}`, jsonPost({}));
       Object.assign(note, r.note);
-      if (stop) toast('Link removed');
-      else if (preparing(note)) { toast('Preparing the media for Discord… Copy link appears when it’s ready.'); watchMedia(note.id); }
-      else toast(await copyText(r.url) ? 'Link copied · Discord shows a preview' : r.url);
+      if (stop) toast(T('Link removed'));
+      else if (preparing(note)) { toast(T('Preparing the media for Discord… Copy link appears when it’s ready.')); watchMedia(note.id); }
+      else toast(await copyText(r.url) ? T('Link copied · Discord shows a preview') : r.url);
       render();
     } catch (e) { showError(e.message); }
   }
@@ -79,7 +80,7 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
         if (shown) Object.assign(shown, note);
         if (!preparing(note) || note.shareMedia?.error) {
           if (!state.edit) render();
-          if (note.shareToken && !note.shareMedia?.error) toast('Ready for Discord: Copy link to share it');
+          if (note.shareToken && !note.shareMedia?.error) toast(T('Ready for Discord: Copy link to share it'));
           return;
         }
       }
@@ -88,30 +89,30 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
   function card(note) {
     const editing = state.edit === note.id;
     const row = h('article', { class: `note-message${note.doneAt ? ' is-done' : ''}${state.open === note.id && !editing ? ' is-open' : ''}`, 'data-note-id': note.id },
-      h('header', { class: 'note-meta' }, h('strong', {}, note.authorName || 'Admin'),
+      h('header', { class: 'note-meta' }, h('strong', {}, note.authorName || T('Admin')),
         h('time', { datetime: new Date(note.createdAt).toISOString(), title: new Date(note.createdAt).toISOString() }, date(note.createdAt)),
-        note.pinned && h('span', { class: 'note-tag' }, 'Pinned'),
-        note.shareToken && !note.deletedAt && h('span', { class: 'note-tag is-shared', title: 'Anyone with the link sees a preview; opening it needs Marquee access' }, 'Shared'),
-        !note.sourceId && note.editedAt && h('span', { title: date(note.editedAt) }, 'edited'),
-        note.sourceId && h('span', { class: 'note-tag', title: `Original Discord message ${note.sourceId}` }, 'Discord'),
-        !editing && h('button', { type: 'button', class: 'note-more', 'aria-label': 'Note actions', 'aria-expanded': String(state.open === note.id),
+        note.pinned && h('span', { class: 'note-tag' }, T('Pinned')),
+        note.shareToken && !note.deletedAt && h('span', { class: 'note-tag is-shared', title: T('Anyone with the link sees a preview; opening it needs Marquee access') }, T('Shared')),
+        !note.sourceId && note.editedAt && h('span', { title: date(note.editedAt) }, T('edited')),
+        note.sourceId && h('span', { class: 'note-tag', title: T('Original Discord message {0}', note.sourceId) }, 'Discord'),
+        !editing && h('button', { type: 'button', class: 'note-more', 'aria-label': T('Note actions'), 'aria-expanded': String(state.open === note.id),
           onclick: () => toggleOpen(note.id, row) }, '⋯')));
     if (!editing) row.addEventListener('click', (e) => {
       if (!touch() || e.target.closest('a, button, video, audio, input, textarea, select, label') || document.getSelection()?.toString()) return;
       toggleOpen(note.id, row);
     });
     if (editing) {
-      const text = h('textarea', { class: 'note-edit', 'aria-label': 'Edit note', maxlength: 1000000 }); text.value = note.text;
-      const at = h('input', { type: 'datetime-local', 'aria-label': 'Edit reminder date' }); at.value = localInput(note.reminderAt);
-      const save = h('button', { type: 'submit', class: 'retry is-primary' }, 'Save changes');
+      const text = h('textarea', { class: 'note-edit', 'aria-label': T('Edit note'), maxlength: 1000000 }); text.value = note.text;
+      const at = h('input', { type: 'datetime-local', 'aria-label': T('Edit reminder date') }); at.value = localInput(note.reminderAt);
+      const save = h('button', { type: 'submit', class: 'retry is-primary' }, T('Save changes'));
       const form = h('form', { class: 'note-edit-form', onsubmit: async (e) => {
         e.preventDefault(); save.disabled = true; showError('');
         try {
           await api(`/api/admin/notes/${note.id}`, jsonPost({ version: note.version, text: text.value, reminderAt: at.value ? new Date(at.value).getTime() : null }));
-          state.edit = null; await load(); toast('Note updated');
+          state.edit = null; await load(); toast(T('Note updated'));
         } catch (err) { showError(err.message); } finally { save.disabled = false; }
-      } }, text, h('label', { class: 'note-reminder' }, 'Remind me', at), h('div', { class: 'note-actions' }, save,
-        button('Cancel', () => { state.edit = null; render(); })));
+      } }, text, h('label', { class: 'note-reminder' }, T('Remind me'), at), h('div', { class: 'note-actions' }, save,
+        button(T('Cancel'), () => { state.edit = null; render(); })));
       text.addEventListener('keydown', (e) => { if (e.key === 'Escape') { state.edit = null; render(); } });
       const grow = () => { text.style.height = 'auto'; text.style.height = `${Math.min(text.scrollHeight + 2, Math.round((window.visualViewport?.height || innerHeight) * 0.45))}px`; };
       text.addEventListener('input', grow); requestAnimationFrame(grow);
@@ -120,24 +121,24 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
     row.append(h('div', { class: 'note-text' }, bodyText(note.text)));
     if (note.attachments.length) row.append(h('div', { class: 'note-attachments' }, note.attachments.map(attachmentView)));
     if (note.reminderAt) row.append(h('p', { class: `note-deadline${!note.doneAt && note.reminderAt <= Date.now() ? ' is-due' : ''}` },
-      note.doneAt ? 'Done · ' : note.reminderAt <= Date.now() ? 'Due · ' : 'Reminder · ', date(note.reminderAt)));
-    const copy = note.text && button('Copy text', async () => toast(await copyText(note.text) ? 'Text copied' : 'Couldn’t copy the text'));
+      note.doneAt ? T('Done · ') : note.reminderAt <= Date.now() ? T('Due · ') : T('Reminder · '), date(note.reminderAt)));
+    const copy = note.text && button(T('Copy text'), async () => toast(await copyText(note.text) ? T('Text copied') : T('Couldn’t copy the text')));
     const actions = note.deletedAt
-      ? [copy, button('Restore', () => mutate(note, {}, 'restore'))]
-      : [copy, button('Edit', () => {
+      ? [copy, button(T('Restore'), () => mutate(note, {}, 'restore'))]
+      : [copy, button(T('Edit'), () => {
           state.edit = note.id; state.open = null; render();
           const box = shell.querySelector('.note-edit');
           box?.focus({ preventScroll: true }); box?.setSelectionRange(box.value.length, box.value.length);
           setTimeout(() => box?.closest('.note-message')?.scrollIntoView({ block: 'nearest' }), 350);
         }),
-        button(note.pinned ? 'Unpin' : 'Pin', () => mutate(note, { pinned: !note.pinned })),
-        note.reminderAt && button(note.doneAt ? 'Mark not done' : 'Mark done', () => mutate(note, { done: !note.doneAt })),
-        note.shareToken && note.shareMedia?.error ? h('span', { class: 'note-share-state is-error' }, `Couldn’t prepare the media: ${note.shareMedia.error}`) : null,
-        note.shareToken && note.shareMedia?.error ? button('Try again', () => shareNote(note))
-          : preparing(note) ? h('span', { class: 'note-share-state', role: 'status' }, 'Preparing for Discord…')
-          : button(note.shareToken ? 'Copy link' : 'Share', () => shareNote(note)),
-        note.shareToken && button('Stop sharing', () => shareNote(note, true)),
-        button('Move to trash', () => mutate(note, {}, 'trash'), { class: 'note-action is-danger' })];
+        button(note.pinned ? T('Unpin') : T('Pin'), () => mutate(note, { pinned: !note.pinned })),
+        note.reminderAt && button(note.doneAt ? T('Mark not done') : T('Mark done'), () => mutate(note, { done: !note.doneAt })),
+        note.shareToken && note.shareMedia?.error ? h('span', { class: 'note-share-state is-error' }, T('Couldn’t prepare the media: {0}', note.shareMedia.error)) : null,
+        note.shareToken && note.shareMedia?.error ? button(T('Try again'), () => shareNote(note))
+          : preparing(note) ? h('span', { class: 'note-share-state', role: 'status' }, T('Preparing for Discord…'))
+          : button(note.shareToken ? T('Copy link') : T('Share'), () => shareNote(note)),
+        note.shareToken && button(T('Stop sharing'), () => shareNote(note, true)),
+        button(T('Move to trash'), () => mutate(note, {}, 'trash'), { class: 'note-action is-danger' })];
     row.append(h('div', { class: 'note-actions' }, actions));
     return row;
   }
@@ -152,7 +153,7 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
     } else if (a.fileId && a.mime?.startsWith('video/')) {
       // A still of the first frame; playing opens Marquee's own player.
       const still = h('video', { src: `${href}?view=1#t=0.1`, muted: true, playsinline: true, preload: 'metadata', tabindex: -1, 'aria-hidden': 'true' });
-      preview = h('button', { type: 'button', class: 'note-video', 'aria-label': `Play ${a.name}`, onclick: () => playVideo(a) }, still,
+      preview = h('button', { type: 'button', class: 'note-video', 'aria-label': T('Play {0}', a.name), onclick: () => playVideo(a) }, still,
         h('span', { class: 'note-video-play' }, icon('play')));
     }
     else if (a.fileId && a.mime?.startsWith('audio/')) preview = h('audio', { src: `${href}?view=1`, controls: true, preload: 'metadata' });
@@ -169,9 +170,9 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
       document.body.append(viewer);
     }
     const opener = document.activeElement;
-    const close = h('button', { type: 'button', class: 'note-viewer-close', 'aria-label': 'Close' }, '×');
+    const close = h('button', { type: 'button', class: 'note-viewer-close', 'aria-label': T('Close') }, '×');
     viewer.replaceChildren(h('img', { src, alt: name }),
-      h('div', { class: 'note-viewer-bar' }, h('span', {}, name), h('a', { href: src, target: '_blank', rel: 'noopener' }, 'Open original'), close));
+      h('div', { class: 'note-viewer-bar' }, h('span', {}, name), h('a', { href: src, target: '_blank', rel: 'noopener' }, T('Open original')), close));
     viewer.setAttribute('aria-label', name);
     viewer.hidden = false;
     close.focus({ preventScroll: true });
@@ -184,22 +185,22 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
     attach.disabled = state.sending;
     reminder.disabled = reminderToggle.disabled = reminderRemove.disabled = reminderClear.disabled = state.sending;
     reminderToggle.classList.toggle('has-reminder', !!state.reminder);
-    reminderToggle.setAttribute('aria-label', state.reminder ? 'Edit reminder' : 'Add reminder');
+    reminderToggle.setAttribute('aria-label', state.reminder ? T('Edit reminder') : T('Add reminder'));
     reminderClear.hidden = reminderChip.hidden = !state.reminder;
-    reminderText.textContent = state.reminder ? new Date(state.reminder).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+    reminderText.textContent = state.reminder ? new Date(state.reminder).toLocaleString(locale, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
     uploads.hidden = !state.files.length;
     uploads.replaceChildren(...state.files.map((f) => h('div', { class: `note-upload${f.error ? ' has-error' : ''}` },
       h('span', { class: 'note-upload-name' }, f.file.name),
-      h('span', { class: 'note-upload-state', role: 'status' }, f.error || (f.attachment ? 'Ready' : `${f.progress || 0}%`)),
+      h('span', { class: 'note-upload-state', role: 'status' }, f.error || (f.attachment ? T('Ready') : `${f.progress || 0}%`)),
       button('×', () => {
         f.cancelled = true; f.controller?.abort(); state.files = state.files.filter((x) => x !== f); updateComposer();
         if (f.id) api(`/api/admin/notes/uploads/${f.id}/cancel`, jsonPost({})).catch(() => {});
-      }, { 'aria-label': `Remove ${f.file.name}`, disabled: state.sending }))));
+      }, { 'aria-label': T('Remove {0}', f.file.name), disabled: state.sending }))));
   }
   async function uploadFile(entry) {
     const file = entry.file; entry.controller = new AbortController();
     try {
-      if (!file.size || file.size > 1024 ** 3) throw new Error('Choose a file up to 1 GB.');
+      if (!file.size || file.size > 1024 ** 3) throw new Error(T('Choose a file up to 1 GB.'));
       const opts = { signal: entry.controller.signal };
       const session = await api('/api/admin/notes/uploads', { ...jsonPost({ name:file.name, size:file.size, type:file.type }), ...opts });
       entry.id = session.id;
@@ -230,7 +231,7 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
   }
   async function addFiles(files) {
     if (!files?.length || state.sending) return;
-    if (files.length + state.files.length > 50) { showError('Attach up to 50 files per note.'); return; }
+    if (files.length + state.files.length > 50) { showError(T('Attach up to 50 files per note.')); return; }
     const entries = [...files].map((file) => ({ file, progress:0 })); state.files.push(...entries); updateComposer();
     for (const entry of entries) if (!entry.cancelled) await uploadFile(entry);
   }
@@ -239,20 +240,20 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
     if (!target || shell) return;
     error = h('p', { class: 'note-error', role: 'alert', hidden: true });
     summary = h('span', { class: 'note-summary', 'aria-live': 'polite' });
-    filterSelect = h('select', { class: 'note-filter', 'aria-label': 'Notes filter' },
-      [['all', 'All notes'], ['pinned', 'Pinned'], ['due', 'Due'], ['trash', 'Trash']].map(([key,label]) => h('option', { value:key }, label)));
+    filterSelect = h('select', { class: 'note-filter', 'aria-label': T('Notes filter') },
+      [['all', T('All notes')], ['pinned', T('Pinned')], ['due', T('Due')], ['trash', T('Trash')]].map(([key,label]) => h('option', { value:key }, label)));
     filterSelect.addEventListener('change', () => { state.filter = filterSelect.value; state.edit = null; state.anchor = null; load(); });
     const menu = h('details', { class: 'note-menu' });
-    menu.append(h('summary', { 'aria-label': 'Notes menu', title: 'Notes menu' }, '⋯'),
+    menu.append(h('summary', { 'aria-label': T('Notes menu'), title: T('Notes menu') }, '⋯'),
       h('div', { class: 'note-menu-panel' },
-        button('Refresh', () => { menu.open = false; if (state.edit) { showError('Finish editing before refreshing.'); return; } load(); }),
-        button('Import Discord', () => { menu.open = false; fileInput.click(); })));
-    latest = button('Show latest notes', () => { state.anchor = state.focus = null; load(); }, { class: 'retry note-latest', hidden: true });
+        button(T('Refresh'), () => { menu.open = false; if (state.edit) { showError(T('Finish editing before refreshing.')); return; } load(); }),
+        button(T('Import Discord'), () => { menu.open = false; fileInput.click(); })));
+    latest = button(T('Show latest notes'), () => { state.anchor = state.focus = null; load(); }, { class: 'retry note-latest', hidden: true });
     const loadOlder = async () => { if (older.disabled || older.hidden) return; older.disabled = true; try { await load(true); } finally { older.disabled = false; } };
-    older = button('Load older messages', loadOlder, { class: 'retry note-older', hidden: true });
+    older = button(T('Load older messages'), loadOlder, { class: 'retry note-older', hidden: true });
     undo = h('div', { class: 'note-undo', role: 'status', hidden: true });
-    list = h('div', { class: 'notes-messages', role: 'list', 'aria-label': 'Shared notes' });
-    draft = h('textarea', { class: 'note-draft', placeholder: 'Write a note…', 'aria-label': 'New note', maxlength: 1000000, rows: 1 }); draft.value = state.draft;
+    list = h('div', { class: 'notes-messages', role: 'list', 'aria-label': T('Shared notes') });
+    draft = h('textarea', { class: 'note-draft', placeholder: T('Write a note…'), 'aria-label': T('New note'), maxlength: 1000000, rows: 1 }); draft.value = state.draft;
     draft.addEventListener('input', () => {
       state.draft = draft.value; draft.style.height = 'auto';
       draft.style.height = `${Math.min(160, Math.round((window.visualViewport?.height || innerHeight) * 0.3), draft.scrollHeight)}px`; updateComposer();
@@ -264,22 +265,22 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
       if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && !matchMedia('(pointer: coarse)').matches) { e.preventDefault(); if (!send.disabled) composer.requestSubmit(); }
     });
     draft.addEventListener('paste', (e) => { if (e.clipboardData?.files.length) { e.preventDefault(); addFiles(e.clipboardData.files); } });
-    reminder = h('input', { type: 'datetime-local', 'aria-label': 'Reminder date' }); reminder.value = state.reminder;
+    reminder = h('input', { type: 'datetime-local', 'aria-label': T('Reminder date') }); reminder.value = state.reminder;
     reminder.addEventListener('input', () => { state.reminder = reminder.value; updateComposer(); });
     const closeReminder = (focus = false) => {
       panel.hidden = true; reminderToggle.setAttribute('aria-expanded', 'false');
       if (focus) reminderToggle.focus({ preventScroll: true });
     };
     const clearReminder = () => { reminder.value = state.reminder = ''; updateComposer(); };
-    reminderToggle = button([icon('bell'), h('span', { class: 'note-reminder-label' }, 'Reminder')], () => {
+    reminderToggle = button([icon('bell'), h('span', { class: 'note-reminder-label' }, T('Reminder'))], () => {
       if (!panel.hidden) { closeReminder(); return; }
       panel.hidden = false; reminderToggle.setAttribute('aria-expanded', 'true'); reminder.focus({ preventScroll: true });
-    }, { class: 'note-reminder-toggle', 'aria-label': 'Add reminder', 'aria-expanded': 'false', 'aria-controls': 'note-reminder-panel' });
-    reminderClear = button('Remove reminder', clearReminder, { hidden: true });
+    }, { class: 'note-reminder-toggle', 'aria-label': T('Add reminder'), 'aria-expanded': 'false', 'aria-controls': 'note-reminder-panel' });
+    reminderClear = button(T('Remove reminder'), clearReminder, { hidden: true });
     const panel = h('div', { id: 'note-reminder-panel', class: 'note-menu-panel note-reminder-panel', hidden: true },
-      h('label', { class: 'note-reminder' }, 'Remind me', reminder),
-      h('p', { class: 'muted' }, 'Appears in Due at this time.'),
-      h('div', { class: 'note-reminder-actions' }, reminderClear, button('Done', () => closeReminder(true))));
+      h('label', { class: 'note-reminder' }, T('Remind me'), reminder),
+      h('p', { class: 'muted' }, T('Appears in Due at this time.')),
+      h('div', { class: 'note-reminder-actions' }, reminderClear, button(T('Done'), () => closeReminder(true))));
     const options = h('div', { class: 'note-compose-options' }, reminderToggle, panel);
     reminder.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); closeReminder(true); } });
     document.addEventListener('pointerdown', (e) => { if (!panel.hidden && !options.contains(e.target)) closeReminder(); });
@@ -287,12 +288,12 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
       if (e.key === 'Escape' && !panel.hidden) { e.preventDefault(); e.stopPropagation(); closeReminder(true); }
     });
     reminderText = h('span');
-    reminderRemove = button('×', clearReminder, { 'aria-label': 'Remove reminder', class: 'note-reminder-remove' });
+    reminderRemove = button('×', clearReminder, { 'aria-label': T('Remove reminder'), class: 'note-reminder-remove' });
     reminderChip = h('div', { class: 'note-reminder-chip', hidden: true }, icon('bell'), reminderText, reminderRemove);
-    mediaInput = h('input', { type:'file', multiple:true, accept:'image/*,video/*,audio/*,.pdf', hidden:true, 'aria-label':'Attach media files' });
+    mediaInput = h('input', { type:'file', multiple:true, accept:'image/*,video/*,audio/*,.pdf', hidden:true, 'aria-label':T('Attach media files') });
     mediaInput.addEventListener('change', () => { addFiles(mediaInput.files); mediaInput.value = ''; });
-    send = h('button', { type: 'submit', class: 'note-send', 'aria-label':'Send', title:'Send', disabled:true }, icon('send'));
-    attach = button(icon('plus'), () => mediaInput.click(), { class:'note-attach', 'aria-label':'Attach media', title:'Attach photos, videos or files' });
+    send = h('button', { type: 'submit', class: 'note-send', 'aria-label':T('Send'), title:T('Send'), disabled:true }, icon('send'));
+    attach = button(icon('plus'), () => mediaInput.click(), { class:'note-attach', 'aria-label':T('Attach media'), title:T('Attach photos, videos or files') });
     uploads = h('div', { class:'note-uploads', hidden:true });
     composer = h('form', { class: 'note-composer', onsubmit: async (e) => {
       e.preventDefault(); if (send.disabled || state.sending) return;
@@ -305,10 +306,10 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
       } catch (err) { showError(err.message); }
       finally { state.sending = false; updateComposer(); }
     } }, uploads, reminderChip, h('div', { class:'note-compose-row' }, attach, draft, options, send), mediaInput);
-    fileInput = h('input', { type: 'file', accept: '.json,.csv,application/json,text/csv', hidden: true, 'aria-label': 'Discord message export' });
+    fileInput = h('input', { type: 'file', accept: '.json,.csv,application/json,text/csv', hidden: true, 'aria-label': T('Discord message export') });
     fileInput.addEventListener('change', () => prepareImport(fileInput.files?.[0]));
     importing = h('div', { class: 'note-import', hidden: true });
-    history = h('div', { class: 'notes-history', tabindex: 0, 'aria-label': 'Message history' }, older, list, latest);
+    history = h('div', { class: 'notes-history', tabindex: 0, 'aria-label': T('Message history') }, older, list, latest);
     history.addEventListener('scroll', () => { state.follow = history.scrollHeight - history.scrollTop - history.clientHeight < 48; });
     // Scrolling up near the oldest loaded note loads the next page by itself.
     if ('IntersectionObserver' in window) new IntersectionObserver((entries) => {
@@ -368,28 +369,28 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
     if (!file) return;
     setup(); showError(''); importing.hidden = true; fileInput.value = '';
     try {
-      if (file.size > 20 * 1024 * 1024) throw new Error('Choose a conversation export smaller than 20 MB.');
+      if (file.size > 20 * 1024 * 1024) throw new Error(T('Choose a conversation export smaller than 20 MB.'));
       const parsed = parseDiscordExport(await file.text());
       const people = parsed.authors.filter((a) => !a.bot);
-      const choose = h('select', { 'aria-label': 'Import messages by' },
-        h('option', { value: '' }, 'Select your Discord account'), people.map((a) => h('option', { value: a.id }, a.name)));
+      const choose = h('select', { 'aria-label': T('Import messages by') },
+        h('option', { value: '' }, T('Select your Discord account')), people.map((a) => h('option', { value: a.id }, a.name)));
       if (people.length === 1) choose.value = people[0].id;
-      const count = h('p'); const submit = h('button', { type: 'button', class: 'retry is-primary' }, 'Import messages');
+      const count = h('p'); const submit = h('button', { type: 'button', class: 'retry is-primary' }, T('Import messages'));
       const selected = () => parsed.messages.filter((m) => !parsed.authors.length || m.authorId === choose.value);
-      const update = () => { const items = selected(); count.textContent = `${items.length.toLocaleString()} messages will be imported with their original dates. Existing message IDs are skipped.`; submit.disabled = !items.length; };
+      const update = () => { const items = selected(); count.textContent = T('{0} messages will be imported with their original dates. Existing message IDs are skipped.', items.length.toLocaleString(locale)); submit.disabled = !items.length; };
       choose.addEventListener('change', update); update();
       submit.addEventListener('click', async () => {
         submit.disabled = true; showError('');
         try {
           const result = await api('/api/admin/notes/import', jsonPost({ messages: selected(), channelId: parsed.channelId }));
-          importing.hidden = true; toast(`Imported ${result.added} messages; ${result.skipped} already existed`); await load();
+          importing.hidden = true; toast(T('Imported {0} messages; {1} already existed', result.added, result.skipped)); await load();
         } catch (e) { showError(e.message); submit.disabled = false; }
       });
-      importing.replaceChildren(h('h3', {}, 'Import your Discord notes'),
+      importing.replaceChildren(h('h3', {}, T('Import your Discord notes')),
         h('p', {}, `${file.name} · ${parsed.channelName}`),
-        parsed.authors.length ? h('label', {}, 'Import messages by ', choose) : h('p', {}, 'Discord’s data package contains only the messages you sent.'), count,
-        h('p', { class: 'muted' }, 'Choose only the MEE6 conversation. Attachments are preserved as links; Discord links may expire.'),
-        h('div', { class: 'note-actions' }, submit, button('Cancel', () => { importing.hidden = true; })));
+        parsed.authors.length ? h('label', {}, T('Import messages by '), choose) : h('p', {}, T('Discord’s data package contains only the messages you sent.')), count,
+        h('p', { class: 'muted' }, T('Choose only the MEE6 conversation. Attachments are preserved as links; Discord links may expire.')),
+        h('div', { class: 'note-actions' }, submit, button(T('Cancel'), () => { importing.hidden = true; })));
       importing.hidden = false;
     } catch (e) { showError(e.message); }
   }
@@ -438,15 +439,15 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
   }
   function render() {
     setup(); if (!shell) return;
-    summary.textContent = `${state.total.toLocaleString()} ${query() ? 'matching ' : ''}notes${state.due ? ` · ${state.due} due` : ''}`;
+    summary.textContent = T('{0} {1}notes{2}', state.total.toLocaleString(locale), query() ? T('matching ') : '', state.due ? T(' · {0} due', state.due) : '');
     filterSelect.value = state.filter;
     older.hidden = !state.cursor; latest.hidden = !state.anchor || !!query(); composer.hidden = state.filter === 'trash';
-    if (!state.loaded) { list.replaceChildren(h('p', { class: 'muted' }, 'Loading notes…')); return; }
-    if (!state.items.length) { list.replaceChildren(h('p', { class: 'notes-empty' }, query() ? 'No notes match those keywords.' : state.filter === 'trash' ? 'Trash is empty.' : state.filter === 'due' ? 'No reminders are due.' : state.filter === 'pinned' ? 'No pinned notes yet.' : 'Send yourself the first note below.')); return; }
+    if (!state.loaded) { list.replaceChildren(h('p', { class: 'muted' }, T('Loading notes…'))); return; }
+    if (!state.items.length) { list.replaceChildren(h('p', { class: 'notes-empty' }, query() ? T('No notes match those keywords.') : state.filter === 'trash' ? T('Trash is empty.') : state.filter === 'due' ? T('No reminders are due.') : state.filter === 'pinned' ? T('No pinned notes yet.') : T('Send yourself the first note below.'))); return; }
     const out = []; let day = ''; const ids = new Set();
     for (const note of state.items) {
       if (preparing(note) && !note.shareMedia.error) watchMedia(note.id);
-      const label = new Date(note.createdAt).toLocaleDateString([], { year: 'numeric', month: 'long', day: 'numeric' });
+      const label = new Date(note.createdAt).toLocaleDateString(locale, { year: 'numeric', month: 'long', day: 'numeric' });
       if (label !== day) {
         if (!days.has(label)) days.set(label, h('h3', { class: 'note-day' }, label));
         out.push(days.get(label)); day = label;

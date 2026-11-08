@@ -153,3 +153,99 @@ img.is-empty { visibility: hidden; }
   padding: 16px 32px; border-radius: 14px; background: var(--paper); color: var(--on-bulb); font-size: 28px; font-weight: 700; }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
 @keyframes rise { from { opacity: 0; transform: translateY(12px); } }
+
+/* ---- Preview-only Discover ---- */
+.brandline, .top-actions { display: flex; align-items: center; }
+.top-actions > * + * { margin-left: 28px; }
+.discover-hint { color: var(--dust); font-size: 24px; }
+.discover-loading { margin-top: 80px; }
+.tv-badge { position: absolute; left: 12px; bottom: 12px; padding: 6px 10px; border-radius: 8px; background: rgba(31,16,25,.92); color: var(--bulb); font-size: 18px; font-weight: 700; }
+.discover-backdrop { position: absolute; right: 0; top: 0; width: 1320px; height: 820px; opacity: .32; }
+.discover-backdrop::after { content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: linear-gradient(90deg, var(--velvet) 0%, rgba(31,16,25,.2) 58%, rgba(31,16,25,.05) 100%), linear-gradient(0deg, var(--velvet) 0%, rgba(31,16,25,0) 62%); }
+.discover-panel { position: absolute; top: 0; right: 0; bottom: 0; left: 0; padding: 118px var(--edge); }
+.discover-copy { position: relative; width: 1040px; }
+.discover-copy h1 { margin: 0 0 14px; font-size: 72px; line-height: 1.02; letter-spacing: -.02em; }
+.discover-meta { color: var(--bulb); font-size: 26px; font-weight: 700; }
+.discover-overview { width: 950px; min-height: 104px; margin: 22px 0 24px; color: var(--dust); font-size: 27px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.discover-seasons { margin: 14px 0 26px; }
+.season-label { margin-bottom: 10px; color: var(--dust); font-size: 22px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+.season-viewport { width: 720px; overflow: hidden; padding: 6px; margin-left: -6px; }
+.season-track { display: flex; transition: transform .16s ease-out; }
+.season-chip { flex: none; width: 66px; height: 58px; margin-right: 16px; border-radius: 12px; display: flex; align-items: center; justify-content: center; background: var(--curtain); color: var(--dust); font-size: 26px; font-weight: 700; }
+.season-chip.active { color: var(--paper); }
+.season-chip.focus { background: var(--bulb); color: var(--on-bulb); box-shadow: none; }
+.season-chip.upcoming { opacity: .45; }
+.season-note { color: var(--dust); font-size: 25px; }
+.title-actions { display: flex; margin-top: 10px; }
+.title-action { min-width: 260px; padding: 18px 26px; margin-right: 18px; border-radius: 14px; background: var(--curtain); font-size: 28px; font-weight: 700; text-align: center; }
+.title-action.primary { background: var(--paper); color: var(--on-bulb); }
+.title-action.focus { background: var(--bulb); color: var(--on-bulb); box-shadow: none; }
+.download-status { margin-top: 20px; min-height: 38px; color: var(--dust); font-size: 24px; }
+.download-status.error, .season-note.error { color: var(--alert); }
+
+/* ---- Preview: browsing (growing rows, hero, grids, search) ---- */
+.top-link { padding: 12px 24px; border-radius: 12px; background: var(--curtain); font-size: 26px; font-weight: 700; }
+.top-link.focus, .tab.focus { background: var(--bulb); color: var(--on-bulb); box-shadow: none; }
+.card.tile { width: 196px; }
+.card.tile .art { height: 294px; }
+.card.tile .name { margin-top: 12px; font-size: 25px; }
+.card.tile .sub { font-size: 21px; }
+.card.see-all .art { display: flex; align-items: center; justify-content: center; background: var(--curtain); border: 2px dashed var(--line);
+  color: var(--dust); font-size: 28px; font-weight: 700; }
+.card.see-all.focus .art { color: var(--paper); border-color: transparent; }
+.card.genre { width: 320px; }
+.card.genre .art { height: 180px; display: flex; align-items: flex-end; padding: 22px 26px; font-size: 34px; font-weight: 800; line-height: 1.1; }
+.card.genre.g0 .art { background: linear-gradient(135deg, #7A3B1E 0%, #2B1724 100%); }
+.card.genre.g1 .art { background: linear-gradient(135deg, #6A2741 0%, #2B1724 100%); }
+.card.genre.g2 .art { background: linear-gradient(135deg, #7A5A1C 0%, #2B1724 100%); }
+.card.genre.g3 .art { background: linear-gradient(135deg, #4B2C5F 0%, #2B1724 100%); }
+.card.genre.g4 .art { background: linear-gradient(135deg, #7A2A2A 0%, #2B1724 100%); }
+.card.genre.g5 .art { background: linear-gradient(135deg, #3E3A5A 0%, #2B1724 100%); }
+.row-note { position: absolute; color: var(--dust); font-size: 26px; padding-top: 8px; }
+.row.is-pending .viewport { min-height: 380px; }
+
+/* Discover: the focused title fills the top half, rows scroll underneath. */
+.discover-screen .topbar { background: transparent; }
+.search-tab { margin-right: 28px; }
+.tabs .tab { font-weight: 700; }
+.hero { position: absolute; left: 0; right: 0; top: 0; height: 720px; }
+.hero-art { position: absolute; right: 0; top: 0; width: 1280px; height: 720px; opacity: .55; }
+.hero-art::after { content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
+  background: linear-gradient(90deg, var(--velvet) 0%, rgba(31, 16, 25, .35) 45%, rgba(31, 16, 25, 0) 100%), linear-gradient(0deg, var(--velvet) 12%, rgba(31, 16, 25, 0) 55%); }
+.hero-copy { position: absolute; left: var(--edge); top: 172px; width: 1040px; }
+.hero-copy h1 { margin: 0 0 10px; font-size: 64px; line-height: 1.05; letter-spacing: -.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hero-meta { color: var(--bulb); font-size: 26px; font-weight: 700; white-space: pre; }
+.hero-overview { margin: 14px 0 0; max-width: 980px; color: var(--dust); font-size: 26px;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.rows-viewport { position: absolute; left: 0; right: 0; top: 490px; bottom: 0; overflow: hidden; }
+.discover-screen .rows { position: absolute; left: 0; right: 0; top: 0; transition: transform .18s ease-out; }
+.discover-screen .row { margin-bottom: 30px; }
+.discover-screen .row h2 { margin-bottom: 12px; font-size: 32px; }
+
+/* See all / genre grids */
+.grid-head { position: absolute; z-index: 2; left: 0; right: 0; top: 0; height: 250px; padding: 64px var(--edge) 0; background: var(--velvet); }
+.grid-head h1 { margin: 0 0 24px; font-size: 60px; letter-spacing: -.02em; line-height: 1.05; }
+.chips { display: flex; }
+.chips .tab + .tab { margin-left: 14px; }
+.chips .tab.gap { margin-left: 56px; }
+.grid-viewport { position: absolute; left: 0; right: 0; top: 250px; bottom: 0; overflow: hidden; padding: 10px var(--edge) 0; }
+.grid-viewport.no-chips { top: 170px; }
+.grid { position: relative; display: flex; flex-wrap: wrap; align-content: flex-start; transition: transform .18s ease-out; }
+.grid > .card { margin: 0 20px 30px 0; }
+.grid-note { color: var(--dust); font-size: 28px; }
+
+/* Search: keyboard on the left, results on the right */
+.search-left { position: absolute; left: var(--edge); top: 170px; width: 520px; }
+.search-field { height: 78px; padding: 16px 22px; margin-bottom: 26px; border-radius: 14px; background: var(--curtain); border: 2px solid var(--line);
+  font-size: 34px; font-weight: 700; line-height: 42px; white-space: pre; overflow: hidden; }
+.search-field::after { content: ''; display: inline-block; width: 3px; height: 38px; margin-left: 2px; vertical-align: -7px; background: var(--bulb); }
+.search-field.is-empty::before { content: 'Filmer och serier'; color: var(--dust); font-weight: 400; }
+.search-field.is-empty::after { display: none; }
+.keys { width: 520px; }
+.key { display: inline-block; vertical-align: top; width: 78px; height: 66px; margin: 0 8px 8px 0; border-radius: 10px; background: var(--curtain);
+  text-align: center; line-height: 66px; font-size: 30px; font-weight: 700; text-transform: uppercase; }
+.key.wide { width: 164px; font-size: 24px; text-transform: none; }
+.key.focus { background: var(--bulb); color: var(--on-bulb); box-shadow: none; }
+.search-right { position: absolute; left: 680px; right: 0; top: 160px; bottom: 0; }
+.search-label { padding-left: 6px; font-size: 32px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 1100px; }
+.search-right .grid-viewport { top: 60px; padding: 10px 0 0 6px; }

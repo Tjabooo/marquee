@@ -43,7 +43,7 @@ See [remote-access.md](remote-access.md) for how accounts work and how to publis
 | --- | --- | --- |
 | `TMDB_TOKEN` 🔒 | | TMDB "API Read Access Token" (themoviedb.org → Settings → API). Enables Discover, search, posters and episode details. |
 | `TMDB_API_KEY` 🔒 | | The short TMDB v3 key; used when `TMDB_TOKEN` is blank. |
-| `TMDB_LANG` | `en-US` | Language for titles and descriptions. |
+| `TMDB_LANG` | `en-US` | Language for titles, and for descriptions when the viewer's language has none. People who use Marquee in Swedish get TMDB's Swedish descriptions and genre names on top of this. |
 
 ## Library
 

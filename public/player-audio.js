@@ -1,4 +1,5 @@
 // A stream index belongs only to the file fingerprint returned with it.
+import { T, lang } from './i18n.js';
 const languageAliases = { eng: 'en', kor: 'ko', swe: 'sv', nor: 'no', dan: 'da', fin: 'fi', deu: 'de', ger: 'de', fra: 'fr', fre: 'fr', spa: 'es', ita: 'it', jpn: 'ja', zho: 'zh', chi: 'zh', por: 'pt', rus: 'ru', ara: 'ar', nld: 'nl', dut: 'nl', geo: 'ka', kat: 'ka', tgl: 'tl', fil: 'tl' };
 export const audioLanguage = (value) => {
   const code = String(value || '').trim().toLowerCase();
@@ -7,7 +8,7 @@ export const audioLanguage = (value) => {
 const clean = (value) => String(value || '').trim().toLowerCase();
 export function audioChoices(tracks) {
   let names;
-  try { names = new Intl.DisplayNames(['en'], { type: 'language' }); } catch { /* older browser */ }
+  try { names = new Intl.DisplayNames([lang], { type: 'language' }); } catch { /* older browser */ }
   const languageName = (track) => {
     const code = audioLanguage(track.language);
     try { const label = code && names?.of(code); return label && label !== code ? label : ''; } catch { return ''; }
@@ -16,10 +17,10 @@ export function audioChoices(tracks) {
   const labels = tracks.map((track, i) => {
     const language = languageName(track);
     const title = String(track.title || '').trim();
-    const parts = [language || `Track ${track.audioIndex + 1}`];
+    const parts = [language || T('Track {0}', track.audioIndex + 1)];
     if (title && ![clean(language), clean(track.language), 'soundhandler'].includes(clean(title))) parts.push(title);
     if (languages.filter(l => l === languages[i]).length > 1) {
-      const channels = { 1: 'Mono', 2: 'Stereo', 6: '5.1', 8: '7.1' }[track.channels] || (track.channels ? `${track.channels} channels` : '');
+      const channels = { 1: T('Mono'), 2: T('Stereo'), 6: '5.1', 8: '7.1' }[track.channels] || (track.channels ? T('{0} channels', track.channels) : '');
       if (channels && !clean(title).includes(clean(channels))) parts.push(channels);
     }
     return parts.join(' · ');
@@ -27,7 +28,7 @@ export function audioChoices(tracks) {
   return tracks.map((track, i) => {
     let label = labels[i];
     if (labels.filter(x => x === label).length > 1) label += track.codec ? ` · ${String(track.codec).toUpperCase()}` : '';
-    if (tracks.some((other, j) => j !== i && labels[j] === labels[i] && other.codec === track.codec)) label += ` · Track ${track.audioIndex + 1}`;
+    if (tracks.some((other, j) => j !== i && labels[j] === labels[i] && other.codec === track.codec)) label += T(' · Track {0}', track.audioIndex + 1);
     return { ...track, label };
   });
 }

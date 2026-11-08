@@ -1,6 +1,7 @@
 // Subtitles via the OpenSubtitles REST API.
 // Downloads are saved beside the video as "<name>.<lang>.srt", so each is fetched once
 // and is also visible to other players.
+import { currentLanguage, tr } from './i18n.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { cleanSubtitle } from './subfix.js';
@@ -21,9 +22,20 @@ export const LANG_NAMES = {
 };
 const LANGS = (process.env.SUB_LANGS || 'en,sv,da,no,fi,de,nl,fr,es,pt-pt,pt-br,it,pl,ar,tr,ka,tl')
   .split(',').map((s) => s.trim().toLowerCase()).filter((l) => LANG_NAMES[l]);
-const langList = (codes) => LANGS.filter((c) => codes.has(c)).map((code) => ({ code, name: LANG_NAMES[code] }));
+// A language's name in the viewer's own language where the system knows it.
+function langName(code) {
+  const viewer = currentLanguage();
+  if (viewer === 'en') return LANG_NAMES[code];
+  try {
+    const [base, region] = code.split('-');
+    const tag = code === 'zh-cn' ? 'zh-Hans' : code === 'zh-tw' ? 'zh-Hant' : region && region !== base ? `${base}-${region.toUpperCase()}` : base;
+    const name = new Intl.DisplayNames([viewer], { type: 'language' }).of(tag);
+    return name && name !== tag ? name[0].toLocaleUpperCase(viewer) + name.slice(1) : LANG_NAMES[code];
+  } catch { return LANG_NAMES[code]; }
+}
+const langList = (codes) => LANGS.filter((c) => codes.has(c)).map((code) => ({ code, name: langName(code) }));
 // Every language Marquee looks for (SUB_LANGS), for the default-subtitles setting.
-export const subtitleLanguages = () => LANGS.map((code) => ({ code, name: LANG_NAMES[code] }));
+export const subtitleLanguages = () => LANGS.map((code) => ({ code, name: langName(code) }));
 
 export const subtitlesConfigured = () => Boolean(API_KEY);
 export const validLang = (l) => Object.hasOwn(LANG_NAMES, String(l || '').toLowerCase());
@@ -199,7 +211,7 @@ async function remoteLanguages(info) {
   return entry;
 }
 
-const autoLabelled = (l) => ({ ...l, name: `${l.name} (auto-translated)`, auto: true });
+const autoLabelled = (l) => ({ ...l, name: `${l.name} (${tr('auto-translated')})`, auto: true });
 
 // Languages for a local file: saved subtitles plus those available online.
 export async function languagesForFile(file, info) {

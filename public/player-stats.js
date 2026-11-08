@@ -2,6 +2,7 @@
 // (container, codecs, colour, HDR, every audio and subtitle stream, the original release) comes from
 // the server's ffprobe (/api/stream-info); the playback side (decoder, dropped frames, buffer,
 // throughput, stalls, display) is measured here in the browser.
+import { T, locale } from './i18n.js';
 
 // ---- pure helpers (tested in tests/player-stats.test.mjs) ----
 const hex2 = (n) => Math.max(0, Math.min(255, n | 0)).toString(16).padStart(2, '0').toUpperCase();
@@ -55,7 +56,7 @@ export function formatBytes(n) {
 }
 export function formatBitrate(bps) {
   if (!(bps > 0)) return '';
-  return bps >= 1e6 ? `${(bps / 1e6).toFixed(bps >= 1e8 ? 0 : bps >= 1e7 ? 1 : 2)} Mbps` : `${Math.round(bps / 1e3)} kbps`;
+  return bps >= 1e6 ? T('{0} Mbps', (bps / 1e6).toFixed(bps >= 1e8 ? 0 : bps >= 1e7 ? 1 : 2)) : T('{0} kbps', Math.round(bps / 1e3));
 }
 export function formatDuration(s) {
   if (!(s >= 0) || !isFinite(s)) return '';
@@ -78,31 +79,31 @@ const LEVEL_TEXT = (v) => {
   return '';
 };
 const COLOR_NAMES = { bt709: 'BT.709', bt2020nc: 'BT.2020 NCL', bt2020c: 'BT.2020 CL', bt2020: 'BT.2020', smpte170m: 'BT.601', bt470bg: 'BT.601 PAL',
-  smpte2084: 'PQ (ST 2084)', 'arib-std-b67': 'HLG', 'iec61966-2-1': 'sRGB', tv: 'limited', pc: 'full' };
+  smpte2084: 'PQ (ST 2084)', 'arib-std-b67': 'HLG', 'iec61966-2-1': 'sRGB', tv: T('limited'), pc: 'full' };
 const colorName = (c) => COLOR_NAMES[c] || c || '';
 export function describeVideo(v) {
   if (!v) return {};
-  const fps = v.fps ? `${Number(v.fps.toFixed(3))} fps` : '';
-  const scan = v.fieldOrder && v.fieldOrder !== 'progressive' ? ` · interlaced (${v.fieldOrder})` : '';
-  const colour = [v.primaries && `primaries ${colorName(v.primaries)}`, v.transfer && `transfer ${colorName(v.transfer)}`,
-    v.space && `matrix ${colorName(v.space)}`, v.range && `${colorName(v.range)} range`].filter(Boolean).join(' · ');
-  const hdrExtra = [v.mastering?.maxLum && `mastered ${Math.round(v.mastering.maxLum)}/${Number((v.mastering.minLum || 0).toFixed(4))} nits`,
-    v.light?.maxCll && `MaxCLL ${v.light.maxCll} · MaxFALL ${v.light.maxFall ?? '?'}`].filter(Boolean).join(' · ');
+  const fps = v.fps ? T('{0} fps', Number(v.fps.toFixed(3))) : '';
+  const scan = v.fieldOrder && v.fieldOrder !== 'progressive' ? T(' · interlaced ({0})', v.fieldOrder) : '';
+  const colour = [v.primaries && T('primaries {0}', colorName(v.primaries)), v.transfer && T('transfer {0}', colorName(v.transfer)),
+    v.space && T('matrix {0}', colorName(v.space)), v.range && T('{0} range', colorName(v.range))].filter(Boolean).join(' · ');
+  const hdrExtra = [v.mastering?.maxLum && T('mastered {0}/{1} nits', Math.round(v.mastering.maxLum), Number((v.mastering.minLum || 0).toFixed(4))),
+    v.light?.maxCll && T('MaxCLL {0} · MaxFALL {1}', v.light.maxCll, v.light.maxFall ?? '?')].filter(Boolean).join(' · ');
   return {
     codec: [`${codecName(v.codec)}${v.profile ? ` ${v.profile}` : ''}${LEVEL_TEXT(v)}`, v.tag].filter(Boolean).join(' · '),
-    picture: [`${v.width}×${v.height}`, v.dar && `DAR ${v.dar}`, v.sar && `SAR ${v.sar}`, v.rotation && `rotated ${v.rotation}°`].filter(Boolean).join(' · '),
-    frames: `${fps}${scan}${v.frames ? ` · ${v.frames.toLocaleString('en')} frames` : ''}`,
-    format: [v.pixFmt, v.bitDepth && `${v.bitDepth}-bit`, v.chroma && `chroma ${v.chroma}`].filter(Boolean).join(' · '),
+    picture: [`${v.width}×${v.height}`, v.dar && T('DAR {0}', v.dar), v.sar && T('SAR {0}', v.sar), v.rotation && T('rotated {0}°', v.rotation)].filter(Boolean).join(' · '),
+    frames: `${fps}${scan}${v.frames ? T(' · {0} frames', v.frames.toLocaleString(locale)) : ''}`,
+    format: [v.pixFmt, v.bitDepth && `${v.bitDepth}-bit`, v.chroma && T('chroma {0}', v.chroma)].filter(Boolean).join(' · '),
     colour,
     hdr: [v.hdr, hdrExtra].filter(Boolean).join(' · '),
     bitrate: formatBitrate(v.bitrate),
-    structure: [v.refs != null && `${v.refs} ref frames`, v.bFrames != null && `B-frame delay ${v.bFrames}`].filter(Boolean).join(' · '),
+    structure: [v.refs != null && T('{0} ref frames', v.refs), v.bFrames != null && T('B-frame delay {0}', v.bFrames)].filter(Boolean).join(' · '),
   };
 }
 export function describeAudio(a) {
-  const layout = a.layout ? a.layout.replace(/\(.*\)/, (m) => ` ${m}`) : a.channels ? `${a.channels} ch` : '';
+  const layout = a.layout ? a.layout.replace(/\(.*\)/, (m) => ` ${m}`) : a.channels ? T('{0} ch', a.channels) : '';
   return [codecName(a.codec) + (a.profile && !/^lc$/i.test(a.profile) ? ` ${a.profile}` : ''), layout,
-    a.sampleRate && `${(a.sampleRate / 1000).toFixed(a.sampleRate % 1000 ? 1 : 0)} kHz`, a.bitDepth && `${a.bitDepth}-bit`,
+    a.sampleRate && T('{0} kHz', (a.sampleRate / 1000).toFixed(a.sampleRate % 1000 ? 1 : 0)), a.bitDepth && `${a.bitDepth}-bit`,
     formatBitrate(a.bitrate), a.language && a.language !== 'und' && a.language, a.title && `“${a.title}”`,
     a.default && 'default', a.forced && 'forced'].filter(Boolean).join(' · ');
 }
@@ -115,14 +116,14 @@ export function createStreamStats({ video, host, api, context }) {
   const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
   const panel = el('section', 'stats-panel');
   panel.hidden = true;
-  panel.setAttribute('aria-label', 'Stats for nerds');
+  panel.setAttribute('aria-label', T('Stats for nerds'));
   const head = el('div', 'stats-head');
-  const title = el('p', 'stats-title', 'Stats for nerds');
-  const copyBtn = el('button', 'stats-btn', 'Copy');
+  const title = el('p', 'stats-title', T('Stats for nerds'));
+  const copyBtn = el('button', 'stats-btn', T('Copy'));
   copyBtn.type = 'button';
   const closeBtn = el('button', 'stats-btn stats-close', '×');
   closeBtn.type = 'button';
-  closeBtn.setAttribute('aria-label', 'Close stats');
+  closeBtn.setAttribute('aria-label', T('Close stats'));
   head.append(title, copyBtn, closeBtn);
   const graphs = el('div', 'stats-graphs');
   const makeGraph = (label) => {
@@ -135,8 +136,8 @@ export function createStreamStats({ video, host, api, context }) {
     graphs.append(wrap);
     return { canvas, val, data: [] };
   };
-  const bufferGraph = makeGraph('Buffer ahead ');
-  const netGraph = makeGraph('Download ');
+  const bufferGraph = makeGraph(T('Buffer ahead '));
+  const netGraph = makeGraph(T('Download '));
   const body = el('div', 'stats-body');
   panel.append(head, graphs, body);
   host.append(panel);
@@ -203,9 +204,9 @@ export function createStreamStats({ video, host, api, context }) {
       const data = await api(`/api/stream-info?src=${encodeURIComponent(src)}`);
       if (infoFor !== src) return;
       info = data;
-      if (!data.known) infoError = data.reason || 'No file details.';
+      if (!data.known) infoError = data.reason || T('No file details.');
       else checkDecoding(data.file);
-    } catch (e) { if (infoFor === src) infoError = e.message || 'File details unavailable.'; }
+    } catch (e) { if (infoFor === src) infoError = e.message || T('File details unavailable.'); }
     render();
   }
   async function checkDecoding(file) {
@@ -312,42 +313,42 @@ export function createStreamStats({ video, host, api, context }) {
     const v = file?.video;
 
     // What's playing and how it gets here
-    set('Stream', 'Title', ctx.title);
-    set('Stream', 'Delivery', [ctx.delivery || 'Direct play · HTTP byte ranges', info?.served].filter(Boolean).join(' · '));
-    set('Stream', 'File', file ? `${file.name}` : infoError || (srcPath() ? 'Asking the server…' : ''), file ? 'mono wrap' : '');
+    set(T('Stream'), T('Title'), ctx.title);
+    set(T('Stream'), T('Delivery'), [ctx.delivery || T('Direct play · HTTP byte ranges'), info?.served].filter(Boolean).join(' · '));
+    set(T('Stream'), T('File'), file ? `${file.name}` : infoError || (srcPath() ? T('Asking the server…') : ''), file ? 'mono wrap' : '');
     if (file) {
-      set('Stream', 'Container', [containerName(file), file.brand && `brand ${file.brand.trim()}`].filter(Boolean).join(' · '));
-      set('Stream', 'Size', [formatBytes(file.size), formatBitrate(file.bitrate) && `${formatBitrate(file.bitrate)} overall`].filter(Boolean).join(' · '));
-      set('Stream', 'Duration', [formatDuration(file.duration), file.start ? `starts at ${file.start.toFixed(3)} s` : '', file.chapters ? `${file.chapters} chapters` : ''].filter(Boolean).join(' · '));
-      set('Stream', 'Encoder', file.encoder);
-      set('Stream', 'Modified', file.modified ? new Date(file.modified).toLocaleString() : '');
+      set(T('Stream'), T('Container'), [containerName(file), file.brand && T('brand {0}', file.brand.trim())].filter(Boolean).join(' · '));
+      set(T('Stream'), T('Size'), [formatBytes(file.size), formatBitrate(file.bitrate) && T('{0} overall', formatBitrate(file.bitrate))].filter(Boolean).join(' · '));
+      set(T('Stream'), T('Duration'), [formatDuration(file.duration), file.start ? T('starts at {0} s', file.start.toFixed(3)) : '', file.chapters ? T('{0} chapters', file.chapters) : ''].filter(Boolean).join(' · '));
+      set(T('Stream'), T('Encoder'), file.encoder);
+      set(T('Stream'), T('Modified'), file.modified ? new Date(file.modified).toLocaleString(locale) : '');
     }
     if (info?.original) {
       const o = info.original;
-      set('Stream', 'Original', o.name, 'mono wrap');
-      set('Stream', 'Original file', [containerName(o), formatBytes(o.size), formatBitrate(o.bitrate)].filter(Boolean).join(' · '));
-      set('Stream', 'Original streams', [o.video && describeVideo(o.video).codec, o.video?.hdr && o.video.hdr !== 'SDR' && o.video.hdr,
-        `${o.audio.length} audio`, o.subtitles.length && `${o.subtitles.length} subtitles`].filter(Boolean).join(' · '));
+      set(T('Stream'), T('Original'), o.name, 'mono wrap');
+      set(T('Stream'), T('Original file'), [containerName(o), formatBytes(o.size), formatBitrate(o.bitrate)].filter(Boolean).join(' · '));
+      set(T('Stream'), T('Original streams'), [o.video && describeVideo(o.video).codec, o.video?.hdr && o.video.hdr !== 'SDR' && o.video.hdr,
+        T('{0} audio', o.audio.length), o.subtitles.length && T('{0} subtitles', o.subtitles.length)].filter(Boolean).join(' · '));
     }
-    if (info?.expires) set('Stream', 'Link expires', new Date(info.expires).toLocaleTimeString());
-    set('Stream', 'Watch Together', ctx.party);
-    set('Stream', 'Casting', ctx.casting);
+    if (info?.expires) set(T('Stream'), T('Link expires'), new Date(info.expires).toLocaleTimeString(locale));
+    set(T('Stream'), T('Watch Together'), ctx.party);
+    set(T('Stream'), T('Casting'), ctx.casting);
 
     // Video: the file's description, then what the browser decodes and draws
     const dv = describeVideo(v);
-    set('Video', 'Codec', dv.codec);
-    set('Video', 'Codec string', decoding?.type, 'mono wrap');
-    set('Video', 'Coded size', dv.picture);
-    set('Video', 'Frame rate', dv.frames);
-    set('Video', 'Pixel format', dv.format);
-    set('Video', 'Colour', dv.colour);
-    set('Video', 'Dynamic range', dv.hdr);
-    set('Video', 'Bitrate', dv.bitrate);
-    set('Video', 'Structure', dv.structure);
+    set(T('Video'), T('Codec'), dv.codec);
+    set(T('Video'), T('Codec string'), decoding?.type, 'mono wrap');
+    set(T('Video'), T('Coded size'), dv.picture);
+    set(T('Video'), T('Frame rate'), dv.frames);
+    set(T('Video'), T('Pixel format'), dv.format);
+    set(T('Video'), T('Colour'), dv.colour);
+    set(T('Video'), T('Dynamic range'), dv.hdr);
+    set(T('Video'), T('Bitrate'), dv.bitrate);
+    set(T('Video'), T('Structure'), dv.structure);
     const caps = decoding?.caps;
-    set('Video', 'Decoder', caps ? (caps.supported ? [caps.powerEfficient ? 'hardware (power efficient)' : 'software (not power efficient)', caps.smooth ? 'smooth' : 'may not be smooth'].join(' · ') : 'reported unsupported')
+    set(T('Video'), T('Decoder'), caps ? (caps.supported ? [caps.powerEfficient ? T('hardware (power efficient)') : T('software (not power efficient)'), caps.smooth ? 'smooth' : T('may not be smooth')].join(' · ') : T('reported unsupported'))
       : decoding?.canPlay ? `canPlayType: ${decoding.canPlay}` : '', caps && (!caps.supported || !caps.smooth) ? 'warn' : '');
-    set('Video', 'Decoded', video.videoWidth ? `${video.videoWidth}×${video.videoHeight}${live.resizes > 1 ? ` · ${live.resizes - 1} size changes` : ''}` : '');
+    set(T('Video'), T('Decoded'), video.videoWidth ? `${video.videoWidth}×${video.videoHeight}${live.resizes > 1 ? T(' · {0} size changes', live.resizes - 1) : ''}` : '');
 
     // Display: how big the picture is drawn, and whether the screen can show HDR
     const rect = video.getBoundingClientRect();
@@ -355,11 +356,11 @@ export function createStreamStats({ video, host, api, context }) {
     if (video.videoWidth && rect.width) {
       const scale = Math.min(rect.width / video.videoWidth, rect.height / video.videoHeight);
       const w = video.videoWidth * scale; const hgt = video.videoHeight * scale;
-      set('Display', 'Viewport', `${Math.round(rect.width)}×${Math.round(rect.height)} CSS px · ×${Number(dpr.toFixed(2))}`);
-      set('Display', 'Picture drawn', `${Math.round(w * dpr)}×${Math.round(hgt * dpr)} device px · ${(scale * dpr).toFixed(2)}× of source`);
+      set(T('Display'), T('Viewport'), T('{0}×{1} CSS px · ×{2}', Math.round(rect.width), Math.round(rect.height), Number(dpr.toFixed(2))));
+      set(T('Display'), T('Picture drawn'), T('{0}×{1} device px · {2}× of source', Math.round(w * dpr), Math.round(hgt * dpr), (scale * dpr).toFixed(2)));
     }
-    set('Display', 'Screen', `${screen.width}×${screen.height} · ${[matchMedia('(dynamic-range: high)').matches ? 'HDR capable' : 'SDR',
-      matchMedia('(color-gamut: rec2020)').matches ? 'Rec.2020 gamut' : matchMedia('(color-gamut: p3)').matches ? 'P3 gamut' : 'sRGB gamut'].join(' · ')}`);
+    set(T('Display'), T('Screen'), T('{0}×{1} · {2}', screen.width, screen.height, [matchMedia('(dynamic-range: high)').matches ? T('HDR capable') : 'SDR',
+      matchMedia('(color-gamut: rec2020)').matches ? T('Rec.2020 gamut') : matchMedia('(color-gamut: p3)').matches ? T('P3 gamut') : T('sRGB gamut')].join(' · ')));
     const times = live.frameTimes;
     if (times.length > 10) {
       const recent = times.slice(-Math.min(times.length, 120));
@@ -367,58 +368,58 @@ export function createStreamStats({ video, host, api, context }) {
       const gaps = recent.slice(1).map((t, i) => t - recent[i]);
       const mean = gaps.reduce((a, b) => a + b, 0) / gaps.length;
       const jitter = Math.sqrt(gaps.reduce((a, g) => a + (g - mean) ** 2, 0) / gaps.length);
-      set('Display', 'Presented', !video.paused && span > 0 ? `${((recent.length - 1) / span * 1000).toFixed(2)} fps · frame gap ${mean.toFixed(1)} ms ± ${jitter.toFixed(1)}` : 'paused');
+      set(T('Display'), T('Presented'), !video.paused && span > 0 ? T('{0} fps · frame gap {1} ms ± {2}', ((recent.length - 1) / span * 1000).toFixed(2), mean.toFixed(1), jitter.toFixed(1)) : 'paused');
     }
-    if (live.presented?.processingDuration != null) set('Display', 'Decode time', `${(live.presented.processingDuration * 1000).toFixed(1)} ms per frame`);
+    if (live.presented?.processingDuration != null) set(T('Display'), T('Decode time'), T('{0} ms per frame', (live.presented.processingDuration * 1000).toFixed(1)));
 
     // Frames
     if (q || video.webkitDecodedFrameCount != null) {
       const total = q ? q.totalVideoFrames : video.webkitDecodedFrameCount;
       const dropped = q ? q.droppedVideoFrames : video.webkitDroppedFrameCount;
       const pct = total ? (dropped / total) * 100 : 0;
-      set('Playback', 'Frames', `${dropped.toLocaleString('en')} dropped of ${total.toLocaleString('en')} (${pct.toFixed(2)}%)${live.droppedRecent ? ` · +${live.droppedRecent} just now` : ''}`, pct > 1 || live.droppedRecent ? 'warn' : '');
-      if (q?.corruptedVideoFrames) set('Playback', 'Corrupted', String(q.corruptedVideoFrames), 'warn');
+      set(T('Playback'), T('Frames'), T('{0} dropped of {1} ({2}%){3}', dropped.toLocaleString(locale), total.toLocaleString(locale), pct.toFixed(2), live.droppedRecent ? ` · +${live.droppedRecent} just now` : ''), pct > 1 || live.droppedRecent ? 'warn' : '');
+      if (q?.corruptedVideoFrames) set(T('Playback'), T('Corrupted'), String(q.corruptedVideoFrames), 'warn');
     }
-    set('Playback', 'Position', `${formatDuration(video.currentTime)} / ${formatDuration(video.duration)}${video.playbackRate !== 1 ? ` · ${video.playbackRate}× speed` : ''}`);
-    set('Playback', 'State', [video.paused ? 'paused' : video.ended ? 'ended' : 'playing', video.seeking && 'seeking',
+    set(T('Playback'), T('Position'), T('{0} / {1}{2}', formatDuration(video.currentTime), formatDuration(video.duration), video.playbackRate !== 1 ? ` · ${video.playbackRate}× speed` : ''));
+    set(T('Playback'), T('State'), [video.paused ? 'paused' : video.ended ? 'ended' : 'playing', video.seeking && 'seeking',
       ['HAVE_NOTHING', 'HAVE_METADATA', 'HAVE_CURRENT_DATA', 'HAVE_FUTURE_DATA', 'HAVE_ENOUGH_DATA'][video.readyState],
       ['NETWORK_EMPTY', 'NETWORK_IDLE', 'NETWORK_LOADING', 'NETWORK_NO_SOURCE'][video.networkState]].filter(Boolean).join(' · '));
-    set('Playback', 'Volume', video.muted ? 'muted' : `${Math.round(video.volume * 100)}%`);
-    set('Playback', 'Startup', [live.metadataAt != null && `metadata ${Math.round(live.metadataAt)} ms`, live.firstFrame != null && `playing after ${Math.round(live.firstFrame)} ms`].filter(Boolean).join(' · '));
+    set(T('Playback'), T('Volume'), video.muted ? 'muted' : `${Math.round(video.volume * 100)}%`);
+    set(T('Playback'), T('Startup'), [live.metadataAt != null && T('metadata {0} ms', Math.round(live.metadataAt)), live.firstFrame != null && T('playing after {0} ms', Math.round(live.firstFrame))].filter(Boolean).join(' · '));
     const stallNow = live.waitingSince != null ? now() - live.waitingSince : 0;
-    set('Playback', 'Stalls', `${live.stalls}${live.stalls ? ` · ${((live.stallMs + stallNow) / 1000).toFixed(1)} s waiting` : ''}${stallNow ? ' · waiting now' : ''}`, live.stalls ? 'warn' : '');
-    set('Playback', 'Seeks', live.seeks ? `${live.seeks}${live.lastSeekMs != null ? ` · last ready in ${Math.round(live.lastSeekMs)} ms` : ''}` : '');
-    set('Playback', 'Errors', live.errors.slice(-3).join(' | '), 'warn');
+    set(T('Playback'), T('Stalls'), T('{0}{1}{2}', live.stalls, live.stalls ? ` · ${((live.stallMs + stallNow) / 1000).toFixed(1)} s waiting` : '', stallNow ? ' · waiting now' : ''), live.stalls ? 'warn' : '');
+    set(T('Playback'), T('Seeks'), live.seeks ? `${live.seeks}${live.lastSeekMs != null ? T(' · last ready in {0} ms', Math.round(live.lastSeekMs)) : ''}` : '');
+    set(T('Playback'), T('Errors'), live.errors.slice(-3).join(' | '), 'warn');
 
     // Buffer and network
-    set('Network', 'Buffer', `${buf.ahead.toFixed(1)} s ahead · ${buf.total.toFixed(0)} s held in ${buf.ranges.length} range${buf.ranges.length === 1 ? '' : 's'}`, buf.ahead < 2 && !video.paused && !video.ended ? 'warn' : '');
-    set('Network', 'Ranges', buf.ranges.length > 1 || (buf.ranges[0] && buf.ranges[0][0] > 0.5) ? buf.ranges.slice(0, 4).map(([s, e]) => `${formatDuration(s).replace(/\.\d+$/, '')}–${formatDuration(e).replace(/\.\d+$/, '')}`).join(', ') + (buf.ranges.length > 4 ? ' …' : '') : '', 'mono');
-    set('Network', 'Download', live.rate == null ? (file ? 'measuring…' : '') : live.rateIdle && live.rate < 1e5 ? 'idle (buffer full or paused)' : `≈ ${formatBitrate(live.rate)} (from buffer growth)`);
+    set(T('Network'), T('Buffer'), T('{0} s ahead · {1} s held in {2} range{3}', buf.ahead.toFixed(1), buf.total.toFixed(0), buf.ranges.length, buf.ranges.length === 1 ? '' : 's'), buf.ahead < 2 && !video.paused && !video.ended ? 'warn' : '');
+    set(T('Network'), T('Ranges'), buf.ranges.length > 1 || (buf.ranges[0] && buf.ranges[0][0] > 0.5) ? buf.ranges.slice(0, 4).map(([s, e]) => `${formatDuration(s).replace(/\.\d+$/, '')}–${formatDuration(e).replace(/\.\d+$/, '')}`).join(', ') + (buf.ranges.length > 4 ? T(' …') : '') : '', 'mono');
+    set(T('Network'), T('Download'), live.rate == null ? (file ? T('measuring…') : '') : live.rateIdle && live.rate < 1e5 ? T('idle (buffer full or paused)') : T('≈ {0} (from buffer growth)', formatBitrate(live.rate)));
     const fileRate = file?.bitrate;
-    if (fileRate && live.rate && !live.rateIdle) set('Network', 'Headroom', `${(live.rate / fileRate).toFixed(1)}× the file’s bitrate`, live.rate < fileRate * 1.2 ? 'warn' : '');
-    else set('Network', 'Headroom', '');
+    if (fileRate && live.rate && !live.rateIdle) set(T('Network'), T('Headroom'), T('{0}× the file’s bitrate', (live.rate / fileRate).toFixed(1)), live.rate < fileRate * 1.2 ? 'warn' : '');
+    else set(T('Network'), T('Headroom'), '');
     const c = navigator.connection;
-    set('Network', 'Connection', c ? [c.type && c.type !== 'unknown' && c.type, c.effectiveType && `${c.effectiveType} class`, c.downlink && `~${c.downlink} Mbps reported`, c.rtt != null && `rtt ${c.rtt} ms`, c.saveData && 'data saver'].filter(Boolean).join(' · ') : '');
-    set('Network', 'Server probe', file?.probeMs != null ? `${file.probeMs} ms${file.probeMs < 5 ? ' (cached)' : ''}` : '');
+    set(T('Network'), T('Connection'), c ? [c.type && c.type !== 'unknown' && c.type, c.effectiveType && T('{0} class', c.effectiveType), c.downlink && T('~{0} Mbps reported', c.downlink), c.rtt != null && T('rtt {0} ms', c.rtt), c.saveData && T('data saver')].filter(Boolean).join(' · ') : '');
+    set(T('Network'), T('Server probe'), file?.probeMs != null ? `${file.probeMs} ms${file.probeMs < 5 ? ' (cached)' : ''}` : '');
 
     // Audio: the active choice, then every stream in the file
-    set('Audio', 'Active', ctx.audio || (video.audioTracks ? [...video.audioTracks].find((t) => t.enabled)?.label : '') || (file?.audio?.length === 1 ? 'the only track' : ''));
-    (file?.audio || []).forEach((a, i) => set('Audio', `#${i + 1}`, describeAudio(a)));
-    if (decoding?.type) set('Audio', 'Browser says', decoding.canPlay ? `canPlayType “${decoding.canPlay}”` : '');
+    set(T('Audio'), T('Active'), ctx.audio || (video.audioTracks ? [...video.audioTracks].find((t) => t.enabled)?.label : '') || (file?.audio?.length === 1 ? T('the only track') : ''));
+    (file?.audio || []).forEach((a, i) => set(T('Audio'), T('#{0}', i + 1), describeAudio(a)));
+    if (decoding?.type) set(T('Audio'), T('Browser says'), decoding.canPlay ? `canPlayType “${decoding.canPlay}”` : '');
 
     // Subtitles
-    set('Subtitles', 'Showing', ctx.subtitles || 'off');
+    set(T('Subtitles'), T('Showing'), ctx.subtitles || 'off');
     const subs = (info?.original || file)?.subtitles || [];
-    subs.slice(0, 12).forEach((s, i) => set('Subtitles', `In file #${i + 1}`, [codecName(s.codec), s.language, s.title && `“${s.title}”`, s.default && 'default', s.forced && 'forced', s.hearingImpaired && 'SDH'].filter(Boolean).join(' · ')));
-    if (subs.length > 12) set('Subtitles', 'More', `${subs.length - 12} more`);
+    subs.slice(0, 12).forEach((s, i) => set(T('Subtitles'), T('In file #{0}', i + 1), [codecName(s.codec), s.language, s.title && `“${s.title}”`, s.default && 'default', s.forced && 'forced', s.hearingImpaired && 'SDH'].filter(Boolean).join(' · ')));
+    if (subs.length > 12) set(T('Subtitles'), T('More'), T('{0} more', subs.length - 12));
 
     // Browser
-    set('Browser', 'User agent', navigator.userAgent, 'mono wrap');
+    set(T('Browser'), T('User agent'), navigator.userAgent, 'mono wrap');
 
     for (const r of rows.values()) if (!r.seen) r.row.hidden = true;
     for (const s of sections.values()) s.wrap.hidden = !s.used;
     bufferGraph.val.textContent = `${buf.ahead.toFixed(1)} s`;
-    netGraph.val.textContent = live.rate == null ? '–' : live.rateIdle && live.rate < 1e5 ? 'idle' : formatBitrate(live.rate);
+    netGraph.val.textContent = live.rate == null ? '–' : live.rateIdle && live.rate < 1e5 ? T('idle') : formatBitrate(live.rate);
     draw(bufferGraph, Math.max(30, ...bufferGraph.data));
     draw(netGraph, Math.max(fileRate ? fileRate * 2 : 1e6, ...netGraph.data), fileRate);
   }
@@ -470,9 +471,9 @@ export function createStreamStats({ video, host, api, context }) {
   copyBtn.addEventListener('click', async () => {
     let last = '';
     const text = report.map(([s, label, value]) => { const head = s !== last ? `\n[${s}]\n` : ''; last = s; return `${head}${label}: ${value}`; }).join('\n').trim();
-    try { await navigator.clipboard.writeText(text); copyBtn.textContent = 'Copied'; }
-    catch { copyBtn.textContent = 'Copy failed'; }
-    setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
+    try { await navigator.clipboard.writeText(text); copyBtn.textContent = T('Copied'); }
+    catch { copyBtn.textContent = T('Copy failed'); }
+    setTimeout(() => { copyBtn.textContent = T('Copy'); }, 1500);
   });
   return { open, close, toggle: () => (panel.hidden ? open() : close()), isOpen: () => !panel.hidden, element: panel };
 }

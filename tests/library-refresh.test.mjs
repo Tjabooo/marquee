@@ -1,3 +1,4 @@
+import { T as englishT } from '../public/i18n.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -9,7 +10,7 @@ const deferred = () => { let resolve; const promise = new Promise(r => { resolve
 function harness({ view = 'library', request = async () => ({ items: [], shows: [], server: [] }) } = {}) {
   const logs = []; const listeners = new Map(); const timers = [];
   const body = { contains: () => false, querySelectorAll: () => [] };
-  const context = vm.createContext({ AbortSignal,
+  const context = vm.createContext({ T: englishT, AbortSignal,
     state: { view, status: { library: true, downloads: true }, library: [], server: [], libraryShows: [], libraryError: null,
       downloads: [], downloadsError: null, dlScope: 'mine', convert: null, sessions: [], me: {} },
     current: null, overlayStack: [],

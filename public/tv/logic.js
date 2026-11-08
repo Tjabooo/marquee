@@ -3,6 +3,13 @@
 (function (root) {
   'use strict';
 
+  // Translates an English line with public/tv/sv.js (loaded first by the shell); {0}, {1}… are filled in.
+  function T(text) {
+    var strings = root.MarqueeTvStrings || {};
+    var args = arguments;
+    return String(strings[text] || text).replace(/\{(\d+)\}/g, function (m, i) { return args[+i + 1]; });
+  }
+
   var AUTOPLAY_SECONDS = 10;
   var AUTOPLAY_CHAIN = 3; // episodes in a row the countdown may start before it waits for a person
   var DONE_SECONDS = 90;  // this close to the end counts as watched (same as the phone player)
@@ -56,7 +63,7 @@
   function episodeLabel(f) {
     return f && f.season != null && f.episode != null ? 'S' + pad2(f.season) + ' E' + pad2(f.episode) : '';
   }
-  function minutesLeft(p) { return Math.max(1, Math.ceil((p.duration - p.time) / 60)) + ' min left'; }
+  function minutesLeft(p) { return T('{0} min left', Math.max(1, Math.ceil((p.duration - p.time) / 60))); }
 
   // Resume points are synced by media key, which stays the same when the MP4 copy replaces the original.
   function progressRef(f) { return f.mediaKey ? 'm:' + f.mediaKey : 'l:' + f.id; }
@@ -87,6 +94,33 @@
     var t = 0;
     library.forEach(function (f) { if (f.show === showId) t = Math.max(t, f.addedAt || f.added || 0); });
     return t;
+  }
+
+  // The library by genre: one row per genre that has something in it, the biggest first, newest titles
+  // first inside. Films match by their TMDB film genre, shows by the show genre (TMDB merges a few for
+  // shows, e.g. "Action & Adventure", so one show can sit in both Action and Adventure).
+  function genreRows(library, shows, genres) {
+    var showIds = {}, showAdded = {}, films = [], seenFilm = {};
+    library.forEach(function (f) {
+      if (f.show && f.season != null) { showIds[f.show] = true; showAdded[f.show] = Math.max(showAdded[f.show] || 0, f.addedAt || f.added || 0); }
+      if (f.season != null || !f.genres || !f.genres.length) return;
+      var k = f.tmdbId ? 'm' + f.tmdbId : f.id;
+      if (!seenFilm[k]) { seenFilm[k] = true; films.push(f); }
+    });
+    function has(list, id) { return Boolean(id && list && list.indexOf(id) >= 0); }
+    var rows = [];
+    (genres || []).forEach(function (g) {
+      var titles = [];
+      shows.forEach(function (s) { if (showIds[s.id] && has(s.genres, g.tv)) titles.push({ show: s, added: showAdded[s.id] }); });
+      films.forEach(function (f) { if (has(f.genres, g.movie)) titles.push({ film: f, added: f.addedAt || f.added || 0 }); });
+      if (titles.length) rows.push({ name: g.name, titles: titles.sort(function (a, b) { return b.added - a.added; }) });
+    });
+    return rows.sort(function (a, b) { return b.titles.length - a.titles.length || (a.name < b.name ? -1 : 1); });
+  }
+
+  // Search matching: case, accents, spaces and punctuation don't count ("spider man" finds "Spider-Man").
+  function searchKey(s) {
+    return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '');
   }
 
   // One show's downloaded episodes by season, and the episode to start on: the one in progress, else
@@ -142,8 +176,8 @@
   var api = {
     AUTOPLAY_SECONDS: AUTOPLAY_SECONDS, AUTOPLAY_CHAIN: AUTOPLAY_CHAIN, DONE_SECONDS: DONE_SECONDS,
     nextEpisode: nextEpisode, nextPromptAt: nextPromptAt, isNextTime: isNextTime, introShowing: introShowing,
-    fmtTime: fmtTime, episodeLabel: episodeLabel, minutesLeft: minutesLeft, progressRef: progressRef, resumable: resumable,
-    titleKey: titleKey, homeRows: homeRows, showSeasons: showSeasons, startEpisode: startEpisode, parseVtt: parseVtt, cueText: cueText,
+    T: T, fmtTime: fmtTime, episodeLabel: episodeLabel, minutesLeft: minutesLeft, progressRef: progressRef, resumable: resumable,
+    titleKey: titleKey, homeRows: homeRows, genreRows: genreRows, searchKey: searchKey, showSeasons: showSeasons, startEpisode: startEpisode, parseVtt: parseVtt, cueText: cueText,
   };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.MarqueeTvLogic = api;

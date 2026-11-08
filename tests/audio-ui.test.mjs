@@ -1,3 +1,4 @@
+import { T as englishT } from '../public/i18n.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -58,7 +59,7 @@ function harness({ native, request, autoplayBlocked = false, kind = 'lib' } = {}
   Object.assign(video, { currentSrc: sourceUrl, currentTime: 17, duration: 180, paused: false, ended: false, readyState: 3, muted: true, volume: .4, playbackRate: 1.5, audioTracks: native,
     play() { calls.push(['play']); this.paused = autoplayBlocked; return autoplayBlocked ? Promise.reject(Error('gesture needed')) : Promise.resolve(); }, pause() { this.paused = true; calls.push(['pause']); } });
   const current = { id: 'episode', kind, ready: true, sourceUrl, abort: new AbortController() };
-  const context = vm.createContext({ $, video, current, document, Node: Element, audioChoices, nativeAudioMapping, AbortController, URL, location: { href: 'https://example.test/' },
+  const context = vm.createContext({ T: englishT, $, video, current, document, Node: Element, audioChoices, nativeAudioMapping, AbortController, URL, location: { href: 'https://example.test/' },
     party: null, nativeSubs: false, onTvVersion: false, hasRemotePlayback: false, canSetVolume: true,
     closeCcMenu() {}, extraPlayable: () => '', browserVariant: () => 'browser', mediaId: f => f.id,
     applySubModes: () => calls.push(['subtitles']), updateUpNext() {}, toast() {},

@@ -9,6 +9,7 @@
 // The clips are AV1 with separate game / friends / mic tracks, which not every browser can play,
 // so sharing makes a full-resolution, near-lossless H.264 copy with the tracks mixed into one.
 // Unsharing kills the link and deletes that copy.
+import { translateHtml } from './i18n.js';
 import fs from 'node:fs';
 import { trackChild } from './load.js';
 import { background } from './priority.js';
@@ -604,8 +605,8 @@ export function page({ title, desc, url, image, images = [], video, body }) {
 export async function handlePublic(req, res, url, { sendVideo, previews }) {
   const p = url.pathname;
   const send = (status, type, data, extra = {}) => {
-    res.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'public, max-age=300', 'X-Robots-Tag': 'noindex', ...extra });
-    res.end(req.method === 'HEAD' ? undefined : data);
+    res.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'public, max-age=300', 'X-Robots-Tag': 'noindex', Vary: 'Cookie, Accept-Language', ...extra });
+    res.end(req.method === 'HEAD' ? undefined : (String(type).startsWith('text/html') ? translateHtml(data) : data));
     return true;
   };
 
@@ -621,8 +622,10 @@ export async function handlePublic(req, res, url, { sendVideo, previews }) {
     }));
   }
   // The shared clip player: Marquee's own stylesheet and a player script for one clip.
-  if (p === '/c/style.css' || p === '/c/player.js' || p === '/c/seek-preview.js') {
-    const file = new URL({ '/c/style.css': '../public/style.css', '/c/player.js': '../public/clip-share.js', '/c/seek-preview.js': '../public/seek-preview.js' }[p], import.meta.url);
+  const playerFiles = { '/c/style.css': '../public/style.css', '/c/player.js': '../public/clip-share.js', '/c/seek-preview.js': '../public/seek-preview.js',
+    '/c/i18n.js': '../public/i18n.js', '/c/i18n-sv.js': '../public/i18n-sv.js' };
+  if (Object.hasOwn(playerFiles, p)) {
+    const file = new URL(playerFiles[p], import.meta.url);
     try { return send(200, p.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/javascript; charset=utf-8', await fs.promises.readFile(file), { 'Cache-Control': 'no-cache' }); }
     catch { return send(404, 'text/plain', 'Not found.'); }
   }

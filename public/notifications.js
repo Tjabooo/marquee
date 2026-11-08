@@ -1,5 +1,6 @@
 // Notifications on this device: the service worker (sw.js), the browser's push subscription and the
 // server's list of devices (/api/push). app.js draws Settings → Notifications from what's here.
+import { T } from './i18n.js';
 
 // What this browser can do. 'ios-install' = iPhone/iPad Safari outside a Home Screen app, where
 // Apple only allows notifications once Marquee is added to the Home Screen.
@@ -19,10 +20,10 @@ export function deviceLabel(ua = '') {
   if (/iPhone/.test(ua)) return 'iPhone';
   if (/iPad/.test(ua) || (/Macintosh/.test(ua) && /Mobile\//.test(ua))) return 'iPad';
   const browser = /Edg\//.test(ua) ? 'Edge' : /OPR\/|Opera/.test(ua) ? 'Opera' : /SamsungBrowser/.test(ua) ? 'Samsung Internet'
-    : /Firefox\//.test(ua) ? 'Firefox' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'Browser';
+    : /Firefox\//.test(ua) ? 'Firefox' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : T('Browser');
   const os = /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows' : /Mac OS X|Macintosh/.test(ua) ? 'Mac'
     : /CrOS/.test(ua) ? 'ChromeOS' : /Linux/.test(ua) ? 'Linux' : '';
-  return os ? `${browser} on ${os}` : browser;
+  return os ? T('{0} on {1}', browser, os) : browser;
 }
 
 // applicationServerKey wants bytes; the server sends base64url.
@@ -57,10 +58,10 @@ export async function currentSubscription(env = globalThis) {
 export async function subscribe(publicKey, env = globalThis) {
   const permission = await env.Notification.requestPermission();
   if (permission !== 'granted') throw new Error(permission === 'denied'
-    ? 'Notifications are blocked for Marquee. Allow them in the browser’s site settings, then try again.'
-    : 'Notifications weren’t allowed.');
+    ? T('Notifications are blocked for Marquee. Allow them in the browser’s site settings, then try again.')
+    : T('Notifications weren’t allowed.'));
   const reg = await registerWorker(env);
-  if (!reg) throw new Error('This browser couldn’t start notifications.');
+  if (!reg) throw new Error(T('This browser couldn’t start notifications.'));
   await env.navigator.serviceWorker.ready;
   let sub = await reg.pushManager.getSubscription();
   if (sub && !sameKey(sub, publicKey)) { await sub.unsubscribe().catch(() => {}); sub = null; }

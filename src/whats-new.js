@@ -10,6 +10,7 @@
 //
 // Each person's settings remember the newest update they've seen (seenUpdate). People who have never
 // seen one see the updates published since they joined, so a newcomer isn't shown the whole history.
+import { currentLanguage } from './i18n.js';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 
@@ -57,10 +58,26 @@ function entries() {
 }
 
 // What this person may read: owner-only items are left out for everyone else.
+// Swedish notes live beside the English ones in whats-new.sv.json, under the same id. The English item titles are
+// the keys, so an owner-only item can be hidden without the two lists drifting apart. No Swedish yet: English.
+let swedish = null;
+function swedishNotes() {
+  if (swedish) return swedish;
+  try { swedish = JSON.parse(fs.readFileSync(new URL('../whats-new.sv.json', import.meta.url), 'utf8')); } catch { swedish = {}; }
+  return swedish;
+}
+function inViewersLanguage(entry) {
+  if (currentLanguage() !== 'sv') return entry;
+  const sv = swedishNotes()[entry.id];
+  if (!sv) return entry;
+  return { ...entry, title: sv.title || entry.title, items: entry.items.map((item) => ({ ...item, ...sv.items?.[item.title] })) };
+}
+
 function visible(list, user) {
   return list
     .map(({ announce, ...e }) => ({ ...e, items: e.items.filter((i) => i.audience === 'all' || user?.isOwner).map(({ title, text }) => ({ title, text })) }))
-    .filter((e) => e.items.length);
+    .filter((e) => e.items.length)
+    .map(inViewersLanguage);
 }
 
 export const allFor = (user) => visible(entries(), user);

@@ -1,6 +1,7 @@
 // Social parts of the web client: thumbs up/down with "Liked by …", the Popular on Marquee shelf,
 // planned watch parties, the room's chat and reactions, and Marquee Wrapped. app.js passes in its
 // helpers (h, api, toast, …) so this file has no globals of its own beyond the DOM.
+import { T, locale } from './i18n.js';
 
 export const REACTIONS = ['😂', '😮', '😍', '😢', '😱', '👏', '🔥', '👍'];
 
@@ -20,32 +21,32 @@ export function namesText(names, total = names.length) {
   const shown = names.slice(0, 2);
   const rest = total - shown.length;
   if (!shown.length) return '';
-  if (rest <= 0) return shown.length === 2 ? `${shown[0]} and ${shown[1]}` : shown[0];
-  return `${shown.join(', ')} and ${rest === 1 ? '1 other' : `${rest} others`}`;
+  if (rest <= 0) return shown.length === 2 ? T('{0} and {1}', shown[0], shown[1]) : shown[0];
+  return T('{0} and {1}', shown.join(', '), rest === 1 ? T('1 other') : T('{0} others', rest));
 }
 
 export function likedText({ mine, likedBy = [] }) {
-  if (!likedBy.length) return mine === 1 ? 'You liked this' : '';
-  return `Liked by ${mine === 1 ? 'you, ' : ''}${namesText(likedBy)}`;
+  if (!likedBy.length) return mine === 1 ? T('You liked this') : '';
+  return T('Liked by {0}{1}', mine === 1 ? 'you, ' : '', namesText(likedBy));
 }
 
 // "in 3 h 12 min", "in 4:59", "now"
 export function countdownText(ms) {
   if (ms <= 0) return 'now';
   const s = Math.ceil(ms / 1000);
-  if (s < 3600) return `in ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  if (s < 3600) return T('in {0}:{1}', Math.floor(s / 60), String(s % 60).padStart(2, '0'));
   const hours = Math.floor(s / 3600), min = Math.floor((s % 3600) / 60);
-  if (hours < 48) return `in ${hours} h${min ? ` ${min} min` : ''}`;
-  return `in ${Math.round(hours / 24)} days`;
+  if (hours < 48) return T('in {0} h{1}', hours, min ? T(' {0} min', min) : '');
+  return T('in {0} days', Math.round(hours / 24));
 }
 
 export function startLabel(ms, now = Date.now()) {
   const d = new Date(ms), today = new Date(now);
-  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const time = d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
   const days = Math.round((new Date(d).setHours(12, 0, 0, 0) - new Date(today).setHours(12, 0, 0, 0)) / 86400000);
-  if (days === 0) return `today at ${time}`;
-  if (days === 1) return `tomorrow at ${time}`;
-  return `${d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'short' })} at ${time}`;
+  if (days === 0) return T('today at {0}', time);
+  if (days === 1) return T('tomorrow at {0}', time);
+  return T('{0} at {1}', d.toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'short' }), time);
 }
 
 // The value for <input type="datetime-local">, in local time.
@@ -65,9 +66,9 @@ export function suggestedStart(now = Date.now()) {
 
 export const fmtHours = (seconds) => {
   const h = seconds / 3600;
-  if (h >= 10) return `${Math.round(h)} hours`;
-  if (h >= 1) return `${Math.round(h * 10) / 10} hours`;
-  return `${Math.max(1, Math.round(seconds / 60))} minutes`;
+  if (h >= 10) return T('{0} hours', Math.round(h));
+  if (h >= 1) return T('{0} hours', Math.round(h * 10) / 10);
+  return T('{0} minutes', Math.max(1, Math.round(seconds / 60)));
 };
 
 export function createSocial({ h, api, jsonPost, toast, icon, people }) {
@@ -86,12 +87,12 @@ export function createSocial({ h, api, jsonPost, toast, icon, people }) {
   const cache = new Map(); // key -> last answer, so a re-rendered sheet doesn't flicker
   function rateRow(key, title) {
     if (!key) return null;
-    const up = h('button', { type: 'button', class: 'thumb', 'aria-pressed': 'false', 'aria-label': 'I like this' }, thumbSvg(false));
-    const down = h('button', { type: 'button', class: 'thumb', 'aria-pressed': 'false', 'aria-label': 'Not for me' }, thumbSvg(true));
+    const up = h('button', { type: 'button', class: 'thumb', 'aria-pressed': 'false', 'aria-label': T('I like this') }, thumbSvg(false));
+    const down = h('button', { type: 'button', class: 'thumb', 'aria-pressed': 'false', 'aria-label': T('Not for me') }, thumbSvg(true));
     const whoFaces = h('span', { class: 'liked-faces' });
     const whoText = h('span', { class: 'liked-text', 'aria-live': 'polite' });
     const who = h('span', { class: 'liked-by' }, whoFaces, whoText);
-    const el = h('div', { class: 'rate-row', role: 'group', 'aria-label': 'Rate this title' }, up, down, who);
+    const el = h('div', { class: 'rate-row', role: 'group', 'aria-label': T('Rate this title') }, up, down, who);
     let current = { key, mine: 0, likedBy: [] };
     const paint = (r) => {
       current = r; cache.set(key, r);
@@ -100,7 +101,7 @@ export function createSocial({ h, api, jsonPost, toast, icon, people }) {
       whoText.textContent = likedText(r);
       const list = [...(r.mine === 1 && people?.me?.() ? [people.me()] : []), ...(r.people || r.likedBy.map((name) => ({ name })))];
       whoFaces.replaceChildren(...[faces(list, { size: 26, max: 4 })].filter(Boolean));
-      down.title = r.mine === -1 ? 'Only you see this' : 'Not for me (only you see this)';
+      down.title = r.mine === -1 ? T('Only you see this') : T('Not for me (only you see this)');
     };
     const send = async (value) => {
       const before = current;
@@ -129,44 +130,44 @@ export function createSocial({ h, api, jsonPost, toast, icon, people }) {
     const cards = items.map((t) => {
       const li = titleCard(t);
       const note = t.likedBy?.length ? `♥ ${namesText(t.likedBy, t.likes - (t.youLiked ? 1 : 0))}`
-        : t.viewers > 1 ? `${t.viewers} people watched` : t.youLiked ? '♥ You liked this' : t.viewers ? 'Watched here' : '';
+        : t.viewers > 1 ? T('{0} people watched', t.viewers) : t.youLiked ? T('♥ You liked this') : t.viewers ? T('Watched here') : '';
       if (note) li.querySelector('.sub')?.replaceChildren(h('span', { class: 'popular-why' }, faces(t.people, { size: 18, max: 3 }), h('span', {}, note)));
       return li;
     });
-    return carousel('Popular on Marquee', h('ul', { class: 'shelf-items', tabindex: '0', 'aria-label': 'Popular on Marquee' }, cards));
+    return carousel(T('Popular on Marquee'), h('ul', { class: 'shelf-items', tabindex: '0', 'aria-label': T('Popular on Marquee') }, cards));
   }
 
   // ---------- watch parties ----------
   // The planning sheet: pick a time, get the invite. onPlanned(room) after it's created.
   function planPartyBody({ file, title, onPlanned }) {
     const input = h('input', { type: 'datetime-local', class: 'party-when', value: localInputValue(suggestedStart()),
-      min: localInputValue(Date.now() + 60000), max: localInputValue(Date.now() + 14 * 86400000), 'aria-label': 'Start time' });
+      min: localInputValue(Date.now() + 60000), max: localInputValue(Date.now() + 14 * 86400000), 'aria-label': T('Start time') });
     const status = h('p', { class: 'muted', role: 'status' });
-    const quick = [['In 15 min', 15], ['In 1 hour', 60], ['Tonight 20:00', null]].map(([label, min]) =>
+    const quick = [[T('In 15 min'), 15], [T('In 1 hour'), 60], [T('Tonight 20:00'), null]].map(([label, min]) =>
       h('button', { type: 'button', class: 'chip', onclick: () => {
         input.value = localInputValue(min == null ? suggestedStart() : Date.now() + min * 60000);
       } }, label));
     const create = h('button', { type: 'button', class: 'play-btn', onclick: async () => {
       const startsAt = new Date(input.value).getTime();
-      if (!Number.isFinite(startsAt)) { status.textContent = 'Pick a day and time.'; return; }
+      if (!Number.isFinite(startsAt)) { status.textContent = T('Pick a day and time.'); return; }
       create.disabled = true; status.textContent = '';
       try {
         const room = await api('/api/watch/plan', jsonPost({ id: file.id, startsAt }));
         onPlanned?.(room);
       } catch (err) { status.textContent = err.message; }
       finally { create.disabled = false; }
-    } }, 'Plan the party');
-    return [h('h2', { id: 'picker-title' }, 'Plan a watch party'),
+    } }, T('Plan the party'));
+    return [h('h2', { id: 'picker-title' }, T('Plan a watch party')),
       h('p', { class: 'del-name' }, title),
-      h('p', { class: 'muted' }, 'Everyone with the link sees a countdown, and playback starts by itself at this time for whoever has joined.'),
+      h('p', { class: 'muted' }, T('Everyone with the link sees a countdown, and playback starts by itself at this time for whoever has joined.')),
       h('div', { class: 'party-quick' }, ...quick), input, create, status];
   }
 
   function plannedBody({ room, link, copy, title }) {
-    return [h('h2', { id: 'picker-title' }, 'Party planned'),
+    return [h('h2', { id: 'picker-title' }, T('Party planned')),
       h('p', { class: 'del-name' }, title),
-      h('p', {}, `Starts ${startLabel(room.startsAt)}. Send the invite to whoever's watching; the party also waits for you in Library.`),
-      h('button', { type: 'button', class: 'play-btn', onclick: () => copy(link) }, icon('copy'), 'Copy invite')];
+      h('p', {}, T('Starts {0}. Send the invite to whoever\'s watching; the party also waits for you in Library.', startLabel(room.startsAt))),
+      h('button', { type: 'button', class: 'play-btn', onclick: () => copy(link) }, icon('copy'), T('Copy invite'))];
   }
 
   // Library shelf: planned parties you made or joined, with a live countdown.
@@ -174,22 +175,22 @@ export function createSocial({ h, api, jsonPost, toast, icon, people }) {
     if (!parties.length) return null;
     const items = parties.map((p) => {
       const when = h('span', { class: 'party-when-text' });
-      const tick = () => { when.textContent = p.started ? 'Started' : `${countdownText(p.startsAt - Date.now())} · ${startLabel(p.startsAt)}`; };
+      const tick = () => { when.textContent = p.started ? T('Started') : `${countdownText(p.startsAt - Date.now())} · ${startLabel(p.startsAt)}`; };
       tick();
       when.tick = tick;
-      const here = p.faces?.length ? `${namesText(p.faces.map((f) => f.name))} ${p.faces.length === 1 ? 'is' : 'are'} in the room` : '';
+      const here = p.faces?.length ? T('{0} {1} in the room', namesText(p.faces.map((f) => f.name)), p.faces.length === 1 ? 'is' : 'are') : '';
       return h('li', { class: 'party-card' },
         face({ name: p.host, avatar: p.hostAvatar }, { size: 44, cls: 'party-host' }),
         h('div', { class: 'party-text' }, h('strong', {}, label(p.media)), when,
-          h('span', { class: 'muted' }, p.mine ? 'You planned this' : `Planned by ${p.host}`),
+          h('span', { class: 'muted' }, p.mine ? T('You planned this') : T('Planned by {0}', p.host)),
           here && h('span', { class: 'party-here' }, faces(p.faces, { size: 20, max: 5 }), h('span', {}, here))),
         h('div', { class: 'party-actions' },
-          h('button', { type: 'button', class: 'chip primary', onclick: () => join(p) }, p.started ? 'Join' : 'Wait in room'),
-          h('button', { type: 'button', class: 'chip', onclick: () => copy(p) }, 'Invite'),
-          p.mine && h('button', { type: 'button', class: 'chip', onclick: (e) => cancel(p, e.currentTarget) }, 'Cancel')));
+          h('button', { type: 'button', class: 'chip primary', onclick: () => join(p) }, p.started ? T('Join') : T('Wait in room')),
+          h('button', { type: 'button', class: 'chip', onclick: () => copy(p) }, T('Invite')),
+          p.mine && h('button', { type: 'button', class: 'chip', onclick: (e) => cancel(p, e.currentTarget) }, T('Cancel'))));
     });
-    const section = h('section', { class: 'shelf parties-shelf', 'aria-label': 'Watch parties' },
-      h('div', { class: 'shelf-head' }, h('h3', {}, 'Watch parties')), h('ul', { class: 'party-list' }, items));
+    const section = h('section', { class: 'shelf parties-shelf', 'aria-label': T('Watch parties') },
+      h('div', { class: 'shelf-head' }, h('h3', {}, T('Watch parties'))), h('ul', { class: 'party-list' }, items));
     const timer = setInterval(() => {
       if (!section.isConnected) { clearInterval(timer); return; }
       for (const li of items) li.querySelector('.party-when-text').tick();
@@ -223,12 +224,12 @@ export function createSocial({ h, api, jsonPost, toast, icon, people }) {
   // One chat message. prev: the message before it; a run from the same person within a few minutes
   // shows their face and name once.
   function chatLine(msg, mine, prev = null) {
-    const time = new Date(msg.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const time = new Date(msg.at).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
     const cont = prev && prev.from === msg.from && msg.at - prev.at < 3 * 60000;
     return h('li', { class: `chat-line${mine ? ' mine' : ''}${cont ? ' cont' : ''}` },
       !mine && (cont ? h('span', { class: 'chat-gap', 'aria-hidden': 'true' }) : face(msg, { size: 30, cls: 'chat-face' })),
       h('div', { class: 'chat-bubble' },
-        !cont && h('div', { class: 'chat-meta' }, h('strong', {}, mine ? 'You' : msg.name), h('time', { datetime: new Date(msg.at).toISOString() }, time)),
+        !cont && h('div', { class: 'chat-meta' }, h('strong', {}, mine ? T('You') : msg.name), h('time', { datetime: new Date(msg.at).toISOString() }, time)),
         h('p', {}, msg.text)));
   }
 
@@ -240,34 +241,34 @@ export function createSocial({ h, api, jsonPost, toast, icon, people }) {
     const slides = [];
     const slide = (cls, ...kids) => slides.push(h('section', { class: `wr-slide ${cls}` }, ...kids.filter(Boolean)));
     if (w.empty) {
-      slide('wr-a', h('p', { class: 'wr-kicker' }, `Marquee Wrapped ${w.year}`), big('Nothing here yet'),
-        small('Watch something and your year starts filling in. Wrapped counts the time you actually spend watching.'));
+      slide('wr-a', h('p', { class: 'wr-kicker' }, T('Marquee Wrapped {0}', w.year)), big(T('Nothing here yet')),
+        small(T('Watch something and your year starts filling in. Wrapped counts the time you actually spend watching.')));
       return slides;
     }
-    slide('wr-a', h('p', { class: 'wr-kicker' }, `Marquee Wrapped ${w.year}`), big(`${name ? `${name}, ` : ''}here's your year`),
-      small('Tap to continue'));
-    slide('wr-b', h('p', { class: 'wr-kicker' }, 'You watched'), big(fmtHours(w.seconds)),
-      small(`${w.titles} ${w.titles === 1 ? 'title' : 'titles'}: ${w.films} ${w.films === 1 ? 'film' : 'films'} and ${w.episodes} ${w.episodes === 1 ? 'episode' : 'episodes'}, on ${w.activeDays} ${w.activeDays === 1 ? 'day' : 'days'}.`),
-      w.people > 1 && small(w.rank === 1 ? `More than anyone else on Marquee (${w.people} people watched).` : `Number ${w.rank} of the ${w.people} people who watched here.`));
-    if (w.top?.length) slide('wr-c', h('p', { class: 'wr-kicker' }, 'Your top titles'),
+    slide('wr-a', h('p', { class: 'wr-kicker' }, T('Marquee Wrapped {0}', w.year)), big(T('{0}here\'s your year', name ? `${name}, ` : '')),
+      small(T('Tap to continue')));
+    slide('wr-b', h('p', { class: 'wr-kicker' }, T('You watched')), big(fmtHours(w.seconds)),
+      small(T('{0} {1}: {2} {3} and {4} {5}, on {6} {7}.', w.titles, w.titles === 1 ? 'title' : 'titles', w.films, w.films === 1 ? 'film' : 'films', w.episodes, w.episodes === 1 ? 'episode' : 'episodes', w.activeDays, w.activeDays === 1 ? 'day' : 'days')),
+      w.people > 1 && small(w.rank === 1 ? T('More than anyone else on Marquee ({0} people watched).', w.people) : T('Number {0} of the {1} people who watched here.', w.rank, w.people)));
+    if (w.top?.length) slide('wr-c', h('p', { class: 'wr-kicker' }, T('Your top titles')),
       h('ol', { class: 'wr-list' }, w.top.map((t) => h('li', {}, h('span', {}, t.title),
-        h('small', {}, t.tv && t.episodes ? `${t.episodes} ${t.episodes === 1 ? 'episode' : 'episodes'} · ${fmtHours(t.seconds)}` : fmtHours(t.seconds))))));
-    if (w.topShow) slide('wr-d', h('p', { class: 'wr-kicker' }, 'Your show of the year'), big(w.topShow.title),
+        h('small', {}, t.tv && t.episodes ? `${t.episodes} ${t.episodes === 1 ? T('episode') : T('episodes')} · ${fmtHours(t.seconds)}` : fmtHours(t.seconds))))));
+    if (w.topShow) slide('wr-d', h('p', { class: 'wr-kicker' }, T('Your show of the year')), big(w.topShow.title),
       small(`${w.topShow.episodes} ${w.topShow.episodes === 1 ? 'episode' : 'episodes'}, ${fmtHours(w.topShow.seconds)}.`));
-    const busy = new Date(`${w.busiestDay.day}T12:00:00`).toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
+    const busy = new Date(`${w.busiestDay.day}T12:00:00`).toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' });
     const max = Math.max(...w.months, 1);
-    slide('wr-e', h('p', { class: 'wr-kicker' }, 'When you watched'), big(w.busiestMonth),
+    slide('wr-e', h('p', { class: 'wr-kicker' }, T('When you watched')), big(w.busiestMonth),
       h('div', { class: 'wr-months', 'aria-hidden': 'true' }, w.months.map((s) => h('i', { style: `--v:${(s / max).toFixed(3)}` }))),
-      small(`${w.busiestWeekday}s were your night. Your biggest day was ${busy} (${fmtHours(w.busiestDay.seconds)}).`),
-      w.streak.days > 1 && small(`Longest run: ${w.streak.days} days in a row.`));
-    if (w.company?.length) slide('wr-f', h('p', { class: 'wr-kicker' }, 'Watched together'),
+      small(T('{0}s were your night. Your biggest day was {1} ({2}).', w.busiestWeekday, busy, fmtHours(w.busiestDay.seconds))),
+      w.streak.days > 1 && small(T('Longest run: {0} days in a row.', w.streak.days)));
+    if (w.company?.length) slide('wr-f', h('p', { class: 'wr-kicker' }, T('Watched together')),
       h('div', { class: 'wr-faces' }, w.company.slice(0, 5).map((c) => face(c, { size: 72 }))),
       big(namesText(w.company.map((c) => c.name))),
-      small(`${fmtHours(w.together)} in Watch Together rooms${w.company[0] ? `, most of it with ${w.company[0].name}` : ''}.`));
-    slide('wr-g', h('p', { class: 'wr-kicker' }, 'It all started with'), big(w.first.title),
-      small(w.first.season != null ? `Season ${w.first.season}, episode ${w.first.episode}` : ''),
-      w.likes > 0 && small(`You gave ${w.likes} thumbs up${w.liked?.length ? `, including ${w.liked.slice(0, 3).join(', ')}` : ''}.`),
-      small('See you next year.'));
+      small(T('{0} in Watch Together rooms{1}.', fmtHours(w.together), w.company[0] ? T(', most of it with {0}', w.company[0].name) : '')));
+    slide('wr-g', h('p', { class: 'wr-kicker' }, T('It all started with')), big(w.first.title),
+      small(w.first.season != null ? T('Season {0}, episode {1}', w.first.season, w.first.episode) : ''),
+      w.likes > 0 && small(T('You gave {0} thumbs up{1}.', w.likes, w.liked?.length ? T(', including {0}', w.liked.slice(0, 3).join(', ')) : '')),
+      small(T('See you next year.')));
     return slides;
   }
 

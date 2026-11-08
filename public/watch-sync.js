@@ -1,5 +1,6 @@
 // Clock compensation and gentle correction keep video timing independent of message arrival time.
 // Subtitle selection, volume and cue offsets are deliberately absent from the network protocol.
+import { T } from './i18n.js';
 export function playbackPlan(state, serverNow, currentTime) {
   const delay = state.playing ? Math.max(0, state.at - serverNow) : 0;
   const target = state.position + (state.playing ? Math.max(0, serverNow - state.at) / 1000 : 0);
@@ -60,7 +61,7 @@ export class WatchSession {
       return;
     }
     if (state.reaction) { this.onReaction(state.reaction, this); return; }
-    if (state.ended || state.left) { this.onEnd('This watch room has ended or you were disconnected.'); return; }
+    if (state.ended || state.left) { this.onEnd(T('This watch room has ended or you were disconnected.')); return; }
     if (state.revision < this.state.revision) return;
     this.state = state;
     this.onState(this);
@@ -166,7 +167,7 @@ export class WatchSession {
   }
 
   control(action, position = this.video.currentTime) {
-    if (!this.isHost) { this.onError('The host controls playback. Your subtitles and volume are yours.'); return; }
+    if (!this.isHost) { this.onError(T('The host controls playback. Your subtitles and volume are yours.')); return; }
     this.commands = this.commands.then(async () => {
       if (this.closed) return;
       this.controlling = true;

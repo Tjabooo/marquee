@@ -1,3 +1,4 @@
+import { T as englishT } from '../public/i18n.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -17,7 +18,7 @@ test('carousel arrows move both ways, respect reduced motion and disable at the 
   const source = await fs.readFile(new URL('../public/app.js', import.meta.url), 'utf8');
   const builder = source.slice(source.indexOf('function h('), source.indexOf('const ICONS ='));
   const code = source.slice(source.indexOf('function carousel('), source.indexOf('function row('));
-  const create = vm.runInNewContext(builder + code + '\ncarousel', {
+  const create = vm.runInNewContext(builder + code + '\ncarousel', { T: englishT,
     Node: Element, document: { createElement: (tag) => new Element(tag) }, icon: () => new Element('svg'),
     matchMedia: () => ({ matches: reduced }), searchCtrl: controller,
     requestAnimationFrame: (cb) => cb(),

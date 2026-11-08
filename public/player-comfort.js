@@ -1,14 +1,15 @@
 // Player comforts that belong to this device rather than the account: night mode for the sound,
 // how subtitles look, and the sleep timer. Kept apart from app.js so they can be tested.
+import { T } from './i18n.js';
 
 // ---- subtitle look ----
 // Size is relative to the picture, so a phone and a TV both get readable text from the same choice.
-export const SUB_SIZES = [['S', 0.8, 'Small'], ['M', 1, 'Medium'], ['L', 1.25, 'Large'], ['XL', 1.55, 'Extra large']];
+export const SUB_SIZES = [['S', 0.8, T('Small')], ['M', 1, T('Medium')], ['L', 1.25, T('Large')], ['XL', 1.55, T('Extra large')]];
 // Box is the classic dark strip. Shadow and Outline keep more of the picture visible.
-export const SUB_BACKGROUNDS = [['box', 'Box'], ['shadow', 'Shadow'], ['outline', 'Outline']];
+export const SUB_BACKGROUNDS = [['box', T('Box')], ['shadow', T('Shadow')], ['outline', T('Outline')]];
 // How far the lines sit above the bottom of the picture, as a share of its height. High clears
 // burnt-in captions and the lower-third graphics of news and sport.
-export const SUB_POSITIONS = [['low', 'Low', 0], ['mid', 'Mid', 0.08], ['high', 'High', 0.16]];
+export const SUB_POSITIONS = [['low', T('Low'), 0], ['mid', T('Mid'), 0.08], ['high', T('High'), 0.16]];
 
 export function subLook({ size, background, position } = {}) {
   const n = Number(size);
@@ -42,12 +43,12 @@ export function sleepFade(timer, now = Date.now()) {
   const left = sleepSecondsLeft(timer, now);
   return left == null ? 1 : Math.min(1, Math.max(0, left / SLEEP_FADE_SECONDS));
 }
-export function sleepLabel(timer, now = Date.now(), endLabel = 'the end of this episode') {
+export function sleepLabel(timer, now = Date.now(), endLabel = T('the end of this episode')) {
   if (!timer) return '';
-  if (timer.kind === 'episode') return `Pauses at ${endLabel}`;
+  if (timer.kind === 'episode') return T('Pauses at {0}', endLabel);
   const left = Math.ceil(sleepSecondsLeft(timer, now));
   const m = Math.floor(left / 60), s = left % 60;
-  return `Pauses in ${m}:${String(s).padStart(2, '0')}`;
+  return T('Pauses in {0}:{1}', m, String(s).padStart(2, '0'));
 }
 
 // ---- night mode ----

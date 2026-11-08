@@ -19,18 +19,21 @@
     added.forEach(function (el) { if (el.parentNode) el.parentNode.removeChild(el); });
     added = [];
     waiting = true;
-    note('Can’t reach Marquee at ' + server + '. Is the server on? Trying again…');
+    note('Kan inte nå Marquee på ' + server + '. Är servern på? Försöker igen…');
     setTimeout(function () { waiting = false; load(); }, 5000);
   }
   function load() {
-    var v = Date.now(); // the server's newest copy, never the TV's cache
+    var v = Date.now();
     var css = document.createElement('link');
     css.rel = 'stylesheet';
     css.href = server + '/tv/tv.css?v=' + v;
     add(css);
-    script(server + '/tv/logic.js?v=' + v, function (err) {
-      if (err) return retry();
-      script(server + '/tv/tv.js?v=' + v, function (err2) { if (err2) retry(); });
+    script(server + '/tv/sv.js?v=' + v, function (err0) {
+      if (err0) return retry();
+      script(server + '/tv/logic.js?v=' + v, function (err) {
+        if (err) return retry();
+        script(server + '/tv/tv.js?v=' + v, function (err2) { if (err2) retry(); });
+      });
     });
   }
   document.addEventListener('keydown', function (e) {
@@ -38,6 +41,6 @@
       try { tizen.application.getCurrentApplication().exit(); } catch (x) { /* not on a TV */ }
     }
   });
-  if (!server) { note('This app was built without a Marquee address. Rebuild it with MARQUEE_URL set.'); return; }
+  if (!server) { note('Den här appen byggdes utan Marquee-adress. Bygg om den med MARQUEE_URL.'); return; }
   load();
 })();

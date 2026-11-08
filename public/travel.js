@@ -1,11 +1,12 @@
 // Download to phone on the page: the words for each copy's state and the list summary.
 // The server makes and keeps the copies (src/travel.js).
+import { T } from './i18n.js';
 
 const pad = (n) => String(n).padStart(2, '0');
 
 // "Dune (2021)", "Severance S01 E03".
 export function travelTitle(f) {
-  const name = f.filmTitle || f.title || f.name || 'Video';
+  const name = f.filmTitle || f.title || f.name || T('Video');
   if (f.season != null && f.episode != null) return `${name} S${pad(f.season)} E${pad(f.episode)}`;
   return f.year && f.season == null ? `${name} (${f.year})` : name;
 }
@@ -13,16 +14,16 @@ export function travelTitle(f) {
 // "About 450 MB" from the server's estimate; the real size once the copy exists.
 export function sizeWords(item, fmtBytes) {
   if (item.state === 'ready' && item.size) return fmtBytes(item.size);
-  return item.estimate ? `About ${fmtBytes(item.estimate)}` : '';
+  return item.estimate ? T('About {0}', fmtBytes(item.estimate)) : '';
 }
 
 export function stateWords(item) {
   switch (item.state) {
-    case 'ready': return 'Ready to download';
-    case 'making': return item.percent != null ? `Making it… ${item.percent}%` : 'Making it…';
-    case 'queued': return 'Waiting its turn';
-    case 'failed': return `Couldn’t make it${item.error ? `: ${item.error}` : ''}`;
-    default: return 'Not made yet';
+    case 'ready': return T('Ready to download');
+    case 'making': return item.percent != null ? T('Making it… {0}%', item.percent) : T('Making it…');
+    case 'queued': return T('Waiting its turn');
+    case 'failed': return T('Couldn’t make it{0}', item.error ? `: ${item.error}` : '');
+    default: return T('Not made yet');
   }
 }
 
@@ -32,7 +33,7 @@ export function travelSummary(items) {
   const ready = items.filter((i) => i.state === 'ready').length;
   const busy = items.filter((i) => i.state === 'making' || i.state === 'queued').length;
   const failed = items.filter((i) => i.state === 'failed').length;
-  return [`${items.length} for your phone`, ready && `${ready} ready`, busy && `${busy} being made`, failed && `${failed} failed`]
+  return [T('{0} for your phone', items.length), ready && T('{0} ready', ready), busy && T('{0} being made', busy), failed && T('{0} failed', failed)]
     .filter(Boolean).join(' · ');
 }
 

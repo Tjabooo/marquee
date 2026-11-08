@@ -29,7 +29,7 @@ export function initShows({ dataDir }) {
   file = path.join(dataDir, '.marquee-shows.json');
   try {
     const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
-    cache = { names: saved.names || {}, shows: saved.shows || {}, films: saved.films || {}, filmFiles: saved.filmFiles || {}, filmDownloads: saved.filmDownloads || {}, showDownloads: saved.showDownloads || {}, genres: saved.genres || {} };
+    cache = { overviews: saved.overviews || {}, names: saved.names || {}, shows: saved.shows || {}, films: saved.films || {}, filmFiles: saved.filmFiles || {}, filmDownloads: saved.filmDownloads || {}, showDownloads: saved.showDownloads || {}, genres: saved.genres || {} };
   } catch { /* first run */ }
 }
 
@@ -134,6 +134,19 @@ function rememberGenres(type, id, d) {
   cache.genres[`${type}:${id}`] = ids.filter((g) => Number.isInteger(g));
   save();
 }
+// Descriptions in other languages than the shared cache's, a batch at a time ('' = TMDB has none).
+const OVERVIEW_BATCH = 12;
+export const localOverview = (lang, type, id) => (id ? cache.overviews?.[lang]?.[`${type}:${id}`] || null : null);
+export function backfillOverviews(lang, type, ids, fetchOverview) {
+  cache.overviews ||= {};
+  const known = (cache.overviews[lang] ||= {});
+  const missing = [...new Set(ids.filter((id) => id && known[`${type}:${id}`] === undefined))].slice(0, OVERVIEW_BATCH);
+  return Promise.allSettled(missing.map((id) => once(`overview:${lang}:${type}:${id}`, async () => {
+    try { known[`${type}:${id}`] = await fetchOverview(type, id); save(); }
+    catch (error) { if (/\b404\b/.test(error?.message || '') || error?.status === 404) { known[`${type}:${id}`] = ''; save(); } }
+  })));
+}
+
 export const genresOf = (type, id) => (id ? cache.genres[`${type}:${id}`] || null : null);
 const GENRE_BATCH = 12;
 function backfillGenres(type, ids, tmdb) {

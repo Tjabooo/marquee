@@ -1,6 +1,7 @@
 // The player on a shared clip's public page (/c/<token>): Marquee's player, for one clip only.
 // Same markup and styles as the app's player (style.css), with only what watching a clip needs:
 // play, skip, seek, volume, fullscreen and picture in picture, plus the same keyboard shortcuts.
+import { T } from './i18n.js';
 import { createSeekPreview } from '/c/seek-preview.js';
 
 const ICONS = {
@@ -94,7 +95,7 @@ function updatePlayState() {
   const playing = !video.paused && !video.ended;
   for (const b of playBtns) {
     setIcon(b, playing ? 'pause' : 'play');
-    b.setAttribute('aria-label', playing ? 'Pause (Space)' : 'Play (Space)');
+    b.setAttribute('aria-label', playing ? T('Pause (Space)') : T('Play (Space)'));
   }
   player.classList.toggle('is-paused', !playing);
   showUi();
@@ -160,7 +161,7 @@ for (const ev of ['progress', 'timeupdate']) video.addEventListener(ev, updateBu
 durEl.addEventListener('click', () => {
   showRemaining = !showRemaining;
   store.set('player:remaining', showRemaining ? '1' : '');
-  durEl.title = showRemaining ? 'Show duration' : 'Show time remaining';
+  durEl.title = showRemaining ? T('Show duration') : T('Show time remaining');
   updateTime();
 });
 const seekTimeAt = (x) => {
@@ -211,7 +212,7 @@ volInput.hidden = !canSetVolume;
 function updateVolume() {
   const level = video.muted ? 0 : video.volume;
   setIcon(muteBtn, level === 0 ? 'muted' : level < 0.5 ? 'volume' : 'volumeHigh');
-  muteBtn.setAttribute('aria-label', video.muted ? 'Unmute (M)' : 'Mute (M)');
+  muteBtn.setAttribute('aria-label', video.muted ? T('Unmute (M)') : T('Mute (M)'));
   if (document.activeElement !== volInput) volInput.value = String(level);
   volInput.style.setProperty('--val', `${level * 100}%`);
   store.set('player:volume', String(video.volume));
@@ -226,7 +227,7 @@ function setVolume(v) {
 function toggleMute() {
   if (video.muted && video.volume === 0) video.volume = 0.5;
   video.muted = !video.muted;
-  osd(video.muted ? 'Muted' : `Volume ${Math.round(video.volume * 100)}%`);
+  osd(video.muted ? T('Muted') : T('Volume {0}%', Math.round(video.volume * 100)));
 }
 muteBtn.addEventListener('click', toggleMute);
 volInput.addEventListener('input', () => setVolume(Number(volInput.value)));
@@ -246,7 +247,7 @@ function toggleFullscreen() {
 function updateFullscreen() {
   const on = Boolean(fsElement());
   setIcon(fsBtn, on ? 'fullscreenExit' : 'fullscreen');
-  fsBtn.setAttribute('aria-label', on ? 'Exit fullscreen (F)' : 'Fullscreen (F)');
+  fsBtn.setAttribute('aria-label', on ? T('Exit fullscreen (F)') : T('Fullscreen (F)'));
 }
 document.addEventListener('fullscreenchange', updateFullscreen);
 document.addEventListener('webkitfullscreenchange', updateFullscreen);
@@ -270,13 +271,13 @@ function setSpinner(on) {
 video.addEventListener('waiting', () => setSpinner(true));
 for (const ev of ['playing', 'canplay', 'pause', 'error']) video.addEventListener(ev, () => setSpinner(false));
 video.addEventListener('error', () => {
-  errorEl.textContent = 'This clip couldn’t be loaded. Check your connection and reload the page.';
+  errorEl.textContent = T('This clip couldn’t be loaded. Check your connection and reload the page.');
   errorEl.hidden = false;
 });
 
 // ---- keyboard ----
 const seekToFraction = (f) => { if (isFinite(video.duration)) { video.currentTime = video.duration * f; updateTime(); } };
-const nudgeVolume = (d) => { if (canSetVolume) { setVolume((video.muted ? 0 : video.volume) + d); osd(`Volume ${Math.round(video.volume * 100)}%`); } };
+const nudgeVolume = (d) => { if (canSetVolume) { setVolume((video.muted ? 0 : video.volume) + d); osd(T('Volume {0}%', Math.round(video.volume * 100))); } };
 const KEYS = {
   ' ': () => togglePlay(true), k: () => togglePlay(true),
   ArrowLeft: () => skip(-5), ArrowRight: () => skip(5), j: () => skip(-10), l: () => skip(10),
