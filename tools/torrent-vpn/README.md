@@ -66,3 +66,9 @@ by SYSTEM and Administrators.
   you, so seeding and rare torrents are slower. qBittorrent shows "firewalled"; that's expected.
 - DNS lookups for trackers go through the system resolver. Use DNS over HTTPS (for example
   AdGuard Home with DoH upstreams) if your ISP shouldn't see tracker hostnames.
+- With a provider other than Mullvad, pass `-CheckUrl https://ipinfo.io/json`. The default check
+  is Mullvad's, and it reports any other provider's exit as a problem.
+- Port forwarding: set qBittorrent's listening port to the exact port you reserved. Don't remap it to
+  another local port, or trackers will announce the wrong one.
+- Check each server's real speed before settling on one. Servers from the same provider and city can
+  differ a lot. The installer starts with the first config in name order, so use `-Prefer` to choose.
