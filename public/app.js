@@ -13,6 +13,7 @@ import { comingUp, newEpisodes, watchStatus, todayIso } from './watchlist.js';
 import { travelTitle, sizeWords, stateWords, travelSummary, travelOrder } from './travel.js';
 import { libraryUnion, libraryAvailability, filterLibrary, transferState, transferAttention, transferPaused } from './library-downloads.js';
 import { createSocial, titleKeyOf, REACTIONS, countdownText, startLabel, namesText } from './social.js';
+import { createDocumentaries } from './documentaries.js';
 import { createPeople } from './people.js';
 
 translatePage();
@@ -683,7 +684,7 @@ function openTravelList(opener) {
 let searchCtrl;
 let searchTimer;
 const disc = { type: 'all', genre: null, sort: 'popular', list: null, genres: null, cache: new Map() };
-const TYPE_LABELS = [['all', T('All')], ['movie', T('Films')], ['tv', T('Shows')]];
+const TYPE_LABELS = [['all', T('All')], ['movie', T('Films')], ['tv', T('Shows')], ['docs', T('Documentaries')]];
 const SORT_LABELS = [['popular', T('Popular')], ['rating', T('Top rated')], ['newest', T('Newest')]];
 
 async function cachedApi(url, signal) {
@@ -696,29 +697,39 @@ async function cachedApi(url, signal) {
 
 // "In your library", or "On server" when someone else has it here (it can be added, not downloaded).
 function ownershipBadge(t) {
+  if (t.type === 'svt') {
+    const n = norm(t.title);
+    if (localFiles().some((f) => f.done && norm(f.filmTitle || f.title) === n)) return h('span', { class: 'on-server' }, T('In your library'));
+    return state.server.some((f) => norm(f.title) === n) ? h('span', { class: 'on-server is-other' }, T('On server')) : null;
+  }
   if (matchesFor(t).some((f) => f.done)) return h('span', { class: 'on-server' }, T('In your library'));
   if (serverMatchesFor(t).length) return h('span', { class: 'on-server is-other' }, T('On server'));
   return null;
 }
 
+// SVT Play's art is wide and comes without posters, so its cards are wide and carry its name.
+const isSeries = (t) => t.type === 'tv' || t.kind === 'series';
 function titleCard(t) {
+  const svt = t.type === 'svt';
+  const art = svt ? t.wide || t.poster : t.poster;
   return h('li', {},
-    h('button', { class: 'title-card', onclick: (e) => openDetails(t, e.currentTarget) },
+    h('button', { class: `title-card${svt ? ' is-wide' : ''}`, onclick: (e) => openDetails(t, e.currentTarget) },
       h('div', { class: 'poster' },
-        t.poster
-          ? h('img', { src: t.poster, alt: '', loading: 'lazy', decoding: 'async' })
+        art
+          ? h('img', { src: art, alt: '', loading: 'lazy', decoding: 'async' })
           : h('div', { class: 'poster-fallback' }, t.title),
         ownershipBadge(t),
+        svt && h('span', { class: 'svt-mark' }, 'SVT Play'),
         t.rating && h('span', { class: 'rating', 'aria-label': T('Rated {0} out of 10', t.rating) }, `★ ${t.rating.toFixed(1)}`)),
       h('div', { class: 'name' }, t.title),
-      h('div', { class: 'sub' }, [t.year, t.type === 'tv' ? T('Series') : T('Film')].filter(Boolean).join(', '))));
+      h('div', { class: 'sub' }, [t.year, isSeries(t) ? T('Series') : T('Film')].filter(Boolean).join(', '))));
 }
 const titleGrid = (items) => h('ul', { class: 'grid' }, items.map(titleCard));
 
 const genreNames = (t) => (disc.genres || [])
   .filter((g) => t.genres?.includes(t.type === 'tv' ? g.tv : g.movie))
   .map((g) => g.name).slice(0, 2);
-const genreFits = (g) => (disc.type === 'movie' ? g.movie : disc.type === 'tv' ? g.tv : g.movie || g.tv);
+const genreFits = (g) => (disc.type === 'movie' ? g.movie : disc.type === 'tv' ? g.tv : disc.type === 'docs' ? false : g.movie || g.tv);
 
 function segmented(options, value, onPick, label) {
   return h('div', { class: 'segmented', role: 'group', 'aria-label': label },
@@ -730,6 +741,7 @@ function segmented(options, value, onPick, label) {
 function discoverFilters() {
   const pick = (changes) => {
     Object.assign(disc, changes, { list: null });
+    documentaries.reset();
     if (disc.genre && !genreFits(disc.genre)) disc.genre = null;
     window.scrollTo({ top: 0 });
     renderDiscover();
@@ -741,11 +753,11 @@ function discoverFilters() {
     }, g.name)));
   requestAnimationFrame(() => chips.querySelector('[aria-pressed="true"]')?.scrollIntoView({ block: 'nearest', inline: 'center' }));
   return h('div', { class: 'discover-filters' },
-    segmented(TYPE_LABELS, disc.type, (type) => pick({ type }), T('Show')), chips);
+    segmented(TYPE_LABELS, disc.type, (type) => pick({ type }), T('Show')), disc.type !== 'docs' && chips);
 }
 
 function heroSlide(t) {
-  const meta = [t.year, t.type === 'tv' ? T('Series') : T('Film'), t.rating && `★ ${t.rating.toFixed(1)}`, ...genreNames(t)].filter(Boolean);
+  const meta = [t.year, isSeries(t) ? T('Series') : T('Film'), t.type === 'svt' && 'SVT Play', t.rating && `★ ${t.rating.toFixed(1)}`, ...genreNames(t)].filter(Boolean);
   return h('li', { class: 'hero-slide' },
     h('button', { class: 'hero-card', onclick: (e) => openDetails(t, e.currentTarget) },
       h('img', { src: t.backdrop, alt: '', decoding: 'async' }),
@@ -787,9 +799,9 @@ function row(r) {
 }
 
 // Paged grid for a genre or a "See all" list, with a Load more button.
-async function pagedGrid(content, urlFor, signal) {
+async function pagedGrid(content, urlFor, signal, gridClass = 'grid') {
   const seen = new Set();
-  const grid = h('ul', { class: 'grid' });
+  const grid = h('ul', { class: gridClass });
   const more = h('button', { class: 'load-more', hidden: true }, T('Load more'));
   let page = 0;
   const load = async () => {
@@ -841,9 +853,12 @@ async function renderDiscover() {
     body.replaceChildren(skeletonGrid());
     try {
       const data = await api(`/api/search?q=${encodeURIComponent(q)}`, { signal });
-      body.replaceChildren(data.results.length
-        ? titleGrid(data.results)
-        : notice(T('No matches for “{0}”', q), T('Check the spelling, or try the original title.')));
+      const svtHits = data.svt || [];
+      body.replaceChildren(...[
+        svtHits.length > 0 && carousel(T('Free on SVT Play'), h('ul', { class: 'shelf-items wide-cards', tabindex: '0', 'aria-label': T('Free on SVT Play') }, svtHits.map(titleCard))),
+        data.results.length ? titleGrid(data.results)
+          : !svtHits.length && notice(T('No matches for “{0}”', q), T('Check the spelling, or try the original title.')),
+      ].filter(Boolean));
     } catch (err) {
       if (err.name !== 'AbortError') body.replaceChildren(notice(T('Search didn’t work'), err.message, renderDiscover));
     }
@@ -856,6 +871,8 @@ async function renderDiscover() {
   }
   const content = h('div', { class: 'discover-content' });
   body.replaceChildren(discoverFilters(), content);
+
+  if (disc.type === 'docs') return documentaries.render(content, signal);
 
   if (disc.list) {
     content.before(h('div', { class: 'discover-head' },
@@ -1876,6 +1893,7 @@ for (const [sheetSel, backdropSel] of [['#sheet', '#sheet-backdrop'], ['#picker'
 }
 
 function openDetails(t, opener) {
+  if (t.type === 'svt') return documentaries.openTitle(t, opener);
   renderDetails(t);
   pushOverlay(showSheet($('#sheet'), $('#sheet-backdrop'), () => {
     $('#sheet-body .trailer-frame')?.remove(); // closing the sheet stops the trailer
@@ -2487,6 +2505,15 @@ function episodeDownload(t, seasonNo, episode) {
 const jsonPost = (body) => ({ method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 const people = createPeople({ h, api, toast, me: () => state.me }); // faces and profile pictures (people.js)
 const social = createSocial({ h, api, jsonPost, toast, icon, people }); // likes, Popular, watch parties, Wrapped (social.js)
+const documentaries = createDocumentaries({ h, api, jsonPost, toast, icon, notice, carousel, titleCard, heroSlide, segmented, pagedGrid, skeletonGrid, cachedApi,
+  rerender: () => renderDiscover(),
+  canAdd: () => Boolean(state.status.library && state.me?.canDownload !== false), // no qBittorrent needed
+  sheet: () => $('#sheet'), sheetBody: () => $('#sheet-body'),
+  openSheet: (onClosed) => pushOverlay(showSheet($('#sheet'), $('#sheet-backdrop'), onClosed)),
+  refreshLibrary: () => Promise.all([loadLibrary(), loadDownloads()]).catch(() => {}),
+  fileById: (id) => localFiles().find((f) => f.id === id) || null,
+  play: (f) => openPlayer(libraryFile(f)),
+}); // Discover -> Documentaries and SVT Play titles (documentaries.js)
 
 // The subtitles the phone player would turn on by itself (see its subtitle setup), so a TV starts with
 // them too: the last used language when it's already saved for this video, else the one from Settings.

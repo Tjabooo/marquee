@@ -1,5 +1,24 @@
 [
   {
+    "id": "2026-11-08-documentaries",
+    "date": "2026-11-08",
+    "title": "Documentaries, with Swedish true crime",
+    "items": [
+      {
+        "title": "A home for documentaries",
+        "text": "Discover has a new Documentaries tab, and it's on the TV's home screen too. Browse true crime, serial killers, unsolved cases, Swedish and Nordic documentaries, history, nature, science, music, sport and many more."
+      },
+      {
+        "title": "Free from SVT Play",
+        "text": "SVT Play's documentaries and true crime are here now. Press Add and it lands in your library with Swedish subtitles, ready on every screen. Titles that the torrent sites don't have can often come from SVT Play instead. It only works in Sweden."
+      },
+      {
+        "title": "Better at finding things",
+        "text": "Search looks in one more big source, and Swedish names with å, ä and ö find their releases more often. Search results also show what's on SVT Play."
+      }
+    ]
+  },
+  {
     "id": "2026-11-08-tv-downloads",
     "date": "2026-11-08",
     "title": "See your downloads on the TV",

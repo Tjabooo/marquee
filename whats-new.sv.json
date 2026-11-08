@@ -1,4 +1,21 @@
 {
+  "2026-11-08-documentaries": {
+    "title": "Dokumentärer, med svensk true crime",
+    "items": {
+      "A home for documentaries": {
+        "title": "En egen plats för dokumentärer",
+        "text": "Upptäck har en ny flik, Dokumentärer, och den finns på TV:ns startskärm också. Bläddra bland true crime, seriemördare, olösta fall, svenska och nordiska dokumentärer, historia, natur, vetenskap, musik, sport och mycket mer."
+      },
+      "Free from SVT Play": {
+        "title": "Gratis från SVT Play",
+        "text": "SVT Plays dokumentärer och true crime finns nu här. Tryck på Lägg till så hamnar det i ditt bibliotek med svensk text, redo på alla skärmar. Titlar som torrentsajterna inte har kan ofta komma från SVT Play i stället. Det fungerar bara i Sverige."
+      },
+      "Better at finding things": {
+        "title": "Bättre på att hitta saker",
+        "text": "Sökningen letar i ytterligare en stor källa, och svenska namn med å, ä och ö hittar oftare rätt. Sökresultaten visar också vad som finns på SVT Play."
+      }
+    }
+  },
   "2026-11-08-tv-downloads": {
     "title": "Se dina nedladdningar på TV:n",
     "items": {

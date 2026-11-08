@@ -31,6 +31,9 @@ import { downloadDestination, downloadFilePath } from './download-paths.js';
 import { fetchTorrentFile, TorrentFetchError } from './torrent-fetch.js';
 import { filterMode, filterApplies, firstAdult, torrentFileNames, BLOCKED_MESSAGE } from './content-filter.js';
 import * as smart from './smart-download.js';
+import * as svt from './svtplay.js';
+import { createSvtQueue } from './svt-queue.js';
+import { createDocumentaries } from './documentaries.js';
 import * as versions from './versions.js';
 import { planEpisodeOrder } from './episode-order.js';
 import { PROFILES } from './recommend.js';
@@ -501,6 +504,153 @@ async function discoverGenre({ type, movieGenre, tvGenre, sort, page }) {
   const results = parts.flatMap((x) => x?.results || []);
   if (type === 'all') results.sort((a, b) => (order.by(b) > order.by(a) ? 1 : order.by(b) < order.by(a) ? -1 : 0));
   return { results, page, totalPages: Math.max(...parts.map((x) => x?.totalPages || 0)) };
+}
+
+// ---------- documentaries ----------
+const docs = createDocumentaries({
+  tmdb: (endpoint, params) => cachedTmdb(endpoint, params), mapTitle, svtCategory: svt.svtCategory, svtOn: svt.svtEnabled, translate,
+});
+
+// ---------- SVT Play ----------
+// Saved into the media folder like any download, under requester's library (src/svt-queue.js).
+const svtQueue = MEDIA_DIR ? createSvtQueue({
+  mediaDir: MEDIA_DIR, dataDir: DATA_DIR, ffmpeg: process.env.FFMPEG || 'ffmpeg',
+  freeBytes: () => freeBytesFor('tv'),
+  onChange: () => live.publish('library'),
+  onSaved: svtSaved,
+  log: (line) => console.log(line),
+}) : null;
+if (svtQueue) process.on('exit', () => svtQueue.stopAll());
+
+async function svtSaved(job, full) {
+  const key = accounts.mediaKey(full);
+  const arrived = new Map();
+  for (const userId of job.requesters) if (accounts.addEntry(userId, key, 'download')) arrived.set(userId, [full]);
+  if (job.kind === 'film' && job.tmdbId) {
+    const details = await tmdb(`/movie/${job.tmdbId}`).catch(() => null);
+    if (details) shows.identifyFilm(key, details);
+  }
+  invalidateLibrary();
+  if (arrived.size) announceArrivals(job.hash, arrived, job.requesters);
+  if (job.kind === 'series') prepSeasonOf(full);
+}
+
+// The TMDB title with exactly this name (and year, for films), or null: SVT titles TMDB doesn't know
+// keep SVT's own artwork instead of the closest guess.
+async function svtIdentity(title) {
+  if (!tmdbOn()) return null;
+  const key = shows.showKey(title.title);
+  const series = title.kind === 'series';
+  try {
+    const { results = [] } = await cachedTmdb(series ? '/search/tv' : '/search/movie', { query: title.title, include_adult: 'false' }, 6 * 3600 * 1000);
+    const exact = results.filter((r) => [r.name, r.original_name, r.title, r.original_title].some((n) => n && shows.showKey(n) === key));
+    const yearOf = (r) => Number(String(r.first_air_date || r.release_date || '').slice(0, 4)) || null;
+    const fits = series ? exact : exact.filter((r) => !title.year || !yearOf(r) || Math.abs(yearOf(r) - title.year) <= 1);
+    return fits.length === 1 || (series && fits.length) ? fits[0].id : null;
+  } catch { return null; }
+}
+
+// What of a title is already here for this person, per episode (or the film).
+async function svtHave(user, title) {
+  const key = shows.showKey(title.title);
+  const items = (await libraryVisibleItems(await scanLibrary(), user)) || [];
+  const mine = accounts.libraryOf(user.id);
+  const same = items.filter((i) => shows.showKey(i.title) === key);
+  const statusOf = (item, videoId) => {
+    if (item) return { status: mine.has(accounts.mediaKey(item.full)) ? 'library' : 'server', libraryId: item.id };
+    const job = videoId && svtQueue?.get(svt.svtHashOf(videoId));
+    return job ? { status: job.state === 'error' ? 'failed' : 'queued', libraryId: null } : { status: null, libraryId: null };
+  };
+  return { same, statusOf };
+}
+
+async function svtTitleView(user, path) {
+  const title = await svt.svtTitle(path);
+  if (!title) throw new HttpError(404, 'SVT Play doesn’t have this right now.');
+  const { same, statusOf } = await svtHave(user, title);
+  if (title.kind === 'film') return { ...title, ...statusOf(same.find((i) => i.season == null), title.videoId) };
+  return { ...title, seasons: title.seasons.map((s) => ({ ...s, episodes: s.episodes.map((e) => ({
+    ...e, ...statusOf(same.find((i) => i.season === s.number && i.episode === e.number), e.videoId),
+  })) })) };
+}
+
+// Queues a whole film, a season, or chosen episodes. What's already on the server just joins this person's
+// library. `name` (a TMDB title) replaces SVT's so the files land under the show the person picked.
+async function svtAdd(user, title, { seasons = null, episodes = null, name = null, tmdbId = null } = {}) {
+  if (!svtQueue) throw new HttpError(503, 'No media folder is set up. Add MEDIA_DIR to .env and restart.');
+  const shown = name || title.title;
+  const identity = tmdbId ?? await svtIdentity(title);
+  const poster = title.poster || title.wide;
+  const common = { path: title.path, title: shown, kind: title.kind, year: title.year, tmdbId: identity,
+    poster, backdrop: title.backdrop, requester: user.id };
+  const { same, statusOf } = await svtHave(user, { title: shown });
+  const result = { queued: 0, added: 0, have: 0, episodes: [] };
+  const take = (item, spec) => {
+    const state = statusOf(item, spec.videoId);
+    if (state.status === 'library') { result.have++; return; }
+    if (state.status === 'server') {
+      if (accounts.addEntry(user.id, accounts.mediaKey(item.full), 'added')) result.added++;
+      return;
+    }
+    svtQueue.add({ ...common, ...spec });
+    result.queued++;
+  };
+  if (title.kind === 'film') {
+    if (!identity) shows.pinFilmArt(shown, { title: shown, overview: title.overview, poster, backdrop: title.backdrop, genres: title.genres });
+    take(same.find((i) => i.season == null), { videoId: title.videoId, season: null, episode: null, episodeName: null });
+  } else {
+    const picked = title.seasons.filter((s) => !seasons || seasons.includes(s.number));
+    const art = { title: shown, overview: title.overview, year: title.year, poster, backdrop: title.backdrop, genres: title.genres,
+      seasonNames: {}, episodes: {} };
+    for (const s of title.seasons) {
+      if (s.dated && s.name) art.seasonNames[s.number] = s.name;
+      art.episodes[s.number] = Object.fromEntries(s.episodes.map((e) => [e.number, { name: e.name, still: e.still }]));
+    }
+    shows.pinShow(shown, identity, art);
+    const showId = identity ? `tv-${identity}` : `name-${shows.showKey(shown)}`;
+    for (const s of picked) {
+      for (const e of s.episodes) {
+        if (episodes && !episodes.includes(e.number)) continue;
+        take(same.find((i) => i.season === s.number && i.episode === e.number), {
+          videoId: e.videoId, season: s.number, episode: e.number, episodeName: e.name, showId, showKey: shows.showKey(shown),
+        });
+        result.episodes.push(e.number);
+      }
+    }
+  }
+  if (result.added) invalidateLibrary();
+  return result;
+}
+
+// Smart Download's other source: exactly this title on SVT Play, or nothing. A show's seasons have to be
+// numbered the way TMDB numbers them, which SVT's dated seasons ("Sommar 2026") aren't.
+function svtAlternative(user, { type, title, originalTitle, year, tmdbId }) {
+  if (!svt.svtEnabled() || !svtQueue) return null;
+  const keys = new Set([title, originalTitle].filter(Boolean).map(shows.showKey));
+  return async ({ season, episodes }) => {
+    let hit = null;
+    for (const name of [title, originalTitle].filter(Boolean)) {
+      hit = (await svt.svtSearch(name)).find((t) => keys.has(shows.showKey(t.title)) && (type === 'tv' ? t.kind === 'series' : true));
+      if (hit) break;
+    }
+    if (!hit) return null;
+    const found = await svt.svtTitle(hit.path);
+    if (!found) return null;
+    if (year && found.year && Math.abs(year - found.year) > 1) return null;
+    const message = 'Free on SVT Play, so it’s coming from there. On its way.';
+    if (type === 'movie') {
+      if (found.kind !== 'film') return null;
+      await svtAdd(user, found, { name: title, tmdbId });
+      return { name: `${title} (SVT Play)`, quality: '1080p', source: 'svt', message };
+    }
+    if (found.kind !== 'series') return null;
+    const inSeason = found.seasons.find((s) => s.number === season && !s.dated);
+    if (!inSeason) return null;
+    const wanted = inSeason.episodes.map((e) => e.number).filter((e) => !episodes || episodes.includes(e));
+    if (!wanted.length) return null;
+    await svtAdd(user, found, { seasons: [season], episodes: wanted, name: title, tmdbId });
+    return { name: `${title} (SVT Play)`, quality: '1080p', source: 'svt', episodes: wanted, message };
+  };
 }
 
 // ---------- library ----------
@@ -1036,13 +1186,17 @@ async function startSmartFor(user, body) {
     : null; // a promise: the job waits for it, the Download button doesn't
   const upgrade = type === 'tv' && body.upgrade ? await upgradeSource(user, title, seasonNo) : null;
   const want = downloadWant(user, body);
+  const documentary = (details.genres || []).some((g) => g.id === 99);
   const id = smart.startSmartJob({
     type, title, year, season: seasonNo, episodes: upgrade || !episodes?.length ? null : episodes, range: !upgrade && range, requester: user.id, subs, anime: upgrade ? null : animeCtx,
     upgrade: upgrade && { episodes: upgrade.episodes, bytes: upgrade.bytes, names: upgrade.names, quality: upgrade.quality },
     originalTitle: original && original !== title && /^[\p{Script=Latin}\d\s\p{P}]+$/u.test(original) ? original : null,
     want,
+    preferAlternative: !upgrade && !animeCtx && details.original_language === 'sv',
   }, {
-    parseName, searchTorrents: torrents.searchTorrents, magnetFor1337x: torrents.magnetFor1337x,
+    parseName, magnetFor1337x: torrents.magnetFor1337x,
+    searchTorrents: (q, t) => torrents.searchTorrents(q, t, { documentary }),
+    alternative: upgrade || animeCtx ? null : svtAlternative(user, { type, title, originalTitle: original, year, tmdbId }),
     addDownload: (opts) => addDownload({ ...opts, user, film, show }),
     wantSubtitles: (link, list, name) => { subtitles.wantSubtitles(link, list, name); setTimeout(checkSubtitleWants, 30_000); },
     filmHave: () => filmHave(tmdbId, user, want.quality), freeBytes: freeBytesFor,
@@ -1542,8 +1696,32 @@ const validHash = (h) => /^[a-f0-9]{40}$|^[a-f0-9]{64}$/i.test(h);
 const torrentOwner = (t) => accounts.torrentRow(t.hash)?.user_id ?? accounts.userFromTags(t.tags) ?? accounts.ownerUser()?.id ?? null;
 
 // The user's own downloads; `all` (the owner only) lists everyone's, with whose each one is.
+// An SVT Play copy in the shape of a torrent, so every client's download views just show it.
+function svtDownloadView(job, user, all) {
+  const mates = accounts.libraryMates(user.id);
+  const mine = job.requesters.some((id) => mates.includes(id));
+  if (!mine && !all) return null;
+  const size = job.size || job.bytes || 0;
+  return {
+    source: 'svt', hash: job.hash,
+    mediaType: job.kind === 'series' ? 'tv' : 'movie', tmdbId: job.tmdbId || null, canonicalTitle: job.title,
+    showKey: job.showKey || null, showId: job.showId || null, poster: job.poster || null, backdrop: job.backdrop || null,
+    added: job.added, ready: false, hasVideo: true, files: [],
+    episodes: job.kind === 'series' ? [{ season: job.season, episode: job.episode, progress: job.progress, available: false, libraryId: null }] : [],
+    libraryIds: [], owner: all ? accounts.userById(job.requesters[0])?.name || null : undefined,
+    mine, canManage: user.isOwner || mine, name: job.name, title: job.title, year: job.year || null,
+    season: job.season ?? null, episode: job.episode ?? null,
+    progress: job.progress, speed: job.speed || 0,
+    eta: job.speed > 0 && size ? Math.max(0, Math.round((size - job.bytes) / job.speed)) : null,
+    seeds: null, swarmSeeds: null, size,
+    state: job.state, transferComplete: false, done: false, converting: false, subs: [], error: job.error || null,
+  };
+}
+
 async function listDownloads(user, all = false) {
-  const torrents = await qbit('/api/v2/torrents/info?sort=added_on&reverse=true');
+  const copies = (svtQueue?.list() || []).map((job) => svtDownloadView(job, user, all)).filter(Boolean);
+  // A server without qBittorrent can still have SVT Play copies under way.
+  const torrents = await qbit('/api/v2/torrents/info?sort=added_on&reverse=true').catch((e) => { if (copies.length) return []; throw e; });
   // The browser polls this every few seconds. Claim completed files before returning so the
   // next library refresh doesn't wait for the minute-long maintenance round.
   await claimCompletedTorrents(torrents);
@@ -1558,7 +1736,7 @@ async function listDownloads(user, all = false) {
   await scanLibrary();
   const library = new Map((libraryCache.items || []).map((i) => [accounts.mediaKey(i.full), i]));
   const mine = accounts.libraryOf(user.id);
-  return Promise.all(owned.map(async ([t, owner, requested]) => {
+  const transfers = await Promise.all(owned.map(async ([t, owner, requested]) => {
     let files = [], filesKnown = false;
     try { files = await torrentFileMetadata(t); filesKnown = true; } catch { /* Keep the download visible while qBittorrent refreshes metadata. */ }
     const videos = files.filter((f) => f.priority !== 0 && isVideo(f.name));
@@ -1622,6 +1800,7 @@ async function listDownloads(user, all = false) {
     subs: subtitles.subtitleWants(t.hash),
     };
   }));
+  return [...copies, ...transfers];
 }
 
 // True while the converter is making the MP4 copy of a video from this download.
@@ -2798,9 +2977,43 @@ async function handleApi(req, res, url) {
   }
   if (p === '/api/search') {
     const q = (url.searchParams.get('q') || '').trim().slice(0, 100);
-    if (!q) return sendJson(res, 200, { results: [] });
-    const data = await tmdbForViewer('/search/multi', { query: q, include_adult: 'false' });
-    return sendJson(res, 200, { results: data.results.filter(onlyScreen).map((x) => mapTitle(x)) });
+    if (!q) return sendJson(res, 200, { results: [], svt: [] });
+    // SVT Play may answer late or not at all: its titles are a bonus, never a reason to wait long.
+    const [data, svtHits] = await Promise.all([
+      tmdbForViewer('/search/multi', { query: q, include_adult: 'false' }),
+      Promise.race([svt.svtSearch(q), new Promise((r) => setTimeout(() => r([]), 5000))]),
+    ]);
+    return sendJson(res, 200, { results: data.results.filter(onlyScreen).map((x) => mapTitle(x)), svt: svtHits });
+  }
+  // ---- documentaries ----
+  if (p === '/api/docs/home') return sendJson(res, 200, await docs.home());
+  if (p === '/api/docs/category') {
+    const page = Math.max(1, Math.min(500, Number(url.searchParams.get('page')) || 1));
+    const data = await docs.category(url.searchParams.get('id'), {
+      type: ['movie', 'tv'].includes(url.searchParams.get('type')) ? url.searchParams.get('type') : 'all',
+      sort: url.searchParams.get('sort'), page,
+    });
+    if (!data) throw new HttpError(404, 'There’s no such category.');
+    return sendJson(res, 200, data);
+  }
+  if (p === '/api/svt/title') {
+    const svtPath = url.searchParams.get('path') || '';
+    if (!svt.validPath(svtPath)) throw new HttpError(400, 'That isn’t an SVT Play title.');
+    return sendJson(res, 200, await svtTitleView(user, svtPath));
+  }
+  if (p === '/api/svt/add' && req.method === 'POST') {
+    if (!user.canDownload) throw new HttpError(403, 'The server’s owner hasn’t turned on downloads for you. Ask them, or add things that are already on the server.');
+    const body = await readJson(req);
+    if (!svt.validPath(body.path)) throw new HttpError(400, 'That isn’t an SVT Play title.');
+    const title = await svt.svtTitle(body.path);
+    if (!title) throw new HttpError(404, 'SVT Play doesn’t have this right now.');
+    const numbers = (v) => (Array.isArray(v) ? v.map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n < 5000).slice(0, 500) : null);
+    const result = await svtAdd(user, title, { seasons: numbers(body.seasons), episodes: numbers(body.episodes) });
+    activity.record(req, 'download', `${title.title} (SVT Play)`, { quietMs: 60000 });
+    return sendJson(res, 200, {
+      ...result,
+      message: result.queued ? 'On its way from SVT Play.' : result.added ? 'It was already on the server, so it’s in your library now.' : 'Already in your library.',
+    });
   }
   if (p === '/api/library') return sendJson(res, 200, localizedLibrary(await libraryView(user)));
   // Add videos already on the server to your library (no copy is made).
@@ -2925,6 +3138,15 @@ async function handleApi(req, res, url) {
   }
   if ((m = p.match(/^\/api\/downloads\/([a-f0-9]{40}|[a-f0-9]{64})\/(pause|resume|retry|delete)$/i)) && req.method === 'POST') {
     const body = await readJson(req).catch(() => ({}));
+    const copy = svtQueue?.get(m[1]);
+    if (copy) {
+      if (!user.isOwner && !copy.requesters.some((id) => accounts.sameLibrary(id, user.id))) throw new HttpError(403, 'That’s someone else’s download.');
+      if (m[2] === 'delete') await svtQueue.remove(copy.hash);
+      else if (m[2] === 'pause') svtQueue.pause(copy.hash);
+      else svtQueue.resume(copy.hash);
+      activity.record(req, m[2], copy.name);
+      return sendJson(res, 200, { ok: true });
+    }
     const [t] = await qbit(`/api/v2/torrents/info?hashes=${m[1]}`);
     if (!t) throw new HttpError(404, 'That download no longer exists.');
     if (!user.isOwner && !accounts.sameLibrary(torrentOwner(t), user.id)) throw new HttpError(403, 'That’s someone else’s download.');
@@ -3391,7 +3613,7 @@ async function handleRequest(req, res) {
     if (url.pathname === '/signin' && (req.method === 'GET' || req.method === 'HEAD')) return sendSignIn(req, res, url);
     if (!req.auth.via && !publicPath(req, url)) return refuseSignedOut(req, res, url);
     const allowed = req.method === 'GET' || req.method === 'HEAD'
-      || (req.method === 'POST' && (url.pathname.startsWith('/api/cast/') || url.pathname === '/api/downloads/add' || url.pathname === '/api/downloads/smart' || url.pathname === '/api/subs/fetch' || url.pathname === '/api/subs/sync' || url.pathname === '/api/library/delete' || url.pathname === '/api/library/delete-many' || url.pathname === '/api/library/delete-many-info' || /^\/api\/downloads\/\w+\/(pause|resume|retry|delete)$/.test(url.pathname) || /^\/api\/media\/\w+\/[\w-]+\/sync$/.test(url.pathname)
+      || (req.method === 'POST' && (url.pathname.startsWith('/api/cast/') || url.pathname === '/api/downloads/add' || url.pathname === '/api/downloads/smart' || url.pathname === '/api/svt/add' || url.pathname === '/api/subs/fetch' || url.pathname === '/api/subs/sync' || url.pathname === '/api/library/delete' || url.pathname === '/api/library/delete-many' || url.pathname === '/api/library/delete-many-info' || /^\/api\/downloads\/\w+\/(pause|resume|retry|delete)$/.test(url.pathname) || /^\/api\/media\/\w+\/[\w-]+\/sync$/.test(url.pathname)
         || /^\/api\/(house\/(report|boot|power)|screentime|agent\/notify)$/.test(url.pathname) || /^\/api\/clips\/[\w-]+\/(share|unshare|delete|trim|rename)$/.test(url.pathname)
         || /^\/api\/access\/(invite|remove|rename|invite\/\w+\/revoke)$/.test(url.pathname) || /^\/c\/i\/[\w-]+\/?$/.test(url.pathname)
         || /^\/api\/auth\/(login|logout|password)$/.test(url.pathname)
@@ -3965,6 +4187,7 @@ server.on('error', (err) => {
   process.exit(1);
 });
 server.listen(PORT, HOST, () => {
+  svtQueue?.start();
   console.log(`Marquee is running: http://localhost:${PORT} (version ${VERSION})`);
   console.log(`  Data:      ${DATA_DIR}`);
   console.log(`  Cache:     ${CACHE_DIR}`);

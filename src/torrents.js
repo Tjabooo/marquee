@@ -1,4 +1,5 @@
-// Torrent search across The Pirate Bay (apibay JSON API), 1337x (HTML) and Nyaa (anime, HTML).
+// Torrent search across The Pirate Bay (apibay JSON API), 1337x (HTML), Knaben (a JSON index over many
+// sites, the best at Swedish and documentary releases) and Nyaa (anime, HTML).
 // Sources are queried in parallel; results from a working source are returned even if the others fail.
 
 const TPB_API = (process.env.TPB_API || 'https://apibay.org').replace(/\/+$/, '');
@@ -7,6 +8,8 @@ const X1337_MIRRORS = (process.env.X1337_URL || 'https://1337x.to,https://1337x.
   .split(',').map((u) => u.trim().replace(/\/+$/, '')).filter((u) => /^https?:\/\//i.test(u));
 // Nyaa: where anime is released (fansub groups, batches). NYAA_URL=off leaves it out.
 const NYAA_URL = /^(off|no|false|0)$/i.test(process.env.NYAA_URL || '') ? '' : (process.env.NYAA_URL || 'https://nyaa.si').replace(/\/+$/, '');
+// Knaben: an index over The Pirate Bay, 1337x, YTS and others, with live seeder counts. KNABEN_URL=off leaves it out.
+const KNABEN_URL = /^(off|no|false|0)$/i.test(process.env.KNABEN_URL || '') ? '' : (process.env.KNABEN_URL || 'https://api.knaben.org/v1').replace(/\/+$/, '');
 const FLARESOLVERR_URL = (process.env.FLARESOLVERR_URL || '').replace(/\/+$/, '');
 const ENABLED = (process.env.TORRENTS || 'on').toLowerCase() !== 'off';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36';
@@ -211,10 +214,12 @@ export function parse1337x(html) {
   return out;
 }
 
+// type 'documentary' is 1337x's own category, which its Movies and TV searches don't cover.
 async function search1337x(q, type) {
   const query = encodeURIComponent(q.replace(/[/\\?#]/g, ' ').trim());
   const route = type === 'movie' ? `/sort-category-search/${query}/Movies/seeders/desc/1/`
     : type === 'tv' ? `/sort-category-search/${query}/TV/seeders/desc/1/`
+    : type === 'documentary' ? `/sort-category-search/${query}/Documentaries/seeders/desc/1/`
     : `/sort-search/${query}/seeders/desc/1/`;
   const html = await get1337x(route);
   if (!/<table/i.test(html) && !/No results were returned/i.test(html)) {
@@ -284,26 +289,88 @@ async function searchNyaa(q) {
   return parseNyaa(html);
 }
 
+// ---------- Knaben ----------
+// Video only. Film or show doesn't filter here: documentaries are filed under either, and the release's
+// name decides later whether it's the right one. Seeders: the higher of what the site listed and Knaben's
+// own scrape, which misses many (S15E02 of a live Swedish show: listed 12, scraped 0 with 5 peers).
+export function parseKnaben(json) {
+  const hits = Array.isArray(json?.hits) ? json.hits : [];
+  return hits
+    .filter((t) => t && /^[a-f0-9]{40}$/i.test(t.hash || '') && t.title)
+    .filter((t) => /^(movies|tv|anime)\b/i.test(t.category || ''))
+    .map((t) => {
+      const name = String(t.title);
+      const hash = t.hash.toLowerCase();
+      const added = Date.parse(t.date);
+      const magnet = /^magnet:\?xt=urn:btih:/i.test(t.magnetUrl || '') ? t.magnetUrl : magnetFor(hash, name);
+      const seeders = Math.max(Number(t.liveSeeders) || 0, Number(t.seeders) || 0);
+      const leechers = Math.max(Number(t.livePeers) || 0, Number(t.peers) || 0);
+      return {
+        source: 'knaben',
+        id: `knaben:${hash}`,
+        name,
+        seeders,
+        leechers,
+        size: Number(t.bytes) || null,
+        added: Number.isFinite(added) ? added : null,
+        addedText: null,
+        uploader: null,
+        trusted: false,
+        magnet,
+        ...describe(name),
+      };
+    });
+}
+
+async function searchKnaben(q) {
+  let r;
+  try {
+    r = await fetch(KNABEN_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'user-agent': UA, accept: 'application/json' },
+      body: JSON.stringify({ search_type: '100%', search_field: 'title', query: q, order_by: 'seeders', order_direction: 'desc',
+        from: 0, size: 100, hide_unsafe: true, hide_xxx: true }),
+      signal: AbortSignal.timeout(12000),
+    });
+  } catch (e) {
+    throw new Error(e.name === 'TimeoutError' ? 'Knaben took too long to answer.' : 'Couldn’t reach Knaben.');
+  }
+  if (!r.ok) throw new Error(`Knaben responded with ${r.status}.`);
+  try { return parseKnaben(await r.json()); } catch { throw new Error('Knaben sent back something unexpected.'); }
+}
+
 // ---------- combined search ----------
 // Adult releases (by category or by name, see content-filter.js) are left out unless `adult` is true.
 const withoutAdult = (data) => ({ ...data, results: data.results.filter((r) => !r.adult && !adultReason(r.name)) });
 
-export async function searchTorrents(rawQuery, rawType, { adult = false } = {}) {
-  const data = await searchAll(rawQuery, rawType);
+// Release names are written without å, ä, ö ("Mordet.Pa.Olof.Palme"): the spelling sites actually have.
+export const plainQuery = (q) => String(q).normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+// `documentary`: also search 1337x's Documentaries category (one more request through its mirrors, so
+// only for titles known to be documentaries).
+export async function searchTorrents(rawQuery, rawType, { adult = false, documentary = false } = {}) {
+  const data = await searchAll(rawQuery, rawType, documentary);
   return adult ? data : withoutAdult(data);
 }
 
-async function searchAll(rawQuery, rawType) {
+async function searchAll(rawQuery, rawType, documentary = false) {
   if (!ENABLED) throw new TorrentError(503, 'Torrent search is turned off (TORRENTS=off in .env).');
   const q = String(rawQuery || '').replace(/\s+/g, ' ').trim().slice(0, 100);
   const type = ['movie', 'tv'].includes(rawType) ? rawType : 'all';
   if (q.length < 2) return { results: [], problems: [] };
 
-  const key = `${type}|${q.toLowerCase()}`;
+  const key = `${type}|${documentary ? 'doc|' : ''}${q.toLowerCase()}`;
   const hit = searchCache.get(key);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.data;
 
   const sources = [['The Pirate Bay', searchTpb(q, type)], ['1337x', search1337x(q, type)]];
+  if (KNABEN_URL) sources.push(['Knaben', searchKnaben(q)]);
+  if (documentary && type !== 'all') sources.push(['1337x documentaries', search1337x(q, 'documentary')]);
+  const plain = plainQuery(q);
+  if (plain !== q) {
+    sources.push(['The Pirate Bay', searchTpb(plain, type)]);
+    if (KNABEN_URL) sources.push(['Knaben', searchKnaben(plain)]);
+  }
   if (NYAA_URL) sources.push(['Nyaa', searchNyaa(q)]);
   const settled = await Promise.allSettled(sources.map((s) => s[1]));
   const results = [];

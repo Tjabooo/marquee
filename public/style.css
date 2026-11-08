@@ -166,6 +166,32 @@ main {
 }
 .on-server::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--on-bulb); }
 
+/* Discover → Documentaries, SVT Play */
+.title-card.is-wide .poster { aspect-ratio: 16 / 9; }
+.shelf-items.wide-cards { grid-auto-columns: min(72vw, 248px); }
+.grid.wide-cards { grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); }
+.svt-mark {
+  position: absolute; top: 8px; left: 8px; padding: 3px 7px;
+  font-size: 11px; font-weight: 700; line-height: 1.2; letter-spacing: .01em;
+  color: #fff; background: rgba(9, 58, 36, .92); border-radius: 6px;
+}
+.doc-browse { display: grid; gap: 14px; margin: 0 0 30px; }
+.doc-group h3 { margin: 0; font-size: 15px; color: var(--dust); }
+.doc-group .genre-chips { margin-top: 6px; }
+.chip.is-svt::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: #2fbf71; vertical-align: 1px; }
+.doc-lazy { min-height: 210px; margin-bottom: 26px; }
+.doc-head { flex-wrap: wrap; }
+.doc-controls { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; }
+.doc-seasons { margin-bottom: 14px; }
+.doc-episodes .row { align-items: flex-start; }
+.doc-still { flex: none; width: 112px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 8px; background: var(--seat); }
+.doc-episode-text {
+  margin: 4px 0 0; font-size: 13px; line-height: 1.4; color: var(--dust);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.doc-status { font-size: 13px; color: var(--bulb); white-space: nowrap; }
+.doc-note { margin-top: 18px; font-size: 13px; }
+
 /* Discover */
 .discover-filters { margin: 2px 0 18px; }
 .segmented {
@@ -1068,6 +1094,8 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 @media (min-width: 720px) {
   .grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 24px 18px; }
   .shelf-items { grid-auto-columns: 156px; gap: 16px; }
+  .shelf-items.wide-cards { grid-auto-columns: 276px; }
+  .doc-still { width: 160px; }
   .hero-slide { flex-basis: min(72%, 760px); }
   .hero-card { aspect-ratio: 21 / 9; }
   .hero-title { font-size: 30px; }

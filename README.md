@@ -15,6 +15,8 @@ Docker, and installs as a web app on your phone's home screen.
 ## Features
 
 - **Discover and search** with posters and details from TMDB; titles already on the server are marked.
+- **Documentaries**: over 30 categories, from Swedish true crime to nature and history, and SVT Play's free catalogue
+  saved to your library when you're in Sweden.
 - **One-press downloads** through qBittorrent: films pick a suitable release, shows download a season
   in episode order and skip what you already have. Torrent search covers The Pirate Bay, 1337x and
   Nyaa.

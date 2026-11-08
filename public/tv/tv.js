@@ -325,7 +325,7 @@
   }
   function addEnd(row) {
     if (!row.seeAll || row.end) return;
-    row.end = { el: h('div', { class: 'card see-all ' + (row.kind === 'tile' ? 'tile' : 'poster') }, h('div', { class: 'art' }, h('span', { text: T('See all') }))),
+    row.end = { el: h('div', { class: 'card see-all ' + (row.kind === 'tile' || row.kind === 'svt' ? row.kind : 'poster') }, h('div', { class: 'art' }, h('span', { text: T('See all') }))),
       open: row.seeAll };
     row.track.appendChild(row.end.el);
     row.items.push(row.end);
@@ -443,8 +443,8 @@
 
   // ---------- grids (See all, genres, search results) ----------
   var GRID_STEP = 196 + 20, GRID_MAX = 300;
-  function gridView(cols, onNeedMore) {
-    var g = { cols: cols, cards: [], i: 0, lit: null, seen: {}, el: h('div', { class: 'grid', style: 'width:' + cols * GRID_STEP + 'px' }) };
+  function gridView(cols, onNeedMore, step) {
+    var g = { cols: cols, cards: [], i: 0, lit: null, seen: {}, el: h('div', { class: 'grid', style: 'width:' + cols * (step || GRID_STEP) + 'px' }) };
     g.clear = function () { g.cards = []; g.seen = {}; g.i = 0; g.lit = null; g.el.innerHTML = ''; g.el.style.transform = ''; };
     g.add = function (cards) {
       cards.forEach(function (c) {
@@ -482,6 +482,7 @@
     return g;
   }
 
+  var SVT_STEP = 400 + 20;
   var TYPES = [['all', T('All')], ['movie', T('Films')], ['tv', T('Shows')]];
   var SORTS = [['popular', T('Popular')], ['rating', T('Top rated')], ['newest', T('Newest')]];
   // o: { title, fetch(page, type, sort) -> Promise<{ cards, last }>, type, types: bool, sorts: bool }
@@ -491,7 +492,7 @@
     if (o.types) TYPES.forEach(function (t) { chips.push({ kind: 'type', value: t[0], el: h('button', { class: 'tab', text: t[1] }) }); });
     if (o.sorts) SORTS.forEach(function (s, i) { chips.push({ kind: 'sort', value: s[0], el: h('button', { class: 'tab' + (i === 0 && chips.length ? ' gap' : ''), text: s[1] }) }); });
     var note = h('div', { class: 'grid-note' });
-    var grid = gridView(8, more);
+    var grid = o.wide ? gridView(4, more, SVT_STEP) : gridView(8, more);
     var el = h('div', { class: 'screen grid-screen' },
       h('header', { class: 'grid-head' }, h('h1', { text: o.title }),
         chips.length ? h('div', { class: 'chips' }, chips.map(function (c) { return c.el; })) : null),
@@ -567,11 +568,11 @@
     var el = h('div', { class: 'screen home' });
     var rowsEl = h('div', { class: 'rows' });
     var tops = [h('button', { class: 'top-link', text: T('Search') }), h('button', { class: 'top-link', text: T('Discover') }),
-      h('button', { class: 'switch', text: T('Switch account') })];
+      h('button', { class: 'top-link', text: T('Documentaries') }), h('button', { class: 'switch', text: T('Switch account') })];
     var top = h('header', { class: 'topbar' }, h('div', { class: 'brandline' },
         h('div', { class: 'wordmark', text: 'Marquee' })),
-      h('div', { class: 'top-actions' }, tops[0], tops[1],
-        h('div', { class: 'who' }, h('span', { text: state.me && state.me.name || '' }), sharedNote(), tops[2])));
+      h('div', { class: 'top-actions' }, tops[0], tops[1], tops[2],
+        h('div', { class: 'who' }, h('span', { text: state.me && state.me.name || '' }), sharedNote(), tops[3])));
     el.appendChild(top);
     el.appendChild(rowsEl);
     var nav = rowsNav(rowsEl, 40);
@@ -644,6 +645,7 @@
           if (code === KEY.ENTER) {
             if (ti === 0) searchScreen();
             else if (ti === 1) discoverScreen();
+            else if (ti === 2) docsScreen();
             else { localStorage.removeItem(TOKEN_KEY); history = []; screen = null; pairScreen(true); }
             return true;
           }
@@ -694,7 +696,8 @@
     heroArt.onerror = function () { heroArt.removeAttribute('src'); heroArt.className = 'is-empty'; };
     var heroTitle = h('h1'), heroMeta = h('div', { class: 'hero-meta' }), heroText = h('p', { class: 'hero-overview' });
     var tabs = [h('button', { class: 'top-link search-tab', text: T('Search') })]
-      .concat(TYPES.map(function (t) { return h('button', { class: 'tab', text: t[1] }); }));
+      .concat(TYPES.map(function (t) { return h('button', { class: 'tab', text: t[1] }); }))
+      .concat([h('button', { class: 'tab', text: T('Documentaries') })]);
     var rowsEl = h('div', { class: 'rows' });
     var el = h('div', { class: 'screen discover-screen' },
       h('div', { class: 'hero' }, h('div', { class: 'hero-art' }, heroArt), h('div', { class: 'hero-copy' }, heroTitle, heroMeta, heroText)),
@@ -762,7 +765,7 @@
     function paint() {
       tabs.forEach(function (b, i) {
         b.classList.toggle('focus', atTop && i === ti);
-        if (i > 0) b.classList.toggle('active', TYPES[i - 1][0] === type);
+        if (i > 0 && i <= TYPES.length) b.classList.toggle('active', TYPES[i - 1][0] === type);
       });
       nav.paint(!atTop);
     }
@@ -775,6 +778,7 @@
           if (code === KEY.DOWN) { if (nav.current()) atTop = false; paint(); return true; }
           if (code === KEY.ENTER) {
             if (ti === 0) { searchScreen(); return true; }
+            if (ti > TYPES.length) { docsScreen(); return true; }
             if (TYPES[ti - 1][0] !== type) { type = TYPES[ti - 1][0]; load(); }
             return true;
           }
@@ -786,6 +790,275 @@
         if (code === KEY.ENTER) { var c = nav.current(); if (c) c.open(); return true; }
         return false;
       } }, true);
+    load();
+  }
+
+  // ---------- Documentaries ----------
+  // The first row, every category as a tile, then one row per category, each loading as it comes near.
+  // SVT Play's titles have wide art and open svtScreen; the others are ordinary Discover titles.
+  function svtCard(t, cls) {
+    var pic = lazy(cls === 'tile' ? t.poster || t.wide : t.wide || t.poster);
+    return { key: 'svt:' + t.path, t: t, wake: pic.wake,
+      el: h('div', { class: 'card ' + (cls || 'svt') }, h('div', { class: 'art' }, pic.el, h('span', { class: 'svt-mark', text: 'SVT Play' }), svtOwned(t) ? badge() : null),
+        h('div', { class: 'name', text: t.title }), h('div', { class: 'sub', text: titleSub({ year: t.year, type: t.kind === 'series' ? 'tv' : 'movie' }) })),
+      open: function () { svtScreen(t); } };
+  }
+  function svtOwned(t) {
+    var key = L.searchKey(t.title);
+    return state.shows.some(function (s) { return owned().showIds[s.id] && L.searchKey(s.title) === key; })
+      || state.library.some(function (f) { return f.season == null && L.searchKey(f.filmTitle || f.title) === key; });
+  }
+  function docsPage(d, page, wide) {
+    return { cards: (d.results || []).map(function (t) { return t.type === 'svt' ? svtCard(t, wide ? null : 'tile') : titleCard(t); }),
+      last: (d.page || page) >= (d.totalPages || 1) };
+  }
+  function docsUrl(id, type, sort, page) {
+    return '/api/docs/category?id=' + encodeURIComponent(id) + '&type=' + type + '&sort=' + sort + '&page=' + page;
+  }
+  function docsGrid(c, title) {
+    var svt = c.source === 'svt';
+    gridScreen({ title: title || c.name || c.title, types: true, sorts: !svt, wide: svt,
+      fetch: function (page, type, sort) { return api(docsUrl(c.id, type, sort, page)).then(function (d) { return docsPage(d, page, svt); }); } });
+  }
+  function docsScreen() {
+    var seq = 0, atTop = false;
+    var heroArt = h('img', { alt: '', decoding: 'async', class: 'is-empty' });
+    heroArt.onerror = function () { heroArt.removeAttribute('src'); heroArt.className = 'is-empty'; };
+    var heroTitle = h('h1'), heroMeta = h('div', { class: 'hero-meta' }), heroText = h('p', { class: 'hero-overview' });
+    var searchTab = h('button', { class: 'top-link', text: T('Search') });
+    var rowsEl = h('div', { class: 'rows' });
+    var el = h('div', { class: 'screen discover-screen docs-screen' },
+      h('div', { class: 'hero' }, h('div', { class: 'hero-art' }, heroArt), h('div', { class: 'hero-copy' }, heroTitle, heroMeta, heroText)),
+      h('header', { class: 'topbar' },
+        h('div', { class: 'brandline' }, h('div', { class: 'wordmark', text: T('Documentaries') })),
+        h('div', { class: 'top-actions tabs' }, searchTab)),
+      h('div', { class: 'rows-viewport' }, rowsEl));
+    var heroTimer = null, heroKey = null;
+    function setHero(t, key) {
+      heroKey = key;
+      heroTitle.textContent = t.title;
+      var series = t.type === 'tv' || t.kind === 'series';
+      heroMeta.textContent = [t.year, series ? T('Series') : T('Film'), t.type === 'svt' ? T('Free on SVT Play') : null, t.rating ? '★ ' + t.rating : null]
+        .filter(Boolean).join('  ·  ');
+      heroText.textContent = t.overview || '';
+      if (t.backdrop) { heroArt.className = ''; if (heroArt.getAttribute('src') !== t.backdrop) heroArt.src = t.backdrop; }
+      else { heroArt.removeAttribute('src'); heroArt.className = 'is-empty'; }
+    }
+    var nav = rowsNav(rowsEl, 0, function (card) {
+      if (!card.t || card.key === heroKey) return;
+      clearTimeout(heroTimer);
+      heroTimer = setTimeout(function () { setHero(card.t, card.key); }, 220);
+    });
+    function paint() {
+      searchTab.classList.toggle('focus', atTop);
+      nav.paint(!atTop);
+    }
+    function categoryCard(c, i) {
+      return { key: 'doc:' + c.id, el: h('div', { class: 'card genre g' + (i % 6) }, h('div', { class: 'art' }, h('span', { text: c.name }))),
+        open: function () { docsGrid(c); } };
+    }
+    function rowFor(c, title, items) {
+      var svt = c.source === 'svt';
+      return makeRow({ title: title, kind: svt ? 'svt' : 'tile', lazy: !items, items: items && docsPage({ results: items, page: 1, totalPages: 1 }, 1, true).cards,
+        fetch: function (page) { return api(docsUrl(c.id, 'all', 'popular', page)).then(function (d) { return docsPage(d, page, true); }); },
+        seeAll: function () { docsGrid(c, title); } });
+    }
+    function load() {
+      var my = ++seq;
+      nav.set([]);
+      rowsEl.appendChild(h('div', { class: 'empty discover-loading' }, h('h2', { text: T('Loading documentaries…') })));
+      api('/api/docs/home').then(function (data) {
+        if (my !== seq) return;
+        var rows = (data.rows || []).map(function (r) { return rowFor(r, r.title, r.items || []); });
+        var tiles = (data.categories || []).map(categoryCard);
+        if (tiles.length) rows.splice(Math.min(1, rows.length), 0, makeRow({ title: T('Browse documentaries'), kind: 'genre', items: tiles }));
+        (data.more || []).forEach(function (c) { rows.push(rowFor(c, c.title, null)); });
+        if (!rows.length) {
+          rowsEl.innerHTML = '';
+          rowsEl.appendChild(h('div', { class: 'empty' }, h('h2', { text: T('Nothing here yet.') })));
+          atTop = true; paint();
+          return;
+        }
+        nav.set(rows);
+        var first = rows[0].items[0];
+        if (first && first.t) setHero(first.t, first.key);
+        paint();
+      }).catch(function (err) {
+        if (my !== seq) return;
+        rowsEl.innerHTML = '';
+        rowsEl.appendChild(h('div', { class: 'empty' }, h('h2', { text: T('Couldn’t load documentaries') }), h('p', { text: err.message })));
+        atTop = true; paint();
+      });
+    }
+    show({ el: el, focus: paint, refresh: paint,
+      leave: function () { clearTimeout(heroTimer); seq++; },
+      key: function (code) {
+        if (atTop) {
+          if (code === KEY.DOWN) { if (nav.current()) atTop = false; paint(); return true; }
+          if (code === KEY.ENTER) { searchScreen(); return true; }
+          return code === KEY.UP || code === KEY.LEFT || code === KEY.RIGHT;
+        }
+        if (code === KEY.UP) { if (!nav.move(-1)) { atTop = true; paint(); } return true; }
+        if (code === KEY.DOWN) { nav.move(1); return true; }
+        if (code === KEY.LEFT || code === KEY.RIGHT) { nav.side(code === KEY.LEFT ? -1 : 1); return true; }
+        if (code === KEY.ENTER) { var c = nav.current(); if (c) c.open(); return true; }
+        return false;
+      } }, true);
+    load();
+  }
+
+  // An SVT Play title: Add the film or a whole season, or pick one episode from the list. OK on an episode
+  // plays it when it's here and adds it when it isn't. Saved copies join the library like any download.
+  function svtScreen(t) {
+    var alive = true, data = null, si = 0, ei = 0, zone = 'actions', timer = null, busy = false;
+    var backdrop = h('div', { class: 'discover-backdrop' }, img(t.backdrop));
+    var titleEl = h('h1', { text: t.title });
+    var meta = h('div', { class: 'discover-meta', text: T('Free on SVT Play') });
+    var overview = h('p', { class: 'discover-overview', text: t.overview || '' });
+    var chips = h('div', { class: 'svt-seasons' });
+    var action = h('button', { class: 'title-action primary', text: T('Loading…') });
+    var status = h('div', { class: 'download-status' });
+    var list = h('div', { class: 'episodes' });
+    var listBox = h('div', { class: 'svt-list' }, list);
+    var el = h('div', { class: 'screen discover-title svt-title' }, backdrop,
+      h('div', { class: 'discover-panel' }, h('div', { class: 'discover-copy' }, titleEl, meta, overview, chips,
+        h('div', { class: 'title-actions' }, action), status), listBox));
+
+    function season() { return data && data.seasons && data.seasons[si] || null; }
+    function episodes() { var s = season(); return s ? s.episodes : []; }
+    function open(items) { return items.filter(function (e) { return e.status !== 'library' && e.status !== 'queued'; }); }
+    function statusWord(s) {
+      return s === 'library' ? T('In your library') : s === 'server' ? T('On server') : s === 'queued' ? T('On its way') : s === 'failed' ? T('Couldn’t save this') : '';
+    }
+    function actionText() {
+      if (!data) return T('Loading…');
+      if (data.kind === 'film') {
+        if (data.status === 'library') return T('Play');
+        if (data.status === 'queued') return T('On its way');
+        return T('Add to library');
+      }
+      var rest = open(episodes()).length;
+      if (!rest) return episodes().some(function (e) { return e.status === 'queued'; }) ? T('On its way') : T('Open');
+      return rest === 1 ? T('Add 1 episode') : T('Add {0} episodes', rest);
+    }
+    function buildChips() {
+      chips.innerHTML = '';
+      if (!data || !data.seasons || data.seasons.length < 2) return;
+      chips.appendChild(h('div', { class: 'season-label', text: T('Season') }));
+      var track = h('div', { class: 'svt-season-track' });
+      data.seasons.forEach(function (s) { track.appendChild(h('div', { class: 'svt-chip', text: s.dated && s.name ? s.name : String(s.number) })); });
+      chips.appendChild(track);
+    }
+    function buildList() {
+      list.innerHTML = '';
+      episodes().forEach(function (e) {
+        list.appendChild(h('div', { class: 'episode' },
+          h('div', { class: 'art' }, img(e.still)),
+          h('div', { class: 'text' },
+            h('div', { class: 'label', text: [T('Episode {0}', e.number), e.minutes ? T('{0} min', e.minutes) : null, statusWord(e.status)].filter(Boolean).join(' · ') }),
+            h('div', { class: 'name', text: e.name }))));
+      });
+    }
+    function paint() {
+      action.textContent = actionText();
+      action.classList.toggle('focus', zone === 'actions');
+      [].forEach.call(chips.querySelectorAll('.svt-chip'), function (c, i) {
+        c.classList.toggle('active', i === si); c.classList.toggle('focus', zone === 'seasons' && i === si);
+      });
+      var track = chips.querySelector('.svt-season-track');
+      if (track && track.children[si]) track.style.transform = 'translateX(' + (-Math.max(0, track.children[si].offsetLeft - 480)) + 'px)';
+      var items = list.children;
+      [].forEach.call(items, function (it, i) { it.classList.toggle('focus', zone === 'episodes' && i === ei); });
+      var item = items[ei];
+      list.style.transform = 'translateY(' + (zone === 'episodes' && item ? -Math.max(0, item.offsetTop - 10) : 0) + 'px)';
+    }
+    function schedule() {
+      clearTimeout(timer);
+      var waiting = data && (data.status === 'queued' || (data.seasons || []).some(function (s) { return s.episodes.some(function (e) { return e.status === 'queued'; }); }));
+      if (waiting) timer = setTimeout(load, 6000);
+    }
+    function load() {
+      api('/api/svt/title?path=' + encodeURIComponent(t.path)).then(function (d) {
+        if (!alive) return;
+        var first = !data;
+        data = d;
+        titleEl.textContent = d.title;
+        var series = d.kind === 'series';
+        meta.textContent = [d.year, series ? T('Series') : T('Film'), d.minutes ? T('{0} min', d.minutes) : null, T('Free on SVT Play')].filter(Boolean).join(' · ');
+        overview.textContent = d.overview || t.overview || T('No description available.');
+        si = Math.min(si, Math.max(0, (d.seasons || []).length - 1));
+        buildChips(); buildList();
+        schedule();
+        return loadLibrary().catch(function () {}).then(function () { if (alive) paint(); if (first && alive) status.textContent = T('Saved to your library in full quality, with Swedish subtitles.'); });
+      }).catch(function (err) {
+        if (!alive) return;
+        action.textContent = T('Back'); status.textContent = err.message; status.classList.add('error');
+      });
+    }
+    function add(payload) {
+      if (busy) return;
+      if (state.me && state.me.canDownload === false) { toast(T('Downloads disabled')); return; }
+      busy = true; status.classList.remove('error'); status.textContent = T('Starting…');
+      payload.path = t.path;
+      api('/api/svt/add', payload).then(function (r) {
+        busy = false;
+        if (!alive) return;
+        status.textContent = r.message || T('On its way from SVT Play.');
+        load();
+      }).catch(function (err) {
+        busy = false;
+        if (!alive) return;
+        status.textContent = err.message; status.classList.add('error');
+      });
+    }
+    function fileFor(id) {
+      var found = null;
+      state.library.forEach(function (f) { if (f.id === id) found = f; });
+      return found;
+    }
+    function playId(id) {
+      var f = fileFor(id);
+      if (f) playAsked(f); else toast(T('This one is still being prepared. Try again in a little while.'));
+    }
+    function pressAction() {
+      if (!data) return;
+      if (data.kind === 'film') {
+        if (data.status === 'library') playId(data.libraryId);
+        else if (data.status !== 'queued') add({});
+        return;
+      }
+      if (open(episodes()).length) { add({ seasons: [season().number] }); return; }
+      var here = episodes().filter(function (e) { return e.status === 'library'; })[0];
+      if (here) { zone = 'episodes'; ei = episodes().indexOf(here); paint(); }
+    }
+    function pressEpisode() {
+      var e = episodes()[ei];
+      if (!e) return;
+      if (e.status === 'library') playId(e.libraryId);
+      else if (e.status !== 'queued') add({ seasons: [season().number], episodes: [e.number] });
+    }
+    show({ el: el, focus: paint, refresh: function () { if (data) load(); },
+      leave: function () { alive = false; clearTimeout(timer); },
+      key: function (code) {
+        var many = data && data.seasons && data.seasons.length > 1;
+        if (zone === 'seasons') {
+          if (code === KEY.LEFT && si > 0) { si--; ei = 0; buildList(); paint(); return true; }
+          if (code === KEY.RIGHT && si < data.seasons.length - 1) { si++; ei = 0; buildList(); paint(); return true; }
+          if (code === KEY.DOWN || code === KEY.ENTER) { zone = 'actions'; paint(); return true; }
+          return code === KEY.UP || code === KEY.LEFT || code === KEY.RIGHT;
+        }
+        if (zone === 'actions') {
+          if (code === KEY.UP) { if (many) { zone = 'seasons'; paint(); } return true; }
+          if (code === KEY.DOWN) { if (episodes().length) { zone = 'episodes'; paint(); } return true; }
+          if (code === KEY.ENTER) { pressAction(); return true; }
+          return code === KEY.LEFT || code === KEY.RIGHT;
+        }
+        if (code === KEY.UP) { if (ei > 0) ei--; else zone = 'actions'; paint(); return true; }
+        if (code === KEY.DOWN) { ei = Math.min(episodes().length - 1, ei + 1); paint(); return true; }
+        if (code === KEY.ENTER) { pressEpisode(); return true; }
+        return code === KEY.LEFT || code === KEY.RIGHT;
+      } }, true);
+    paint();
     load();
   }
 
@@ -867,7 +1140,7 @@
       results(local, T('Searching for “{0}”…', query));
       api('/api/search?q=' + encodeURIComponent(query)).then(function (d) {
         if (my !== seq) return;
-        var all = local.concat((d.results || []).map(titleCard));
+        var all = local.concat((d.svt || []).map(function (t) { return svtCard(t, 'tile'); }), (d.results || []).map(titleCard));
         results(all, all.length ? T('Results for “{0}”', query) : T('Nothing found for “{0}”', query));
       }).catch(function (err) {
         if (my !== seq) return;

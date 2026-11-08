@@ -233,3 +233,61 @@ test('Upgrade quality says so when nothing is clearly better, and never re-downl
   })));
   assert.equal(job.outcome, 'none'); assert.match(job.message, /Nothing clearly better/); assert.equal(added.length, 0);
 });
+
+// ---------- another source (SVT Play) ----------
+const altFilm = { type: 'movie', title: 'Palmemördaren', year: 2020, want: {} };
+const altDeps = (over = {}) => ({ parseName, searchTorrents: async () => ({ results: [] }), addDownload: async () => { throw new Error('no torrent wanted'); }, ...over });
+
+test('a film no torrent can be found for comes from the other source', async () => {
+  const asked = [];
+  const job = await wait(startSmartJob({ ...altFilm, requester: 'alt-1' }, altDeps({
+    alternative: async (r) => { asked.push(r); return { name: 'Palmemördaren (SVT Play)', quality: '1080p', source: 'svt', message: 'From SVT Play.' }; },
+  })));
+  assert.deepEqual(asked, [{ type: 'movie' }]);
+  assert.equal(job.outcome, 'started');
+  assert.equal(job.message, 'From SVT Play.');
+  assert.equal(job.added[0].source, 'svt');
+});
+
+test('a film with a good torrent never asks the other source, unless told to prefer it', async () => {
+  const found = results([['Dune.2021.1080p.WEB.x265', 300, 2 * GB]]);
+  let asked = 0, adds = 0;
+  const deps = { parseName, searchTorrents: async () => ({ results: found }), addDownload: async () => { adds++; return {}; },
+    alternative: async () => { asked++; return { name: 'Dune (SVT Play)', source: 'svt', message: 'From SVT Play.' }; } };
+  await wait(startSmartJob({ ...film, want: {}, requester: 'alt-2' }, deps));
+  assert.deepEqual([asked, adds], [0, 1]);
+  await wait(startSmartJob({ ...film, want: {}, requester: 'alt-3', preferAlternative: true }, deps));
+  assert.deepEqual([asked, adds], [1, 1]);
+});
+
+test('the other source failing or having nothing is the same as no answer', async () => {
+  for (const [i, alternative] of [async () => null, async () => { throw new Error('down'); }].entries()) {
+    const job = await wait(startSmartJob({ ...altFilm, requester: `alt-4-${i}` }, altDeps({ alternative })));
+    assert.equal(job.outcome, 'none');
+  }
+});
+
+test('a season: the other source gets what torrents can’t find, and only that', async () => {
+  const asked = [];
+  const job = await wait(startSmartJob({ type: 'tv', title: 'GW:s mord', season: 1, want: {}, requester: 'alt-5' }, altDeps({
+    seasonEpisodes: aired(3), haveEpisodes: async () => owned([2]),
+    alternative: async (r) => { asked.push(r); return { name: 'GW:s mord (SVT Play)', source: 'svt', episodes: r.episodes, message: 'x' }; },
+  })));
+  assert.deepEqual(asked, [{ type: 'tv', season: 1, episodes: [1, 3] }]);
+  assert.equal(job.outcome, 'started');
+  assert.deepEqual(job.unavailable, []);
+  assert.match(job.message, /2 episodes on the way/);
+});
+
+test('a Swedish season asks the other source first; torrents fill in what it lacks', async () => {
+  const asked = [], searched = [];
+  const job = await wait(startSmartJob({ type: 'tv', title: 'Hövdingen', season: 1, want: {}, requester: 'alt-6', preferAlternative: true }, altDeps({
+    seasonEpisodes: aired(2), haveEpisodes: async () => owned([]),
+    searchTorrents: async (q) => { searched.push(q); return { results: [] }; },
+    alternative: async (r) => { asked.push(r); return { name: 'x', source: 'svt', episodes: [1], message: 'x' }; },
+  })));
+  assert.equal(asked.length, 1);
+  assert.ok(searched.some((q) => /S01E02/.test(q)), 'episode 2 is still searched for');
+  assert.ok(!searched.some((q) => /S01E01/.test(q)), 'episode 1 is on its way');
+  assert.equal(job.outcome, 'partial');
+});

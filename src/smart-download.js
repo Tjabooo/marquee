@@ -18,6 +18,9 @@
 // as season packs, several when TMDB lumps seasons together (Frieren's season 1 = two batches), and
 // names are matched by every known title and placed on TMDB's numbering ("Black Clover - 176" is
 // TMDB's season 2 episode 6). Packs' other seasons are switched off like owned episodes.
+//
+// Another source (deps.alternative: SVT Play, see server.js) takes over where no torrent can: it's asked
+// first when spec.preferAlternative says the title is likely to be there, else after the search came up empty.
 import crypto from 'node:crypto';
 import { showKey } from './shows.js';
 import { sameShow, episodesIn, episodeQueries } from './season.js';
@@ -109,12 +112,30 @@ async function animeOf(job, spec) {
   return spec.anime;
 }
 
+// True when the other source took the whole request. Never fatal: torrents are still there.
+async function tryAlternative(job, deps, request) {
+  if (!deps.alternative) return null;
+  job.step = 'Checking SVT Play…';
+  try { return await deps.alternative(request); } catch (e) {
+    deps.log?.(`[smart] ${job.title}: the other source failed: ${e.message || e}`);
+    return null;
+  } finally { job.step = 'Finding the best copy…'; }
+}
+
 async function runFilm(job, spec, deps) {
   await animeOf(job, spec);
   const have = await deps.filmHave?.();
   if (have === 'library') return done(job, 'have', 'Already in your library.');
   if (have === 'server') return done(job, 'have', 'It was already on the server, so it’s in your library now.');
   if (have === 'downloading') return done(job, 'queued', 'Already on its way.');
+  const fromAlternative = (alt) => {
+    job.added.push({ name: alt.name, quality: alt.quality || null, size: null, source: alt.source });
+    done(job, 'started', alt.message);
+  };
+  if (spec.preferAlternative) {
+    const alt = await tryAlternative(job, deps, { type: 'movie' });
+    if (alt) return fromAlternative(alt);
+  }
   const freeBytes = await deps.freeBytes?.('movie');
   const want = { ...spec.want, type: 'movie', title: spec.title, year: spec.year, freeBytes, anime: Boolean(spec.anime), aliases: spec.anime?.keys || [] };
   const names = [spec.title, spec.originalTitle, ...(spec.anime?.queryTitles || [])].filter(Boolean);
@@ -126,6 +147,8 @@ async function runFilm(job, spec, deps) {
     if (best.pick) break;
   }
   if (!best.pick) {
+    const alt = spec.preferAlternative ? null : await tryAlternative(job, deps, { type: 'movie' });
+    if (alt) return fromAlternative(alt);
     if (failures === queries.length) throw new Error('The torrent sites aren’t answering. Try again shortly.');
     return done(job, 'none', best.why || 'Couldn’t find a good copy of this yet.');
   }
@@ -168,6 +191,18 @@ async function runSeason(job, spec, deps) {
   const want = { ...spec.want, title: job.title, season, anime: Boolean(ctx) };
   const covered = new Set();
   let packWhy = null;
+  const fromAlternative = (alt) => {
+    alt.episodes.forEach((e) => covered.add(e));
+    job.added.push({ pack: true, name: alt.name, quality: alt.quality || null, episodes: [...alt.episodes].sort((a, b) => a - b), skipped: 0, size: null, source: alt.source });
+  };
+  if (spec.preferAlternative) {
+    const alt = await tryAlternative(job, deps, { type: 'tv', season, episodes: missing });
+    if (alt) {
+      fromAlternative(alt);
+      // Everything's on its way, or (no TMDB list to compare with) this is all that's known.
+      if (!missing || missing.every((e) => covered.has(e))) { if (!missing) job.total = job.have.length + job.queued.length + covered.size; return finish(job, deps, null); }
+    }
+  }
 
   // ---- anime: batches, as many as it takes to cover the season ----
   if (ctx && (ranged || (!only && (!missing || missing.length >= PACK_FROM)))) {
@@ -271,6 +306,14 @@ async function runSeason(job, spec, deps) {
     } catch (e) {
       if (e.status === 503) throw e;
       job.unavailable.push({ episode: ep, reason: e.message || String(e) });
+    }
+  }
+  // Nothing from the torrent sites: what they couldn't find may still be on SVT Play.
+  if (!spec.preferAlternative && !ctx && deps.alternative && (job.unavailable.length || (!missing && !covered.size))) {
+    const alt = await tryAlternative(job, deps, { type: 'tv', season, episodes: missing ? job.unavailable.map((u) => u.episode) : null });
+    if (alt) {
+      fromAlternative(alt);
+      job.unavailable = job.unavailable.filter((u) => !covered.has(u.episode));
     }
   }
   if (!missing) job.total = job.have.length + job.queued.length + covered.size;

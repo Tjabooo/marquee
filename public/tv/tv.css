@@ -251,3 +251,24 @@ img.is-empty { visibility: hidden; }
 .search-right { position: absolute; left: 680px; right: 0; top: 160px; bottom: 0; }
 .search-label { padding-left: 6px; font-size: 32px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 1100px; }
 .search-right .grid-viewport { top: 60px; padding: 10px 0 0 6px; }
+
+/* ---- Documentaries and SVT Play ---- */
+.card.svt { width: 400px; }
+.card.svt .art { height: 225px; }
+.card.svt .name { margin-top: 12px; font-size: 26px; }
+.card.svt .sub { font-size: 22px; }
+.svt-mark { position: absolute; left: 12px; top: 12px; padding: 5px 10px; border-radius: 8px; background: rgba(9, 58, 36, .94); color: #fff; font-size: 18px; font-weight: 700; }
+.svt-title .discover-copy { width: 1100px; }
+.svt-title .discover-copy h1 { font-size: 64px; }
+.svt-title .discover-overview { min-height: 0; margin: 16px 0 18px; -webkit-line-clamp: 2; }
+.svt-title .discover-panel { padding-top: 76px; }
+.svt-seasons { margin-bottom: 18px; overflow: hidden; }
+.svt-season-track { display: flex; transition: transform .16s ease-out; padding: 6px; }
+.svt-chip { flex: none; padding: 12px 22px; margin-right: 14px; border-radius: 12px; background: var(--curtain); color: var(--dust); font-size: 26px; font-weight: 700; white-space: nowrap; }
+.svt-chip.active { color: var(--paper); }
+.svt-chip.focus { background: var(--bulb); color: var(--on-bulb); }
+.svt-list { position: absolute; left: var(--edge); right: var(--edge); top: 590px; bottom: 0; overflow: hidden; }
+.svt-title .episode { padding: 10px 14px; margin-bottom: 8px; width: 1500px; }
+.svt-title .episode .art { width: 240px; height: 135px; margin-right: 26px; }
+.svt-title .episode .name { font-size: 30px; }
+.svt-title .episode .label { font-size: 23px; }

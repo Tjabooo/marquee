@@ -4,6 +4,16 @@ All notable changes to Marquee. Versions follow [Semantic Versioning](https://se
 
 ## [Unreleased]
 
+### Added
+
+- **Documentaries.** A Documentaries tab in Discover and on the TV's home screen, with over 30 categories built from TMDB's genre,
+  keyword and country filters (`src/documentaries.js`) and SVT Play's own.
+- **SVT Play.** Its free catalogue in Documentaries and search; Add copies the streams into the library without re-encoding, with
+  Swedish subtitles (`src/svtplay.js`, `src/svt-queue.js`). Smart Download uses it first for Swedish originals and otherwise when no
+  torrent can be found. `SVT_PLAY=off` leaves it out.
+- **Knaben as a torrent source** (`KNABEN_URL`), 1337x's Documentaries category for documentaries, and searches with å, ä and ö
+  also try the plain spelling that release names use.
+
 ### Changed
 
 - **Notifications stay with your library.** Someone else's download no longer notifies people who only follow a show;

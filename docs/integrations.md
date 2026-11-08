@@ -21,6 +21,16 @@ If Marquee signs in but is still refused, enable **Bypass authentication for cli
 
 To keep your own IP out of torrent swarms, `tools/torrent-vpn` puts qBittorrent alone behind a WireGuard VPN (Mullvad, or any provider that gives out WireGuard configs). The rest of the server keeps its normal connection. It fails closed: qBittorrent is bound to the tunnel and fenced in by firewall rules, and a watchdog keeps it that way. See [tools/torrent-vpn/README.md](../tools/torrent-vpn/README.md).
 
+## SVT Play
+
+Sweden's public service broadcaster has a large, free catalogue of documentaries and true crime, much of it missing from torrent sites. No account or key is needed, but it only works from a Swedish address; set `SVT_PLAY=off` elsewhere.
+
+- **Discover → Documentaries** and search show SVT's titles. **Add** saves them to the media folder (`TV/<title>/Season 01/…`, `Movies/<title>/…`) as H.264/AAC MP4 with Swedish subtitles as `.sv.srt`, without re-encoding, so they play everywhere the library does. Pause, resume and remove work as for torrents.
+- **Smart Download** takes a title from SVT Play first when it's originally in Swedish and SVT has exactly that title, and otherwise when no torrent can be found.
+- Videos SVT marks as copy protected and live broadcasts are refused. Saved copies follow your library's auto-delete rules like everything else; what you may keep and share is up to you and your local law.
+
+Marquee reads SVT's public pages, which can change without notice. If they do, its rows disappear and `[svt]` lines appear in the log; the rest of Marquee carries on.
+
 ## OpenSubtitles
 
 1. Create a free account at [opensubtitles.com](https://www.opensubtitles.com).

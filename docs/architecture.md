@@ -149,6 +149,7 @@ src/
   accounts.js        people, libraries, progress (SQLite)
   convert.js         MP4 conversion, browser audio, browser copies
   torrents.js, smart-download.js, season.js, release-match.js, recommend.js, download-paths.js, torrent-fetch.js
+  documentaries.js (Discover's documentary categories), svtplay.js + svt-queue.js (SVT Play catalogue, saved copies)
   subtitles.js, subsync.js
   cast.js            DLNA and Apple TV
   watch.js, watch-page.js   Watch Together

@@ -29,7 +29,7 @@ export function initShows({ dataDir }) {
   file = path.join(dataDir, '.marquee-shows.json');
   try {
     const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
-    cache = { overviews: saved.overviews || {}, names: saved.names || {}, shows: saved.shows || {}, films: saved.films || {}, filmFiles: saved.filmFiles || {}, filmDownloads: saved.filmDownloads || {}, showDownloads: saved.showDownloads || {}, genres: saved.genres || {} };
+    cache = { localArt: saved.localArt || {}, overviews: saved.overviews || {}, names: saved.names || {}, shows: saved.shows || {}, films: saved.films || {}, filmFiles: saved.filmFiles || {}, filmDownloads: saved.filmDownloads || {}, showDownloads: saved.showDownloads || {}, genres: saved.genres || {} };
   } catch { /* first run */ }
 }
 
@@ -68,7 +68,7 @@ function once(key, fn) {
 function lookupName(key, title, year, tmdb) {
   const ck = `${key}|${year || ''}`;
   const hit = cache.names[ck];
-  if (hit && Date.now() - hit.at < (hit.id ? NAME_TTL : MISS_TTL)) return Promise.resolve(hit.id);
+  if (hit && (hit.pinned || Date.now() - hit.at < (hit.id ? NAME_TTL : MISS_TTL))) return Promise.resolve(hit.id);
   return once(`name:${ck}`, async () => {
     let results = [];
     if (year) results = (await tmdb('/search/tv', { query: title, first_air_date_year: String(year) })).results || [];
@@ -165,6 +165,25 @@ function backfillGenres(type, ids, tmdb) {
 // items: library items with { id, title, year, season, episode, added }.
 // Returns { shows, showOf } where showOf maps item id -> { show, episodeName }. Waits at most `wait`
 // ms for TMDB: whatever isn't resolved yet is grouped by name now and merged on a later call.
+// Titles that came from another source (SVT Play) say what they are themselves. TMDB's search would
+// otherwise label an unknown name with its closest guess, so the name is pinned: to the show with exactly
+// that name, or to none. `art` (title, overview, poster, backdrop, genres, episodes, seasonNames) fills in what
+// TMDB doesn't have, and its episode names win: SVT's numbering of dated seasons isn't TMDB's.
+export function pinShow(title, id, art = null) {
+  const key = showKey(title);
+  if (!key) return;
+  cache.names[`${key}|`] = { id: id ?? null, at: Date.now(), pinned: true };
+  if (art) (cache.localArt ??= {})[`tv:${key}`] = { ...cache.localArt?.[`tv:${key}`], ...art };
+  save();
+}
+export function pinFilmArt(title, art) {
+  const key = showKey(title);
+  if (!key) return;
+  (cache.localArt ??= {})[`movie:${key}`] = art;
+  save();
+}
+const localArt = (type, title) => cache.localArt?.[`${type}:${showKey(title)}`] || null;
+
 export async function groupShows(items, tmdb, { wait = 2500 } = {}) {
   const episodes = items.filter((i) => i.season != null && i.title);
   const byName = new Map(); // "key|year" -> { key, year, titles:Set, items:[] }
@@ -224,37 +243,38 @@ export async function groupShows(items, tmdb, { wait = 2500 } = {}) {
   const showOf = new Map();
   for (const grp of groups.values()) {
     const d = grp.tmdbId ? cache.shows[grp.tmdbId] : null;
+    const art = localArt('tv', bestTitle(grp.titles));
     const seasonNums = [...new Set(grp.items.map((i) => i.season))].sort((a, b) => a - b);
     const seasons = seasonNums.map((n) => {
       const sd = d?.seasons?.[n];
       const eps = grp.items.filter((i) => i.season === n);
       return {
         number: n,
-        name: sd?.name || (n === 0 ? 'Specials' : `Season ${n}`),
-        poster: sd?.poster || d?.poster || null,
+        name: art?.seasonNames?.[n] || sd?.name || (n === 0 ? 'Specials' : `Season ${n}`),
+        poster: sd?.poster || d?.poster || art?.poster || null,
         total: sd?.total || null,                               // episodes in the season on TMDB
         // TMDB's first episode number: 1, or where numbering carries on from the season before (One Piece)
         first: firstEpisode(d?.episodes?.[n]),
         count: new Set(eps.map((i) => i.episode)).size,          // episodes on the server
         // Every TMDB episode's name and still, so rows for episodes not on the server get them too.
-        episodes: d?.episodes?.[n] || {},
+        episodes: { ...d?.episodes?.[n], ...art?.episodes?.[n] },
       };
     });
     for (const it of grp.items) {
-      const ep = d?.episodes?.[it.season]?.[it.episode];
+      const ep = art?.episodes?.[it.season]?.[it.episode] || d?.episodes?.[it.season]?.[it.episode];
       showOf.set(it.id, { show: grp.id, episodeName: ep?.name || null, still: ep?.still || null });
     }
     shows.push({
       id: grp.id,
       tmdbId: grp.tmdbId,
-      title: d?.title || bestTitle(grp.titles),
-      year: d?.year || [...grp.years][0] || null,
-      overview: d?.overview || '',
+      title: d?.title || art?.title || bestTitle(grp.titles),
+      year: d?.year || art?.year || [...grp.years][0] || null,
+      overview: d?.overview || art?.overview || '',
       rating: d?.rating || null,
-      genres: genresOf('tv', grp.tmdbId),
+      genres: genresOf('tv', grp.tmdbId) || art?.genres || null,
       anime: Boolean(d?.anime),
-      poster: d?.poster || null,
-      backdrop: d?.backdrop || null,
+      poster: d?.poster || art?.poster || null,
+      backdrop: d?.backdrop || art?.backdrop || null,
       seasons,
       episodes: grp.items.length,
       added: Math.max(...grp.items.map((i) => i.added || 0)),
@@ -391,7 +411,11 @@ export async function filmInfo(items, tmdb, { wait = 2500 } = {}) {
   const out = new Map();
   for (const f of films) {
     const hit = knownFilm(f.mediaKey, f.title, f.year);
-    if (hit?.id || hit?.ambiguous) out.set(f.id, {
+    const art = hit?.id ? null : localArt('movie', f.title);
+    if (art) {
+      out.set(f.id, { tmdbId: null, filmTitle: art.title, poster: art.poster, backdrop: art.backdrop, overview: art.overview, rating: null,
+        genres: art.genres || null, movieAmbiguous: false, filmCandidates: [] });
+    } else if (hit?.id || hit?.ambiguous) out.set(f.id, {
       tmdbId: hit.id, filmTitle: hit.title, poster: hit.poster, backdrop: hit.backdrop, overview: hit.overview, rating: hit.rating,
       genres: genresOf('movie', hit.id),
       movieAmbiguous: Boolean(hit.ambiguous), filmCandidates: hit.candidates || [],
