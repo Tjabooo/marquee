@@ -1,4 +1,13 @@
 {
+  "2026-11-08-one-press-add": {
+    "title": "Lägg till en hel serie med ett tryck",
+    "items": {
+      "No season to choose": {
+        "title": "Ingen säsong att välja",
+        "text": "Om någon redan har en serie här lägger Lägg till i biblioteket nu direkt till alla avsnitt som finns, från alla säsonger. Vill du ha något mer trycker du på Fler avsnitt."
+      }
+    }
+  },
   "2026-11-08-ranges-and-removing": {
     "title": "Avsnittsintervall och att ta bort serier",
     "items": {

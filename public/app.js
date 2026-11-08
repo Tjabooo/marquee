@@ -1457,7 +1457,7 @@ function renderShow() {
       h('ul', { class: 'rows' }, rows.sort((a,b) => a.number-b.number).map(r => r.node))];
   }
   // The same Download panel as in Discover, opened on the season you're looking at.
-  const tv = canGet() && show.tmdbId ? showDownload({ id: show.tmdbId, title: show.title, type: 'tv' }, { season: open?.number ?? null }) : null;
+  const tv = canGet() && show.tmdbId ? showDownload({ id: show.tmdbId, title: show.title, type: 'tv' }, { season: open?.number ?? null, onAdded: renderShow }) : null;
   $('#sheet-body').replaceChildren(h('div', { class: `sheet-hero${show.backdrop ? '' : ' no-image'}`, style: show.backdrop ? `background-image:url("${show.backdrop}")` : null }),
     h('div', { class: 'sheet-content' }, h('h2', { id: 'sheet-title' }, show.title), h('ul', { class: 'facts' }, [show.year, T('Series'), libraryAvailability(entry)].filter(Boolean).map(text => h('li', {}, text))),
       show.tmdbId && social.rateRow(`tv:${show.tmdbId}`, show.title),
@@ -1934,7 +1934,7 @@ function renderDetails(t) {
   const onServer = serverMatchesFor(t);
   const isTv = t.type === 'tv';
   // Shows: one Download button opens the season panel; films: Play and/or Download right here.
-  const tv = isTv && canGet() && t.id ? showDownload(t) : null;
+  const tv = isTv && canGet() && t.id ? showDownload(t, { onAdded: () => renderDetails(t) }) : null;
   const actions = isTv
     ? h('div', { class: 'title-actions' }, tv && h('div', { class: 'action-row' }, tv.toggle), tv?.panel,
       transferSummary(() => titleState(t).transfers, t.title))
@@ -1971,7 +1971,7 @@ function serverOffer(t, list) {
     btn.disabled = true;
     status.textContent = '';
     try {
-      await api('/api/library/add', jsonPost({ ids: files.map((f) => f.id) }));
+      await addIds(files);
       await loadLibrary();
       toast(files.length === 1 ? T('Added to your library') : T('Added {0} to your library', plural(files.length, 'episode')));
       if (state.view === 'library') renderLibrary();
@@ -2119,9 +2119,17 @@ function commandResult(cmd) {
 }
 
 // Adds videos someone else already has here to your library (no copy is made) and refreshes the views.
+const ADD_BATCH = 400; // /api/library/add takes at most 500 ids a request; a long show can have more episodes
+async function addIds(files) {
+  for (let i = 0; i < files.length; i += ADD_BATCH) {
+    await api('/api/library/add', jsonPost({ ids: files.slice(i, i + ADD_BATCH).map((f) => f.id) }));
+  }
+}
 async function addFromServer(files) {
-  await api('/api/library/add', jsonPost({ ids: files.map((f) => f.id) }));
-  await loadLibrary();
+  try { await addIds(files); } finally {
+    await libraryRequest; // a read that started before the add wouldn't show it
+    await loadLibrary();
+  }
   const eps = episodeCount(files.filter((f) => f.episode != null));
   toast(eps > 1 ? T('Added {0} to your library', plural(eps, 'episode')) : T('Added to your library'));
   patchUnifiedLibrary();
@@ -2287,11 +2295,12 @@ function filmActions(t) {
   return root;
 }
 
-// Shows: one Add button opens the panel; the season and quality chosen stay while it's open.
+// Shows: when someone else already has episodes here that you don't, one press adds all of them.
+// Otherwise the button opens the panel; the season and quality chosen stay while it's open.
 // Long seasons (Black Clover's 170, One Piece's 197) can download a range of episodes instead.
 const showPanels = new Map(); // tmdb id -> { open, season, profile, exact, last: { [season]: command key }, ranges: { [season]: { on, from, to } } }
 const RANGE_FROM = 40; // episodes in a season before the panel offers a range
-function showDownload(t, { season = null } = {}) {
+function showDownload(t, { season = null, onAdded = null } = {}) {
   let ps = showPanels.get(t.id);
   if (!ps) { ps = { open: false, season, profile: savedProfile(), exact: '', last: {}, ranges: {} }; showPanels.set(t.id, ps); }
   else if (season != null && !ps.touched) ps.season = season;
@@ -2345,7 +2354,23 @@ function showDownload(t, { season = null } = {}) {
       panel._update();
     }).catch((err) => { seasons = null; seasonSel.replaceChildren(h('option', {}, T('Seasons unavailable'))); status.textContent = err.message; });
   };
+  let addingAll = false;
+  const addEverything = async (files) => {
+    addingAll = true; ps.open = false; panel.hidden = true; panel._update();
+    try {
+      await addFromServer(files);
+      if (toggle.isConnected && onAdded) { // the sheet's episode list changed; keep its place and the button's focus
+        const top = $('#sheet').scrollTop;
+        onAdded();
+        $('#sheet').scrollTop = top;
+        $(`#sheet-body [aria-controls="${panelId}"]`)?.focus({ preventScroll: true });
+      }
+    } catch (err) { toast(err.message); } finally { addingAll = false; panel._update(); }
+  };
   toggle.addEventListener('click', (e) => {
+    if (addingAll) return;
+    const extra = serverOnlyEpisodes(titleState(t));
+    if (extra.length) return addEverything(extra);
     ps.open = !ps.open;
     toggle.setAttribute('aria-expanded', String(ps.open));
     panel.hidden = !ps.open;
@@ -2442,11 +2467,15 @@ function showDownload(t, { season = null } = {}) {
       : useRange ? T('{0} of {1}–{2}. A season batch still serves a range: episodes outside it are skipped.', plural(picked.length, 'episode'), bounds().first, bounds().last)
       : T('Marquee picks a good copy of the season and skips episodes you already have.');
     // The show's button: "Add to library" until some of it is yours, then "More episodes" for the rest.
-    const toggleText = s.ready.length && !serverOnlyEpisodes(s).length ? T('More episodes') : T('Add to library');
+    const addsAll = serverOnlyEpisodes(s).length > 0;
+    const toggleText = addingAll ? T('Adding…') : s.ready.length && !addsAll ? T('More episodes') : T('Add to library');
     if (toggle._mode !== toggleText) {
       toggle._mode = toggleText;
       toggle.replaceChildren(icon('plus'), h('span', {}, toggleText));
     }
+    toggle.setAttribute('aria-disabled', String(addingAll));
+    if (addsAll) toggle.removeAttribute('aria-expanded'); // it adds right away, so there's no panel to expand
+    else toggle.setAttribute('aria-expanded', String(ps.open));
     seasonSel.disabled = locked || !seasons?.length;
     profileSel.disabled = locked;
     scopeSel.disabled = fromIn.disabled = toIn.disabled = locked;
