@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-08-auto-translated-subtitles",
+    "date": "2026-11-08",
+    "title": "Better subtitle translations",
+    "items": [
+      {
+        "title": "Subtitles written by people come first",
+        "text": "Marquee now always picks subtitles written by people when they exist. When only a machine translation exists, the language says “auto-translated” so you know what you’re getting, and it’s replaced automatically once people’s subtitles turn up."
+      }
+    ]
+  },
+  {
     "id": "2026-11-08-skip-intro-ready",
     "date": "2026-11-08",
     "title": "Skip intro is ready sooner",

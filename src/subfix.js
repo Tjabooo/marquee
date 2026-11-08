@@ -36,9 +36,9 @@ let roots = [];
 let building = null;
 const fixedCache = new Map(); // key -> text
 
-const isEnglishName = (name) => /\.(en|eng)(\.(sdh|cc|hi|forced|\d+))*\.srt$/i.test(name);
+const isEnglishName = (name) => /\.(en|eng)(\.(sdh|cc|hi|forced|ai|\d+))*\.srt$/i.test(name);
 // "<name>.srt" with no language tag (or an unknown one): read it and check that it's English.
-const LANG_TAG = /\.([a-z]{2,3}(-[a-z]{2})?)(\.(sdh|cc|hi|forced|\d+))*\.srt$/i;
+const LANG_TAG = /\.([a-z]{2,3}(-[a-z]{2})?)(\.(sdh|cc|hi|forced|ai|\d+))*\.srt$/i;
 const untagged = (name) => /\.srt$/i.test(name) && !LANG_TAG.test(name);
 const COMMON = new Set(['the', 'you', 'to', 'and', 'it', 'is', 'that', 'what', 'of', 'in', 'me', 'this', 'we', 'he', 'for', 'have', 'your', 'do', 'be', 'not', 'are', 'was', 'with', 'my']);
 function looksEnglish(srt) {

@@ -130,6 +130,12 @@ export async function movieHash(file) {
 // ---------- local subtitle files ----------
 const stem = (file) => path.join(path.dirname(file), path.basename(file, path.extname(file)));
 export const sidecarPath = (file, lang) => `${stem(file)}.${lang}.srt`;
+// AI translations are saved as "Movie.sv.ai.srt", so what they are stays with the file when it moves.
+const autoSidecarPath = (file, lang) => `${stem(file)}.${lang}.ai.srt`;
+export const isAutoSidecar = (file) => /\.ai\.srt$/i.test(String(file || ''));
+const isAutoUpload = (sub) => Boolean(sub.attributes?.ai_translated || sub.attributes?.machine_translated);
+// Written by a person and covers the whole film (foreign-parts files only have the odd line).
+const isProperUpload = (sub) => !isAutoUpload(sub) && !sub.attributes?.foreign_parts_only;
 
 // Languages already saved beside a video ("Movie.en.srt", "Movie.sv.forced.srt", ...).
 export function localLanguages(file) {
@@ -151,47 +157,66 @@ export function findSidecar(file, lang) {
   if (fs.existsSync(exact)) return exact;
   const prefix = `${path.basename(file, path.extname(file))}.${lang}.`.toLowerCase();
   try {
-    const hit = fs.readdirSync(path.dirname(file)).find((e) => e.toLowerCase().startsWith(prefix) && e.toLowerCase().endsWith('.srt'));
+    const hits = fs.readdirSync(path.dirname(file)).filter((e) => e.toLowerCase().startsWith(prefix) && e.toLowerCase().endsWith('.srt'));
+    const hit = hits.find((e) => !isAutoSidecar(e)) || hits[0];
     return hit ? path.join(path.dirname(file), hit) : null;
   } catch { return null; }
 }
 
 // ---------- available languages ----------
-const langCache = new Map(); // key -> { at, codes }
+const langCache = new Map(); // key -> { at, codes, proper }
+const SIX_HOURS = 6 * 3600 * 1000;
 
-async function remoteLanguages(info) {
-  if (!API_KEY || !info.title) return new Set();
-  const key = JSON.stringify(info);
-  const hit = langCache.get(key);
-  if (hit && Date.now() - hit.at < 6 * 3600 * 1000) return hit.codes;
-  const codes = new Set();
-  // Searches don't count toward the download quota. Common languages fill the first pages, so a rare one
-  // can sit many pages in: each round asks only for what's still missing, until a round finds nothing new.
+// Searches don't count toward the download quota. Common languages fill the first pages, so a rare one
+// can sit many pages in: each round asks only for what's still missing, until a round finds nothing new.
+async function collectLanguages(info, found, extra, accept) {
   for (let round = 0; round < LANGS.length; round++) {
-    const missing = LANGS.filter((l) => !codes.has(l));
+    const missing = LANGS.filter((l) => !found.has(l));
     if (!missing.length) break;
-    const before = codes.size;
-    const data = await osFetch(query(searchParams(info, { languages: missing.sort().join(',') })));
+    const before = found.size;
+    const data = await osFetch(query(searchParams(info, { languages: missing.sort().join(','), ...extra })));
     for (const s of data.data || []) {
       const l = String(s.attributes?.language || '').toLowerCase();
-      if (LANG_NAMES[l]) codes.add(l);
+      if (LANG_NAMES[l] && accept(s)) found.add(l);
     }
-    if (codes.size === before) break;
+    if (found.size === before) break;
   }
-  langCache.set(key, { at: Date.now(), codes });
-  if (langCache.size > 300) langCache.delete(langCache.keys().next().value);
-  return codes;
 }
+
+// { codes: every language online, proper: the ones with subtitles written by people }
+async function remoteLanguages(info) {
+  if (!API_KEY || !info.title) return { codes: new Set(), proper: new Set() };
+  const key = JSON.stringify(info);
+  const hit = langCache.get(key);
+  if (hit && Date.now() - hit.at < SIX_HOURS) return hit;
+  const proper = new Set();
+  await collectLanguages(info, proper, { ai_translated: 'exclude' }, isProperUpload);
+  const codes = new Set(proper);
+  await collectLanguages(info, codes, {}, () => true);
+  const entry = { at: Date.now(), codes, proper };
+  langCache.set(key, entry);
+  if (langCache.size > 300) langCache.delete(langCache.keys().next().value);
+  return entry;
+}
+
+const autoLabelled = (l) => ({ ...l, name: `${l.name} (auto-translated)`, auto: true });
 
 // Languages for a local file: saved subtitles plus those available online.
 export async function languagesForFile(file, info) {
   const local = localLanguages(file);
   let problem = null;
-  let remote = new Set();
+  let remote = { codes: new Set(), proper: new Set() };
   try { remote = await remoteLanguages(info); } catch (e) { problem = e.message; }
-  const all = new Set([...local, ...remote]);
+  const all = new Set([...local, ...remote.codes]);
   return {
-    languages: langList(all).map((l) => ({ ...l, saved: local.has(l.code) })),
+    languages: langList(all).map((l) => {
+      const saved = local.has(l.code);
+      const savedAuto = saved && isAutoSidecar(findSidecar(file, l.code));
+      const better = remote.proper.has(l.code);
+      // "Not saved" when people's subtitles have turned up: choosing the language then fetches them.
+      const entry = { ...l, saved: saved && !(savedAuto && better) };
+      return (saved ? savedAuto : true) && !better ? autoLabelled(entry) : entry;
+    }),
     ...(problem && { problem }),
     configured: Boolean(API_KEY),
   };
@@ -199,7 +224,8 @@ export async function languagesForFile(file, info) {
 
 // Languages available online for a title that hasn't been downloaded yet.
 export async function languagesForTitle(info) {
-  return { languages: langList(await remoteLanguages(info)), configured: Boolean(API_KEY) };
+  const { codes, proper } = await remoteLanguages(info);
+  return { languages: langList(codes).map((l) => (proper.has(l.code) ? l : autoLabelled(l))), configured: Boolean(API_KEY) };
 }
 
 // ---------- download ----------
@@ -212,9 +238,11 @@ function score(sub, fileTokens, videoName, subtitleName) {
   const a = sub.attributes || {};
   let n = Math.log10((a.download_count || 0) + 1) * 10;
   if (a.moviehash_match === true) n += 1000;                  // exact release match
-  if (a.ai_translated || a.machine_translated) n -= 300;
+  // People's subtitles always win, even from another release: the timing check can fix timing, but
+  // nothing fixes a machine reading the name "Sinon" as the French word for "otherwise".
+  if (isAutoUpload(sub)) n -= 5000;
   if (a.hearing_impaired) n -= 5;                             // prefer regular subtitles
-  if (a.foreign_parts_only) n -= 500;
+  if (a.foreign_parts_only) n -= 10000;                       // only the odd line: last resort
   for (const t of tokens(`${a.release || ''} ${subtitleName || ''}`)) if (fileTokens.has(t)) n += 15;
   const videoSource = releaseSource(videoName);
   const subSource = releaseSource(`${a.release || ''} ${subtitleName || ''}`);
@@ -244,25 +272,34 @@ export function selectSubtitle(results, file, info, lang) {
 }
 
 const inflight = new Map();
-// Returns the path of "<video>.<lang>.srt", downloading the best match if needed.
+const upgradeChecked = new Map(); // key -> when we last looked for people's subtitles to replace an AI translation
+// Returns the path of the saved subtitle, downloading the best match if needed. An AI translation
+// is only kept until people's own subtitles turn up.
 export function ensureSubtitle(file, info, lang) {
   lang = String(lang).toLowerCase();
   if (!validLang(lang)) return Promise.reject(fail(400, 'Unknown language.'));
   const existing = findSidecar(file, lang);
-  if (existing) return Promise.resolve(existing);
+  if (existing && !isAutoSidecar(existing)) return Promise.resolve(existing);
   const key = `${file}|${lang}`;
+  if (existing && !inflight.has(key) && Date.now() - (upgradeChecked.get(key) || 0) < SIX_HOURS) return Promise.resolve(existing);
   if (!inflight.has(key)) {
-    inflight.set(key, download(file, info, lang).finally(() => inflight.delete(key)));
+    if (existing) upgradeChecked.set(key, Date.now());
+    const job = existing ? download(file, info, lang, { properOnly: true }).catch(() => existing) : download(file, info, lang);
+    inflight.set(key, job.finally(() => inflight.delete(key)));
   }
   return inflight.get(key);
 }
 
-async function download(file, info, lang) {
+async function download(file, info, lang, { properOnly = false } = {}) {
+  const search = async (extra) => (await osFetch(query(searchParams(info, { languages: lang, ...extra })))).data || [];
   // Remuxing/re-encoding changes the hash; the original release is much more likely to be indexed.
   const hash = await movieHash(info.hashFile || file).catch(() => null);
-  let data = await osFetch(query(searchParams(info, { languages: lang, moviehash: hash })));
-  if (!data.data?.length && hash) data = await osFetch(query(searchParams(info, { languages: lang })));
-  const best = selectSubtitle(data.data || [], file, info, lang);
+  let results = await search({ moviehash: hash, ...(properOnly && { ai_translated: 'exclude' }) });
+  // A hash search can come back with nothing but AI translations while people's subtitles for the same
+  // film sit under another release, so look for those before settling.
+  if (!results.some(isProperUpload)) results = [...results, ...await search({ ai_translated: 'exclude' })];
+  if (!results.length && hash && !properOnly) results = await search({});
+  const best = selectSubtitle(properOnly ? results.filter(isProperUpload) : results, file, info, lang);
   const name = LANG_NAMES[lang];
   if (!best) throw fail(404, `OpenSubtitles has no ${name} subtitles for this.`);
 
@@ -276,8 +313,10 @@ async function download(file, info, lang) {
   if (!r.ok) throw fail(502, `The subtitle download failed (${r.status}).`);
   const text = decodeText(Buffer.from(await r.arrayBuffer()));
   if (!/-->/.test(text)) throw fail(502, 'The subtitle file OpenSubtitles sent wasn’t readable.');
-  const out = sidecarPath(file, lang);
+  const auto = isAutoUpload(best.sub);
+  const out = auto ? autoSidecarPath(file, lang) : sidecarPath(file, lang);
   await fs.promises.writeFile(out, text, 'utf8');
+  if (!auto) await fs.promises.rm(autoSidecarPath(file, lang), { force: true }).catch(() => {});
   console.log(`[subtitles] saved ${path.basename(out)} (${dl.remaining ?? '?'} downloads left today)`);
   // Lets the timing check run (whether or not the file hash matched).
   try { onDownloaded?.(file, out, { exact: best.sub.attributes.moviehash_match === true }); } catch { /* best effort */ }

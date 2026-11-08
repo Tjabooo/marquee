@@ -22,11 +22,11 @@ test('a rare language behind pages of common ones is still listed', async () => 
   const asked = catalogue([...Array(400).fill('en'), ...Array(400).fill('sv'), 'tl']);
   assert.deepEqual(codes(await languagesForTitle({ title: 'Long list', tmdbId: 1 })), ['en', 'sv', 'tl']);
   assert.deepEqual(asked.at(-1), ['ka'], 'the last round asks only for what is still missing, then stops');
-  assert.equal(asked.length, 4);
+  assert.equal(asked.length, 5, 'four rounds without AI translations, then one that includes them');
 });
 
 test('a language nobody has made stays out of the list', async () => {
   const asked = catalogue(Array(10).fill('en'));
   assert.deepEqual(codes(await languagesForTitle({ title: 'English only', tmdbId: 2 })), ['en']);
-  assert.equal(asked.length, 2, 'a round that finds nothing new ends the search');
+  assert.equal(asked.length, 3, 'a round that finds nothing new ends each of the two searches');
 });
