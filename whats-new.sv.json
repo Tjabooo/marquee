@@ -1,4 +1,21 @@
 {
+  "2026-11-08-upgrade-where-you-look": {
+    "title": "Uppgradera kvalitet finns nu där du behöver det",
+    "items": {
+      "Right in the player": {
+        "title": "Direkt i spelaren",
+        "text": "Ser avsnittet suddigt ut? Öppna kvalitetsknappen i spelaren och tryck på Uppgradera kvalitet. Säsongen byts mot en klart bättre kopia, och du behåller din plats."
+      },
+      "And on the season’s page": {
+        "title": "Och på säsongens sida",
+        "text": "Knappen finns också bredvid säsongens antal avsnitt, i stället för inne i Fler avsnitt."
+      },
+      "Tidier Audio choice": {
+        "title": "Prydligare ljudval",
+        "text": "När du väljer dubbat på en anime hamnar rutan för avsnitt inte längre snett."
+      }
+    }
+  },
   "2026-11-08-best-quality-picture": {
     "title": "Bästa kvalitet går nu verkligen efter bästa bilden",
     "items": {

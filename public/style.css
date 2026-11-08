@@ -1020,6 +1020,10 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .night-item small { font-size: 12px; font-weight: 500; color: var(--dust); }
 .night-label { margin: 6px 14px 2px; }
 .quality-menu .cc-message { margin: 6px 14px 4px; font-size: 12px; color: var(--dust); }
+.quality-upgrade { margin-top: 4px; }
+.quality-upgrade::before { display: none; }
+.quality-upgrade svg { flex: none; width: 18px; height: 18px; }
+.quality-upgrade[aria-disabled="true"] { opacity: .6; cursor: default; }
 .quality-btn svg text { font-size: 7px; letter-spacing: -0.2px; }
 .sleep-left { font-variant-numeric: tabular-nums; }
 @media (max-width: 420px) { .pc-row .pc-btn { width: 40px; } }
@@ -1394,6 +1398,7 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .season-back svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; }
 .season-summary { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
 .season-summary .muted { margin: 0; }
+.season-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .chip.delete-many { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; }
 .chip.delete-many svg { width: 18px; height: 18px; }
 .chip.delete-many:hover, .chip.delete-many:focus-visible { color: var(--alert); border-color: var(--alert); }
@@ -1726,14 +1731,18 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .dl-panel { display: grid; gap: 0; padding: 20px; max-width: 100%; background: var(--curtain); border: 1px solid var(--line); border-radius: 16px; }
 .dl-panel[hidden] { display: none; }
 .dl-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.dl-field { display: grid; gap: 6px; min-width: 0; }
+.dl-field { display: grid; align-content: start; gap: 6px; min-width: 0; }
 .dl-field label, .adv-field label { font-size: 13px; font-weight: 500; color: var(--dust); }
 .dl-field .sub-select, .adv-field .sub-select { width: 100%; min-width: 0; height: 48px; padding-left: 12px; background-color: var(--velvet); }
 .dl-field[hidden] { display: none; }
 .title-actions > .dl-audio { max-width: 340px; }
 .dl-add-dubbed { display: inline-flex; align-items: center; justify-content: center; }
 .dl-add-dubbed[hidden] { display: none; }
-.dl-audio .adv-hint[hidden] { display: none; }
+.dl-audio-hint[hidden] { display: none; }
+/* Audio and Episodes share a row. Audio takes the row when a season has no Episodes choice; From – to sits under Episodes; the hint spans. */
+.dl-fields > .dl-audio:has(+ .dl-scope[hidden]) { grid-column: 1 / -1; }
+.dl-fields > .dl-range { grid-column: 2; }
+.dl-fields > .dl-audio-hint { grid-column: 1 / -1; }
 .dl-range-boxes { display: flex; align-items: center; gap: 8px; }
 .dl-num { flex: 1 1 0; min-width: 0; height: 48px; padding: 0 10px; border: 1px solid var(--line); border-radius: 10px;
   background: var(--velvet); color: var(--paper); font: inherit; font-variant-numeric: tabular-nums; text-align: center; -moz-appearance: textfield; }
@@ -1756,14 +1765,16 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .season-versions .version-pick { margin-top: 0; }
 .version-hint { margin: 6px 0 0; font-size: 12px; line-height: 1.5; }
 .tor-have { color: var(--bulb); }
-.dl-upgrade-box { display: grid; justify-items: start; gap: 8px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
-.dl-upgrade-box[hidden], .dl-upgrade[hidden], .dl-upgrade-note[hidden] { display: none; }
+.dl-upgrade[hidden] { display: none; }
 .dl-upgrade { display: inline-flex; align-items: center; gap: 6px; height: 44px; color: var(--paper); }
 .dl-upgrade svg { width: 18px; height: 18px; }
 .dl-upgrade[aria-disabled="true"] { opacity: .55; cursor: default; }
-.dl-upgrade-note { margin: 0; }
 .dl-upgrade-status { margin: 0; font-size: 13px; line-height: 1.5; color: var(--paper); }
 .dl-upgrade-status:empty { display: none; }
+.season-upgrade { display: grid; gap: 6px; margin: -6px 0 14px; }
+.season-upgrade:has(.season-upgrade-note[hidden]):has(.dl-upgrade-status:empty) { display: none; }
+.season-upgrade-note { margin: 0; font-size: 13px; line-height: 1.5; }
+.season-upgrade-note[hidden] { display: none; }
 .dl-panel .advanced { margin-top: 8px; }
 
 .advanced > summary { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; font-size: 13px; color: var(--dust); cursor: pointer; list-style: none; border-radius: 8px; }
@@ -1801,6 +1812,8 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 @media (max-width: 479px) {
   .dl-panel { padding: 16px; }
   .dl-fields { grid-template-columns: 1fr; gap: 14px; }
+  .dl-fields > .dl-range { grid-column: auto; }
+  .dl-fields > .dl-scope, .dl-fields > .dl-range { order: 1; } /* one column: the hint stays right under Audio */
   .dl-field .sub-select, .dl-num { font-size: 16px; } /* no zoom on focus in iOS */
   .action-row .action-btn { flex: 1 1 0; min-width: 0; }
 }

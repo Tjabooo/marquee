@@ -347,6 +347,7 @@ export default {
   "More episodes": "Fler avsnitt",
   "Retry unavailable": "Går inte att försöka igen",
   "Looking for better quality…": "Letar efter bättre kvalitet…",
+  "Looks soft? Swaps this season for a clearly better copy.": "Ser det suddigt ut? Byter säsongen mot en klart bättre kopia.",
   "Looks soft? Finds a clearly better release of this season and swaps each episode as the new one finishes. Watch progress carries over.": "Ser det suddigt ut? Hittar en klart bättre utgåva av säsongen och byter ut varje avsnitt när det nya är klart. Du behåller din plats i varje avsnitt.",
   "Add episode {0} to your library": "Lägg till avsnitt {0} i ditt bibliotek",
   "Finding…": "Letar…",

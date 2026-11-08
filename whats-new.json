@@ -1,5 +1,24 @@
 [
   {
+    "id": "2026-11-08-upgrade-where-you-look",
+    "date": "2026-11-08",
+    "title": "Upgrade quality moved to where you need it",
+    "items": [
+      {
+        "title": "Right in the player",
+        "text": "Episode looks soft? Open the Quality button in the player and press Upgrade quality. It replaces the season with a clearly better copy, and your place carries over."
+      },
+      {
+        "title": "And on the season’s page",
+        "text": "It also sits next to the season’s episode count, instead of inside More episodes."
+      },
+      {
+        "title": "Tidier Audio choice",
+        "text": "Choosing Dubbed on an anime no longer pushes the Episodes box out of line."
+      }
+    ]
+  },
+  {
     "id": "2026-11-08-best-quality-picture",
     "date": "2026-11-08",
     "title": "Best Quality now really goes for the best picture",

@@ -76,3 +76,18 @@ test('an anime others have here offers Add dubbed beside the one-press add', () 
   assert.match(app, /tv\.toggle, tv\.dubBtn\)/);
   assert.match(app, /tv\?\.toggle, tv\?\.dubBtn, deleteShow\)/);
 });
+
+test('Upgrade quality sits with the season and in the player, not in the add panel', () => {
+  assert.doesNotMatch(between('function showDownload(', '// Upgrade quality: the season is here'), /Upgrade quality|upgrade: true/);
+  assert.match(show, /seasonUpgrade\(tvId, open\.number\)/);
+  const menu = between('function renderQualityMenu() {', '// Another version of what');
+  assert.match(menu, /qualityBtn\.hidden = !stream && !vers && !upgrade/, 'the menu opens for the upgrade alone');
+  assert.match(menu, /quality-upgrade/);
+});
+
+test('the Dubbed hint runs under the row, so it never stretches the field beside Audio', () => {
+  assert.doesNotMatch(between('function audioChoice(', '// Films: Play when'), /T\('Audio'\)\), sel, hint\)/);
+  assert.match(between('function showDownload(', '// Upgrade quality: the season is here'), /rangeRow, dub\.hint\)/);
+  assert.match(css, /\.dl-fields > \.dl-audio-hint \{ grid-column: 1 \/ -1; \}/);
+  assert.match(css, /\.dl-field \{ display: grid; align-content: start;/);
+});

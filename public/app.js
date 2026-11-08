@@ -1450,12 +1450,15 @@ function renderShow() {
     const thumb = (n, still) => episodeArt(still || tmdbEp(n).still, show, 'episode-thumb');
     const rows = ready.map(f => ({ number: f.episode, node: (() => { const row = fileRow(libraryFile(f)); row.classList.add('episode-row'); row.prepend(thumb(f.episode, f.still)); $('.row-title', row).textContent = epTitle(f.episode, f.episodeName); $('.row-title', row).title = f.file; return row; })() }));
     const tvId = { id: show.tmdbId ?? null, title: show.title, type: 'tv' }; // episodeDownload decides Add / Download / nothing
+    const upgrade = seasonUpgrade(tvId, open.number);
     for (const {d,ep} of byEpisode.values()) rows.push({ number: ep.episode, node: h('li', { class: 'row episode-row pending-episode', 'data-transfer-hash': d.hash, 'data-episode-number': ep.episode, 'data-episode-season': ep.season }, thumb(ep.episode), h('div', { class: 'row-text' }, h('div', { class: 'row-title' }, epTitle(ep.episode)), h('div', { class: 'row-meta episode-transfer-state' }, ep.available ? T('Ready · watch it from Details') : `${transferState(d)}${Number.isFinite(ep.progress) ? ` · ${Math.floor(ep.progress*100)}%` : ''}`)), h('button', { class: 'chip', onclick: e => openTransferDetails({ ...entry, transfers: [d] }, e.currentTarget) }, T('Details'))) });
     if (Number.isInteger(open.total) && open.total > 0 && open.total <= 1000) for (let number = open.first || 1; number < (open.first || 1) + open.total; number++) if (!rows.some(row => row.number === number)) rows.push({ number, node: h('li', { class: 'row episode-row missing-episode' }, thumb(number), h('div', { class: 'row-text' }, h('div', { class: 'row-title' }, epTitle(number)), h('div', { class: 'row-meta' }, T('Not added yet'))), tvId && episodeDownload(tvId, open.number, number)) });
     content = [!single && h('button', { class: 'chip season-back', onclick: () => pick(null) }, icon('back'), T('All seasons')), h('h3', {}, open.name),
       seasonVersionPick(ready, () => renderShow()),
       h('div', { class: 'season-summary' }, h('p', { class: 'muted' }, T('{0} episodes ready', open.total ? T('{0} of {1}', episodeCount(ready), open.total) : episodeCount(ready))),
-        ready.length > 0 && h('button', { type: 'button', class: 'chip delete-many travel-season', onclick: e => openTravelSeason(ready, `${show.title} · ${open.name}`, e.currentTarget) }, icon('phone'), T('Season to phone')), deleteSeason),
+        h('div', { class: 'season-actions' }, upgrade.btn,
+          ready.length > 0 && h('button', { type: 'button', class: 'chip delete-many travel-season', onclick: e => openTravelSeason(ready, `${show.title} · ${open.name}`, e.currentTarget) }, icon('phone'), T('Season to phone')), deleteSeason)),
+      upgrade.about,
       ...pendingFor(open.number).filter(d => !(d.episodes || []).some(ep => ep.season === open.number)).map(d => h('div', { class: 'pack-transfer' }, h('strong', {}, T('{0} pack', open.name)), h('p', {}, T('Episode availability is shown when individual files are verified.')), h('button', { class: 'chip', onclick: e => openTransferDetails({ ...entry, transfers: [d] }, e.currentTarget) }, T('Season pack details')))),
       h('ul', { class: 'rows' }, rows.sort((a,b) => a.number-b.number).map(r => r.node))];
   }
@@ -2232,11 +2235,12 @@ function advancedOptions(key, { exact, onExact, browse }) {
 const dubChoices = new Map(); // tmdb id -> 'sub' | 'dub', for this session
 const isDubbedCopy = (f) => Boolean(f.versionDubbed || f.versions?.some((v) => v.versionDubbed));
 function audioChoice(t, id, onChange) {
-  const sel = h('select', { class: 'sub-select', id },
+  const sel = h('select', { class: 'sub-select', id, 'aria-describedby': `${id}-hint` },
     h('option', { value: 'sub' }, T('Original with subtitles')), h('option', { value: 'dub' }, T('Dubbed')));
-  const hint = h('p', { class: 'adv-hint' }, T('Only dual-audio releases, with English and Japanese. If there’s none, nothing is added.'));
-  const field = h('div', { class: 'dl-field dl-audio', hidden: true }, h('label', { for: id }, T('Audio')), sel, hint);
-  const choice = { field, anime: false, dubbing: () => choice.anime && sel.value === 'dub', lock: (on) => { sel.disabled = on; },
+  // Placed by the caller: in the season panel it runs under the whole row, so it can't stretch the field beside it.
+  const hint = h('p', { class: 'adv-hint dl-audio-hint', id: `${id}-hint`, hidden: true }, T('Only dual-audio releases, with English and Japanese. If there’s none, nothing is added.'));
+  const field = h('div', { class: 'dl-field dl-audio', hidden: true }, h('label', { for: id }, T('Audio')), sel);
+  const choice = { field, hint, anime: false, dubbing: () => choice.anime && sel.value === 'dub', lock: (on) => { sel.disabled = on; },
     choose: (value) => { sel.value = value; dubChoices.set(t.id, value); paint(); }, focus: () => sel.focus(),
     remember: () => (choice.anime ? api(`/api/title/${t.type}/${t.id}/dub`, jsonPost({ dubbed: choice.dubbing() })).catch(() => {}) : null) };
   const paint = () => { hint.hidden = sel.value !== 'dub'; onChange(); };
@@ -2255,6 +2259,7 @@ function audioChoice(t, id, onChange) {
 const filmExact = new Map(); // tmdb id -> exact resolution for this session
 function filmActions(t) {
   const dub = audioChoice({ ...t, type: 'movie' }, `film-audio-${t.id}`, () => root._update?.());
+  dub.field.append(dub.hint);
   const body = () => ({ type: 'movie', tmdbId: t.id, ...(filmExact.get(t.id) ? { quality: filmExact.get(t.id) } : {}), ...(dub.anime ? { dub: dub.dubbing() } : {}) });
   const play = h('button', { type: 'button', class: 'play-btn action-btn' });
   const get = h('button', { type: 'button', class: 'play-btn action-btn stroke-icon' }, icon('plus'), h('span', {}, T('Add to library')));
@@ -2357,18 +2362,13 @@ function showDownload(t, { season = null, onAdded = null } = {}) {
   const scopeField = h('div', { class: 'dl-field dl-scope' }, h('label', { for: scopeSel.id }, T('Episodes')), scopeSel);
   const submit = h('button', { type: 'button', class: 'play-btn dl-submit' }, h('span', {}, T('Add Season')));
   const quiet = h('p', { class: 'dl-quiet' });
-  // Upgrade quality: the season is here but looks soft. A clearly better pack replaces it episode by episode.
-  const upBtn = h('button', { type: 'button', class: 'chip dl-upgrade stroke-icon' }, icon('upgrade'), h('span', {}, T('Upgrade quality')));
-  const upNote = h('p', { class: 'dl-note dl-upgrade-note' });
-  const upStatus = h('p', { class: 'dl-status dl-upgrade-status', role: 'status' });
-  const upgradeBox = h('div', { class: 'dl-upgrade-box' }, upBtn, upNote, upStatus);
   const status = h('p', { class: 'dl-status', role: 'status' });
   const retry = h('button', { type: 'button', class: 'chip dl-retry' });
   const panel = h('div', { class: 'dl-panel', id: panelId, hidden: !ps.open },
     h('div', { class: 'dl-fields' },
       h('div', { class: 'dl-field' }, h('label', { for: seasonSel.id }, T('Season')), seasonSel),
-      h('div', { class: 'dl-field' }, h('label', { for: profileSel.id }, T('Quality')), profileSel), dub.field, scopeField, rangeRow),
-    note, avail, submit, quiet, h('div', { class: 'dl-result' }, status, retry), upgradeBox,
+      h('div', { class: 'dl-field' }, h('label', { for: profileSel.id }, T('Quality')), profileSel), dub.field, scopeField, rangeRow, dub.hint),
+    note, avail, submit, quiet, h('div', { class: 'dl-result' }, status, retry),
     advancedOptions(`tv-${t.id}`, {
       exact: ps.exact, onExact: (v) => { ps.exact = v; },
       browse: () => ({ query: `${t.title} S${pad2(ps.season || 1)}`, type: 'tv', tvId: t.id, canonicalTitle: t.title, strict: true }),
@@ -2461,13 +2461,6 @@ function showDownload(t, { season = null, onAdded = null } = {}) {
     try { await dub.remember(); await addFromServer(submit._add); } catch (err) { addError = err.message; } finally { adding = false; panel._update(); }
   });
   retry.addEventListener('click', () => run(retry._episodes));
-  ps.up ||= {};
-  upBtn.addEventListener('click', () => {
-    if (upBtn.getAttribute('aria-disabled') === 'true' || !ps.season) return;
-    const b = { type: 'tv', tmdbId: t.id, season: ps.season, upgrade: true };
-    ps.up[ps.season] = commandKey(b);
-    runDownloadCommand(b);
-  });
   panel._update = () => {
     const n = ps.season, se = seasons?.find((x) => x.number === n);
     const cmd = downloadCommands.get(ps.last[n]);
@@ -2538,23 +2531,52 @@ function showDownload(t, { season = null, onAdded = null } = {}) {
     retry._episodes = result?.episodes?.length ? result.episodes : null;
     retry.hidden = !result?.retry;
     retry.textContent = retry._episodes ? T('Retry unavailable') : T('Try again');
-    // Upgrade quality: offered once some of the season is here and nothing of it is downloading.
-    const up = downloadCommands.get(ps.up[n]);
-    const upJob = up && !up.busy ? up.job : null;
-    upgradeBox.hidden = dubbing || !(canGet() && ready.size > 0 && !submit._add && ((!downloading.size && !packBusy) || up));
-    upBtn.setAttribute('aria-disabled', String(Boolean(locked || up?.busy || downloading.size || packBusy)));
-    upBtn.lastChild.textContent = up?.busy ? T('Looking for better quality…') : T('Upgrade quality');
-    upBtn.hidden = Boolean(upJob && ['started', 'queued'].includes(upJob.outcome));
-    upNote.textContent = T('Looks soft? Finds a clearly better release of this season and swaps each episode as the new one finishes. Watch progress carries over.');
-    upNote.hidden = Boolean(up);
-    const upText = up?.error || upJob?.message || '';
-    if (upStatus.textContent !== upText) upStatus.textContent = upText;
-    upStatus.classList.toggle('is-error', Boolean(up?.error || upJob?.state === 'failed'));
   };
   commandViews.add(panel);
   panel._update();
   if (ps.open) load();
   return { toggle, dubBtn, panel };
+}
+
+// Upgrade quality: the season is here but looks soft. A clearly better pack replaces it episode by episode.
+// It sits where someone unhappy with the picture looks: on the season's page and in the player's Quality menu.
+// Both run the same command, so each shows what the other started.
+function upgradeState(t, season) {
+  const { ready, active } = titleState(t);
+  const have = ready.filter((f) => f.season === season && f.episode != null);
+  const got = new Set(have.map((f) => f.episode));
+  const downloading = active.some((d) => (d.season === season && !d.episodes?.length)
+    || (d.episodes || []).some((ep) => ep.season === season && !ep.available && !got.has(ep.episode)));
+  const body = { type: 'tv', tmdbId: t.id, season, upgrade: true };
+  const cmd = downloadCommands.get(commandKey(body));
+  const job = cmd && !cmd.busy ? cmd.job : null;
+  return {
+    // Not on dubbed copies: the search doesn't look for dual audio, so it could swap a dub for a subtitled pack.
+    offered: Boolean(t.id && canGet() && have.length && !have.some(isDubbedCopy) && (!downloading || cmd)),
+    disabled: Boolean(cmd?.busy || downloading), busy: Boolean(cmd?.busy), used: Boolean(cmd),
+    started: ['started', 'queued'].includes(job?.outcome),
+    text: cmd?.error || job?.message || '', failed: Boolean(cmd?.error || job?.state === 'failed'),
+    run: () => runDownloadCommand(body),
+  };
+}
+const upgradeLabel = (u) => (u.busy ? T('Looking for better quality…') : T('Upgrade quality'));
+function seasonUpgrade(t, season) {
+  const btn = h('button', { type: 'button', class: 'chip dl-upgrade stroke-icon' }, icon('upgrade'), h('span', {}));
+  const note = h('p', { class: 'muted season-upgrade-note' }, T('Looks soft? Finds a clearly better release of this season and swaps each episode as the new one finishes. Watch progress carries over.'));
+  const status = h('p', { class: 'dl-status dl-upgrade-status', role: 'status' });
+  btn.addEventListener('click', () => { if (btn.getAttribute('aria-disabled') !== 'true') upgradeState(t, season).run(); });
+  btn._update = () => {
+    const u = upgradeState(t, season);
+    btn.hidden = !u.offered || u.started;
+    btn.setAttribute('aria-disabled', String(u.disabled));
+    btn.lastChild.textContent = upgradeLabel(u);
+    note.hidden = !u.offered || u.used;
+    if (status.textContent !== u.text) status.textContent = u.text;
+    status.classList.toggle('is-error', u.failed);
+  };
+  commandViews.add(btn);
+  btn._update();
+  return { btn, about: h('div', { class: 'season-upgrade' }, note, status) };
 }
 
 // One missing episode in the show sheet: a quiet Download that runs the same command for it alone.
@@ -4903,13 +4925,20 @@ function wantedQuality() {
 const qualityAvailable = (session = current) => Boolean(session && !plainMedia(session) && playsHls() && touchScreen() && !audioCasting());
 const heightName = (h) => (!h ? '' : h >= 2000 ? '4K' : h >= 1400 ? '1440p' : h >= 1000 ? '1080p' : h >= 700 ? '720p' : 'SD');
 function closeQualityMenu() { qualityMenu.hidden = true; qualityBtn.setAttribute('aria-expanded', 'false'); }
+// The episode playing looks soft: its season can be upgraded right here. Not in Watch Together, whose file is shared.
+function playerUpgrade(session) {
+  if (party || session?.kind !== 'lib' || session.season == null || session.episode == null || !session.tmdbId) return null;
+  const u = upgradeState({ id: session.tmdbId, title: session.title, type: 'tv' }, session.season);
+  return u.offered ? u : null;
+}
 
 function renderQualityMenu() {
   const session = current;
   // Versions of this film or episode (src/versions.js): shown on every screen, above the phone streams.
   const vers = session && !plainMedia(session) && session.versions?.length > 1 ? session.versions : null;
   const stream = qualityAvailable(session);
-  qualityBtn.hidden = !stream && !vers;
+  const upgrade = playerUpgrade(session);
+  qualityBtn.hidden = !stream && !vers && !upgrade;
   if (qualityBtn.hidden) { closeQualityMenu(); return; }
   const phone = stream ? phoneQuality(session) : null;
   const source = heightName(session.sourceHeight);
@@ -4932,6 +4961,7 @@ function renderQualityMenu() {
     }),
   ] : [];
   qualityMenu.replaceChildren(
+    !vers && !stream ? h('p', { class: 'audio-title' }, T('Quality')) : '',
     ...versionItems,
     ...(stream ? [
       h('p', { class: 'audio-title' }, vers ? T('Stream') : T('Quality')),
@@ -4940,6 +4970,10 @@ function renderQualityMenu() {
       h('span', {}, label, h('small', {}, note)))),
     ] : []),
     h('p', { class: 'cc-message', role: 'status' }, session.qualityBusy ? T('Switching…') : vers && !stream ? T('Playing: {0}', session.versionLabel) : T('Playing: {0}', playing)),
+    !upgrade ? '' : upgrade.started ? h('p', { class: 'cc-message', role: 'status' }, upgrade.text)
+      : h('button', { type: 'button', role: 'menuitem', class: 'cc-item night-item quality-upgrade stroke-icon', tabindex: '-1', 'data-choice': 'upgrade', 'aria-disabled': String(upgrade.disabled),
+        onclick: (e) => { e.stopPropagation(); if (!upgrade.disabled) upgrade.run(); } }, // stays open, to show how the search went
+      icon('upgrade'), h('span', {}, upgradeLabel(upgrade), h('small', {}, upgrade.text || T('Looks soft? Swaps this season for a clearly better copy.')))),
   );
   if (focused && !qualityMenu.hidden) qualityMenu.querySelector(`[data-choice="${focused}"]`)?.focus({ preventScroll: true });
   const badge = $('#quality-badge');
@@ -5015,6 +5049,8 @@ qualityMenu.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeQualityMenu(); qualityBtn.focus(); }
 });
 document.addEventListener('click', (e) => { if (!qualityMenu.hidden && !qualityMenu.contains(e.target)) closeQualityMenu(); });
+qualityMenu._update = renderQualityMenu;
+commandViews.add(qualityMenu);
 
 // ---- controls ----
 // Marquee's own controls instead of the browser's, so they look the same everywhere, work from
