@@ -212,6 +212,7 @@ function longestRun(a, b, d, { minMatch, minSound }) {
 // ---- decoding ----
 const WINDOW = 360; // seconds of each ending to compare
 const INTRO_WINDOW = 480; // seconds from the start where the opening titles are looked for, past long cold opens
+const INTRO_FAR_WINDOW = 900; // searched only when that finds nothing, with stricter rules (see introFor)
 let busy = Promise.resolve(); // one decode at a time: it reads hundreds of MB from the media drive
 
 function decodeAudio(file, start, seconds) {
@@ -243,7 +244,7 @@ function decodeAudio(file, start, seconds) {
 
 // ---- per-file facts, cached on disk ----
 // files[path] = { key, duration, chapter, intro, vs: { siblingKey: creditsStart | null },
-//   ivs: { siblingKey: { start, end } | null } }  (v: what the probe recorded; older entries are probed again)
+//   ivs: { siblingKey: { start, end } | null }, ifar: the same, from the longer search }  (v: what the probe recorded; older entries are probed again)
 // siblingKey = the sibling's tok and its path without the extension. tok is the file's identity: its key
 // when first seen, and kept by the MP4 copy that takes over from its original (see twinOf), so neither the
 // episode nor its neighbours have to compare their audio again when originals are removed.
@@ -260,7 +261,7 @@ export function initCredits({ dataDir } = {}) {
     const saved = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
     if (saved && typeof saved.files === 'object') state = { files: saved.files };
   } catch { /* first run */ }
-  for (const entry of Object.values(state.files)) addIdentity(entry);
+  for (const entry of Object.values(state.files)) { addIdentity(entry); entry.ifar ||= {}; }
 }
 
 const stem = (file) => file.slice(0, file.length - path.extname(file).length);
@@ -318,12 +319,12 @@ async function facts(file) {
   if (hit?.key === key && hit.probed && hit.v === FACTS) { hit.at = Date.now(); return hit; }
   if (probing.has(file)) return probing.get(file);
   const task = probe(file).then((info) => {
-    if (!info) return { key, tok: key, duration: null, chapter: null, intro: null, vs: {}, ivs: {} }; // not cached: retried next time
+    if (!info) return { key, tok: key, duration: null, chapter: null, intro: null, vs: {}, ivs: {}, ifar: {} }; // not cached: retried next time
     const same = hit?.key === key; // only the probe got older: keep the comparisons already made
     const twin = !same && info.duration ? twinOf(file, info.duration) : null;
     const entry = { key, tok: same && hit.tok || twin?.entry.tok || key, duration: info.duration,
       chapter: info.chapter ?? twin?.entry.chapter ?? null, intro: info.intro ?? twin?.entry.intro ?? null,
-      vs: same && hit.vs || { ...twin?.entry.vs }, ivs: same && hit.ivs || { ...twin?.entry.ivs }, probed: true, v: FACTS, at: Date.now() };
+      vs: same && hit.vs || { ...twin?.entry.vs }, ivs: same && hit.ivs || { ...twin?.entry.ivs }, ifar: same && hit.ifar || { ...twin?.entry.ifar }, probed: true, v: FACTS, at: Date.now() };
     state.files[file] = entry;
     if (twin && !fs.existsSync(twin.file)) delete state.files[twin.file];
     save();
@@ -339,7 +340,7 @@ async function audioPrint(file, entry, part) {
   const id = `${file}|${entry.key}|${part}`;
   if (prints.has(id)) { const p = prints.get(id); prints.delete(id); prints.set(id, p); return p; }
   const start = part === 'ending' ? Math.max(entry.duration / 2, entry.duration - WINDOW) : 0;
-  const end = part === 'ending' ? entry.duration : Math.min(INTRO_WINDOW, entry.duration / 3);
+  const end = part === 'ending' ? entry.duration : Math.min(part === 'far' ? INTRO_FAR_WINDOW : INTRO_WINDOW, entry.duration / 3);
   const task = decodeAudio(file, start, end - start)
     .then(async (samples) => (samples ? { start, ...(await fingerprint(samples)) } : null));
   prints.set(id, task);
@@ -392,12 +393,13 @@ export async function creditsFor(file, siblings = []) {
 
 // The theme song both episodes open with, in each one's own time. Rounded inwards: the button may
 // appear a moment late and skip a moment short, never past the start of the episode itself.
-async function compareOpenings(fileA, a, fileB, b) {
-  const pair = [fileA, fileB].sort().join('\n') + '\nopening';
+async function compareOpenings(fileA, a, fileB, b, far = false) {
+  const part = far ? 'far' : 'opening', store = far ? 'ifar' : 'ivs';
+  const pair = [fileA, fileB].sort().join('\n') + `\n${part}`;
   if (comparing.has(pair)) return comparing.get(pair);
   const task = (async () => {
-    const pa = await audioPrint(fileA, a, 'opening');
-    const pb = pa && await audioPrint(fileB, b, 'opening');
+    const pa = await audioPrint(fileA, a, part);
+    const pb = pa && await audioPrint(fileB, b, part);
     if (!pa || !pb) return false;
     const m = matchOpenings(pa, pb);
     const span = (frame, entry) => {
@@ -405,8 +407,8 @@ async function compareOpenings(fileA, a, fileB, b) {
       const start = Math.ceil(SECONDS(frame) * 10) / 10, end = Math.floor((SECONDS(frame + m.frames) - 0.5) * 10) / 10;
       return end - start >= INTRO_MIN && end - start <= INTRO_MAX && end < entry.duration / 2 ? { start, end } : null;
     };
-    a.ivs[siblingKey(fileB, b)] = span(m?.a, a);
-    b.ivs[siblingKey(fileA, a)] = span(m?.b, b);
+    a[store][siblingKey(fileB, b)] = span(m?.a, a);
+    b[store][siblingKey(fileA, a)] = span(m?.b, b);
     save();
     return true;
   })().finally(() => comparing.delete(pair));
@@ -423,19 +425,30 @@ export function agreeIntro(found) {
 }
 
 // { start, end } in seconds of the episode's opening titles, or null. Same siblings as creditsFor.
+// Some cold opens run past INTRO_WINDOW. Further in, shared audio is more likely to be something else (a scene
+// repeated from the last episode), so the longer search only runs when the normal one finds nothing, which
+// keeps it from replacing real titles, and both siblings must then agree.
 export async function introFor(file, siblings = []) {
   const entry = await facts(file);
   if (!entry) return null;
   if (entry.intro) return entry.intro;
   if (!entry.duration || entry.duration < 300) return null;
-  const found = [];
+  const found = [], peers = [];
   for (const other of siblings.slice(0, 2)) {
     if (path.resolve(other) === path.resolve(file)) continue;
     const peer = await facts(other);
     if (!peer?.duration || peer.duration < 300) continue;
+    peers.push([other, peer]);
     const id = siblingKey(other, peer);
     if (!(id in entry.ivs)) await compareOpenings(file, entry, other, peer);
     if (entry.ivs[id]) found.push(entry.ivs[id]);
   }
-  return agreeIntro(found);
+  if (found.length || peers.length < 2 || entry.duration / 3 <= INTRO_WINDOW) return agreeIntro(found);
+  const far = [];
+  for (const [other, peer] of peers) {
+    const id = siblingKey(other, peer);
+    if (!(id in entry.ifar)) await compareOpenings(file, entry, other, peer, true);
+    if (entry.ifar[id]) far.push(entry.ifar[id]);
+  }
+  return far.length === 2 ? agreeIntro(far) : null;
 }

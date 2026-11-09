@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-09-skip-intro-long-openings",
+    "date": "2026-11-09",
+    "title": "Skip intro after long openings",
+    "items": [
+      {
+        "title": "Skip intro works on more episodes",
+        "text": "Some episodes play for a long time before their opening titles, like one in Better Call Saul that runs over nine minutes. Marquee now finds those titles too, so the Skip intro button shows up."
+      }
+    ]
+  },
+  {
     "id": "2026-11-09-watch-together-steadier",
     "date": "2026-11-09",
     "title": "Watch Together stops less",

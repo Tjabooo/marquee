@@ -164,6 +164,53 @@ test('introFor compares real encoded openings and caches them', async (t) => {
   assert.deepEqual(await introFor(e1, [e2]), i1, 'the comparison survives a restart');
 });
 
+async function longEpisodes(t) {
+  const run = promisify(execFile);
+  try { await run(process.env.FFMPEG || 'ffmpeg', ['-version']); } catch { t.skip('FFmpeg unavailable'); return null; }
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-late-'));
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  initCredits({ dataDir: dir });
+  return async (name, seed, parts) => {
+    const s = synth(seed), raw = path.join(dir, `${name}.raw`), out = path.join(dir, `${name}.m4a`);
+    const samples = s.pcm(...parts.map((p) => (typeof p === 'number' ? s.scene(p) : p)));
+    await fs.writeFile(raw, Buffer.from(samples.buffer));
+    await run(process.env.FFMPEG || 'ffmpeg', ['-v', 'error', '-f', 's16le', '-ar', String(RATE), '-ac', '1', '-i', raw, '-c:a', 'aac', '-b:a', '96k', '-y', out]);
+    await fs.rm(raw);
+    return out;
+  };
+}
+
+test('titles after a very long cold open are found once both neighbours agree', async (t) => {
+  const encode = await longEpisodes(t);
+  if (!encode) return;
+  const theme = synth(1).music(48);
+  const late = await encode('late', 7, [520, theme, 1232]);
+  const a = await encode('a', 99, [200, theme, 1552]);
+  const b = await encode('b', 5, [300, theme, 1452]);
+  assert.equal(await introFor(late, [a]), null, 'one neighbour is not enough this far in');
+  const i = await introFor(late, [a, b]);
+  assert.ok(i && Math.abs(i.start - 520) < 1 && i.end <= 568 && i.end > 566.5, `late intro ${JSON.stringify(i)}`);
+  const near = await introFor(a, [b, late]);
+  assert.ok(near && Math.abs(near.start - 200) < 1, `usual intro ${JSON.stringify(near)}`);
+  await saved();
+  initCredits({ dataDir: path.dirname(late) });
+  assert.deepEqual(await introFor(late, [a, b]), i, 'the longer search survives a restart');
+});
+
+test('a long scene repeated late on never counts as the intro', async (t) => {
+  const encode = await longEpisodes(t);
+  if (!encode) return;
+  const theme = synth(1).music(30), scene = synth(42).scene(90);
+  const x = await encode('x', 7, [100, theme, 470, scene, 1110]);
+  const y = await encode('y', 99, [150, theme, 420, scene, 1110]);
+  const i = await introFor(x, [y]);
+  assert.ok(i && Math.abs(i.start - 100) < 1 && i.end <= 130, `real titles kept ${JSON.stringify(i)}`);
+  const p = await encode('p', 11, [600, scene, 1110]);
+  const q = await encode('q', 13, [620, scene, 1090]);
+  const z = await encode('z', 17, [1800]);
+  assert.equal(await introFor(p, [q, z]), null, 'a scene shared with one neighbour is a recap, not titles');
+});
+
 // The MP4 "copies" here have no theme song, so getting the same intro back can only come from the
 // comparisons their originals made: a fresh comparison would find nothing.
 async function episodesWithCopies(t) {

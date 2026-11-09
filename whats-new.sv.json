@@ -1,4 +1,13 @@
 {
+  "2026-11-09-skip-intro-long-openings": {
+    "title": "Hoppa över intro efter långa öppningar",
+    "items": {
+      "Skip intro works on more episodes": {
+        "title": "Hoppa över intro fungerar på fler avsnitt",
+        "text": "Vissa avsnitt spelar länge innan förtexterna kommer, som ett i Better Call Saul där det tar över nio minuter. Marquee hittar nu de förtexterna också, så knappen Hoppa över intro dyker upp."
+      }
+    }
+  },
   "2026-11-09-watch-together-steadier": {
     "title": "Titta tillsammans stannar mer sällan",
     "items": {

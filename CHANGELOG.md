@@ -6,6 +6,7 @@ All notable changes to Marquee. Versions follow [Semantic Versioning](https://se
 
 ### Changed
 
+- **Skip intro finds titles after very long cold opens.** When the first eight minutes hold no shared theme song, the search reaches fifteen minutes, and both neighbouring episodes must agree on what it finds. Results from the normal search are unchanged.
 - **Play now stutters less.** It starts with up to 45 s in order when the download brings that within 20 s of the old minimum of 20 s.
   In hls.js browsers a stall now holds the picture until a useful amount is buffered (8, then 16, then 32 s when stalls repeat) instead of
   stopping after every 4 s piece. Episodes in season packs now really download in order: top file priority, which libtorrent
