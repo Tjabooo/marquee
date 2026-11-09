@@ -1,13 +1,19 @@
 // Clock compensation and gentle correction keep video timing independent of message arrival time.
 // Subtitle selection, volume and cue offsets are deliberately absent from the network protocol.
 import { T } from './i18n.js';
-export function playbackPlan(state, serverNow, currentTime) {
+// Small drift is corrected by a fixed, slight speed change that starts and stops rarely: changing
+// the speed all the time can pull a browser's audio away from its picture. Only a large gap seeks,
+// because a seek costs seconds of decoding on a big file and holds up the whole room.
+const SEEK_DRIFT = 1.25, CORRECT_FROM = 0.25, CORRECT_UNTIL = 0.06, CORRECT_RATE = 0.04;
+// A stall shorter than this stays private while the room plays: the viewer catches up by themselves.
+export const STALL_GRACE = 1000;
+export function playbackPlan(state, serverNow, currentTime, correcting = false) {
   const delay = state.playing ? Math.max(0, state.at - serverNow) : 0;
   const target = state.position + (state.playing ? Math.max(0, serverNow - state.at) / 1000 : 0);
   const playing = state.playing && delay === 0;
   const drift = target - currentTime;
-  return { target, delay, playing, seek: Math.abs(drift) > (playing ? 0.65 : 0.10),
-    rate: playing && Math.abs(drift) > 0.08 ? 1 + Math.max(-0.04, Math.min(0.04, drift * 0.18)) : 1 };
+  const correct = playing && Math.abs(drift) > (correcting ? CORRECT_UNTIL : CORRECT_FROM);
+  return { target, delay, playing, seek: Math.abs(drift) > SEEK_DRIFT, rate: correct ? 1 + Math.sign(drift) * CORRECT_RATE : 1 };
 }
 
 const cueTimes = new WeakMap();
@@ -107,14 +113,25 @@ export class WatchSession {
 
   listen(event, callback) { this.listeners.push([event, callback]); this.video.addEventListener(event, callback); }
 
+  // What the room hears. A viewer's own seek always holds the room, but a brief stall during
+  // playback doesn't: stopping everyone for it costs more than letting this one viewer catch up.
+  health() {
+    const stalled = this.waiting || this.video.readyState < 3;
+    if (!stalled) this.stalledSince = null;
+    else this.stalledSince ??= this.now();
+    const hiccup = stalled && !this.video.seeking && this.state.playing && this.now() - this.stalledSince < STALL_GRACE;
+    return { ready: this.connected && !this.video.seeking && (this.video.readyState >= 3 || hiccup), buffering: stalled && !hiccup };
+  }
+
   async pulse() {
     if (this.closed) return;
+    const health = this.health();
+    this.toldBuffering = health.buffering;
     if (this.pulsing) { this.pulseAgain = true; return; }
     this.pulsing = true;
     try {
       const start = this.now();
-      const state = await this.post('heartbeat', { ready: this.connected && this.video.readyState >= 3 && !this.video.seeking,
-        buffering: this.waiting || this.video.readyState < 3, blocked: this.blocked, rtt: this.rtt });
+      const state = await this.post('heartbeat', { ...health, blocked: this.blocked, rtt: this.rtt });
       if (this.closed) return;
       this.sample(start, this.now(), state.serverNow);
       this.online = true; this.receive(state);
@@ -134,15 +151,18 @@ export class WatchSession {
 
   sync() {
     clearTimeout(this.startTimer);
+    if (!this.closed && this.health().buffering !== this.toldBuffering) this.pulse(); // a stall outlasted its grace, or ended
     if (this.closed || !this.connected || !this.online || this.controlling || this.video.readyState < 1) return;
-    const plan = playbackPlan(this.state, this.serverNow, this.video.currentTime);
+    const plan = playbackPlan(this.state, this.serverNow, this.video.currentTime, this.correcting);
     const end = Number.isFinite(this.video.duration) ? Math.max(0, this.video.duration - 0.05) : plan.target;
     if (plan.seek && !this.video.seeking && (!this.blocked || this.video.paused)) {
       this.internalSeek = Math.min(plan.target, end);
       this.video.currentTime = this.internalSeek;
     }
     if (this.blocked) return; // Preload the shared position, but let the Ready button unlock sound.
-    this.video.playbackRate = this.video.seeking ? 1 : plan.rate;
+    const rate = this.video.seeking ? 1 : plan.rate;
+    this.correcting = rate !== 1;
+    if (this.video.playbackRate !== rate) this.video.playbackRate = rate;
     if (!plan.playing) {
       this.pauseVideo();
       if (plan.delay > 0) this.startTimer = setTimeout(() => this.sync(), Math.max(1, plan.delay));

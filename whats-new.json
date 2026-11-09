@@ -1,5 +1,20 @@
 [
   {
+    "id": "2026-11-09-watch-together-steadier",
+    "date": "2026-11-09",
+    "title": "Watch Together stops less",
+    "items": [
+      {
+        "title": "No more stopping for small hiccups",
+        "text": "A short hiccup for one person no longer pauses the video for the whole room. They catch up on their own, and the room only waits if the problem lasts longer than a second."
+      },
+      {
+        "title": "Steadier sound and picture",
+        "text": "Everyone's video now adjusts its timing far less often, which should keep the sound lined up with the picture. If it still drifts, pausing and playing again fixes it."
+      }
+    ]
+  },
+  {
     "id": "2026-11-08-play-now-smoother",
     "date": "2026-11-08",
     "title": "Play now runs more smoothly",

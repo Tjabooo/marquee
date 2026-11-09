@@ -1,4 +1,17 @@
 {
+  "2026-11-09-watch-together-steadier": {
+    "title": "Titta tillsammans stannar mer sällan",
+    "items": {
+      "No more stopping for small hiccups": {
+        "title": "Inga stopp för små hack",
+        "text": "Ett kort hack hos en person pausar inte längre videon för hela rummet. Personen kommer ikapp av sig själv, och rummet väntar bara om problemet varar längre än en sekund."
+      },
+      "Steadier sound and picture": {
+        "title": "Stabilare ljud och bild",
+        "text": "Allas video justerar nu sin timing mycket mer sällan, vilket bör hålla ljudet i takt med bilden. Om det ändå glider isär hjälper det att pausa och spela igen."
+      }
+    }
+  },
   "2026-11-08-play-now-smoother": {
     "title": "Spela nu flyter bättre",
     "items": {

@@ -62,6 +62,17 @@ test('playback compensation uses timestamps, not arrival delay, with bounded gen
   assert.equal(playbackPlan({ ...state, playing: false }, 15000, 50).target, 50);
 });
 
+test('speed correction starts and stops rarely, and small gaps never seek', () => {
+  const state = { position: 50, playing: true, at: 10000 };
+  assert.equal(playbackPlan(state, 10600, 50.45).rate, 1, 'Too small to start correcting');
+  assert.equal(playbackPlan(state, 10600, 50.45, true).rate, 1.04, 'Already correcting: keep going');
+  assert.equal(playbackPlan(state, 10600, 50.57, true).rate, 1, 'Close enough: stop');
+  assert.equal(playbackPlan(state, 10600, 51.2).rate, 0.96, 'Ahead slows down by the same fixed step');
+  assert.equal(playbackPlan(state, 10600, 49.6).seek, false, 'A one-second gap catches up by speed');
+  assert.equal(playbackPlan({ ...state, playing: false }, 10600, 49.5).seek, false, 'A paused room does not seek for a small gap');
+  assert.equal(playbackPlan({ ...state, playing: false }, 10600, 45).seek, true);
+});
+
 test('clock samples prefer the lowest RTT and subtitle offsets only alter that viewer’s cues', () => {
   const session = new WatchSession({ video: {}, room: { serverNow: 1000 }, now: () => 0 });
   session.sample(100, 120, 1110); assert.equal(session.clockOffset, 1000);
@@ -154,7 +165,11 @@ test('two simulated players stay aligned through start, pause, seek and a buffer
     host.control('seek', 120); await settle(); await settle();
     assert.ok(Math.abs(guest.video.currentTime - 120) < 0.1);
     host.control('play', 120); await settle(); await tick(1000);
-    guest.video.readyState = 2; guest.video.dispatchEvent(new Event('waiting')); await settle(); await settle();
+    guest.video.readyState = 2; guest.video.dispatchEvent(new Event('waiting')); await tick(500);
+    assert.equal(host.video.paused, false, 'A brief stall stays with the viewer who has it');
+    guest.video.readyState = 4; guest.video.dispatchEvent(new Event('canplay')); await tick(500);
+    assert.equal(host.video.paused, false); assert.equal(guest.video.paused, false);
+    guest.video.readyState = 2; guest.video.dispatchEvent(new Event('waiting')); await tick(1500);
     assert.equal(host.video.paused, true, 'Host waits for the remote buffer');
     guest.video.readyState = 4; guest.video.dispatchEvent(new Event('canplay')); await settle(); await tick(1000);
     assert.equal(host.video.paused, false); assert.equal(guest.video.paused, false);
