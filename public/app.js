@@ -6624,6 +6624,26 @@ function openWhatsNew(updates, { latest = null, stale = false, history = false, 
   else pushOverlay(close);
   if (!history) done.focus({ preventScroll: true });
 }
+// A tapped update notification (?update=<id>): the unseen notes if it's among them, else just that update.
+async function openUpdateNote(id) {
+  try {
+    const fresh = await api('/api/status');
+    if (fresh?.whatsNew && state.status) state.status.whatsNew = fresh.whatsNew;
+  } catch { /* use what the page has */ }
+  const wn = state.status?.whatsNew;
+  whatsNewView.build ??= wn?.build;
+  const stale = Boolean(wn?.build && whatsNewView.build !== wn.build);
+  clearTimeout(whatsNewView.retry);
+  if (whatsNewView.open) return;
+  if (wn?.unseen?.some((e) => e.id === id)) { openWhatsNew(wn.unseen, { latest: wn.latest, stale }); return; }
+  try {
+    const { updates } = await api('/api/whats-new');
+    const entry = updates.find((e) => e.id === id);
+    if (whatsNewView.open) return;
+    if (entry) openWhatsNew([entry], { stale });
+    else openWhatsNew(updates, { history: true, latest: wn?.latest || null });
+  } catch (err) { toast(err.message); }
+}
 async function showUpdateHistory({ replace = false } = {}) {
   try {
     const { updates } = await api('/api/whats-new');
@@ -6987,6 +7007,8 @@ function notificationSettings() {
       toggle(p.pushEpisode !== false, (v) => saveMe({ pushEpisode: v }), T('Notify about new episodes'))));
     out.push(settingsRow(T('Watch Together invites'), T('When someone asks you to join their room. Off: nobody can invite you this way.'),
       toggle(p.pushWatch !== false, (v) => saveMe({ pushWatch: v }), T('Notify about Watch Together invites'))));
+    out.push(settingsRow(T('Marquee updates'), T('When Marquee gets something new: a short summary of what changed.'),
+      toggle(p.pushUpdate !== false, (v) => saveMe({ pushUpdate: v }), T('Notify about Marquee updates'))));
     if (state.me?.isOwner) out.push(settingsRow(T('Agents'), T('When a script or AI agent on your home machines asks for your attention.'),
       toggle(p.pushAgent !== false, (v) => saveMe({ pushAgent: v }), T('Notify when an agent needs you'))));
     const test = h('button', { class: 'chip', type: 'button' }, T('Send a test'));
@@ -8648,6 +8670,7 @@ navigator.serviceWorker?.addEventListener('message', async (event) => {
   const token = url.searchParams.get('watch');
   if (token) { await offerWatchRoom(token); return; }
   if (url.searchParams.has('travel')) { await setView('library'); openTravelList(); return; }
+  if (url.searchParams.get('update')) { await openUpdateNote(url.searchParams.get('update')); return; }
   const view = url.hash.slice(1);
   if (view && view !== state.view && $(`#view-${view}`)) await setView(view);
 });
@@ -8688,6 +8711,12 @@ navigator.serviceWorker?.addEventListener('message', async (event) => {
   if (new URL(location.href).searchParams.has('travel')) {
     const url = new URL(location.href); url.searchParams.delete('travel'); history.replaceState(null, '', url.pathname + url.search + url.hash);
     await setView('library'); openTravelList();
+  }
+  // An update notification opens Marquee as ?update=<id>: show those notes.
+  const updateId = new URL(location.href).searchParams.get('update');
+  if (updateId) {
+    const url = new URL(location.href); url.searchParams.delete('update'); history.replaceState(null, '', url.pathname + url.search + url.hash);
+    await openUpdateNote(updateId);
   }
   schedulePoll();
   connectLive();

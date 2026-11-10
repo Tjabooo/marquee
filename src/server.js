@@ -50,7 +50,7 @@ import * as social from './social.js';
 import { handleWatchPage } from './watch-page.js';
 import { creditsFor, introFor, initCredits } from './credits.js';
 import * as whatsNew from './whats-new.js';
-import { languageOf, inLanguage, currentLanguage, translate } from './i18n.js';
+import { languageOf, inLanguage, currentLanguage, translate, tr } from './i18n.js';
 import { WatchlistStore, runRound as watchlistRound, baselineFrom } from './watchlist.js';
 import { PushStore, KINDS as PUSH_KINDS } from './push.js';
 import { Previews } from './previews.js';
@@ -209,6 +209,32 @@ initCredits({ dataDir: DATA_DIR });
 // What's new (whats-new.js): update notes everyone sees once, and an id for the web app being served.
 whatsNew.initWhatsNew(path.join(APP_DIR, 'whats-new.json'));
 const WEB_BUILD = whatsNew.buildId(['index.html', 'app.js', 'style.css'].map((f) => path.join(PUBLIC_DIR, f)));
+// Each new update is also sent once as a notification to everyone who hasn't read it yet and has
+// Settings → Notifications → Marquee updates on (whats-new.js updatesToPush/pushFor). Checked shortly
+// after start and every two minutes, so a note added without a restart goes out too.
+const UPDATE_PUSHES_FILE = path.join(DATA_DIR, '.marquee-update-pushes.json');
+async function pushNewUpdates() {
+  let pushed = [];
+  try { pushed = JSON.parse(fs.readFileSync(UPDATE_PUSHES_FILE, 'utf8')).pushed || []; } catch { /* none yet */ }
+  const fresh = whatsNew.updatesToPush(pushed);
+  if (!fresh.length) return;
+  // Written before sending: a crash halfway must never send the same update twice.
+  const ids = fresh.map((e) => e.id);
+  fs.writeFileSync(UPDATE_PUSHES_FILE, JSON.stringify({ pushed: [...ids, ...pushed].slice(0, 200) }, null, 1));
+  let people = 0, devices = 0;
+  for (const { id } of accounts.listUsers()) {
+    const user = accounts.userById(id);
+    if (!user || !push.hasDevice(id) || user.settings?.pushUpdate === false) continue;
+    const message = inLanguage(user.settings?.language || 'en', () => whatsNew.pushFor(user, ids, { tr }));
+    if (!message) continue;
+    people++;
+    devices += await push.send([id], 'update', message).catch((err) => { console.warn(`[push] ${err.message}`); return 0; });
+  }
+  console.log(`[push] update ${ids.join(', ')}: sent to ${people} ${people === 1 ? 'person' : 'people'} (${devices} device${devices === 1 ? '' : 's'})`);
+}
+const runUpdatePushes = () => pushNewUpdates().catch((err) => console.warn(`[push] update notes: ${err.message}`));
+setTimeout(runUpdatePushes, 20000).unref();
+setInterval(runUpdatePushes, 120000).unref();
 // The preview switch (preview.js): a second web app this browser can opt into at /preview.
 const PREVIEW_DIR = preview.previewDir();
 const webBuildFor = (req) => (preview.inPreview(req, PREVIEW_DIR) ? preview.previewBuild(PREVIEW_DIR) : WEB_BUILD);

@@ -117,3 +117,68 @@ export function buildId(files) {
   }
   return hash.digest('hex').slice(0, 12);
 }
+
+// ---------- Update notifications ----------
+// Every new update is also sent once as a notification (push kind "update", Settings → Notifications →
+// Marquee updates): a quick summary plus "Tap to read more", which opens the notes (?update=<id>).
+// Which updates have gone out is kept in DATA_DIR/.marquee-update-pushes.json, so a restart never
+// sends one twice. Only updates dated today or yesterday go out: older notes added late stay quiet.
+
+// The id of the newest update and the ones that still need sending, newest first. `pushed` is the ids
+// already sent. The file must have sat unchanged for `settleMs`, so a note being written isn't sent
+// half-done.
+export function updatesToPush(pushed, { now = Date.now(), settleMs = 90000, list = null } = {}) {
+  let all = list;
+  if (!all) {
+    if (!file) return [];
+    let stat;
+    try { stat = fs.statSync(file); } catch { return []; }
+    if (now - stat.mtimeMs < settleMs) return [];
+    all = entries();
+  }
+  const since = localDate(now - 86400000);
+  const done = new Set(pushed);
+  return announced(all).filter((e) => !done.has(e.id) && e.date >= since);
+}
+
+const localDate = (ms) => {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+// What one person hears about `updates` (ids, newest first): only the ones they can read and haven't
+// seen yet, in their language (call it inside i18n's inLanguage). Null when there's nothing for them.
+export function pushFor(user, ids, { tr, list = entries() } = {}) {
+  const wanted = new Set(ids);
+  const unseen = new Set(unseenFor(user, list).map((e) => e.id));
+  const mine = visible(announced(list), user).filter((e) => wanted.has(e.id) && unseen.has(e.id));
+  if (!mine.length) return null;
+  const more = tr('Tap to read more.');
+  const room = 300 - more.length - 1;
+  let title, summary;
+  if (mine.length === 1) {
+    const [e] = mine;
+    title = e.title ? tr('Marquee update: {0}', e.title) : tr('New in Marquee');
+    // One item: its first sentence says it best. Several: their headlines.
+    summary = e.items.length === 1
+      ? firstSentence(e.items[0].text) || e.items[0].title
+      : e.items.map((i) => i.title || firstSentence(i.text)).filter(Boolean).join(' · ');
+  } else {
+    title = tr('{0} Marquee updates', mine.length);
+    summary = mine.map((e) => e.title || e.items[0].title || firstSentence(e.items[0].text)).filter(Boolean).join(' · ');
+  }
+  return { title, body: `${clip(summary, Math.min(room, 220))} ${more}`.trim(), url: `/?update=${encodeURIComponent(mine[0].id)}`, tag: 'marquee-update' };
+}
+
+function firstSentence(text) {
+  const m = String(text || '').match(/^.*?[.!?](?=\s|$)/);
+  return (m ? m[0] : String(text || '')).trim();
+}
+
+function clip(text, max) {
+  text = text.replace(/\s+/g, ' ').trim();
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max - 1);
+  const space = cut.lastIndexOf(' ');
+  return `${(space > max * 0.6 ? cut.slice(0, space) : cut).replace(/[\s,·:;-]+$/, '')}…`;
+}

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { parseEntries, unseenFor, statusFor, allFor, initWhatsNew, buildId, MAX_UNSEEN } from '../src/whats-new.js';
+import { parseEntries, unseenFor, statusFor, allFor, initWhatsNew, buildId, MAX_UNSEEN, updatesToPush, pushFor } from '../src/whats-new.js';
 
 const entry = (id, date, items = [{ title: `Feature ${id}`, text: 'Does a thing.' }], title = `Update ${id}`) => ({ id, date, title, items });
 const user = (settings = {}, createdAt = Date.parse('2026-01-01'), isOwner = false) => ({ settings, createdAt, isOwner });
@@ -128,4 +128,65 @@ test('the build id changes with the files', () => {
     fs.writeFileSync(f, 'two');
     assert.notEqual(buildId([f]), a);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// ---------- update notifications ----------
+const trEn = (text, ...args) => text.replace(/\{(\d+)\}/g, (_, i) => args[+i] ?? '');
+const day = (iso) => new Date(`${iso}T12:00:00`).getTime();
+
+test('only new, recent, announced updates are pushed, and each once', () => {
+  const list = parseEntries([
+    entry('today', '2026-11-10'), entry('yesterday', '2026-11-09'), entry('old', '2026-11-01'),
+    { ...entry('quiet', '2026-11-10'), announce: false },
+  ]);
+  const now = day('2026-11-10');
+  assert.deepEqual(updatesToPush([], { now, list }).map((e) => e.id), ['today', 'yesterday']);
+  assert.deepEqual(updatesToPush(['today'], { now, list }).map((e) => e.id), ['yesterday']);
+  assert.deepEqual(updatesToPush(['today', 'yesterday'], { now, list }), []);
+});
+
+test('an update file still being written is not pushed yet', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wn-push-'));
+  const file = path.join(dir, 'whats-new.json');
+  fs.writeFileSync(file, JSON.stringify([entry('fresh', '2026-11-10')]));
+  initWhatsNew(file);
+  const written = fs.statSync(file).mtimeMs;
+  assert.deepEqual(updatesToPush([], { now: written + 10000 }), []);
+  // Settled, but dated more than a day before "now": too old to announce.
+  assert.deepEqual(updatesToPush([], { now: day('2026-11-20') }), []);
+  initWhatsNew(null);
+});
+
+test('one update: its title plus a short summary and "Tap to read more"', () => {
+  const list = parseEntries([entry('u1', '2026-11-10', [{ title: 'Faster starts', text: 'Videos start in a second. Even on phones.' }], 'Quicker playback')]);
+  const msg = pushFor(user(), ['u1'], { tr: trEn, list });
+  assert.equal(msg.title, 'Marquee update: Quicker playback');
+  assert.equal(msg.body, 'Videos start in a second. Tap to read more.');
+  assert.equal(msg.url, '/?update=u1');
+  assert.equal(msg.tag, 'marquee-update');
+});
+
+test('several items or updates are summed up by their headlines, and long ones are cut', () => {
+  const list = parseEntries([
+    entry('u2', '2026-11-10', [{ title: 'One', text: 'x.' }, { title: 'Two', text: 'y.' }], 'Two things'),
+    entry('u1', '2026-11-09', [{ title: 'A', text: 'z.' }], 'Earlier'),
+  ]);
+  assert.equal(pushFor(user(), ['u2'], { tr: trEn, list }).body, 'One · Two Tap to read more.');
+  const both = pushFor(user(), ['u2', 'u1'], { tr: trEn, list });
+  assert.equal(both.title, '2 Marquee updates');
+  assert.equal(both.body, 'Two things · Earlier Tap to read more.');
+  assert.equal(both.url, '/?update=u2');
+  const long = parseEntries([entry('l', '2026-11-10', [{ title: 'L', text: `${'word '.repeat(100)}end.` }])]);
+  const body = pushFor(user(), ['l'], { tr: trEn, list: long }).body;
+  assert.ok(body.length <= 300 && /… Tap to read more\.$/.test(body), body);
+});
+
+test('nobody hears about an update they already saw or can not read', () => {
+  const list = parseEntries([
+    entry('u2', '2026-11-10', [{ title: 'Owner bit', text: 'x.', audience: 'owner' }]),
+    entry('u1', '2026-11-09'),
+  ]);
+  assert.equal(pushFor(user({ seenUpdate: 'u1' }), ['u2'], { tr: trEn, list }), null); // owner-only for a guest
+  assert.ok(pushFor(user({ seenUpdate: 'u1' }, undefined, true), ['u2'], { tr: trEn, list }));
+  assert.equal(pushFor(user({ seenUpdate: 'u2' }, undefined, true), ['u2'], { tr: trEn, list }), null);
 });

@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-10-update-notifications",
+    "date": "2026-11-10",
+    "title": "Hear about new features",
+    "items": [
+      {
+        "title": "Updates come as a notification",
+        "text": "When Marquee gets something new, your phone or computer gets a notification with a quick summary. Tap it to read the whole note. Don't want them? Turn off Marquee updates in Settings → Notifications."
+      }
+    ]
+  },
+  {
     "id": "2026-11-10-new-look",
     "date": "2026-11-10",
     "title": "A whole new look",

@@ -4,6 +4,13 @@ All notable changes to Marquee. Versions follow [Semantic Versioning](https://se
 
 ## [Unreleased]
 
+### Added
+
+- **Update notifications.** Each new update in `whats-new.json` is pushed once to everyone who hasn't read it, with
+  its title, a short summary and "Tap to read more", which opens its notes (`/?update=<id>`). New setting
+  **Settings → Notifications → Marquee updates** (`pushUpdate`, on by default). Only updates dated today or yesterday
+  go out, after the file has been unchanged for 90 s; sent ids are kept in `DATA_DIR/.marquee-update-pushes.json`.
+
 ### Changed
 
 - **Skip intro finds titles after very long cold opens.** When the first eight minutes hold no shared theme song, the search reaches fifteen minutes, and both neighbouring episodes must agree on what it finds. Results from the normal search are unchanged.

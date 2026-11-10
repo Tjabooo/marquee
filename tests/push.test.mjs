@@ -128,7 +128,7 @@ test('a device moves to whoever subscribes it, can be removed, and people are ca
   assert.ok(store.devices(3).some((d) => d.label === 'Device 11'));
   store.forgetUser(3);
   assert.deepEqual(store.devices(3), []);
-  assert.deepEqual(Object.keys(KINDS), ['download', 'episode', 'watch', 'agent']);
+  assert.deepEqual(Object.keys(KINDS), ['download', 'episode', 'watch', 'agent', 'update']);
 });
 
 test('the page knows when this browser can get notifications', () => {

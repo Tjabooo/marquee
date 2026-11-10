@@ -47,7 +47,7 @@ const EXTEND_CHOICES = [1, 3, 7, 14, 30];
 
 // Per-person preferences (Settings tab).
 const USER_DEFAULTS = { theme: null, language: '', subLang: '', quality: 'all', downloadProfile: '', maxSize: 0, audioLang: '', dubbed: [], startView: 'discover', librarySort: 'newest', seenUpdate: '', skipIntro: 'button',
-  pushDownload: true, pushEpisode: true, pushWatch: true, pushAgent: true }; // which notifications they get (push.js)
+  pushDownload: true, pushEpisode: true, pushWatch: true, pushAgent: true, pushUpdate: true }; // which notifications they get (push.js)
 // Settings → Downloads. quality is the resolution chosen before profiles existed: it maps to a profile until one is chosen.
 const DOWNLOAD_PROFILES = ['save', 'balanced', 'best'];
 const MAX_SIZES = [0, 1, 2, 4, 8, 15, 30, 60]; // GB per film or episode; 0 = no limit
@@ -366,7 +366,7 @@ export function updateMe(user, patch) {
   if ('skipIntro' in patch && SKIP_INTRO.includes(patch.skipIntro)) s.skipIntro = patch.skipIntro;
   // the newest What's new update this person has seen (whats-new.js)
   if ('seenUpdate' in patch && /^[A-Za-z0-9._-]{1,40}$/.test(String(patch.seenUpdate))) s.seenUpdate = String(patch.seenUpdate);
-  for (const k of ['pushDownload', 'pushEpisode', 'pushWatch', 'pushAgent']) if (k in patch) s[k] = Boolean(patch[k]);
+  for (const k of ['pushDownload', 'pushEpisode', 'pushWatch', 'pushAgent', 'pushUpdate']) if (k in patch) s[k] = Boolean(patch[k]);
   const stored = Object.fromEntries(Object.entries(s).filter(([k, v]) => v !== USER_DEFAULTS[k]));
   if (name !== null) db.prepare('UPDATE users SET name = ?, settings = ? WHERE id = ?').run(name || null, JSON.stringify(stored), user.id);
   else db.prepare('UPDATE users SET settings = ? WHERE id = ?').run(JSON.stringify(stored), user.id);

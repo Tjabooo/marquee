@@ -112,7 +112,7 @@ After an update, everyone sees a short **What's new** sheet once, the next time 
              { "title": "Server tool", "text": "Only the owner sees this one.", "audience": "owner" }] }]
 ```
 
-Each person's settings remember the newest update they've closed (`seenUpdate`). Someone who has never closed one sees only the updates dated on or after the day they joined, so newcomers aren't shown the whole history. At most the three newest unseen updates are shown. The sheet waits while a video is playing or another sheet is open. A page that was left open through an update (the web app's files changed since it loaded) offers **Reload to update**. Settings → What's new lists every update. The file is re-read when it changes, so a note can be fixed without a restart.
+Each person's settings remember the newest update they've closed (`seenUpdate`). Someone who has never closed one sees only the updates dated on or after the day they joined, so newcomers aren't shown the whole history. At most the three newest unseen updates are shown. The sheet waits while a video is playing or another sheet is open. A page that was left open through an update (the web app's files changed since it loaded) offers **Reload to update**. Settings → What's new lists every update. The file is re-read when it changes, so a note can be fixed without a restart. Each new update is also sent once as a notification (*Marquee updates*, see Notifications).
 
 ## Notifications
 
@@ -125,6 +125,7 @@ People turn it on per device in **Settings → Notifications** and switch each k
 | Downloads ready | `pushDownload` | Something you downloaded (or asked for) landed in your library; a season pack's episodes replace each other's notification |
 | New episodes | `pushEpisode` | A show you follow got an episode downloaded for you, or an episode of a show in your library was downloaded by someone else; once per episode. Nothing about shows or films that aren't in your library |
 | Watch Together invites | `pushWatch` | Someone in a room taps **Invite** and picks you; opens the room's join screen. Off: you aren't offered as an invitee |
+| Marquee updates | `pushUpdate` | A new update in `whats-new.json` that you haven't read yet: its title, a short summary and *Tap to read more*, which opens its notes (`/?update=<id>`). Sent once per update (`.marquee-update-pushes.json` in `DATA_DIR`), only for updates dated today or yesterday, after the file has sat unchanged for 90 s; several at once become one notification |
 
 Push endpoints must belong to a known push service (Google FCM, Mozilla, Apple, Windows), so a subscription can't make the server POST to an address on your network. A device the push service reports as gone (404/410) is removed. On iPhone and iPad, Apple allows web notifications only for Home Screen apps (iOS 16.4+), which Settings explains. A server reached only over plain `http://` (not localhost) can't use notifications: browsers require https.
 

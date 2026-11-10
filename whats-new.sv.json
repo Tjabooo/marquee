@@ -1,4 +1,13 @@
 {
+  "2026-11-10-update-notifications": {
+    "title": "Få veta när något är nytt",
+    "items": {
+      "Updates come as a notification": {
+        "title": "Uppdateringar kommer som en avisering",
+        "text": "När Marquee får något nytt får din telefon eller dator en avisering med en kort sammanfattning. Tryck på den för att läsa hela anteckningen. Vill du inte ha dem? Stäng av Uppdateringar av Marquee under Inställningar → Aviseringar."
+      }
+    }
+  },
   "2026-11-10-new-look": {
     "title": "Ett helt nytt utseende",
     "items": {

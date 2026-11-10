@@ -509,5 +509,9 @@
  "Pick a Marquee password first.": "Välj ett lösenord för Marquee först.",
  "Only people signed in with an email can set a password here.": "Bara den som är inloggad med en mejladress kan välja lösenord här.",
  "You already have a password. Change it in Settings.": "Du har redan ett lösenord. Byt det under Inställningar.",
- "That account has no password yet.": "Det kontot har inget lösenord än."
+ "That account has no password yet.": "Det kontot har inget lösenord än.",
+ "Tap to read more.": "Tryck för att läsa mer.",
+ "Marquee update: {0}": "Uppdatering av Marquee: {0}",
+ "{0} Marquee updates": "{0} uppdateringar av Marquee",
+ "New in Marquee": "Nytt i Marquee"
 }
