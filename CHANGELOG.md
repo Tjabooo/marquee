@@ -15,6 +15,15 @@ All notable changes to Marquee. Versions follow [Semantic Versioning](https://se
 
 ### Added
 
+- **Preview switch (`PREVIEW_DIR`).** Point it at a second `public/` folder (for example a worktree of a redesign
+  branch) and `/preview` switches one browser to it, with the live API, sign-in and permissions; `/preview/off`
+  switches back. Missing files fall back to `public/`, the path guard is the same, preview pages get their own build
+  id (so they offer a reload when the preview is updated) and `/api/status` says `preview: true`. Server-drawn pages
+  (sign-in, share pages) get the preview's `pages.css`. Off by default; see docs/configuration.md.
+- **Title page data.** `GET /api/title/:type/:id/page` (TMDB logo art, tagline, runtime, genres, age rating, cast
+  with photos, recommendations; one cached TMDB call) and `GET /api/tv/:id/season/:n` (episode descriptions,
+  running times, air dates and stills). Not used by the current web app yet.
+
 - **Play now.** Watch a film or episode while it downloads, in any browser and on iPhones, whatever its format. qBittorrent downloads
   it in order, and ffmpeg reads it through a loopback server that holds each read until those pieces are verified
   (`src/partial-stream.js`), making the usual live HLS stream of up to 1080p. A popup explains when the video stops to wait for the

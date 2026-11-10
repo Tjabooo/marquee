@@ -64,6 +64,7 @@ import { PhoneStreams, segmentIndex, isHeavy, probe as probePhone } from './phon
 import { PartialStreams, parsePartialId } from './partial-stream.js';
 
 import { APP_DIR, DATA_DIR, CACHE_DIR, PUBLIC_DIR, dataDirProblem, ensureDataDir } from './paths.js';
+import * as preview from './preview.js';
 
 {
   const problem = dataDirProblem();
@@ -205,6 +206,9 @@ initCredits({ dataDir: DATA_DIR });
 // What's new (whats-new.js): update notes everyone sees once, and an id for the web app being served.
 whatsNew.initWhatsNew(path.join(APP_DIR, 'whats-new.json'));
 const WEB_BUILD = whatsNew.buildId(['index.html', 'app.js', 'style.css'].map((f) => path.join(PUBLIC_DIR, f)));
+// The preview switch (preview.js): a second web app this browser can opt into at /preview.
+const PREVIEW_DIR = preview.previewDir();
+const webBuildFor = (req) => (preview.inPreview(req, PREVIEW_DIR) ? preview.previewBuild(PREVIEW_DIR) : WEB_BUILD);
 screenTime.initScreenTime({ dataDir: DATA_DIR });
 clips.initClips({ dataDir: DATA_DIR, cacheDir: CACHE_DIR, getEncoder: () => converter.converterStatus().encoder });
 invites.initInvites({ dataDir: DATA_DIR, onEvent: activity.record });
@@ -231,6 +235,9 @@ const MIME = {
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.ico': 'image/x-icon',
+  '.jpg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.woff2': 'font/woff2',
   '.mp4': 'video/mp4',
   '.m4v': 'video/mp4',
   '.mov': 'video/quicktime',
@@ -464,6 +471,54 @@ function pickTrailer(videos, lang) {
     .sort((a, b) => score(b) - score(a) || String(b.published_at || '').localeCompare(String(a.published_at || '')))[0];
   return best ? { key: best.key, name: best.name || best.type, type: best.type } : null;
 }
+
+// What /api/title/:type/:id/page sends: the parts of a TMDB details answer the title page uses.
+const TMDB_IMG = 'https://image.tmdb.org/t/p/';
+function pickLogo(logos, original) {
+  const score = (l) => (l.iso_639_1 === 'en' ? 300 : l.iso_639_1 === original ? 200 : l.iso_639_1 == null ? 100 : 0)
+    + (/\.png$/i.test(l.file_path) ? 20 : 0) + (Number(l.vote_average) || 0) * 2 + Math.min(Number(l.width) || 0, 2000) / 1000;
+  const best = (logos || []).filter((l) => l?.file_path && /\.(png|svg)$/i.test(l.file_path)).sort((a, b) => score(b) - score(a))[0];
+  if (!best) return null;
+  return { url: `${TMDB_IMG}${/\.svg$/i.test(best.file_path) ? 'original' : 'w500'}${best.file_path}`, aspect: Number(best.aspect_ratio) || null };
+}
+function certification(type, d) {
+  const order = ['SE', 'US', 'GB'];
+  if (type === 'tv') {
+    const list = d.content_ratings?.results || [];
+    for (const c of order) { const r = list.find((x) => x.iso_3166_1 === c && x.rating); if (r) return r.rating; }
+    return null;
+  }
+  const list = d.release_dates?.results || [];
+  for (const c of order) {
+    const r = list.find((x) => x.iso_3166_1 === c)?.release_dates?.find((x) => x.certification);
+    if (r) return r.certification;
+  }
+  return null;
+}
+export function titlePage(type, d) {
+  const credits = type === 'tv' ? d.aggregate_credits : d.credits;
+  return {
+    logo: pickLogo(d.images?.logos, d.original_language),
+    tagline: d.tagline || '',
+    runtime: type === 'tv' ? (d.episode_run_time?.[0] || d.last_episode_to_air?.runtime || null) : (d.runtime || null),
+    genres: (d.genres || []).map((g) => g.name).filter(Boolean),
+    certification: certification(type, d),
+    seasons: type === 'tv' ? d.number_of_seasons || null : null,
+    episodes: type === 'tv' ? d.number_of_episodes || null : null,
+    status: d.status || null,
+    cast: (credits?.cast || []).filter((c) => c.name && c.id).slice(0, 16).map((c) => ({
+      id: c.id, name: c.name,
+      character: c.character || c.roles?.[0]?.character || '',
+      photo: c.profile_path ? `${TMDB_IMG}w185${c.profile_path}` : null,
+    })),
+    similar: (d.recommendations?.results || []).filter((x) => x.poster_path && (x.media_type ? ['movie', 'tv'].includes(x.media_type) : true))
+      .slice(0, 20).map((x) => mapTitle(x, x.media_type || type)),
+  };
+}
+export const seasonEpisodes = (d) => (d.episodes || []).map((e) => ({
+  number: e.episode_number, name: e.name || null, overview: e.overview || '', runtime: e.runtime || null,
+  airDate: e.air_date || null, still: e.still_path ? `${TMDB_IMG}w300${e.still_path}` : null,
+}));
 
 async function discoverList(key, page = 1) {
   const [endpoint, type] = LISTS[key] || [];
@@ -3097,7 +3152,8 @@ async function handleApi(req, res, url) {
       me: { ...accounts.publicUser(user), via: req.auth.via },
       rules: accounts.serverSettings(),
       subLangs: subtitles.subtitleLanguages(),
-      whatsNew: whatsNew.statusFor(user, WEB_BUILD),
+      whatsNew: whatsNew.statusFor(user, webBuildFor(req)),
+      ...(preview.inPreview(req, PREVIEW_DIR) && { preview: true }),
     });
   }
   // Every update's notes, for Settings → What's new.
@@ -3126,6 +3182,24 @@ async function handleApi(req, res, url) {
     const d = await cachedTmdb(m[1] === 'tv' ? `/tv/${m[2]}/aggregate_credits` : `/movie/${m[2]}/credits`, {}, 24 * 3600 * 1000);
     const people = (d.cast || []).filter((c) => c.name && c.id).slice(0, 5).map((c) => ({ name: c.name, id: c.id }));
     return sendJson(res, 200, { cast: people.map((c) => c.name), people });
+  }
+  // A title page's extras beyond the card: logo art, runtime, genres, tagline, age rating, the cast with
+  // faces and titles like it. One TMDB call (append_to_response), cached 12 h like the trailer.
+  if ((m = p.match(/^\/api\/title\/(movie|tv)\/(\d+)\/page$/))) {
+    if (!tmdbOn()) return sendJson(res, 200, { page: null });
+    const tv = m[1] === 'tv';
+    const lang = TMDB_LANG.split('-')[0];
+    const d = await cachedTmdb(`/${m[1]}/${m[2]}`, {
+      append_to_response: tv ? 'images,aggregate_credits,recommendations,content_ratings' : 'images,credits,recommendations,release_dates',
+      include_image_language: [...new Set(['en', lang, 'null'])].join(','),
+    }, 12 * 3600 * 1000);
+    return sendJson(res, 200, { page: titlePage(m[1], d) });
+  }
+  // One season's episodes with descriptions, running times and air dates, for a title page's episode list.
+  if ((m = p.match(/^\/api\/tv\/(\d+)\/season\/(\d+)$/))) {
+    if (!tmdbOn()) return sendJson(res, 200, { episodes: [] });
+    const d = await cachedTmdb(`/tv/${m[1]}/season/${m[2]}`, {}, 6 * 3600 * 1000);
+    return sendJson(res, 200, { episodes: seasonEpisodes(d) });
   }
   // Anime get an Audio choice in the Download panel; `dubbed`: what this person last chose for it.
   if ((m = p.match(/^\/api\/title\/(movie|tv)\/(\d+)\/dub$/))) {
@@ -3782,16 +3856,20 @@ async function handleApi(req, res, url) {
 }
 
 // ---------- static files ----------
-async function serveStatic(res, pathname) {
-  const rel = decodeURIComponent(pathname === '/' ? '/index.html' : pathname);
-  const full = path.resolve(PUBLIC_DIR, '.' + rel);
-  if (!full.startsWith(PUBLIC_DIR + path.sep)) throw new HttpError(400, 'Bad path.');
-  let data;
-  try { data = await fs.promises.readFile(full); } catch { throw new HttpError(404, 'Not found.'); }
+// With the preview switched on (preview.js), PREVIEW_DIR is tried first and public/ fills the gaps.
+async function serveStatic(req, res, pathname) {
+  let data, full;
+  for (const root of preview.staticRoots(req, PUBLIC_DIR, PREVIEW_DIR)) {
+    full = preview.staticFile(root, pathname);
+    if (!full) throw new HttpError(400, 'Bad path.');
+    try { data = await fs.promises.readFile(full); break; } catch { /* not in this folder */ }
+  }
+  if (!data) throw new HttpError(404, 'Not found.');
   res.writeHead(200, {
     'Content-Type': MIME[path.extname(full).toLowerCase()] || 'application/octet-stream',
     'Cache-Control': 'no-cache',
     'CDN-Cache-Control': 'no-store', // keeps Cloudflare from serving an old copy after an update
+    ...(PREVIEW_DIR && { Vary: 'Cookie' }),
   });
   res.end(data);
 }
@@ -3907,6 +3985,7 @@ async function handleRequest(req, res) {
     await trust.sanitize(req);
     auth.guard(req, res);       // DNS rebinding, cross-site requests, security headers (auth.js)
     auth.identify(req);         // proxy identity, Marquee sign-in, or the shared home account
+    if (url.pathname === '/signin' || url.pathname.startsWith('/c/')) preview.previewPageStyles(req, res, PREVIEW_DIR);
     if (url.pathname === '/signin' && (req.method === 'GET' || req.method === 'HEAD')) return sendSignIn(req, res, url);
     if (!req.auth.via && !publicPath(req, url)) return refuseSignedOut(req, res, url);
     const allowed = req.method === 'GET' || req.method === 'HEAD'
@@ -3931,7 +4010,7 @@ async function handleRequest(req, res) {
         && !(await invites.handlePublic(req, res, url))
         && !(await noteShare.handlePublic(req, res, url, { notes, media: sharedMedia, sendVideo, nameFor: (email) => accounts.displayNameFor(email) })) && !(await clips.handlePublic(req, res, url, { sendVideo, previews }))) throw new HttpError(404, 'Not found.');
     }
-    else await serveStatic(res, url.pathname);
+    else if (!(req.method === 'GET' && preview.previewRoute(req, res, url.pathname, PREVIEW_DIR))) await serveStatic(req, res, url.pathname);
   } catch (err) {
     const status = err.status || 500;
     if (status === 500) console.error(err);
@@ -4499,6 +4578,8 @@ server.listen(PORT, HOST, () => {
   console.log(`  Sign-in:   ${auth.mode === 'signin' ? 'required for everyone' : 'home network shares one account; visitors from the internet must sign in'}`);
   console.log(`  Search:    ${TMDB_TOKEN || TMDB_KEY ? 'ready' : 'off (add TMDB_TOKEN to .env)'}`);
   console.log(`  Library:   ${MEDIA_DIR || 'off (add MEDIA_DIR to .env)'}`);
+  if (PREVIEW_DIR) console.log(`  Preview:   ${PREVIEW_DIR} (open /preview to try it, /preview/off to leave)`);
+  else if (preview.previewProblem()) console.log(`  ! ${preview.previewProblem()}`);
   console.log(`  Downloads: ${QBIT_URL ? `${QBIT_URL}${REMOVE_FINISHED ? ', finished downloads removed (no seeding)' : ''}` : 'off (add QBIT_URL to .env)'}`);
   console.log(`  Torrents:  ${torrents.torrentsEnabled() ? 'search on (1337x + The Pirate Bay)' : 'off (TORRENTS=off)'}`);
   console.log(`  Subtitles: ${subtitles.subtitlesConfigured() ? 'OpenSubtitles on' : 'off (add OPENSUBTITLES_API_KEY to .env)'}${subsync.autoSyncEnabled() ? ', timing auto-fix on' : ''}`);

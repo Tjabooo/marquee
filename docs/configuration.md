@@ -20,6 +20,7 @@ Settings marked 🔒 are secrets: keep `.env` readable only by the account that 
 | `PUBLIC_URL` | from the request | Public address used in share links and link previews, e.g. `https://marquee.example.com`. |
 | `DATA_DIR` | the Marquee folder | Where the database, state files, Notes attachments and `cache/` live. Marquee refuses to start if `DATA_DIR` points at an empty folder while the Marquee folder still has a database; move it with `node setup.js migrate-data --to <folder>`. |
 | `CACHE_DIR` | `cache` in `DATA_DIR` | Where copies Marquee can always make again are kept: browser copies, timeline previews, share copies. They can take hundreds of GB, so put this on a big drive rather than a small system disk. To move it, stop Marquee and move the folder's contents. |
+| `PREVIEW_DIR` | off | Absolute path to a second copy of the web app (another `public/` folder, e.g. a git worktree of a redesign branch). Opening `/preview` sets a `marquee_preview` cookie that makes this browser get its files (anything missing comes from `public/`); `/preview/off` clears it. Everything else stays the same: the API, sign-in and permissions. Server-drawn pages (sign-in, share pages) also get the folder's `pages.css`. Updating the preview's files needs no restart. See [Previewing a redesign](#previewing-a-redesign). |
 | `STREAM_SECRET` 🔒 | generated | Key that signs stream links. Blank: generated once and stored in `.marquee-secret`. Changing it invalidates links that are already open on TVs. |
 | `MARQUEE_ENV_FILE` | `.env` in the Marquee folder | Environment only (not read from `.env`): load settings from another file. |
 
@@ -177,3 +178,17 @@ Invites add people to the email list your Cloudflare Access policy allows. See
 | `CF_ACCOUNT_ID` | | Cloudflare account ID. |
 | `CF_ACCESS_LIST_ID` | | ID of the email list (Zero Trust → Reusable components → Lists). |
 | `INVITE_DAYS` | `7` | How long an invite link stays valid. |
+
+## Previewing a redesign
+
+`PREVIEW_DIR` lets you try a new web app on the real server, with the real library, before anyone else
+sees it:
+
+1. Check the branch out next to the live copy, e.g. `git worktree add ../marquee-preview redesign`.
+2. Set `PREVIEW_DIR` to its `public` folder (absolute path) and restart Marquee once.
+3. Open `https://your-marquee/preview` in the browser that should see it. `/preview/off` goes back.
+
+Pull new commits into the worktree to update the preview; static files are read on every request, so
+no restart is needed, and open preview pages offer a reload like after a normal update. The preview
+uses the live API, so a server change it relies on has to be live first.
+
