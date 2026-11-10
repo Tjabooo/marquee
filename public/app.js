@@ -7,7 +7,7 @@ import { audioChoices, audioLanguage, nativeAudioMapping } from './player-audio.
 import { createSeekPreview } from './seek-preview.js';
 import * as pushDevice from './notifications.js';
 import { createStreamStats } from './player-stats.js';
-import { playPartial } from './player-partial.js';
+import { playPartial, fmtEta as fmtWait } from './player-partial.js';
 import { SUB_SIZES, SUB_BACKGROUNDS, SUB_POSITIONS, subLook, subRaise, secondChoices, createNightAudio,
   SLEEP_MINUTES, sleepTimer, sleepSecondsLeft, sleepFade, sleepLabel } from './player-comfort.js';
 import { comingUp, newEpisodes, watchStatus, todayIso } from './watchlist.js';
@@ -4018,6 +4018,10 @@ function roomStatus(room, host) {
   if (!party.connected || !party.online) return ['alert', T('Reconnecting… playback is paused')];
   if (counting) return ['count', T('Starts {0}{1}', startLabel(room.startsAt), party.blocked ? T(' · tap Ready so it can start for you') : '')];
   if (party.blocked) return ['alert', T('Press Play to join playback')];
+  if (room.waitingForDownload) {
+    const eta = room.download?.wait > 0 ? fmtWait(room.download.wait) : null;
+    return ['wait', eta ? T('Waiting for the download · starts in about {0}', eta) : T('Waiting for the download')];
+  }
   if (room.waitingFor.length) return ['wait', T('Waiting for {0}', namesText(room.waitingFor))];
   if (room.playing) return ['live', T('Playing for {0}', room.members.length === 1 ? T('you') : T('all {0}', room.members.length))];
   return ['wait', party.isHost ? T('Paused · press Play when everyone’s ready') : T('Paused · {0} has the remote', host)];
@@ -4069,7 +4073,7 @@ function renderParty() {
   const bar = $('#watch-bar');
   bar.hidden = !party || !watchPanelOpen;
   const roomButton = $('#watch-btn');
-  roomButton.hidden = !party && (current?.kind !== 'lib' || !state.library.some((f) => f.id === mediaId(current)));
+  roomButton.hidden = !party && !(current?.kind === 'part' || (current?.kind === 'lib' && state.library.some((f) => f.id === mediaId(current))));
   roomButton.setAttribute('aria-expanded', String(Boolean(party && watchPanelOpen)));
   roomButton.classList.toggle('is-on', Boolean(party));
   renderRoomButton(party?.state);
@@ -4135,14 +4139,15 @@ function leaveWatchRoom(notify = true) {
   if (current) { watchCastTargets(); renderCcMenu(current, current); }
 }
 
-function attachWatchRoom(room) {
+// joined = this viewer already joined playback in this room (the video changed under them): no new tap.
+function attachWatchRoom(room, joined = false) {
   if (party) leaveWatchRoom();
-  const alreadyPlaying = !video.paused && video.readyState >= 3;
+  const alreadyPlaying = joined || (!video.paused && video.readyState >= 3);
   video.pause();
   video.preload = 'auto';
   video.disableRemotePlayback = true;
   resetCasting();
-  party = new WatchSession({ video, room, clientId: watchClient, request: api, onState: renderParty,
+  party = new WatchSession({ video, room, clientId: watchClient, request: api, onState: followRoom,
     onEnd: (message) => { leaveWatchRoom(false); video.pause(); toast(message); }, onError: toast,
     onChat: partyChat, onReaction: (r) => { if (r.from !== watchClient) social.burst($('#reaction-layer'), r.emoji, r.name, r.avatar); } });
   partyUnread = 0;
@@ -4153,8 +4158,22 @@ function attachWatchRoom(room) {
   return party;
 }
 
+// Room state arrived. A Play now room whose download finished moves to the full-quality file: everyone's
+// player reloads it in place and keeps their seat (the room waits until they're all ready again).
+function followRoom(session) {
+  const media = session.state.media;
+  if (session === party && current?.kind === 'part' && media?.kind === 'lib') {
+    const room = session.state, joined = !session.blocked;
+    leaveWatchRoom(false);
+    loadPlayerMedia({ ...media, key: media.id, done: true }, { watchRoom: room, roomJoined: joined });
+    toast(T('Switching to full quality'));
+    return;
+  }
+  renderParty();
+}
+
 async function hostWatchRoom() {
-  if (!current || current.kind !== 'lib' || party) return;
+  if (!current || !['lib', 'part'].includes(current.kind) || party) return;
   if (onTvVersion || video.remote?.state === 'connected') { toast(T('Watch Together uses the browser player. Stop casting first.')); return; }
   const btn = $('#watch-btn'); btn.disabled = true;
   const media = current;
@@ -6156,6 +6175,7 @@ async function loadPlayerMedia(f, opts = {}) {
   }
   // Still downloading: a live stream of what's there so far. The finished file takes over when it's ready.
   if (f.kind === 'part') {
+    const watchSession = opts.watchRoom ? attachWatchRoom(opts.watchRoom, opts.roomJoined) : null;
     renderParty();
     seekPreview.load(null);
     playPartial(session, {
@@ -6163,7 +6183,9 @@ async function loadPlayerMedia(f, opts = {}) {
       isCurrent: (s) => current === s,
       setSource: setPlayerSource,
       setHlsSource,
+      room: () => party,
       onMetadata: (s) => {
+        if (party) { party.sync(); return; }
         // Resume, but not further than the download has reached.
         const saved = savedProgress(s);
         const reach = (s.part?.inOrder || 0) * video.duration - 20;
@@ -6183,9 +6205,16 @@ async function loadPlayerMedia(f, opts = {}) {
       leave: closeTopOverlay,
       toast,
     });
+    // The room connects now, not once the stream opens: the start of the video can take a minute to download,
+    // and a viewer who isn't heard from for 20 s leaves the room. Until their video is ready the room waits.
+    if (watchSession) {
+      watchSession.start().catch((error) => {
+        if (current === session && party === watchSession) { leaveWatchRoom(); video.pause(); err.textContent = error.message; err.hidden = false; }
+      });
+    }
     return;
   }
-  const watchSession = opts.watchRoom ? attachWatchRoom(opts.watchRoom) : null;
+  const watchSession = opts.watchRoom ? attachWatchRoom(opts.watchRoom, opts.roomJoined) : null;
   renderParty();
   // Intro and credits lookups are optional and never delay playback. The intro is needed first, and
   // both share the server's one-at-a-time audio decoding, so the credits are asked for after it.

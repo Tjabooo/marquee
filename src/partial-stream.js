@@ -79,6 +79,35 @@ export function readyToStart(readable, size, bitrate, enoughSince, now = Date.no
   return enoughSince != null && now - enoughSince >= START_GRACE_MS;
 }
 
+// Watch Together on a video that is still downloading: one stop holds everyone, so the room waits for a lead
+// instead of playing each piece as it arrives. All in seconds of video: `edge` = how far it's downloaded in order,
+// `rate` = seconds of video the download brings per second (download speed / bitrate), `holding` = the room is
+// waiting now. A download that keeps up needs ROOM_LEAD ahead. One that doesn't waits until the rest will
+// arrive before playback gets there, or until ROOM_LEAD_ENOUGH is there (stops are then minutes apart).
+// Returns { holding, wait }: wait = seconds until it can play (null when nobody can tell, e.g. no speed).
+export const ROOM_LEAD = 30, ROOM_STOP = 8, ROOM_LEAD_ENOUGH = 300;
+const RATE_MARGIN = 0.85; // download speeds wander: plan with a bit less than the current one
+export function roomGate({ done, duration, position, edge, rate, holding }) {
+  if (done || !(duration > 0)) return { holding: false, wait: 0 };
+  const at = Math.max(0, Math.min(position || 0, duration));
+  const reach = Math.max(0, Math.min(edge || 0, duration));
+  const ahead = reach - at;
+  if (reach >= duration - 1) return { holding: false, wait: 0 };   // the rest is all there
+  if (!holding && ahead >= ROOM_STOP) return { holding: false, wait: 0 };
+  const r = Math.max(0, rate || 0) * RATE_MARGIN;
+  const lead = Math.min(ROOM_LEAD, duration - at);
+  const keepsUp = r >= 1;
+  const finishes = r > 0 && (duration - reach) / r <= duration - at;
+  if (ahead >= lead && (keepsUp || finishes || ahead >= ROOM_LEAD_ENOUGH)) return { holding: false, wait: 0 };
+  if (!(r > 0)) return { holding: true, wait: null };
+  // The sooner of: the lead plus a download that will finish in time, or the long lead.
+  const toLead = Math.max(0, (at + lead - reach) / r);
+  const toFinish = keepsUp ? 0 : Math.max(0, (duration - reach) / r - (duration - at));
+  const toEnough = Math.max(0, (at + Math.min(ROOM_LEAD_ENOUGH, duration - at) - reach) / r);
+  const wait = Math.min(Math.max(toLead, toFinish), toEnough);
+  return { holding: true, wait: wait <= 6 * 3600 ? wait : null }; // a crawl: no estimate worth showing
+}
+
 // What a pack's file priorities should be for watching file `index`. In sequential mode libtorrent takes
 // top-priority pieces first but in rarest-first order, so priority 7 scatters the very file being watched: leave it
 // off whenever the file can simply be next in line. Sequential goes by position and ignores normal priorities,

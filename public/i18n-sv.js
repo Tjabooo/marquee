@@ -1,6 +1,9 @@
 // Swedish for the web app, keyed by the English line in the code (T('…')). See public/i18n.js.
 export default {
   "Cast:": "Medverkande:",
+  "Waiting for the download": "Väntar på nedladdningen",
+  "Waiting for the download · starts in about {0}": "Väntar på nedladdningen · börjar om ungefär {0}",
+  "Switching to full quality": "Byter till full kvalitet",
   "Play now": "Spela nu",
   "Buffering": "Buffrar",
   "This video is still downloading": "Videon laddas fortfarande ner",

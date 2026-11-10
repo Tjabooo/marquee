@@ -176,3 +176,34 @@ test('two simulated players stay aligned through start, pause, seek and a buffer
     assert.ok(Math.abs(host.video.currentTime - guest.video.currentTime) < 0.1);
   } finally { sessions.forEach((s) => s.close({ notify: false })); }
 });
+
+test('a Play now room holds for the download, then switches everyone to the finished file', () => {
+  let now = 10000; const rooms = new WatchRooms({ now: () => now });
+  const part = { kind: 'part', id: `${'a'.repeat(40)}-0`, title: 'Movie', mediaKey: 'films/movie' };
+  const token = rooms.create(a, part, ac, 0).token;
+  rooms.join(token, b, bc);
+  rooms.subscribe(token, a, ac, () => {}); rooms.subscribe(token, b, bc, () => {});
+  rooms.heartbeat(token, a, ac, ready); rooms.heartbeat(token, b, bc, ready);
+  assert.deepEqual(rooms.roomsWith('part').map((r) => r.token), [token]);
+  rooms.setDownload(token, { holding: true, wait: 120, progress: 0.1 });
+  let state = rooms.control(token, a, ac, 'play', 0);
+  assert.equal(state.playing, false); assert.equal(state.waitingForDownload, true); assert.deepEqual(state.waitingFor, []);
+  assert.equal(state.download.wait, 120);
+  rooms.setDownload(token, { holding: false, wait: 0, progress: 0.3 });
+  state = rooms.snapshot(rooms.room(token));
+  assert.equal(state.playing, true); assert.equal(state.waitingForDownload, false);
+  // A small change of the estimate isn't news; holding again is.
+  const rev = state.revision;
+  rooms.setDownload(token, { holding: false, wait: 0, progress: 0.31 });
+  assert.equal(rooms.room(token).revision, rev);
+  now = state.at + 40000;
+  rooms.setDownload(token, { holding: true, wait: 30, progress: 0.32 });
+  state = rooms.snapshot(rooms.room(token));
+  assert.equal(state.playing, false); assert.equal(state.position, 40);
+  const full = { kind: 'lib', id: 'movie', title: 'Movie', mediaKey: 'films/movie' };
+  assert.throws(() => rooms.switchMedia(token, full, { user: b, client: bc }), { status: 403 });
+  state = rooms.switchMedia(token, full, { user: a, client: ac });
+  assert.deepEqual(state.media, full); assert.equal(state.download, null); assert.equal(state.position, 40);
+  assert.equal(state.intentPlaying, true, 'the room carries on once everyone has reloaded');
+  assert.deepEqual(rooms.roomsWith('part'), []);
+});

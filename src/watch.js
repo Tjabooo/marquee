@@ -33,7 +33,7 @@ export class WatchRooms {
   blank({ token, creator, creatorName, media, position = 0, startsAt = null, created = this.now(), people = [] }) {
     return { token, creator, creatorName: String(creatorName || '').slice(0, 80), media, members: new Map(), host: null,
       position, playing: false, wantPlay: false, at: this.now(), created, touched: this.now(), revision: 0,
-      startsAt, started: false, people: new Set(people), chat: [], chatSeq: 0 };
+      startsAt, started: false, people: new Set(people), chat: [], chatSeq: 0, download: null };
   }
 
   persist(room) {
@@ -159,8 +159,12 @@ export class WatchRooms {
 
   blockers(room) { return [...room.members.values()].filter((m) => !m.streams.size || !m.ready || m.buffering || m.blocked); }
 
+  // A video that is still downloading holds the room until the download is far enough ahead (server.js
+  // decides, see roomGate in partial-stream.js), so nobody's player runs out mid-scene.
+  downloadHolds(room) { return Boolean(room.download?.holding); }
+
   reconcile(room) {
-    const canPlay = room.wantPlay && room.members.size > 0 && !this.blockers(room).length;
+    const canPlay = room.wantPlay && room.members.size > 0 && !this.blockers(room).length && !this.downloadHolds(room);
     if (room.playing && !canPlay) { room.position = this.current(room); room.playing = false; room.at = this.now(); }
     else if (!room.playing && canPlay) {
       const rtt = Math.max(0, ...[...room.members.values()].map((m) => m.rtt));
@@ -182,6 +186,8 @@ export class WatchRooms {
       position: room.position, at: room.at, playing: room.playing, intentPlaying: room.wantPlay,
       startsAt: room.started ? null : room.startsAt,
       waitingFor: room.wantPlay ? this.blockers(room).map((m) => m.name) : [],
+      waitingForDownload: Boolean(room.wantPlay && this.downloadHolds(room)),
+      download: room.download ? { ...room.download } : null,
       members: [...room.members.values()].map((m) => ({ id: m.id, name: m.name, avatar: m.avatar || null, ready: m.ready,
         connected: m.streams.size > 0, buffering: m.buffering, blocked: m.blocked })) };
   }
@@ -228,6 +234,37 @@ export class WatchRooms {
     this.changed(room);
     return this.snapshot(room);
   }
+
+  // The download behind a Play now room: { holding, wait (s, null if unknown), progress, done }. Only a
+  // change of holding (or a big change of the estimate) is sent to everyone.
+  setDownload(token, info) {
+    const room = this.rooms.get(token);
+    if (!room) return;
+    const next = { holding: Boolean(info.holding), wait: Number.isFinite(info.wait) ? Math.round(info.wait) : null,
+      progress: Math.max(0, Math.min(1, Number(info.progress) || 0)), done: Boolean(info.done) };
+    const was = room.download;
+    room.download = next;
+    const moved = !was || was.holding !== next.holding || was.done !== next.done || (next.holding && (was.wait == null) !== (next.wait == null))
+      || (next.holding && next.wait != null && Math.abs(next.wait - was.wait) >= Math.max(10, was.wait * 0.2));
+    if (moved) this.changed(room);
+  }
+
+  // The room's video changes for everyone: a finished download swaps Play now for the full-quality file. The
+  // room stays where it was; everyone's player reloads, and the room waits until they're all ready again.
+  // `by` = { user, client } for the host's choice; the server leaves it out when the download is gone.
+  switchMedia(token, media, by = null) {
+    const room = this.room(token);
+    if (by) {
+      this.member(room, by.user, by.client);
+      if (room.host !== by.client) throw fail(403, 'Only the host can switch the room to full quality.');
+    }
+    room.position = this.current(room); room.at = this.now(); room.playing = false;
+    room.media = media; room.download = null;
+    this.changed(room);
+    return this.snapshot(room);
+  }
+
+  roomsWith(kind) { return [...this.rooms.values()].filter((r) => r.media?.kind === kind); }
 
   // Chat and reactions go to everyone's stream as they happen; the last 50 messages are kept for
   // people who join later. Nothing is stored after the room ends.

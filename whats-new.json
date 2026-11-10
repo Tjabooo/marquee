@@ -1,5 +1,24 @@
 [
   {
+    "id": "2026-11-10-watch-together-play-now",
+    "date": "2026-11-10",
+    "title": "Watch Together while it downloads",
+    "items": [
+      {
+        "title": "Start a room before the download finishes",
+        "text": "When you watch something with Play now, the Watch together button is there too. Everyone in the room watches the download as it comes in, and they don't need it in their own library."
+      },
+      {
+        "title": "It waits instead of stuttering",
+        "text": "If the download falls behind, the room pauses for everyone at the same moment and says it's waiting for the download, with a rough time when it can. It carries on together once there's enough to keep going."
+      },
+      {
+        "title": "Full quality for the whole room",
+        "text": "When the download finishes, whoever hosts the room can press Switch now. Everyone moves to the full-quality video from the same spot, with subtitles and every audio track."
+      }
+    ]
+  },
+  {
     "id": "2026-11-10-trimmed-clips-smooth-start",
     "date": "2026-11-10",
     "title": "Trimmed clips start smoothly",

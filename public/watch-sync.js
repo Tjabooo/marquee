@@ -204,6 +204,9 @@ export class WatchSession {
     return message;
   }
 
+  // Play now rooms: the download's progress for this room, and (host) moving everyone to the finished file.
+  partStatus(signal) { return this.request(`${this.base}/part-status?clientId=${encodeURIComponent(this.clientId)}`, { signal }); }
+  async switchToFull() { this.receive(await this.post('switch')); }
   react(emoji) { return this.post('react', { emoji }).catch((err) => this.onError(err.message)); }
 
   // Host only: start at `startsAt` (ms, server clock), or null to clear the countdown.

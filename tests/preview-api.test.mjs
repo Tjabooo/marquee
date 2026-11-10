@@ -54,6 +54,7 @@ test('PREVIEW_DIR serves a second web app to browsers that opt in, and title pag
       recommendations: { results: [{ id: 43, title: 'Question', poster_path: '/q.jpg', release_date: '2020-01-01' }, { id: 44, title: 'No poster' }] },
       release_dates: { results: [{ iso_3166_1: 'US', release_dates: [{ certification: 'PG-13' }] }, { iso_3166_1: 'SE', release_dates: [{ certification: '' }, { certification: '11' }] }] },
     };
+    else if (url.pathname === '/t/p/w300/still.jpg') { res.writeHead(200, { 'Content-Type': 'image/jpeg' }); res.end(Buffer.from([0xff, 0xd8, 0xff, 0xd9])); return; }
     else if (url.pathname === '/tv/5/season/2') body = { episodes: [{ episode_number: 1, name: 'Pilot', overview: 'It starts.', runtime: 44, air_date: '2001-01-01', still_path: '/s.jpg' }] };
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(body));
@@ -66,7 +67,7 @@ test('PREVIEW_DIR serves a second web app to browsers that opt in, and title pag
   for (const name of await fs.readdir(root)) if (name.endsWith('.js') || name.endsWith('.json')) await fs.copyFile(path.join(root, name), path.join(app, name));
   await fs.cp(path.join(root, 'src'), path.join(app, 'src'), { recursive: true });
   const source = await fs.readFile(path.join(app, 'src', 'server.js'), 'utf8');
-  await fs.writeFile(path.join(app, 'src', 'server.js'), source.replace('https://api.themoviedb.org/3', mockBase));
+  await fs.writeFile(path.join(app, 'src', 'server.js'), source.replace('https://api.themoviedb.org/3', mockBase).replace("const TMDB_IMAGE_ORIGIN = 'https://image.tmdb.org';", `const TMDB_IMAGE_ORIGIN = '${mockBase}';`));
   await fs.cp(path.join(root, 'public'), path.join(app, 'public'), { recursive: true });
 
   const child = spawn(process.execPath, ['server.js'], { cwd: app, env: {
@@ -161,6 +162,17 @@ test('PREVIEW_DIR serves a second web app to browsers that opt in, and title pag
   assert.equal(page.cast[1].photo, null);
   assert.deepEqual(page.similar.map((x) => [x.id, x.type]), [[43, 'movie']]);
   const season = await (await get('/api/tv/5/season/2', owner)).json();
+  // Small TMDB pictures come through the server (same origin, so the page can read their colours); nothing else does.
+  r = await get('/api/art?path=%2Ft%2Fp%2Fw300%2Fstill.jpg', owner);
+  assert.equal(r.status, 200);
+  assert.equal(r.headers.get('content-type'), 'image/jpeg');
+  assert.deepEqual([...new Uint8Array(await r.arrayBuffer())], [0xff, 0xd8, 0xff, 0xd9]);
+  for (const bad of ['/t/p/original/still.jpg', '/t/p/w300/../../etc/passwd', 'https://evil.example/x.jpg', '/t/p/w300/still.gif']) {
+    r = await get(`/api/art?path=${encodeURIComponent(bad)}`, owner);
+    assert.equal(r.status, 400, bad);
+  }
+  r = await get('/api/art?path=%2Ft%2Fp%2Fw300%2Fstill.jpg');
+  assert.equal(r.status, 401);
   assert.match(logs, /Preview: {3}.*preview-public/);
   assert.deepEqual(season.episodes, [{ number: 1, name: 'Pilot', overview: 'It starts.', runtime: 44, airDate: '2001-01-01', still: 'https://image.tmdb.org/t/p/w300/s.jpg' }]);
 });

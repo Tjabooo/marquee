@@ -15,6 +15,13 @@ All notable changes to Marquee. Versions follow [Semantic Versioning](https://se
 
 ### Added
 
+- **Watch Together on Play now.** A room can be started on a video that is still downloading; guests need no access to the
+  download, the room is their access. The server holds the room until the download is far enough ahead (30 s that it
+  keeps, or a lead that lets the rest arrive in time, or 5 minutes buffered) and stops it at 8 s left, so nobody's player
+  runs dry mid-scene; the room says it's waiting for the download, with an estimate. When the download finishes, the host's
+  Switch now moves everyone to the library file from the same spot; a room whose download has left qBittorrent moves by
+  itself. In a room, Play now's own stall hold and buffering popup stay out of the way.
+
 - **Preview switch (`PREVIEW_DIR`).** Point it at a second `public/` folder (for example a worktree of a redesign
   branch) and `/preview` switches one browser to it, with the live API, sign-in and permissions; `/preview/off`
   switches back. Missing files fall back to `public/`, the path guard is the same, preview pages get their own build
@@ -23,6 +30,8 @@ All notable changes to Marquee. Versions follow [Semantic Versioning](https://se
 - **Title page data.** `GET /api/title/:type/:id/page` (TMDB logo art, tagline, runtime, genres, age rating, cast
   with photos, recommendations; one cached TMDB call) and `GET /api/tv/:id/season/:n` (episode descriptions,
   running times, air dates and stills). Not used by the current web app yet.
+- **`GET /api/art?path=/t/p/w300/…`.** Small TMDB pictures through the server (TMDB's host and sizes up to w300 only, kept in
+  memory for a day), so the web app can read their colours: TMDB's CDN sometimes serves a copy cached without CORS headers.
 
 - **Play now.** Watch a film or episode while it downloads, in any browser and on iPhones, whatever its format. qBittorrent downloads
   it in order, and ffmpeg reads it through a loopback server that holds each read until those pieces are verified
