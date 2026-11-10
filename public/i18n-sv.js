@@ -1707,4 +1707,7 @@ export default {
   "clips": "klipp",
   "Picture in picture isn’t available right now": "Bild i bild går inte just nu",
   "Picture in picture works once the video has started": "Bild i bild fungerar när videon har startat",
+  "iPhone only pops videos out in Safari: open Marquee in Safari to use it": "iPhone lyfter bara ut videor i Safari: öppna Marquee i Safari för att använda det",
+  "Press play, then the pop-out button": "Tryck på spela, sedan på knappen för bild i bild",
+  "That video isn’t in your library any more": "Den videon finns inte längre i ditt bibliotek",
 };

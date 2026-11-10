@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-11-home-screen-pip",
+    "date": "2026-11-11",
+    "title": "Pop-out from the Home Screen app",
+    "items": [
+      {
+        "title": "Picture in picture hands over to Safari",
+        "text": "iPhone doesn't allow picture in picture in apps added to the Home Screen, only in Safari. In the Home Screen app, the pop-out button now opens the same video in Safari at the same second: press play there, then pop it out."
+      }
+    ]
+  },
+  {
     "id": "2026-11-10-phone-pip",
     "date": "2026-11-10",
     "title": "Picture in picture on phones",

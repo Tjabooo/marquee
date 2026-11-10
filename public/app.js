@@ -5891,9 +5891,27 @@ function webkitEnterPip(path) {
   try { video.webkitSetPresentationMode('picture-in-picture'); } catch (err) { pipFailed(path, err); return; }
   setTimeout(() => { if (!inPip() && !video.webkitDisplayingFullscreen) pipFailed(`${path} ignored`); }, 2000);
 }
+// Apps added to the Home Screen on iPhone and iPad can't do picture in picture (WebKit bug 280627), though
+// they claim to. Safari can: the button saves the spot and reopens the same video there, at the same second.
+// If Apple fixes it, webkitPip() turns true and the button pops out as usual.
+const iosHomeScreen = () => isStandalone && (/iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent)));
+function openInSafari() {
+  const session = current;
+  saveProgress(true);
+  video.pause();
+  const url = new URL('/', location.origin);
+  if (session?.kind === 'lib' && session.key) {
+    url.searchParams.set('play', session.key);
+    if (video.currentTime > 1) url.searchParams.set('t', String(Math.floor(video.currentTime)));
+  }
+  location.assign(`x-safari-${url.href}`);
+  // Nothing opened (older iOS): say how to do it by hand.
+  setTimeout(() => { if (!document.hidden) toast(T('iPhone only pops videos out in Safari: open Marquee in Safari to use it')); }, 1500);
+}
 function enterPip() {
   if (!video.currentSrc || inPip()) return;
-  if (webkitPip()) webkitEnterPip('webkit');
+  if (iosHomeScreen() && !webkitPip()) openInSafari();
+  else if (webkitPip()) webkitEnterPip('webkit');
   else if (standardPip()) {
     video.requestPictureInPicture().catch((err) => {
       // Still inside the tap (the refusal comes straight back), so Safari's own mode can have a go.
@@ -5920,7 +5938,7 @@ function reportPip(path, err) {
   api('/api/client/report', jsonPost({ kind: 'pip', detail: JSON.stringify(facts) })).catch(() => {});
 }
 function togglePip() { if (inPip()) exitPip(); else enterPip(); }
-const syncPipBtn = () => { pipBtn.hidden = !standardPip() && !webkitPip(); };
+const syncPipBtn = () => { pipBtn.hidden = !standardPip() && !webkitPip() && !iosHomeScreen(); };
 syncPipBtn();
 video.addEventListener('loadedmetadata', syncPipBtn);
 pipBtn.replaceChildren(icon('pip'));
@@ -8814,6 +8832,15 @@ navigator.serviceWorker?.addEventListener('message', async (event) => {
   if (new URL(location.href).searchParams.has('travel')) {
     const url = new URL(location.href); url.searchParams.delete('travel'); history.replaceState(null, '', url.pathname + url.search + url.hash);
     await setView('library'); openTravelList();
+  }
+  // The iPhone Home Screen app hands a video to Safari for picture in picture as ?play=<library id>&t=<seconds>.
+  const playId = new URL(location.href).searchParams.get('play');
+  if (playId) {
+    const startAt = Number(new URL(location.href).searchParams.get('t')) || 0;
+    const url = new URL(location.href); url.searchParams.delete('play'); url.searchParams.delete('t'); history.replaceState(null, '', url.pathname + url.search + url.hash);
+    const f = state.library.find((x) => x.id === playId);
+    if (f) { await openPlayer(libraryFile(f), { startAt }); toast(T('Press play, then the pop-out button')); }
+    else toast(T('That video isn’t in your library any more'));
   }
   // An update notification opens Marquee as ?update=<id>: show those notes.
   const updateId = new URL(location.href).searchParams.get('update');

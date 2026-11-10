@@ -1,4 +1,13 @@
 {
+  "2026-11-11-home-screen-pip": {
+    "title": "Bild i bild från hemskärmsappen",
+    "items": {
+      "Picture in picture hands over to Safari": {
+        "title": "Bild i bild lämnar över till Safari",
+        "text": "iPhone tillåter inte bild i bild i appar som lagts till på hemskärmen, bara i Safari. I hemskärmsappen öppnar knappen för bild i bild nu samma video i Safari på samma sekund: tryck på spela där och lyft sedan ut den."
+      }
+    }
+  },
   "2026-11-10-phone-pip": {
     "title": "Bild i bild på mobilen",
     "items": {
