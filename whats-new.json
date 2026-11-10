@@ -1,5 +1,17 @@
 [
   {
+    "id": "2026-11-10-clipper-rust",
+    "date": "2026-11-10",
+    "title": "Clipper without Python",
+    "items": [
+      {
+        "title": "Clipper setup no longer needs Python",
+        "audience": "owner",
+        "text": "node setup.js clipper now installs Clipper 0.2, which is written in Rust: no Python on the gaming PC, and its benchmark on Windows no longer installs Python either. Its programs come from Clipper's release and are checked against fixed checksums before they run, the same way the source already was."
+      }
+    ]
+  },
+  {
     "id": "2026-11-10-people-list-phone",
     "date": "2026-11-10",
     "title": "People list on phones",

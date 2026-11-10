@@ -7,21 +7,35 @@
 // commit and checks what it downloads against hashes recorded here. The source download must match
 // CLIPPER_TREE_SHA256 (a hash over every file's path and contents), and the one-liners for another
 // PC check the installer script's SHA-256 before running it; that script then fetches the same
-// pinned commit. What Clipper itself installs is listed in CLIPPER_INSTALLS and shown before asking.
-// To move to a newer Clipper: review its changes, then update the commit and the three hashes
-// (tests/clipper-pin.test.mjs prints them when they're out of date).
+// pinned commit. Clipper's programs (Rust) are built from that source when the PC has Rust, else
+// they come from the pinned CLIPPER_RELEASE and are checked against CLIPPER_BINARY_SHA256 (Clipper's
+// installers do that check when given clipperEnv()). What Clipper itself installs is listed in
+// CLIPPER_INSTALLS and shown before asking. To move to a newer Clipper: review its changes, then
+// update the commit, the three hashes, the release and its binary checksums.
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
 export const CLIPPER_REPO = 'Tjabooo/clipper';
-export const CLIPPER_COMMIT = '30cd2d10cf18a9bac18d5439512407eb276273d9';
-export const CLIPPER_TREE_SHA256 = 'd05f5580da90b8994303260c190260040221623c0baed50876b8bccdf21c3c47';
+export const CLIPPER_COMMIT = '23945dfdfca16113002e47519a6e26d1549a02a7';
+export const CLIPPER_TREE_SHA256 = 'ec71d38561c09e55fa7de86bcf1cbd10a85c6d3491cd402511f1e262685adb44';
 export const CLIPPER_SCRIPT_SHA256 = {
-  'install.ps1': '74dc783c65dc86c576ed2cdd4b039cb2c576efba77769335777f87d612dfbf18',
-  'install.sh': '79bf57d2577fcc05357fa40999cd78758205de5c9595095ab60ff1d5fa3a3585',
+  'install.ps1': 'ba65aa8136b83ad670ff4887a20fd279779f64e14adca72ecf443fa39f475296',
+  'install.sh': '10f38dfb0d67eacb9d11c49612a2ada93a9c5aae71caaa2c831db917260e601f',
 };
+// The release Clipper's CI built from that source, and the checksums of its downloads.
+export const CLIPPER_RELEASE = 'v0.2.0';
+export const CLIPPER_BINARY_SHA256 = {
+  linux: ['3f1abfa47123ebafc246e16fe17916bbde6554934fa4cf0922bb4dc2405b6c3d', '9584be5a1762ae05fe8f26cc507c9ce5af4fa8740132316638391c9b899d45aa'], // clipper-x86_64-linux.tar.gz, clipper-aarch64-linux.tar.gz
+  windows: '55b672f384fd38bcabee85d1e521fca2bd6627256e3bf8f7b94dd8c2b3dba061', // clipper-bench-x86_64-windows.exe (only for -Bench)
+};
+// Environment for Clipper's installers: fetch exactly that release, refuse anything else.
+export const clipperEnv = () => ({
+  CLIPPER_RELEASE,
+  CLIPPER_SHA256: CLIPPER_BINARY_SHA256.linux.join(','),
+  CLIPPER_BENCH_SHA256: CLIPPER_BINARY_SHA256.windows,
+});
 export const CLIPPER_REF = CLIPPER_COMMIT;
 const RAW = `https://raw.githubusercontent.com/${CLIPPER_REPO}/${CLIPPER_COMMIT}`;
 export const clipperTarball = (ref = CLIPPER_REF) => `https://codeload.github.com/${CLIPPER_REPO}/tar.gz/${ref}`;
@@ -31,12 +45,12 @@ export const clipperSourceUrl = (ref = CLIPPER_REF) => `https://github.com/${CLI
 export const CLIPPER_INSTALLS = {
   windows: [
     'OBS Studio, and the .NET 8 SDK to build Clipper (with winget, from the official winget repository)',
-    'Python and FFmpeg only if you pick a benchmark (winget)',
+    'FFmpeg (winget) and clipper-bench.exe from Clipper\'s ' + CLIPPER_RELEASE + ' release (checksum checked) only if you pick a benchmark',
     'clipper.exe in %LOCALAPPDATA%\\clipper and a scheduled task that starts it when you sign in (your account, no admin rights)',
     'An OBS profile and scene collection for the replay buffer (your existing OBS setup is backed up)',
   ],
   linux: [
-    'The clipper script in ~/.local/share/clipper and ~/.local/bin, plus systemd user units (no root)',
+    'The clipper and clipper-bench programs in ~/.local/share/clipper and ~/.local/bin (built with cargo if you have Rust, else Clipper\'s ' + CLIPPER_RELEASE + ' release, checksum checked), plus systemd user units (no root)',
     'It needs gpu-screen-recorder, ffmpeg, mpv and libnotify from your package manager; it tells you which are missing instead of installing them',
   ],
 };
@@ -59,7 +73,7 @@ export function treeHash(dir) {
   return h.digest('hex');
 }
 
-// Same names as Clipper's presets and benchmark goals (bench/clipperbench.py there).
+// Same names as Clipper's presets and benchmark goals (src/quality.rs there).
 export const QUALITY_CHOICES = [
   ['balanced', 'balanced: 60 fps, quality-based bitrate (default)'],
   ['compact', 'compact: 1080p60 at ~20 Mbit/s, small files that stream well to phones'],
@@ -105,12 +119,13 @@ export function remoteInstallCommand({ target, share, marqueeUrl, quality }) {
     args.push(q.bench ? `-Bench ${q.bench}` : `-Quality ${q.preset}`);
     return [`$f = "$env:TEMP\\clipper-install.ps1"; irm ${RAW}/install.ps1 -OutFile $f;`,
       `if ((Get-FileHash $f -Algorithm SHA256).Hash -ne '${CLIPPER_SCRIPT_SHA256['install.ps1'].toUpperCase()}') { throw 'Clipper installer checksum mismatch: not running it' };`,
+      `$env:CLIPPER_RELEASE = '${CLIPPER_RELEASE}'; $env:CLIPPER_BENCH_SHA256 = '${CLIPPER_BINARY_SHA256.windows}';`,
       `powershell -NoProfile -ExecutionPolicy Bypass -File $f -Ref ${CLIPPER_COMMIT} ${args.join(' ')}`].join(' ');
   }
   const args = ['--marquee', shQuote(share), '--quality', q.bench ? `bench:${q.bench}` : q.preset];
   return [`f=$(mktemp) && curl -fsSL ${RAW}/install.sh -o "$f"`,
     `&& echo '${CLIPPER_SCRIPT_SHA256['install.sh']}  '"$f" | sha256sum -c --quiet -`,
-    `&& CLIPPER_REF=${CLIPPER_COMMIT} sh "$f" ${args.join(' ')}`].join(' ');
+    `&& CLIPPER_REF=${CLIPPER_COMMIT} CLIPPER_RELEASE=${CLIPPER_RELEASE} CLIPPER_SHA256=${CLIPPER_BINARY_SHA256.linux.join(',')} sh "$f" ${args.join(' ')}`].join(' ');
 }
 
 // How to share the folder from this (the Marquee) machine, and how the gaming PC reaches it.
@@ -169,7 +184,7 @@ export async function downloadClipper(dest, { fetchImpl = fetch, tar = 'tar', sp
   fs.mkdirSync(out);
   const r = spawn(tar, ['-xzf', file, '-C', out, '--strip-components=1'], { stdio: 'inherit' });
   if (r.status !== 0) throw new Error('Unpacking Clipper failed (is tar installed?)');
-  if (!fs.existsSync(path.join(out, 'bench', 'clipperbench.py'))) throw new Error('The download doesn\'t look like Clipper');
+  if (!['Cargo.toml', path.join('linux', 'install.sh')].every((f) => fs.existsSync(path.join(out, f)))) throw new Error('The download doesn\'t look like Clipper');
   if (expectTree) {
     const got = treeHash(out);
     if (got !== expectTree) {

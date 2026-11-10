@@ -1,4 +1,22 @@
 {
+  "2026-11-10-clipper-rust": {
+    "title": "Clipper utan Python",
+    "items": {
+      "Clipper setup no longer needs Python": {
+        "title": "Clipper kräver inte längre Python",
+        "text": "node setup.js clipper installerar nu Clipper 0.2, som är skrivet i Rust: ingen Python på speldatorn, och benchmarken på Windows installerar inte heller Python längre. Programmen hämtas från Clippers release och kontrolleras mot fasta kontrollsummor innan de körs, precis som källkoden redan gjordes."
+      }
+    }
+  },
+  "2026-11-10-people-list-phone": {
+    "title": "Personlistan på mobilen",
+    "items": {
+      "Names fit again in the People list": {
+        "title": "Namnen får plats igen i personlistan",
+        "text": "På mobilen tryckte länken Lösenord och knapparna Ta bort ihop varje persons namn och uppgifter till en smal kolumn, en bokstav per rad. På små skärmar ligger knapparna nu under, så att namn, e-post och senast sedd går att läsa som vanligt."
+      }
+    }
+  },
   "2026-11-10-android-tv-anywhere": {
     "title": "Android TV-appen var du än är",
     "items": {

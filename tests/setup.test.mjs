@@ -244,10 +244,13 @@ test('clipper: quality names, install commands and share instructions', async ()
   // Pinned commit, installer checksum checked before it runs, never `main` or a pipe into a shell.
   assert.ok(win.includes(`https://raw.githubusercontent.com/Tjabooo/clipper/${c.CLIPPER_COMMIT}/install.ps1 -OutFile $f`));
   assert.ok(win.includes(`(Get-FileHash $f -Algorithm SHA256).Hash -ne '${c.CLIPPER_SCRIPT_SHA256['install.ps1'].toUpperCase()}'`));
+  assert.ok(win.includes(`$env:CLIPPER_RELEASE = '${c.CLIPPER_RELEASE}'; $env:CLIPPER_BENCH_SHA256 = '${c.CLIPPER_BINARY_SHA256.windows}';`));
   assert.match(win, new RegExp(`-Ref ${c.CLIPPER_COMMIT} -Share '\\\\\\\\box\\\\Clips' -MarqueeUrl 'http://box:8080' -Bench smooth$`));
   const lin = c.remoteInstallCommand({ target: 'linux', share: "/mnt/my clips", quality: 'max' });
   assert.equal(lin, `f=$(mktemp) && curl -fsSL https://raw.githubusercontent.com/Tjabooo/clipper/${c.CLIPPER_COMMIT}/install.sh -o "$f" `
-    + `&& echo '${c.CLIPPER_SCRIPT_SHA256['install.sh']}  '"$f" | sha256sum -c --quiet - && CLIPPER_REF=${c.CLIPPER_COMMIT} sh "$f" --marquee '/mnt/my clips' --quality max`);
+    + `&& echo '${c.CLIPPER_SCRIPT_SHA256['install.sh']}  '"$f" | sha256sum -c --quiet - && CLIPPER_REF=${c.CLIPPER_COMMIT} CLIPPER_RELEASE=${c.CLIPPER_RELEASE} CLIPPER_SHA256=${c.CLIPPER_BINARY_SHA256.linux.join(',')} sh "$f" --marquee '/mnt/my clips' --quality max`);
+  assert.deepEqual(c.clipperEnv(), { CLIPPER_RELEASE: c.CLIPPER_RELEASE, CLIPPER_SHA256: c.CLIPPER_BINARY_SHA256.linux.join(','), CLIPPER_BENCH_SHA256: c.CLIPPER_BINARY_SHA256.windows });
+  for (const h of [...c.CLIPPER_BINARY_SHA256.linux, c.CLIPPER_BINARY_SHA256.windows]) assert.match(h, /^[0-9a-f]{64}$/);
   for (const cmd of [win, lin]) { assert.ok(!/\/main\//.test(cmd)); assert.ok(!/\| *(sh|iex)\b/.test(cmd)); }
   assert.match(c.CLIPPER_COMMIT, /^[0-9a-f]{40}$/);
 
@@ -279,7 +282,7 @@ test('clipper setup sets CLIPS_DIR and prints the gaming PC commands (dry run wr
   assert.equal(r.status, 0, r.stderr);
   assert.ok(fs.existsSync(path.join(clips, 'Kept')));
   assert.equal(parseEnv(fs.readFileSync(envFile, 'utf8')).CLIPS_DIR, clips);
-  assert.match(r.stdout, /sha256sum -c --quiet - && CLIPPER_REF=[0-9a-f]{40} sh "\$f" --marquee \/mnt\/clips --quality bench:smooth/);
+  assert.match(r.stdout, /sha256sum -c --quiet - && CLIPPER_REF=[0-9a-f]{40} CLIPPER_RELEASE=v[\d.]+ CLIPPER_SHA256=[0-9a-f,]+ sh "\$f" --marquee \/mnt\/clips --quality bench:smooth/);
   assert.match(r.stdout, /It sets up:/);
   assert.match(r.stdout, /cifs/);
   assert.match(r.stdout, /Restart Marquee/);

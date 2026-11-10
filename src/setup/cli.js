@@ -635,7 +635,7 @@ async function clipperSetup(opts) {
     console.log(bold('\n  Clipper is separate software; review it before installing.'));
     console.log(`  Source: ${clipper.clipperSourceUrl(ref)}`);
     if (opts.clipperRef) console.log(`  ${mark.warn} --clipper-ref ${opts.clipperRef}: not the version this Marquee pins, so its contents can't be checked.`);
-    else console.log(dim(`  Pinned commit ${ref.slice(0, 12)}; the download is checked against its SHA-256 before anything runs.`));
+    else console.log(dim(`  Pinned commit ${ref.slice(0, 12)} and release ${clipper.CLIPPER_RELEASE}; downloads are checked against their SHA-256 before anything runs.`));
     console.log('  It installs:');
     for (const line of clipper.CLIPPER_INSTALLS[process.platform === 'win32' ? 'windows' : 'linux']) console.log(`    - ${line}`);
     console.log(`\n  ${opts.clipperSource ? `From ${src}` : `Download ${clipper.clipperTarball(ref)} → ${src}`}, then:`);
@@ -645,7 +645,9 @@ async function clipperSetup(opts) {
     if (!ok) { console.log(`${mark.info} Skipped. Run the command above when you're ready.`); }
     else if (!opts.dryRun) {
       if (!opts.clipperSource) await clipper.downloadClipper(src, { spawn: spawnSync, ref, expectTree: opts.clipperRef ? null : clipper.CLIPPER_TREE_SHA256 });
-      const r = spawnSync(cmd[0], cmd.slice(1), { stdio: 'inherit' });
+      // the pinned commit gets the pinned release's programs, checked against their checksums
+      const env = opts.clipperRef || opts.clipperSource ? process.env : { ...process.env, ...clipper.clipperEnv() };
+      const r = spawnSync(cmd[0], cmd.slice(1), { stdio: 'inherit', env });
       if (r.status === 0) console.log(`${mark.ok} Clipper is installed; kept clips go to ${clipsDir}`);
       else { console.log(`${mark.error} Clipper's installer failed (see above)`); status = 1; }
     }
