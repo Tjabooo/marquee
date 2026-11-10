@@ -2254,8 +2254,27 @@ async function phoneLink(kind, id, variant, audio, audioSource) {
   };
 }
 
-async function playLink(kind, id, variant, audio = null, audioSource = null, retry = false, quality = null) {
+// While a single-audio copy is made (minutes for a film on the media disk), the player bridges with the live
+// phone stream of the same video in the chosen language, which starts in a second or two. `audio` refers to the
+// browser file's tracks (audioSource); the phone stream is made from the HEVC-capable pick, which can be another
+// file with other track numbers, so the track is matched by what it is.
+async function bridgeLink(kind, id, variant, audio, audioSource) {
+  if (!BROWSER_VARIANTS.includes(variant) || !/^\d{1,5}$/.test(String(audio))) throw new HttpError(400, 'Invalid audio selection.');
+  const browserFile = await streamFile(kind, id, variant);
+  if (audioSource !== converter.audioSourceKey(browserFile)) throw new HttpError(409, 'Audio tracks changed. Open Audio and choose the language again.');
+  const track = Number(audio);
+  const wanted = (await converter.probeAudio(browserFile))?.find((t) => t.index === track);
+  if (!wanted) throw new HttpError(400, 'That audio track is not available.');
+  const phoneFile = await streamFile(kind, id, 'phone1080');
+  const match = phoneFile === browserFile ? wanted : converter.matchAudioTrack(wanted, await converter.probeAudio(phoneFile));
+  if (!match) throw new HttpError(409, 'This audio can’t be streamed right away.');
+  const link = await phoneLink(kind, id, 'phone1080', match.index, converter.audioSourceKey(phoneFile));
+  return { ...link, ready: true, bridge: true, track, audioSource };
+}
+
+async function playLink(kind, id, variant, audio = null, audioSource = null, retry = false, quality = null, bridge = false) {
   if (!/^[A-Za-z0-9_-]+$/.test(id)) throw new HttpError(400, 'Invalid file.');
+  if (bridge && audio !== null && !PHONE_VARIANT.test(variant)) return bridgeLink(kind, id, variant, audio, audioSource);
   if (audio === null && quality) {
     // The player's quality menu names the original's resolution ("made live from the 4K file").
     const link = await playLink(kind, id, await phoneChoice(kind, id, variant, quality), null, null, retry);
@@ -3722,7 +3741,7 @@ async function handleApi(req, res, url) {
   }
   if (p === '/api/play-link') {
     const q = url.searchParams;
-    const link = await playLink(q.get('kind') || '', q.get('id') || '', q.get('variant') || 'browser', q.get('audio'), q.get('audioSource'), q.get('audioRetry') === '1', q.get('quality'));
+    const link = await playLink(q.get('kind') || '', q.get('id') || '', q.get('variant') || 'browser', q.get('audio'), q.get('audioSource'), q.get('audioRetry') === '1', q.get('quality'), q.get('bridge') === '1');
     // Named from the library/download file: browsers often stream a cached copy named by a hash.
     if (link.url && q.get('audio') === null) activity.record(req, 'play', titleOf(await sourceFile(q.get('kind'), q.get('id'))), { quietMs: 3 * 3600 * 1000 });
     return sendJson(res, link.ready === false ? 202 : 200, link);

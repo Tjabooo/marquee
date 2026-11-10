@@ -55,7 +55,7 @@ export function progressLine(status) {
 export const pastDownloaded = (time, status) => Boolean(status?.duration) && time > (status.inOrder || 0) * status.duration + 5;
 
 let hlsLoading = null;
-function loadHls() {
+export function loadHls() {
   hlsLoading ||= new Promise((resolve, reject) => {
     if (window.Hls) { resolve(window.Hls); return; }
     const script = document.createElement('script');

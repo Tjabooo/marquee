@@ -3,11 +3,11 @@ import { T, lang, langTag, locale, LANGUAGES, saveLanguage, translatePage } from
 import { WatchSession, offsetCues } from './watch-sync.js';
 import { createNotesView } from './notes-view.js';
 import { nextLibraryEpisode, isNextEpisodeTime, AUTOPLAY_SECONDS, AUTOPLAY_CHAIN, tvIntroShowing, tvNextShowing, tvFinished } from './player-next.js';
-import { audioChoices, audioLanguage, nativeAudioMapping } from './player-audio.js';
+import { audioChoices, audioLanguage, nativeAudioMapping, sameAudio } from './player-audio.js';
 import { createSeekPreview } from './seek-preview.js';
 import * as pushDevice from './notifications.js';
 import { createStreamStats } from './player-stats.js';
-import { playPartial, fmtEta as fmtWait } from './player-partial.js';
+import { playPartial, loadHls, fmtEta as fmtWait } from './player-partial.js';
 import { SUB_SIZES, SUB_BACKGROUNDS, SUB_POSITIONS, subLook, subRaise, secondChoices, createNightAudio,
   SLEEP_MINUTES, sleepTimer, sleepSecondsLeft, sleepFade, sleepLabel } from './player-comfort.js';
 import { comingUp, newEpisodes, watchStatus, todayIso } from './watchlist.js';
@@ -4566,6 +4566,7 @@ function setPlayerSource(url, session, onMetadata) {
   };
   sourceMetadataHandler = handler;
   video.addEventListener('loadedmetadata', handler);
+  dropBridge(session);
   video.src = url;
 }
 
@@ -4613,6 +4614,56 @@ function swapSource(url, onReady) {
     restorePlayback(snapshot);
     onReady?.();
   });
+}
+
+// ---- live audio bridge ----
+// A language the browser can't switch to by itself needs a one-language copy of the video, which takes minutes
+// for a film. Meanwhile the live phone stream (phone-stream.js) plays that language from the same spot, starting
+// in a second or two; the player moves to the full-quality copy once it's there. Safari plays HLS itself, other
+// browsers through hls.js. session.bridge = { url, hls, track } while it plays.
+const appleHls = () => playsHls() && 'webkitShowPlaybackTargetPicker' in video;
+function bridgeAvailable() { return appleHls() || 'MediaSource' in window || 'ManagedMediaSource' in window || playsHls(); }
+function dropBridge(session) {
+  const bridge = session?.bridge;
+  if (!bridge) return;
+  session.bridge = null;
+  if (!bridge.hls) return;
+  if (session.hlsPlayer === bridge.hls) session.hlsPlayer = null;
+  try { bridge.hls.destroy(); } catch { /* already gone */ }
+}
+async function attachBridge(session, url, onMetadata) {
+  const Hls = appleHls() ? null : await loadHls().catch(() => null);
+  if (current !== session) return false;
+  if (!session.bridgeCleanup) {
+    session.bridgeCleanup = true;
+    session.abort.signal.addEventListener('abort', () => dropBridge(session), { once: true });
+  }
+  if (Hls?.isSupported()) {
+    dropBridge(session);
+    const hls = new Hls({ maxBufferLength: 30, maxMaxBufferLength: 60, backBufferLength: 60 });
+    session.bridge = { url, hls, track: null };
+    session.hlsPlayer = hls;
+    let recoveries = 0;
+    hls.on(Hls.Events.ERROR, (_, data) => {
+      if (!data.fatal || session.bridge?.hls !== hls) return;
+      if (recoveries++ < 3 && data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
+      else if (recoveries < 4 && data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
+      else video.dispatchEvent(new Event('error'));
+    });
+    setHlsSource(hls, url, session, onMetadata);
+    return true;
+  }
+  if (!playsHls()) return false;
+  setPlayerSource(url, session, onMetadata);
+  session.bridge = { url, hls: null, track: null };
+  return true;
+}
+// Back to what played before a failed audio switch: the plain file, or the bridge it was on.
+function restoreAudioSource(session, snapshot, bridge) {
+  session.sourceSnapshot = snapshot;
+  const back = () => { session.sourceSnapshot = null; restorePlayback(snapshot); $('#player-error').hidden = true; };
+  if (!bridge) { setPlayerSource(snapshot.url, session, back); return; }
+  attachBridge(session, bridge.url, back).then((ok) => { if (ok && session.bridge) session.bridge.track = bridge.track; });
 }
 
 async function onWireless(on) {
@@ -5058,10 +5109,11 @@ function renderAudioControls() {
   }
   for (const [index, row] of audioRows) {
     row.button.setAttribute('aria-checked', String(index === a.actual));
-    const text = index === a.pending ? a.swap ? T('Switching…') : T('Preparing…') : '';
+    const text = index === a.pending ? a.swap ? T('Switching…') : T('Preparing…') : index === a.upgrading ? T('Up to 1080p') : '';
     if (row.status.textContent !== text) row.status.textContent = text;
   }
-  const message = a.error || (a.pending != null ? a.swap ? T('Switching to {0} audio…', audioLabel(a, a.pending)) : T('Preparing {0} audio. Playback continues.', audioLabel(a, a.pending)) : '');
+  const message = a.error || (a.pending != null ? a.swap ? T('Switching to {0} audio…', audioLabel(a, a.pending)) : T('Preparing {0} audio. Playback continues.', audioLabel(a, a.pending))
+    : a.upgrading != null ? T('{0} audio plays at up to 1080p for now. Full quality comes back by itself in a few minutes.', audioLabel(a, a.upgrading)) : '');
   if (audioMessage.textContent !== message) audioMessage.textContent = message;
   audioMessage.hidden = !message;
   audioRetry.hidden = !a.error || a.failed == null;
@@ -5093,6 +5145,7 @@ function cancelAudioIntent(session, restore = true) {
   a.abort?.abort();
   a.abort = null;
   a.pending = null;
+  a.upgrading = null;
   if (a.intentUserChoice != null) a.userChoice = a.intentUserChoice;
   a.intentUserChoice = null;
   const swap = a.swap;
@@ -5176,18 +5229,16 @@ function switchAudioSource(session, a, generation, link, valid) {
   return new Promise(resolve => {
     const snapshot = capturePlayback(session);
     const previous = { actual: a.actual, activeLabel: a.activeLabel, usingFallback: a.usingFallback };
+    const bridge = session.bridge && { ...session.bridge };
     session.sourceSnapshot = snapshot;
     let timer, metadataReady = false;
     const cleanup = () => { clearTimeout(timer); video.removeEventListener('error', failed); video.removeEventListener('canplay', commit); };
-    const restore = () => {
-      Object.assign(a, previous);
-      session.sourceSnapshot = snapshot;
-      setPlayerSource(snapshot.url, session, () => { session.sourceSnapshot = null; restorePlayback(snapshot); $('#player-error').hidden = true; });
-    };
+    const restore = () => { Object.assign(a, previous); restoreAudioSource(session, snapshot, bridge); };
     const failed = () => {
       if (!valid() || a.swap !== swap) return;
-      cleanup(); a.swap = null;
-      a.error = T('This audio couldn’t play. Restoring your previous audio.');
+      cleanup(); a.swap = null; a.upgrading = null;
+      a.error = bridge?.track === link.track ? T('The full-quality version couldn’t play here, so this audio stays at up to 1080p.')
+        : T('This audio couldn’t play. Restoring your previous audio.');
       a.failed = link.track; a.pending = null;
       $('#player-error').hidden = true;
       restore(); renderAudioControls(); announceAudio(a.error); resolve(false);
@@ -5196,7 +5247,7 @@ function switchAudioSource(session, a, generation, link, valid) {
     const commit = () => {
       if (!metadataReady || !valid() || a.swap !== swap) return;
       cleanup(); a.swap = null; session.sourceSnapshot = null;
-      a.actual = link.track; a.pending = null; a.failed = null; a.error = ''; a.usingFallback = true;
+      a.actual = link.track; a.pending = null; a.upgrading = null; a.failed = null; a.error = ''; a.usingFallback = !link.original;
       a.intentUserChoice = null;
       a.activeLabel = audioLabel(a, a.actual);
       renderAudioControls(); announceAudio(T('{0} audio selected.', a.activeLabel)); resolve(true);
@@ -5216,12 +5267,76 @@ function switchAudioSource(session, a, generation, link, valid) {
   });
 }
 
+// Plays the chosen language from the live stream (see attachBridge) while its full-quality copy is made.
+// Resolves true once it plays from the same spot; on failure the previous source comes back and the wait goes on.
+async function bridgeAudio(session, a, index, valid) {
+  let link;
+  try { link = await api(`/api/play-link?kind=${session.kind}&id=${encodeURIComponent(mediaId(session))}&variant=${browserVariant()}&audio=${index}&audioSource=${encodeURIComponent(a.source)}&bridge=1`, { signal: a.abort?.signal }); }
+  catch { return false; }
+  if (!valid() || !link?.url || link.track !== index) return false;
+  return new Promise(resolve => {
+    const snapshot = capturePlayback(session);
+    const previousBridge = session.bridge && { ...session.bridge };
+    session.sourceSnapshot = snapshot;
+    let timer, metadataReady = false, done = false;
+    const cleanup = () => { clearTimeout(timer); video.removeEventListener('error', failed); video.removeEventListener('canplay', commit); };
+    const failed = () => {
+      if (done) return;
+      done = true; cleanup(); if (a.swap === swap) a.swap = null;
+      if (valid()) restoreAudioSource(session, snapshot, previousBridge);
+      resolve(false);
+    };
+    const commit = () => {
+      if (!metadataReady || done || !valid() || a.swap !== swap || !session.bridge) return;
+      done = true; cleanup(); a.swap = null; session.sourceSnapshot = null;
+      session.bridge.track = index;
+      a.actual = index; a.pending = null; a.upgrading = index; a.usingFallback = true; a.intentUserChoice = null;
+      a.activeLabel = audioLabel(a, index);
+      renderAudioControls(); announceAudio(T('{0} audio selected.', a.activeLabel));
+      resolve(true);
+    };
+    const swap = { cancel: restoreSource => {
+      if (done) return;
+      done = true; cleanup();
+      if (restoreSource && current === session) restoreAudioSource(session, snapshot, previousBridge);
+      resolve(false);
+    } };
+    a.swap = swap;
+    video.addEventListener('error', failed);
+    video.addEventListener('canplay', commit);
+    timer = setTimeout(failed, 20000);
+    attachBridge(session, link.url, () => {
+      if (!valid() || a.swap !== swap) return;
+      metadataReady = true;
+      restorePlayback(snapshot);
+      if (video.readyState >= 3) commit();
+    }).then(ok => { if (!ok) failed(); }, failed);
+    renderAudioControls();
+  });
+}
+// The file changed under a bridged choice (its MP4 copy finished, say): the same language in the new file.
+async function remapBridgedAudio(session, a, index) {
+  const old = a.tracks.find(t => t.index === index);
+  let data;
+  try { data = await api(`/api/media/${session.kind}/${encodeURIComponent(mediaId(session))}/audio?plays=${extraPlayable()}`, { signal: a.abort?.signal }); } catch { return null; }
+  if (!old || !data?.audioSource || data.audioSource === a.source || !Array.isArray(data.tracks)) return null;
+  const tracks = data.tracks.filter(t => Number.isSafeInteger(t.index) && Number.isSafeInteger(t.audioIndex));
+  const match = sameAudio(old, tracks);
+  if (!match) return null;
+  Object.assign(a, { source: data.audioSource, tracks, default: data.defaultAudio, actual: match.index, pending: match.index, sourceMatches: true });
+  if (a.upgrading != null) a.upgrading = match.index;
+  if (session.bridge) session.bridge.track = match.index;
+  a.activeLabel = audioLabel(a, match.index);
+  renderAudioControls();
+  return match.index;
+}
+
 async function selectAudioTrack(index) {
   const session = current, a = session?.audio;
   if (!a || audioSuppressed() || !a.tracks.some(t => t.index === index)) return;
   cancelAudioIntent(session);
   a.error = ''; a.failed = null;
-  if (index === a.actual) {
+  if (index === a.actual && session.bridge?.track !== index) {
     a.userChoice = a.usingFallback || a.actual !== a.default;
     renderAudioControls(); announceAudio(T('Audio preparation cancelled.'));
     if (!a.userChoice) watchAudio(session, session);
@@ -5245,21 +5360,46 @@ async function selectAudioTrack(index) {
   const generation = a.generation;
   const controller = a.abort = new AbortController();
   const valid = () => current === session && session.audio === a && a.generation === generation && !controller.signal.aborted && !audioSuppressed();
-  a.pending = index;
-  renderAudioControls(); announceAudio(T('Preparing {0} audio. Playback continues.', audioLabel(a, index)));
-  let retry = true;
+  const onBridge = session.bridge?.track === index;
+  // Back to the file's own default track: that's the file itself, nothing to prepare.
+  const original = index === a.default && a.sourceMatches && a.usingFallback;
+  a.pending = onBridge ? null : index;
+  if (onBridge) a.upgrading = index;
+  renderAudioControls(); if (!onBridge) announceAudio(T('Preparing {0} audio. Playback continues.', audioLabel(a, index)));
+  let retry = true, bridged = onBridge, remaps = 0;
   try {
     while (valid()) {
-      const link = await api(`/api/play-link?kind=${session.kind}&id=${encodeURIComponent(mediaId(session))}&variant=${browserVariant()}&audio=${index}&audioSource=${encodeURIComponent(a.source)}${retry ? '&audioRetry=1' : ''}`, { signal: controller.signal });
+      let link;
+      try {
+        link = await api(`/api/play-link?kind=${session.kind}&id=${encodeURIComponent(mediaId(session))}&variant=${browserVariant()}${original ? '' : `&audio=${index}&audioSource=${encodeURIComponent(a.source)}${retry ? '&audioRetry=1' : ''}`}`, { signal: controller.signal });
+        if (original && link) Object.assign(link, { ready: true, original: true, track: index, audioSource: a.source });
+      } catch (error) {
+        if (error.status === 409 && session.bridge?.track === index && remaps++ < 2 && valid()) {
+          const moved = await remapBridgedAudio(session, a, index);
+          if (!valid()) return;
+          if (moved != null) { index = moved; retry = true; if (a.upgrading != null) a.pending = null; continue; }
+        }
+        throw error;
+      }
       if (!valid()) return;
       retry = false;
-      if (!link.ready) { await audioPrepareDelay(controller.signal); continue; }
+      if (!link.ready) {
+        if (!bridged && bridgeAvailable()) { bridged = true; await bridgeAudio(session, a, index, valid); if (!valid()) return; }
+        await audioPrepareDelay(controller.signal); continue;
+      }
       if (link.track !== index || link.audioSource !== a.source) throw new Error(T('Audio tracks changed. Choose a track again.'));
       await switchAudioSource(session, a, generation, link, valid);
       return;
     }
   } catch (error) {
     if (!valid()) return;
+    if (session.bridge?.track === index) {
+      // The chosen language already plays from the live stream; only full quality didn't work out.
+      a.upgrading = null; a.pending = null;
+      a.error = T('The full-quality version couldn’t be made, so this audio stays at up to 1080p.'); a.failed = index;
+      renderAudioControls(); announceAudio(a.error);
+      return;
+    }
     if (error.status === 409) {
       const refreshed = await refreshAudioMetadata(session);
       if (current !== session || session.audio !== a || (!refreshed && !valid())) return;

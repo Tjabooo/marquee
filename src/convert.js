@@ -228,6 +228,15 @@ export function selectedAudioPath(file, index, source) {
   return fs.existsSync(output) ? output : null;
 }
 
+// The same audio in another copy of a video (converting can add, drop or reorder tracks): the same language,
+// then the closest codec, channel count, title and position. null when that language isn't there.
+export function matchAudioTrack(track, tracks) {
+  const lang = (t) => String(t.language || 'und').toLowerCase();
+  const score = (t) => (t.codec === track.codec) * 8 + (t.channels === track.channels) * 4
+    + ((t.title || '') === (track.title || '')) * 2 + (t.audioIndex === track.audioIndex);
+  return (tracks || []).filter((t) => lang(t) === lang(track)).sort((a, b) => score(b) - score(a))[0] || null;
+}
+
 // On browsers without audioTracks, keep the picture bit-for-bit and make one selected AAC track.
 // Work happens while the existing stream keeps playing. Copies never replace a shared source.
 export async function requestAudioTrack(file, index, source, { retry = false } = {}) {
@@ -270,7 +279,7 @@ export async function requestAudioTrack(file, index, source, { retry = false } =
         '-filter:a', 'aresample=async=1000:first_pts=0',
         '-metadata:s:a:0', `language=${audio.tags?.language || 'und'}`, '-disposition:a:0', 'default',
         '-avoid_negative_ts', 'disabled', ...(faststart ? ['-movflags', '+faststart'] : ['-moov_size', String(reserve)]),
-        '-f', 'mp4', tmp], { priorityLow: true });
+        '-f', 'mp4', tmp]); // someone is waiting for it: normal priority, not background
       try {
         await copy(!reserve);
       } catch (e) {

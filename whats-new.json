@@ -1,5 +1,20 @@
 [
   {
+    "id": "2026-11-11-audio-switch-fast",
+    "date": "2026-11-11",
+    "title": "Faster audio language switching",
+    "items": [
+      {
+        "title": "Your language starts in a second or two",
+        "text": "Picking another audio language used to mean waiting minutes while Marquee made a copy of the whole video. Now the language you pick plays right away, at up to 1080p, from the same spot. When the full-quality copy is ready, the player moves back to it by itself."
+      },
+      {
+        "title": "New Audio button",
+        "text": "The audio language button in the player now has the usual translate icon."
+      }
+    ]
+  },
+  {
     "id": "2026-11-11-home-screen-pip",
     "date": "2026-11-11",
     "title": "Pop-out from the Home Screen app",

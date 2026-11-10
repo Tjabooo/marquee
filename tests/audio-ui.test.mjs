@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
-import { audioChoices, nativeAudioMapping } from '../public/player-audio.js';
+import { audioChoices, nativeAudioMapping, sameAudio } from '../public/player-audio.js';
 
 const tracks = [
   { index: 1, audioIndex: 0, streamId: '0x2', language: 'kor', title: '', channels: 2, codec: 'aac', default: true },
@@ -49,7 +49,7 @@ class Element {
   focus() { this.document.activeElement = this; }
   click() { return [...(this.events.get('click') || [])][0]?.({ stopPropagation() {} }); }
 }
-function harness({ native, request, autoplayBlocked = false, kind = 'lib' } = {}) {
+function harness({ native, request, autoplayBlocked = false, kind = 'lib', bridge = false } = {}) {
   const calls = [], timers = [], nodes = new Map();
   const document = { activeElement: {}, fullscreenElement: {}, addEventListener() {}, createElement: tag => { const el = new Element(tag); el.document = document; return el; } };
   const $ = key => { if (!nodes.has(key)) nodes.set(key, document.createElement('div')); return nodes.get(key); };
@@ -59,7 +59,7 @@ function harness({ native, request, autoplayBlocked = false, kind = 'lib' } = {}
   Object.assign(video, { currentSrc: sourceUrl, currentTime: 17, duration: 180, paused: false, ended: false, readyState: 3, muted: true, volume: .4, playbackRate: 1.5, audioTracks: native,
     play() { calls.push(['play']); this.paused = autoplayBlocked; return autoplayBlocked ? Promise.reject(Error('gesture needed')) : Promise.resolve(); }, pause() { this.paused = true; calls.push(['pause']); } });
   const current = { id: 'episode', kind, ready: true, sourceUrl, abort: new AbortController() };
-  const context = vm.createContext({ T: englishT, $, video, current, document, Node: Element, audioChoices, nativeAudioMapping, AbortController, URL, location: { href: 'https://example.test/' },
+  const context = vm.createContext({ T: englishT, $, video, current, document, Node: Element, audioChoices, nativeAudioMapping, sameAudio, AbortController, URL, location: { href: 'https://example.test/' },
     party: null, nativeSubs: false, onTvVersion: false, hasRemotePlayback: false, canSetVolume: true,
     closeCcMenu() {}, extraPlayable: () => '', browserVariant: () => 'browser', mediaId: f => f.id,
     applySubModes: () => calls.push(['subtitles']), updateUpNext() {}, toast() {},
@@ -73,6 +73,10 @@ function harness({ native, request, autoplayBlocked = false, kind = 'lib' } = {}
   vm.runInContext(between('function h(', 'const ICONS ='), context);
   vm.runInContext(between('let sourceMetadataHandler =', '\nasync function onWireless'), context);
   vm.runInContext(between('// ---- audio selection ----', '// Polls the server while a corrected copy'), context);
+  // The live bridge: a browser that plays HLS itself (Safari), so no hls.js in the test.
+  context.bridgeAvailable = () => bridge;
+  context.playsHls = () => true; context.window = {};
+  video.webkitShowPlaybackTargetPicker = () => {};
   vm.runInContext('installAudioMetadata(current, audioInfo)', context);
   const run = code => vm.runInContext(code, context);
   return { context, current, video, document, calls, $, run,
@@ -208,13 +212,16 @@ test('a stale-source response reloads track metadata, and its late refresh canno
 
 
 test('repeated fallback choices can switch back from a one-track rendition without native mapping', async () => {
-  const h = harness();
+  const h = harness({ request: path => path.includes('audio=') ? ready(3) : { ready: true, url: 'https://example.test/original.mp4' } });
   const first = h.run('selectAudioTrack(3)'); await flush(); h.metadata(); h.canplay(); await first;
   assert.equal(h.current.audio.usingFallback, true);
   h.video.currentTime = .4; h.video.paused = true;
+  // The default track is the file itself: straight back to it, no copy to prepare.
   const second = h.run('selectAudioTrack(1)'); await flush(); h.metadata(); h.canplay(); await second;
   assert.equal(h.current.audio.actual, 1);
-  assert.equal(h.video.src, ready(1).url);
+  assert.equal(h.current.audio.usingFallback, false);
+  assert.ok(!h.calls.filter(c => c[0] === 'api').at(-1)[1].includes('audio='));
+  assert.equal(h.video.src, 'https://example.test/original.mp4');
   assert.equal(h.video.currentTime, .4);
   assert.equal(h.video.paused, true);
 });
@@ -278,4 +285,49 @@ test('resumed compatibility polling installs a correction that finished during t
   assert.equal(switched.length, 1);
   assert.equal(switched[0], h.current);
   h.tick(3000); await originalWatcher;
+});
+
+test('a copy still being made bridges at once to the live stream in that language, then moves to full quality', async () => {
+  let prepared = false;
+  const bridgeUrl = 'https://example.test/play/lib/episode/phone1080-a5/1/sig/index.m3u8';
+  const h = harness({ bridge: true, request: path => path.includes('bridge=1') ? { ready: true, bridge: true, url: bridgeUrl, track: 3, audioSource: info.audioSource }
+    : prepared ? ready(3) : { ready: false, state: 'preparing' } });
+  h.video.currentTime = 50;
+  const selection = h.run('selectAudioTrack(3)'); await flush(); await flush();
+  assert.equal(h.video.src, bridgeUrl);
+  h.metadata(); h.canplay(); await flush();
+  assert.equal(h.current.audio.actual, 3); assert.equal(h.current.audio.upgrading, 3); assert.equal(h.current.audio.pending, null);
+  assert.equal(h.video.currentTime, 50); assert.equal(h.current.bridge.track, 3);
+  assert.match(h.run('audioMessage.textContent'), /up to 1080p/);
+  // Choosing the playing language again keeps waiting for full quality instead of cancelling.
+  const again = h.run('selectAudioTrack(3)'); await flush(); await selection;
+  assert.equal(h.current.audio.upgrading, 3); assert.equal(h.video.src, bridgeUrl);
+  h.video.currentTime = 80;
+  prepared = true; h.tick(1000); await flush(); await flush();
+  assert.equal(h.video.src, ready(3).url); assert.equal(h.current.bridge, null);
+  h.metadata(); h.canplay(); await flush(); await again;
+  assert.equal(h.current.audio.actual, 3); assert.equal(h.current.audio.upgrading, null);
+  assert.equal(h.video.currentTime, 80);
+  assert.equal(h.calls.filter(c => c[0] === 'api' && c[1].includes('bridge=1')).length, 1);
+});
+
+test('a bridge that fails to start puts the old source back and the wait goes on', async () => {
+  let prepared = false;
+  const h = harness({ bridge: true, request: path => path.includes('bridge=1') ? { ready: true, url: 'https://example.test/live.m3u8', track: 3, audioSource: info.audioSource }
+    : prepared ? ready(3) : { ready: false } });
+  h.video.currentTime = 30;
+  const selection = h.run('selectAudioTrack(3)'); await flush(); await flush();
+  h.video.dispatch('error'); await flush();
+  assert.equal(h.video.src, 'https://example.test/original.mp4'); assert.equal(h.current.audio.pending, 3);
+  h.metadata(); assert.equal(h.video.currentTime, 30);
+  prepared = true; h.tick(1000); await flush(); h.metadata(); h.canplay(); await selection;
+  assert.equal(h.current.audio.actual, 3); assert.equal(h.video.src, ready(3).url);
+});
+
+test('the same audio is found again in a converted copy by language, codec and channels', () => {
+  const converted = [{ index: 1, audioIndex: 0, language: 'ita', codec: 'aac', channels: 2, title: 'Stereo' },
+    { index: 2, audioIndex: 1, language: 'ita', codec: 'ac3', channels: 6 }, { index: 3, audioIndex: 2, language: 'eng', codec: 'ac3', channels: 6 }];
+  assert.equal(sameAudio({ index: 2, audioIndex: 1, language: 'eng', codec: 'ac3', channels: 6 }, converted).index, 3);
+  assert.equal(sameAudio({ index: 1, audioIndex: 0, language: 'ita', codec: 'ac3', channels: 6 }, converted).index, 2);
+  assert.equal(sameAudio({ index: 1, audioIndex: 0, language: 'fre', codec: 'ac3', channels: 6 }, converted), null);
 });

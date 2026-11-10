@@ -59,3 +59,11 @@ export function nativeAudioMapping(tracks, nativeTracks) {
   }
   return mapping;
 }
+
+// The same audio in another copy of the video (converting can add, drop or reorder tracks): the same language,
+// then the closest codec, channel count, title and position. null when that language isn't there.
+export function sameAudio(track, tracks) {
+  const language = audioLanguage(track.language);
+  const score = t => (t.codec === track.codec) * 8 + (t.channels === track.channels) * 4 + (clean(t.title) === clean(track.title)) * 2 + (t.audioIndex === track.audioIndex);
+  return tracks.filter(t => audioLanguage(t.language) === language).sort((a, b) => score(b) - score(a))[0] || null;
+}
