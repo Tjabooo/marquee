@@ -6,7 +6,8 @@
   <name>Marquee</name>
   <icon src="icon.png"/>
   <access origin="*" subdomains="true"/>
-  <tizen:content-security-policy>default-src * data: blob: 'unsafe-inline'</tizen:content-security-policy>
+  <!-- 'unsafe-eval' lets the TV compile the Rust app's WebAssembly (Chrome 69 has no 'wasm-unsafe-eval'). -->
+  <tizen:content-security-policy>default-src * data: blob: 'unsafe-inline' 'unsafe-eval'</tizen:content-security-policy>
   <tizen:privilege name="http://tizen.org/privilege/internet"/>
   <tizen:privilege name="http://tizen.org/privilege/tv.inputdevice"/>
   <tizen:privilege name="http://developer.samsung.com/privilege/avplay"/>
