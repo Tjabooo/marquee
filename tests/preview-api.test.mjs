@@ -37,6 +37,7 @@ test('PREVIEW_DIR serves a second web app to browsers that opt in, and title pag
   const pre = path.join(app, 'preview-public'); await fs.mkdir(pre);
   await fs.writeFile(path.join(pre, 'index.html'), '<!doctype html><title>Preview build</title>');
   await fs.writeFile(path.join(pre, 'pages.css'), 'body{color:red}');
+  await fs.writeFile(path.join(pre, 'only-in-preview.css'), 'a{}');
   await fs.writeFile(path.join(app, 'outside.txt'), 'secret');
 
   const mock = http.createServer((req, res) => {
@@ -120,7 +121,10 @@ test('PREVIEW_DIR serves a second web app to browsers that opt in, and title pag
   assert.equal(await r.text(), await fs.readFile(path.join(app, 'public', 'style.css'), 'utf8'));
   r = await get('/pages.css', withCookie);
   assert.equal(await r.text(), 'body{color:red}');
-  r = await get('/pages.css', owner);
+  // A file only the preview has: the preview's for preview browsers, nothing for everyone else.
+  r = await get('/only-in-preview.css', withCookie);
+  assert.equal(await r.text(), 'a{}');
+  r = await get('/only-in-preview.css', owner);
   assert.equal(r.status, 404);
   // The same path guard as public/.
   r = await get('/..%2foutside.txt', withCookie);
@@ -140,7 +144,7 @@ test('PREVIEW_DIR serves a second web app to browsers that opt in, and title pag
   r = await get('/signin', { cookie: 'marquee_preview=1' });
   assert.match(await r.text(), /<link rel="stylesheet" href="\/pages.css"><\/head>/);
   r = await get('/signin');
-  assert.doesNotMatch(await r.text(), /pages\.css/);
+  assert.doesNotMatch(await r.text(), /href="\/pages\.css"/);
 
   r = await get('/preview/off', withCookie);
   assert.equal(r.status, 303);

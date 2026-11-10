@@ -37,7 +37,8 @@ export const SCENES = [
   { name: 'discover', path: '/', ready: '#discover-body .shelf' },
   { name: 'discover-rows', path: '/', ready: '#discover-body .shelf', steps: ['window.scrollTo(0, innerHeight * 1.5); await __sleep(500);'] },
   { name: 'discover-films', path: '/', ready: '#discover-body .shelf', steps: ["await __click('.discover-filters .segmented button:nth-child(2)'); await __waitFor('#discover-body .shelf');"] },
-  { name: 'discover-genre', path: '/', ready: '#discover-body .shelf', steps: ["await __click('.genre-chips .chip:nth-child(4)'); await __waitFor('#discover-body .grid .title-card');"] },
+  { name: 'discover-genres-open', path: '/', ready: '#discover-body .shelf', steps: ["await __click('.genres-toggle'); await __sleep(500);"] },
+  { name: 'discover-genre', path: '/', ready: '#discover-body .shelf', steps: ["const t = document.querySelector('.genres-toggle'); if (t) { t.click(); await __sleep(300); } await __click('.genre-chips .chip:nth-child(4)'); await __waitFor('#discover-body .grid .title-card');"] },
   { name: 'discover-see-all', path: '/', ready: '#discover-body .shelf', steps: ["await __click('.see-all'); await __waitFor('#discover-body .grid .title-card');"] },
   { name: 'discover-docs', path: '/', ready: '#discover-body .shelf', steps: ["await __click('.discover-filters .segmented button:nth-child(4)'); await __sleep(3500);"] },
   { name: 'search', path: '/', ready: '#discover-body .shelf', steps: [typeSearch('house'), "await __waitFor('#discover-body .grid .title-card');"] },
@@ -115,4 +116,22 @@ export const SCENES = [
   { name: 'share-invite', path: `/c/i/${process.env.MQ_INVITE || 'x'}`, ready: 'body', signedOut: true },
   { name: 'share-clip', path: `/c/${process.env.MQ_CLIP || 'x'}`, ready: 'body', signedOut: true, after: 2500 },
   { name: 'share-watch', path: `/c/w/${process.env.MQ_ROOM || 'x'}`, ready: 'body', signedOut: true },
+
+  // ---- End to end through the preview switch: /preview → Discover → a title → play → Watch Together → Settings → back to live.
+  // Run without --preview (it goes through /preview itself) and with --allow-writes-to '^/api/watch' (the room is real, briefly).
+  { name: 'e2e-preview', path: '/preview', ready: '#discover-body .billboard', sizes: ['phone', 'desktop'], steps: [
+    "if (!document.querySelector('.preview-pill')) throw new Error('no preview pill after /preview');",
+    "await __click('.bb-slide.is-active .btn-glass, .bb-slide .btn-glass'); await __waitFor('#sheet.open #sheet-title'); await __sleep(1200);",
+    "history.back(); await __sleep(600);",
+    "await __click('.tab[data-view=\"library\"]'); await __waitFor('.unified-library .lib-group .title-card');",
+    libraryCard('movie'), sheetOpen,
+    "await __click('#sheet .library-film-actions .play-btn'); await __waitFor('#player:not([hidden])'); await __sleep(4000); document.querySelector('#video').pause();",
+    "await __click('#watch-btn'); await __waitFor('#watch-bar:not([hidden])'); await __sleep(1500);",
+    "await __click('#watch-leave'); await __sleep(1200);",
+    "await __click('#player-close'); await __sleep(800);",
+    "await __click('.tab[data-view=\"settings\"]'); await __waitFor('#settings-body .set-group'); await __sleep(800);",
+    "setTimeout(() => document.querySelector('.preview-pill').click(), 50); return 'leaving';",
+    { wait: 5000 },
+    "await __waitFor('#discover-body', 20000); await __sleep(2000); if (document.querySelector('.preview-pill') || document.querySelector('script[src=\"/billboard.js\"]') || document.querySelector('.billboard')) throw new Error('still in the preview'); if (document.cookie.includes('marquee_preview')) throw new Error('cookie still readable');",
+  ], probe: "return 'back on live: ' + (document.querySelector('link[rel=icon]')?.getAttribute('href') || '').slice(0, 24);" },
 ];

@@ -115,13 +115,14 @@ html { background: var(--velvet); scroll-padding-top: calc(var(--safe-top) + var
 body {
   margin: 0;
   color: var(--text);
-  background: var(--room);
-  background-attachment: fixed;
+  background: none; /* html paints the velvet; body::before the light over it */
   font: var(--t-body)/1.5 var(--body);
   min-height: 100dvh;
   overscroll-behavior-y: none;
   -webkit-font-smoothing: antialiased;
 }
+/* The room's light: a fixed layer of its own, so scrolling never repaints it (background-attachment: fixed would) */
+body::before { content: ""; position: fixed; inset: 0; z-index: -1; background: var(--room); pointer-events: none; }
 button, input, textarea, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
 img { max-width: 100%; display: block; }

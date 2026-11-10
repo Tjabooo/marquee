@@ -559,8 +559,8 @@ async function extendItems(files) {
 // A small menu behind a ⋯ button (a <details>, so it works without script tricks); closes on outside clicks and Escape.
 function rowMenu(label, items) {
   const summary = h('summary', { class: 'row-more-btn', 'aria-label': label, title: label }, icon('more'));
-  const menu = h('details', { class: 'row-more' }, summary, h('div', { class: 'row-menu', role: 'menu' },
-    items.filter(Boolean).map(([ic, text, run, cls]) => h('button', { type: 'button', role: 'menuitem', class: `row-menu-item ${cls || ''}`.trim(), onclick: (e) => {
+  const menu = h('details', { class: 'row-more' }, summary, h('div', { class: 'row-menu' },
+    items.filter(Boolean).map(([ic, text, run, cls]) => h('button', { type: 'button', class: `row-menu-item ${cls || ''}`.trim(), onclick: (e) => {
       e.stopPropagation();
       menu.open = false;
       run(summary);
@@ -2377,12 +2377,12 @@ function moreLike(type, id) {
 const episodeSeasonOpen = new Map(); // tmdb id -> season shown
 function episodeBrowser(t) {
   if (!t.id || t.type !== 'tv' || !state.status.search) return null;
-  const tabs = h('div', { class: 'episode-tabs', role: 'tablist', 'aria-label': T('Seasons') });
+  const tabs = h('div', { class: 'episode-tabs', role: 'group', 'aria-label': T('Seasons') });
   const list = h('ul', { class: 'episode-list', 'aria-live': 'polite' });
   const section = h('section', { class: 'page-section episodes', hidden: true }, h('h3', {}, T('Episodes')), tabs, list);
   const draw = async (n) => {
     episodeSeasonOpen.set(t.id, n);
-    tabs.querySelectorAll('button').forEach((b) => { b.setAttribute('aria-selected', String(Number(b.dataset.season) === n)); b.setAttribute('aria-pressed', String(Number(b.dataset.season) === n)); });
+    tabs.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.season) === n)));
     list.replaceChildren(...Array.from({ length: 3 }, () => h('li', { class: 'ep skeleton', 'aria-hidden': 'true' }, h('div', { class: 'wide-art' }), h('div', { class: 'ep-body' }, h('div', { class: 'bar' }), h('div', { class: 'bar' })))));
     let eps = [];
     try { eps = (await cachedFor(`/api/tv/${t.id}/season/${n}`, 60 * 60 * 1000)).episodes || []; } catch { /* below */ }
@@ -2392,7 +2392,7 @@ function episodeBrowser(t) {
   };
   tvSeasons(t.id).then((seasons) => {
     if (!seasons?.length || !section.isConnected) return;
-    tabs.replaceChildren(...seasons.map((se) => h('button', { type: 'button', class: 'chip', role: 'tab', 'data-season': se.number, onclick: () => draw(se.number) }, localSeasonName(se.name, se.number))));
+    tabs.replaceChildren(...seasons.map((se) => h('button', { type: 'button', class: 'chip', 'data-season': se.number, onclick: () => draw(se.number) }, localSeasonName(se.name, se.number))));
     if (seasons.length < 2) tabs.hidden = true;
     section.hidden = false;
     const owned = matchesFor(t).filter((f) => f.done && f.season != null).map((f) => f.season);

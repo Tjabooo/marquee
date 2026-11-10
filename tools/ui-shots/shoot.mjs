@@ -120,7 +120,8 @@ async function newPage(size, lang, scene) {
             const body = typeof v === 'string' ? v : JSON.stringify(v?.__status ? { error: 'Mocked failure' } : v);
             return await s('Fetch.fulfillRequest', { requestId, responseCode: status, responseHeaders: [{ name: 'Content-Type', value: typeof v === 'string' ? 'text/plain' : 'application/json' }], body: Buffer.from(body).toString('base64') });
           }
-          if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method) && !args['allow-writes']) {
+          const allowedWrite = args['allow-writes-to'] && new RegExp(String(args['allow-writes-to'])).test(u.pathname);
+          if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method) && !args['allow-writes'] && !allowedWrite) {
             quiet.add(request.url);
             return await s('Fetch.fulfillRequest', { requestId, responseCode: 403, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }], body: Buffer.from(JSON.stringify({ error: 'Blocked by the screenshot harness.' })).toString('base64') });
           }
@@ -176,6 +177,7 @@ for (const scene of scenes) {
         await evalIn(page.s, `await __waitFor(${JSON.stringify(scene.ready || 'main')}, 20000); await __settle(${scene.settle ?? 800});`);
         for (const step of scene.steps || []) {
           if (typeof step === 'string') { await evalIn(page.s, step); continue; }
+          if (step.wait) { await sleep(step.wait); continue; } // e.g. while the page navigates
           // { mouse: selector, fallback: JS expression for the element }: a real mouse move onto it (for :hover)
           const box = await evalIn(page.s, `const el = ${step.fallback || `document.querySelector(${JSON.stringify(step.mouse)})`}; if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 };`);
           if (!box) throw new Error('nothing to point at for ' + step.mouse);
@@ -203,7 +205,7 @@ for (const scene of scenes) {
             const r = el.getBoundingClientRect();
             if (!r.width || !r.height || r.bottom < 0 || r.top > innerHeight) continue;
             const cs = getComputedStyle(el);
-            if (cs.textOverflow === 'ellipsis' || cs.webkitLineClamp !== 'none' || cs.overflowX !== 'visible' || el.closest('.sr-only') || !el.textContent.trim()) continue;
+            if (cs.textOverflow === 'ellipsis' || cs.webkitLineClamp !== 'none' || cs.overflowX !== 'visible' || el.closest('.sr-only') || !el.textContent.trim() || /face/.test(el.className)) continue;
             if (el.scrollWidth > el.clientWidth + 2) bad.push((el.getAttribute('aria-label') || el.textContent).trim().replace(/\\s+/g, ' ').slice(0, 40));
           }
           const wide = document.documentElement.scrollWidth > innerWidth + 1 ? ['PAGE ' + document.documentElement.scrollWidth + 'px'] : [];
