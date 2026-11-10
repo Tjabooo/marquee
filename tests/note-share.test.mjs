@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import net from 'node:net';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { NotesStore } from '../src/notes.js';
@@ -28,20 +27,19 @@ test('shared notes give bots a preview and send people to the protected app', { 
   const fileId = 'c'.repeat(64), png = Buffer.from('89504e470d0a1a0a', 'hex');
   await fs.writeFile(path.join(store.fileDir, `${fileId}.bin`), png);
   store.registerFile(fileId, { name: 'pic.png', mime: 'image/png', size: png.length }); store.close();
-  const reserve = net.createServer(); await new Promise((r) => reserve.listen(0, '127.0.0.1', r));
-  const port = reserve.address().port; await new Promise((r) => reserve.close(r));
+  let port = 0; // 0 = the server picks a free port and prints it (see the ready line below)
   const env = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, WINDIR: process.env.WINDIR, TEMP: process.env.TEMP, TMP: process.env.TMP,
     PORT: String(port), ADMIN_EMAILS: 'owner@notes.test', CONVERT: 'off', SUBSYNC: 'off', TORRENTS: 'off', CAST_APPLETV: 'off', NOTES_OCR: 'off', SERVER_IP: '127.0.0.1' };
   const child = spawn(process.execPath, ['server.js'], { cwd: app, env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
   let logs = ''; child.stdout.on('data', (c) => { logs += c; }); child.stderr.on('data', (c) => { logs += c; });
-  const base = `http://127.0.0.1:${port}`;
+  let base = ''; // set once the server reports its port
   const owner = { 'cf-access-authenticated-user-email': 'owner@notes.test', 'content-type': 'application/json' };
   const post = (p, body = {}, headers = owner) => fetch(base + p, { method: 'POST', headers, body: JSON.stringify(body) });
   const discord = { 'user-agent': 'Mozilla/5.0 (compatible; Discordbot/2.0; +https://discordapp.com)' };
   try {
     await new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(Error('Startup timeout: ' + logs)), 8000);
-      child.stdout.on('data', (c) => { if (String(c).includes('Marquee is running')) { clearTimeout(timer); resolve(); } });
+      child.stdout.on('data', (c) => { const ready = /Marquee is running: http:\/\/localhost:(\d+)/.exec(String(c)); if (ready) { port = Number(ready[1]); base = `http://127.0.0.1:${port}`; clearTimeout(timer); resolve(); } });
       child.once('error', reject); child.once('exit', () => { clearTimeout(timer); reject(Error(logs)); });
     });
     const { note } = await (await post('/api/admin/notes', { text: 'Secret plan\nmeet at <8>', attachments: [{ fileId }] })).json();
@@ -97,20 +95,19 @@ test('a shared video gets a Discord-friendly MP4 and thumbnail anyone can load',
     '-c:v', 'mpeg4', '-c:a', 'aac', '-f', 'mov', mov]);
   assert.equal(made.status, 0, String(made.stderr));
   store.registerFile(fileId, { name: 'IMG_0001.mov', mime: 'video/quicktime', size: (await fs.stat(mov)).size }); store.close();
-  const reserve = net.createServer(); await new Promise((r) => reserve.listen(0, '127.0.0.1', r));
-  const port = reserve.address().port; await new Promise((r) => reserve.close(r));
+  let port = 0; // 0 = the server picks a free port and prints it (see the ready line below)
   const env = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, WINDIR: process.env.WINDIR, TEMP: process.env.TEMP, TMP: process.env.TMP,
     PORT: String(port), ADMIN_EMAILS: 'owner@notes.test', CONVERT: 'off', SUBSYNC: 'off', TORRENTS: 'off', CAST_APPLETV: 'off', NOTES_OCR: 'off', SERVER_IP: '127.0.0.1' };
   const child = spawn(process.execPath, ['server.js'], { cwd: app, env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
   let logs = ''; child.stdout.on('data', (c) => { logs += c; }); child.stderr.on('data', (c) => { logs += c; });
-  const base = `http://127.0.0.1:${port}`;
+  let base = ''; // set once the server reports its port
   const owner = { 'cf-access-authenticated-user-email': 'owner@notes.test', 'content-type': 'application/json' };
   const post = (p, body = {}) => fetch(base + p, { method: 'POST', headers: owner, body: JSON.stringify(body) }).then((r) => r.json());
   const discord = { 'user-agent': 'Mozilla/5.0 (compatible; Discordbot/2.0; +https://discordapp.com)' };
   try {
     await new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(Error('Startup timeout: ' + logs)), 8000);
-      child.stdout.on('data', (c) => { if (String(c).includes('Marquee is running')) { clearTimeout(timer); resolve(); } });
+      child.stdout.on('data', (c) => { const ready = /Marquee is running: http:\/\/localhost:(\d+)/.exec(String(c)); if (ready) { port = Number(ready[1]); base = `http://127.0.0.1:${port}`; clearTimeout(timer); resolve(); } });
       child.once('error', reject); child.once('exit', () => { clearTimeout(timer); reject(Error(logs)); });
     });
     const { note } = await post('/api/admin/notes', { text: '', attachments: [{ fileId }] });

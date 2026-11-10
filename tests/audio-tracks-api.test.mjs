@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import net from 'node:net';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -22,8 +21,7 @@ test('selected audio links bind source and stream and retain signed range playba
     '-f','lavfi','-i','sine=frequency=440:duration=4','-f','lavfi','-i','sine=frequency=880:duration=4',
     '-map','0:v','-map','1:a','-map','2:a','-c:v','libx264','-c:a','aac',
     '-metadata:s:a:0','language=eng','-metadata:s:a:1','language=kor','-y',file]);
-  const reserve = net.createServer(); await new Promise((r) => reserve.listen(0, '127.0.0.1', r));
-  const port = reserve.address().port; await new Promise((r) => reserve.close(r));
+  let port = 0; // 0 = the server picks a free port and prints it (see the ready line below)
   for (const entry of await fs.readdir(root)) if (entry.endsWith('.js') || entry === 'package.json') await fs.copyFile(path.join(root, entry), path.join(app, entry));
   await fs.cp(path.join(root, 'public'), path.join(app, 'public'), { recursive: true });
   await fs.cp(path.join(root, 'src'), path.join(app, 'src'), { recursive: true });
@@ -39,7 +37,7 @@ test('selected audio links bind source and stream and retain signed range playba
   });
   await new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('Startup timeout: ' + logs)), 7000);
-    child.stdout.on('data', (c) => { if (String(c).includes('Marquee is running')) { clearTimeout(timer); resolve(); } });
+    child.stdout.on('data', (c) => { const ready = /Marquee is running: http:\/\/localhost:(\d+)/.exec(String(c)); if (ready) { port = Number(ready[1]); clearTimeout(timer); resolve(); } });
     child.once('error', reject); child.once('exit', () => { clearTimeout(timer); reject(new Error(logs)); });
   });
   const base = `http://127.0.0.1:${port}`;

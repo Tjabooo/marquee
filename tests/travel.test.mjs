@@ -131,7 +131,8 @@ test('lists, sharing, limits and clean-up', () => {
     store.remove(1, 'lib', 'a', 'small');
     assert.ok(fs.existsSync(store.filePath(row.copy_key)));
     store.remove(2, 'lib', 'a', 'small');
-    await new Promise((r) => setTimeout(r, 50));
+    // The file is removed in the background: give a busy machine up to 2 s, not a fixed 50 ms.
+    for (let i = 0; i < 200 && fs.existsSync(store.filePath(row.copy_key)); i++) await new Promise((r) => setTimeout(r, 10));
     assert.ok(!fs.existsSync(store.filePath(row.copy_key)), 'nobody wants it: deleted');
     // Old requests expire.
     await store.request(1, [{ kind: 'lib', id: 'a', title: 'A' }], 'standard');

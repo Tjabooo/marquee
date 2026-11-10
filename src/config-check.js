@@ -28,7 +28,7 @@ export function checkConfig(env = process.env, { tools = true } = {}) {
   const add = (level, key, message, fix) => out.push({ level, key, message, fix });
 
   const port = Number(env.PORT || 8080);
-  if (!Number.isInteger(port) || port < 1 || port > 65535) add('error', 'PORT', `PORT=${env.PORT} is not a valid port`, 'Use a number between 1024 and 65535, e.g. 8080.');
+  if (!Number.isInteger(port) || port < 0 || port > 65535) add('error', 'PORT', `PORT=${env.PORT} is not a valid port`, 'Use a number between 1024 and 65535, e.g. 8080.');
 
   if (!env.MEDIA_DIR) add('warn', 'MEDIA_DIR', 'MEDIA_DIR is not set, so the library is off', 'Set MEDIA_DIR to the folder that holds your films and shows.');
   else {

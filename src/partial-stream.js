@@ -227,7 +227,14 @@ export class PartialStreams {
         const { bytesRead } = await this.readFully(handle, buffer, at, stop.signal);
         at += bytesRead;
         if (!res.write(bytesRead === buffer.length ? buffer : buffer.subarray(0, bytesRead))) {
-          await new Promise((resolve) => { const go = () => { res.off('close', go); res.off('drain', go); resolve(); }; res.once('drain', go); res.once('close', go); });
+          // Wait for room, or for the reader to go. A response that already closed never emits
+          // again: waiting on it would park this read for ever and its file handle would only be
+          // closed by the garbage collector ("Closing file descriptor ... on garbage collection").
+          await new Promise((resolve) => {
+            const go = () => { res.off('close', go); res.off('drain', go); stop.signal.removeEventListener('abort', go); resolve(); };
+            res.once('drain', go); res.once('close', go); stop.signal.addEventListener('abort', go, { once: true });
+            if (res.destroyed || stop.signal.aborted) go();
+          });
         }
       }
       res.end();

@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import net from 'node:net';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { WatchlistStore, runRound, filmRelease, airedAfter, baselineFrom, retryDelay } from '../src/watchlist.js';
@@ -164,15 +163,14 @@ test('watchlist API: list, validation, removal and a clear message without TMDB'
   for (const name of await fs.readdir(root)) if (name.endsWith('.js') || name.endsWith('.json')) await fs.copyFile(path.join(root, name), path.join(app, name));
   await fs.cp(path.join(root, 'public'), path.join(app, 'public'), { recursive: true });
   await fs.cp(path.join(root, 'src'), path.join(app, 'src'), { recursive: true });
-  const reserve = net.createServer(); await new Promise((r) => reserve.listen(0, '127.0.0.1', r));
-  const port = reserve.address().port; await new Promise((r) => reserve.close(r));
+  let port = 0; // 0 = the server picks a free port and prints it (see the ready line below)
   const env = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, WINDIR: process.env.WINDIR, TEMP: process.env.TEMP, TMP: process.env.TMP,
     PORT: String(port), ADMIN_EMAILS: 'owner@wl.test', CONVERT: 'off', SUBSYNC: 'off', CAST_APPLETV: 'off', NOTES_OCR: 'off', SERVER_IP: '127.0.0.1' };
   const child = spawn(process.execPath, ['server.js'], { cwd: app, env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
   const exited = new Promise((r) => child.once('exit', r));
   await new Promise((resolve, reject) => {
     let logs = ''; const timer = setTimeout(() => reject(Error('Startup timeout: ' + logs)), 8000);
-    child.stdout.on('data', (c) => { logs += c; if (logs.includes('Marquee is running')) { clearTimeout(timer); resolve(); } });
+    child.stdout.on('data', (c) => { logs += c; const ready = /Marquee is running: http:\/\/localhost:(\d+)/.exec(logs); if (ready) { port = Number(ready[1]); clearTimeout(timer); resolve(); } });
     child.stderr.on('data', (c) => { logs += c; });
   });
   const call = async (method, p, body, status = 200) => {

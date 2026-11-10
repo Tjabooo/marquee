@@ -72,7 +72,8 @@ import * as preview from './preview.js';
   ensureDataDir();
 }
 
-const PORT = Number(process.env.PORT) || 8080;
+// PORT=0 asks the system for any free port (the tests use it); PORT is the real one once listening.
+let PORT = process.env.PORT?.trim() === '0' ? 0 : Number(process.env.PORT) || 8080;
 const HOST = process.env.HOST || '0.0.0.0';
 const VERSION = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 const trust = createTrust();
@@ -4570,6 +4571,7 @@ server.on('error', (err) => {
   process.exit(1);
 });
 server.listen(PORT, HOST, () => {
+  PORT = server.address().port;
   svtQueue?.start();
   console.log(`Marquee is running: http://localhost:${PORT} (version ${VERSION})`);
   console.log(`  Data:      ${DATA_DIR}`);

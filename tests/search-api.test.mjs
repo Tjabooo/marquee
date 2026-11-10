@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import net from 'node:net';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -36,10 +35,7 @@ test('Discover finds the exact film 9 and treats 2009 as a year filter', { timeo
   await new Promise((r) => mock.listen(0, '127.0.0.1', r));
   const mockBase = `http://127.0.0.1:${mock.address().port}`;
 
-  const reserve = net.createServer();
-  await new Promise((r) => reserve.listen(0, '127.0.0.1', r));
-  const port = reserve.address().port;
-  await new Promise((r) => reserve.close(r));
+  let port = 0; // 0 = the server picks a free port and prints it (see the ready line below)
 
   for (const name of await fs.readdir(root)) if (name.endsWith('.js') || name === 'package.json') await fs.copyFile(path.join(root, name), path.join(app, name));
   await fs.cp(path.join(root, 'src'), path.join(app, 'src'), { recursive: true });
@@ -66,7 +62,7 @@ test('Discover finds the exact film 9 and treats 2009 as a year filter', { timeo
 
   await new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(Error('Startup timeout: ' + logs)), 7000);
-    child.stdout.on('data', (c) => { if (String(c).includes('Marquee is running')) { clearTimeout(timer); resolve(); } });
+    child.stdout.on('data', (c) => { const ready = /Marquee is running: http:\/\/localhost:(\d+)/.exec(String(c)); if (ready) { port = Number(ready[1]); clearTimeout(timer); resolve(); } });
     child.once('error', reject);
     child.once('exit', () => { clearTimeout(timer); reject(Error(logs)); });
   });

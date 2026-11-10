@@ -112,6 +112,43 @@ test('the loopback server holds a read until those pieces are verified, and neve
   assert.equal((await fetch(url, { headers: { Range: 'bytes=9000-' } })).status, 416);
 });
 
+test('a reader that leaves while the loopback server waits for room ends the read and closes the file', { timeout: 10000 }, async (t) => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-partial-'));
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  const file = path.join(dir, 'Film.mkv');
+  await fs.writeFile(file, Buffer.alloc(8192, 0xab));
+  const r = rig(t);
+  r.setStates(new Array(8).fill(2));
+  const streams = await r.make(file);
+  const { entry } = await streams.open(`${'a'.repeat(40)}-0`);
+  // Count file handles the server opens and closes.
+  const nodeFs = (await import('node:fs')).default;
+  const realOpen = nodeFs.promises.open;
+  let opened = 0, closed = 0;
+  nodeFs.promises.open = async (...args) => {
+    const fh = await realOpen(...args); opened++;
+    const close = fh.close.bind(fh); fh.close = () => { closed++; return close(); };
+    return fh;
+  };
+  t.after(() => { nodeFs.promises.open = realOpen; });
+  // ffmpeg hangs up while a chunk is being written: the socket is gone, so neither 'drain' nor
+  // 'close' will ever come again.
+  const { EventEmitter } = await import('node:events');
+  const res = Object.assign(new EventEmitter(), {
+    destroyed: false,
+    writeHead() {}, end() {}, destroy() { this.destroyed = true; },
+    write() { this.destroyed = true; this.emit('close'); return false; },
+  });
+  const req = { url: `/${streams.token}/${entry.id}/video.mkv`, headers: { range: 'bytes=0-8191' }, method: 'GET' };
+  const outcome = await Promise.race([
+    streams.serve(req, res).then(() => 'finished'),
+    new Promise((resolve) => setTimeout(() => resolve('parked'), 3000)),
+  ]);
+  assert.equal(outcome, 'finished', 'the read must not wait for a response that already closed');
+  assert.equal(opened, 1);
+  assert.equal(closed, 1, 'the file handle is closed, not left to the garbage collector');
+});
+
 test('playing turns on in-order downloading and restores it when nobody watches any more', async (t) => {
   const r = rig(t, { firstLast: true });
   const streams = await r.make('/nowhere.mkv');
@@ -291,8 +328,7 @@ test('downloads list Play now and only the people it belongs to can open it', { 
     res.end('[]');
   });
   await new Promise((r) => mock.listen(0, '127.0.0.1', r));
-  const reserve = net.createServer(); await new Promise((r) => reserve.listen(0, '127.0.0.1', r));
-  const port = reserve.address().port; await new Promise((r) => reserve.close(r));
+  let port = 0; // 0 = the server picks a free port and prints it (see the ready line below)
   for (const entry of await fs.readdir(root)) if (entry.endsWith('.js') || entry === 'package.json') await fs.copyFile(path.join(root, entry), path.join(app, entry));
   await fs.cp(path.join(root, 'public'), path.join(app, 'public'), { recursive: true });
   await fs.cp(path.join(root, 'src'), path.join(app, 'src'), { recursive: true });
@@ -309,7 +345,7 @@ test('downloads list Play now and only the people it belongs to can open it', { 
   });
   await new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(`Startup timeout: ${logs}`)), 10000);
-    child.stdout.on('data', (c) => { if (String(c).includes('Marquee is running')) { clearTimeout(timer); resolve(); } });
+    child.stdout.on('data', (c) => { const ready = /Marquee is running: http:\/\/localhost:(\d+)/.exec(String(c)); if (ready) { port = Number(ready[1]); clearTimeout(timer); resolve(); } });
     child.once('error', reject); child.once('exit', () => { clearTimeout(timer); reject(new Error(logs)); });
   });
   const call = (endpoint, email, body) => fetch(`http://127.0.0.1:${port}${endpoint}`, { method: body ? 'POST' : 'GET',

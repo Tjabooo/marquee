@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import net from 'node:net';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { NotesStore } from '../src/notes.js';
@@ -19,8 +18,7 @@ test('notes API denies non-admins and shares messages safely between admins', { 
   const files = new NotesStore(app,{fileDir}); await fs.mkdir(files.fileDir, { recursive: true });
   await fs.writeFile(path.join(files.fileDir, `${fileId}.bin`), privateFile);
   files.registerFile(fileId, { name: 'private.txt', mime: 'text/plain', size: privateFile.length }); files.close();
-  const reserve = net.createServer(); await new Promise((r) => reserve.listen(0, '127.0.0.1', r));
-  const port = reserve.address().port; await new Promise((r) => reserve.close(r));
+  let port = 0; // 0 = the server picks a free port and prints it (see the ready line below)
   const env = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, WINDIR: process.env.WINDIR, TEMP: process.env.TEMP, TMP: process.env.TMP,
     PORT: String(port), NOTES_FILES_DIR:fileDir, ADMIN_EMAILS: 'owner@notes.test,admin@notes.test', CONVERT: 'off', SUBSYNC: 'off', TORRENTS: 'off', CAST_APPLETV: 'off', NOTES_OCR: 'off', SERVER_IP: '127.0.0.1' };
   const child = spawn(process.execPath, ['server.js'], { cwd: app, env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
@@ -28,7 +26,7 @@ test('notes API denies non-admins and shares messages safely between admins', { 
   try {
     await new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(Error('Startup timeout: ' + logs)), 8000);
-      child.stdout.on('data', (c) => { if (String(c).includes('Marquee is running')) { clearTimeout(timer); resolve(); } });
+      child.stdout.on('data', (c) => { const ready = /Marquee is running: http:\/\/localhost:(\d+)/.exec(String(c)); if (ready) { port = Number(ready[1]); clearTimeout(timer); resolve(); } });
       child.once('error', reject); child.once('exit', () => { clearTimeout(timer); reject(Error(logs)); });
     });
     const request = async (endpoint, body, email = 'owner@notes.test', expected = 200) => {
