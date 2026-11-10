@@ -2244,14 +2244,13 @@ function pageHero(backdrop) {
   hero.append(img);
   return hero;
 }
-// A colour sampled from the backdrop (a 24×14 read of TMDB's small copy; TMDB allows it with CORS), kept in the
+// A colour sampled from the backdrop (a 24×14 read of TMDB's small copy, fetched through /api/art), kept in the
 // lightness the theme needs, so every title page has its own room tone. Falls back to the theme's own.
 const washes = new Map();
 function washColour(url) {
   const small = String(url).replace(/\/t\/p\/(w\d+|original)\//, '/t/p/w300/');
   if (!washes.has(small)) washes.set(small, new Promise((resolve) => {
     const img = new Image();
-    img.crossOrigin = 'anonymous';
     img.onload = () => {
       try {
         const c = document.createElement('canvas'); c.width = 24; c.height = 14;
@@ -2269,7 +2268,7 @@ function washColour(url) {
       } catch { resolve(null); }
     };
     img.onerror = () => resolve(null);
-    img.src = `${small}?wash`; // its own cache entry: TMDB adds the CORS header only when asked, and a plain cached copy has none
+    img.src = `/api/art?path=${encodeURIComponent(new URL(small).pathname)}`; // through the server: same origin, so its pixels can be read
   }));
   return washes.get(small);
 }
@@ -2307,7 +2306,6 @@ const logoTones = new Map();
 function logoIsLight(url) {
   if (!logoTones.has(url)) logoTones.set(url, new Promise((resolve) => {
     const img = new Image();
-    img.crossOrigin = 'anonymous';
     img.onload = () => {
       try {
         const c = document.createElement('canvas'); c.width = 48; c.height = 24;
@@ -2320,7 +2318,9 @@ function logoIsLight(url) {
       } catch { resolve(false); }
     };
     img.onerror = () => resolve(false);
-    img.src = `${url}?wash`;
+    const small = new URL(String(url).replace(/\/t\/p\/(w\d+|original)\//, '/t/p/w185/')).pathname;
+    if (!/\.png$/.test(small)) return resolve(false); // an SVG logo: leave it as it is
+    img.src = `/api/art?path=${encodeURIComponent(small)}`;
   }));
   return logoTones.get(url);
 }
