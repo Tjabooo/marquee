@@ -1,0 +1,13 @@
+<!doctype html>
+<!-- The Android TV home-screen banner (320×180 dp), drawn at 4× like the TV app's boot screen:
+     the room's light from above, a row of marquee bulbs and the lit wordmark. Rendered by render.sh. -->
+<html><head><meta charset="utf-8"><style>
+  @font-face { font-family: "Bricolage Grotesque"; font-weight: 200 800; src: url("../../../public/fonts/bricolage-grotesque-latin.woff2") format("woff2"); }
+  html, body { margin: 0; width: 1280px; height: 720px; overflow: hidden; }
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: radial-gradient(ellipse 1100px 560px at 50% -120px, #4A2840 0%, rgba(61, 34, 52, 0) 100%), linear-gradient(#1F1019, #160B12); }
+  .bulbs { width: 660px; height: 40px; margin-bottom: 34px;
+    background: radial-gradient(circle, #F4C152 11px, rgba(244, 193, 82, .38) 15px, rgba(244, 193, 82, 0) 22px) 0 50% / 66px 40px repeat-x; }
+  b { font-family: "Bricolage Grotesque"; font-weight: 800; font-size: 268px; line-height: .9; letter-spacing: -0.035em; color: #F4C152;
+    text-shadow: 0 0 60px rgba(244, 193, 82, .5), 0 0 18px rgba(244, 193, 82, .25); margin-top: -10px; }
+</style></head><body><div class="bulbs"></div><b>Marquee</b></body></html>

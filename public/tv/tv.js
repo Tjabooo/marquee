@@ -1,4 +1,5 @@
-// Marquee's Samsung TV app, loaded by the shell in tv/tizen. Library, Discover, Search and smart downloads.
+// Marquee's TV app, loaded by the shell in tv/tizen (Samsung) or tv/android (Android TV, which gives it the same
+// AVPlay, tizen.* and key codes). Library, Discover, Search and smart downloads.
 // Remote-control navigation, the TV's own player (AVPlay: MKV, HEVC, surround),
 // and Skip intro / Up next on the screen itself.
 // Written for the TV's browser engine (Samsung 2020 = Chrome 69): no optional chaining, nullish coalescing, or newer built-ins.
@@ -1829,7 +1830,8 @@
       document.body.classList.add('playing');
       document.addEventListener('visibilitychange', onHidden);
       // The MP4 copy when there is one (always TV-safe audio: the TV can't decode DTS), else the original.
-      api('/api/play-link?kind=lib&id=' + encodeURIComponent(f.id) + '&variant=browser-hevc').then(function (link) {
+      // The Android app asks for H.264 instead on TVs that can't decode HEVC (tv/android, Codecs.java).
+      api('/api/play-link?kind=lib&id=' + encodeURIComponent(f.id) + '&variant=' + (window.MARQUEE_TV_PLAY || 'browser-hevc')).then(function (link) {
         if (s.closed) return;
         streamUrl = SERVER + link.url;
         openStream(startAt);

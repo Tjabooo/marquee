@@ -513,5 +513,22 @@
  "Tap to read more.": "Tryck för att läsa mer.",
  "Marquee update: {0}": "Uppdatering av Marquee: {0}",
  "{0} Marquee updates": "{0} uppdateringar av Marquee",
- "New in Marquee": "Nytt i Marquee"
+ "New in Marquee": "Nytt i Marquee",
+ "Marquee on Android TV": "Marquee på Android TV",
+ "For TVs with Android TV or Google TV, Chromecast with Google TV, Nvidia Shield and other Android TV boxes.": "För TV-apparater med Android TV eller Google TV, Chromecast med Google TV, Nvidia Shield och andra Android TV-boxar.",
+ "Get Downloader": "Hämta Downloader",
+ "On the TV, open Google Play, search for Downloader and install it. It’s free, made by AFTVnews, with an orange icon.": "Öppna Google Play på TV:n, sök efter Downloader och installera den. Den är gratis, gjord av AFTVnews och har en orange ikon.",
+ "Type this address": "Skriv in den här adressen",
+ "Open Downloader, select the address box and type:": "Öppna Downloader, välj adressrutan och skriv:",
+ "Then press Go.": "Tryck sedan på Go.",
+ "Install Marquee": "Installera Marquee",
+ "When the download is done, press Install. The first time, the TV asks to let Downloader install apps: choose Settings, turn Downloader on, press Back, then Install.": "När nedladdningen är klar trycker du på Installera. Första gången frågar TV:n om Downloader får installera appar: välj Inställningar, slå på Downloader, tryck Tillbaka och sedan Installera.",
+ "Press Open. The TV shows a code: on your phone, open Marquee, go to Settings → Sign in a TV and enter it.": "Tryck på Öppna. TV:n visar en kod: öppna Marquee på telefonen, gå till Inställningar → Logga in en TV och skriv in den.",
+ "Marquee is now among the TV’s apps. It keeps itself up to date: when there’s a new version, the TV offers it as the app starts. Downloader may offer to delete the file it fetched; the app stays.": "Marquee finns nu bland TV:ns appar. Den håller sig uppdaterad själv: när det finns en ny version erbjuder TV:n den när appen startar. Downloader kan erbjuda att radera filen den hämtade, men appen finns kvar.",
+ "The TV has to be on the same network as Marquee.": "TV:n måste vara på samma nätverk som Marquee.",
+ "Download the app ({0} · version {1})": "Ladda ner appen ({0} · version {1})",
+ "The Android TV app isn’t on this server yet.": "Android TV-appen finns inte på den här servern än.",
+ "Whoever runs Marquee can build it with tv/android/build.sh (see docs/android-tv.md).": "Den som sköter Marquee kan bygga den med tv/android/build.sh (se docs/android-tv.md).",
+ "Open this page at home.": "Öppna den här sidan hemma.",
+ "The Android TV app installs and runs on the home network, where Marquee is.": "Android TV-appen installeras och körs på hemnätverket, där Marquee finns."
 }

@@ -96,6 +96,7 @@ See [remote-access.md](remote-access.md) for how accounts work and how to publis
 | `ATVSCRIPT` | `atvscript` on PATH | Full path to pyatv's `atvscript`. |
 | `ATV_HOSTS` | | Apple TV addresses to query directly if discovery fails, comma-separated. |
 | `CAST_WHEN_AWAY` | `off` | Offer TVs to visitors who aren't on the home network. |
+| `ANDROID_APP_DIR` | `tv/android/dist` | Folder holding the Android TV app (`Marquee.apk` + `Marquee.json`, made by `tv/android/build.sh`), offered at `/android` on the home network. See [Android TV](android-tv.md). |
 
 ## Playback first
 

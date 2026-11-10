@@ -6847,6 +6847,9 @@ function renderSettings() {
   out.push(settingsRow(T('Open Marquee on'), null,
     segmented([['discover', T('Discover')], ['library', T('Library')]], p.startView === 'downloads' ? 'library' : p.startView || 'discover', (v) => saveMe({ startView: v }).then(renderSettings), T('Open Marquee on'))));
   out.push(tvSignInRow());
+  // The Android TV app's install steps (/android, android-tv.js on the server): opened on a phone at home.
+  out.push(settingsRow(T('Android TV'), T('Put Marquee on an Android TV or Google TV. It takes a few minutes.'),
+    h('a', { class: 'chip', href: '/android', target: '_blank', rel: 'noopener' }, T('Show the steps'))));
   out.push(jellyfinRow());
   out.push(settingsRow(T('Library order'), null,
     segmented([['newest', T('Newest')], ['expiring', T('Leaving soonest')], ['title', 'A–Z']], p.librarySort || 'newest', (v) => saveMe({ librarySort: v }).then(renderSettings), T('Library order'))));

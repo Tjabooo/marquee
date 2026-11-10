@@ -22,6 +22,7 @@ import * as load from './load.js';
 import * as screenTime from './screentime.js';
 import * as clips from './clips.js';
 import * as invites from './invites.js';
+import { createAndroidTv, isAndroidPath } from './android-tv.js';
 import { createOidc } from './oidc.js';
 import * as shows from './shows.js';
 import * as season from './season.js';
@@ -237,6 +238,7 @@ setTimeout(runUpdatePushes, 20000).unref();
 setInterval(runUpdatePushes, 120000).unref();
 // The preview switch (preview.js): a second web app this browser can opt into at /preview.
 const PREVIEW_DIR = preview.previewDir();
+const androidTv = createAndroidTv({ port: () => PORT }); // the Android TV app's install page and file (tv/android)
 const webBuildFor = (req) => (preview.inPreview(req, PREVIEW_DIR) ? preview.previewBuild(PREVIEW_DIR) : WEB_BUILD);
 screenTime.initScreenTime({ dataDir: DATA_DIR });
 clips.initClips({ dataDir: DATA_DIR, cacheDir: CACHE_DIR, getEncoder: () => converter.converterStatus().encoder });
@@ -4070,6 +4072,7 @@ function publicPath(req, url) {
   if (p.startsWith('/api/auth/') || p === '/c' || p.startsWith('/c/') || p.startsWith('/play/')) return true;
   if (/^\/api\/(house\/(report|summary|load|boot)|screentime|agent\/notify)$/.test(p)) return true;
   if (/^\/api\/tv\/pair\/(start|poll)$/.test(p)) return true; // home network only (checked in the route)
+  if (isAndroidPath(p)) return !req.auth.remote; // the Android TV app's steps and file, at home (android-tv.js)
   if (p.startsWith('/api/subs/file/') && !req.auth.remote) return true;
   if (p.startsWith('/api/')) return false;
   const ext = path.extname(p).toLowerCase();
@@ -4185,6 +4188,7 @@ async function handleRequest(req, res) {
         && !(await invites.handlePublic(req, res, url, { auth: oidc.configured ? auth : null }))
         && !(await noteShare.handlePublic(req, res, url, { notes, media: sharedMedia, sendVideo, nameFor: (email) => accounts.displayNameFor(email) })) && !(await clips.handlePublic(req, res, url, { sendVideo, previews }))) throw new HttpError(404, 'Not found.');
     }
+    else if (isAndroidPath(url.pathname)) androidTv.handle(req, res, url, { home: !req.auth.remote });
     else if (!(req.method === 'GET' && preview.previewRoute(req, res, url.pathname, PREVIEW_DIR))) await serveStatic(req, res, url.pathname);
   } catch (err) {
     const status = err.status || 500;

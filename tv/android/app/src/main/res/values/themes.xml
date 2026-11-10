@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <color name="plum">#1F1019</color>
+  <color name="velvet_deep">#160B12</color>
+  <!-- The window is the colour of the TV app's background, so nothing flashes white while it starts. -->
+  <style name="Marquee" parent="@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen">
+    <item name="android:windowBackground">@color/plum</item>
+    <item name="android:colorBackground">@color/plum</item>
+    <item name="android:windowDisablePreview">false</item>
+  </style>
+</resources>
