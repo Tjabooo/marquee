@@ -1,4 +1,17 @@
 {
+  "2026-11-10-people-rows": {
+    "title": "Snyggare personlista",
+    "items": {
+      "Names and details fit again": {
+        "title": "Namn och uppgifter får plats igen",
+        "text": "I Inställningar → Personer står varje persons namn, mejladress och lagring på en rad igen, med reglage och biblioteksval under, i stället för att trängas ihop i en smal kolumn."
+      },
+      "Change password looks the part": {
+        "title": "Byt lösenord ser ut som det ska",
+        "text": "I Inställningar → Du är Byt lösenord nu en riktig rad: tryck på den för att öppna formuläret och tryck igen för att stänga det."
+      }
+    }
+  },
   "2026-11-10-update-notifications": {
     "title": "Få veta när något är nytt",
     "items": {
