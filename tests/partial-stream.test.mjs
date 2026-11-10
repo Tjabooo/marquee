@@ -305,7 +305,11 @@ test('the popup says how far the download is', () => {
   assert.equal(progressLine({ progress: 0.43, paused: true, eta: 5 }), '43% downloaded · paused');
 });
 
-test('downloads list Play now and only the people it belongs to can open it', { timeout: 30000 }, async (t) => {
+// The server probes the download with ffprobe; without it every open fails fast with 422 (macOS and
+// Windows CI runners have no ffmpeg), so this end-to-end test needs it, like the other ffmpeg tests.
+const { spawnSync: spawnSyncFf } = await import('node:child_process');
+const hasFfmpeg = spawnSyncFf(process.env.FFMPEG || 'ffmpeg', ['-version']).status === 0 && spawnSyncFf(process.env.FFPROBE || 'ffprobe', ['-version']).status === 0;
+test('downloads list Play now and only the people it belongs to can open it', { skip: !hasFfmpeg && 'ffmpeg not installed', timeout: 30000 }, async (t) => {
   const { default: http } = await import('node:http');
   const { default: net } = await import('node:net');
   const { spawn } = await import('node:child_process');
