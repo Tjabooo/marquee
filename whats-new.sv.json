@@ -1,4 +1,13 @@
 {
+  "2026-11-10-samsung-tv-rust": {
+    "title": "Snabbare Samsung-TV-app",
+    "items": {
+      "A faster Samsung TV app": {
+        "title": "En snabbare Samsung-TV-app",
+        "text": "Samsung-TV-appen har byggts om från grunden så att den går mycket lättare på TV:n. Att flytta runt, bläddra i rader och öppna titlar går snabbare och smidigare, och allt annat fungerar som förut: Hem, Upptäck, Sök, Hoppa över intro, Nästa avsnitt och undertexter. Du är fortfarande inloggad. Om den nya appen någon gång inte kan starta på en TV öppnas den gamla i stället."
+      }
+    }
+  },
   "2026-11-10-android-tv": {
     "title": "Marquee på Android TV",
     "items": {

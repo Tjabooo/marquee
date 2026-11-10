@@ -1,5 +1,17 @@
 [
   {
+    "id": "2026-11-10-samsung-tv-rust",
+    "date": "2026-11-10",
+    "title": "Faster Samsung TV app",
+    "items": [
+      {
+        "title": "A faster Samsung TV app",
+        "audience": "owner",
+        "text": "The Samsung TV app has been rebuilt from the ground up so it runs much lighter on the TV. Moving around, scrolling rows and opening titles is quicker and smoother, and everything else works as before: Home, Discover, Search, Skip intro, Up next and subtitles. You stay signed in. If the new app ever can't start on a TV, the old one opens instead."
+      }
+    ]
+  },
+  {
     "id": "2026-11-10-android-tv",
     "date": "2026-11-10",
     "title": "Marquee on Android TV",
