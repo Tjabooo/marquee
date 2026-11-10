@@ -7466,8 +7466,9 @@ const copyLink = (url) => copyWithToast(url, T('Link copied: paste it in Discord
 // ---------- clip editor (lossless: never a lossy re-encode) ----------
 // The clip is a row of parts on a timeline. Split at the playhead, then remove the parts you don't
 // want; trimming the start or end is the same thing at the edges. What's kept is joined into a new
-// file. AV1 clips (`exact` from the server) cut on the exact frame: the frames between a cut and the
-// next keyframe are rebuilt losslessly, the rest is copied. Other clips can only start a kept stretch
+// file. AV1 clips (`exact` from the server) cut on the exact frame: at the start the frames before the
+// cut are copied and hidden (an MP4 edit list), at later joins the frames between the cut and the next
+// keyframe are rebuilt losslessly; the rest is copied. Other clips can only start a kept stretch
 // on a keyframe, so it may begin a little early: the timeline shows that lead-in, and a cut too
 // short to clear the next keyframe is flagged before saving.
 const fmtT = (t) => { const d = Math.round(t * 10); return `${Math.floor(d / 600)}:${((d % 600) / 10).toFixed(1).padStart(4, '0')}`; };
@@ -7493,7 +7494,7 @@ async function openTrim(c, opener) {
   let busy = false;
   const MIN_PIECE = 0.2;  // seconds; no slivers from double-clicking Split
   const snap = (t) => (exact ? t : keys.filter((k) => k <= t + 0.001).pop() ?? 0);
-  // an exact cut that doesn't land on a keyframe's own frame gets a losslessly rebuilt lead-in
+  // an exact cut that doesn't land on a keyframe's own frame gets a hidden or losslessly rebuilt lead-in
   const offKey = (t) => t > 0.0005 && !keys.some((k) => t >= k - 0.0005 && t < k + frameDur - 0.0005);
   // Kept stretches: neighbouring kept parts merge; `from` is where the copy really starts.
   const runs = () => {

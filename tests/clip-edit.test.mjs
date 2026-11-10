@@ -153,6 +153,21 @@ test('AV1 clips are cut on the exact frame and every frame matches the original'
     assert.deepEqual(probe.streams.map((s) => s.codec_type), ['video', 'audio', 'audio']);
     assert.ok(Math.abs(Number(probe.streams[1].duration) - 141 / 30) < 0.03, `audio ${probe.streams[1].duration}`);
     assert.deepEqual((await fs.readdir(path.join(dir, 'Trimmed Clips', 'Game'))), [`${r.title}.mp4`], 'temporary parts are cleaned up');
+    // the start's lead-in (keyframe 0 up to frame 15) is copied and hidden by an edit list, not re-encoded
+    const flags = String(spawnSync(ffprobe, ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'packet=flags', '-of', 'csv=p=0', out]).stdout).trim().split(/\r?\n/);
+    assert.equal(flags.filter((f) => f.includes('D')).length, 15, 'hidden lead-in frames');
+    assert.ok(flags[0].includes('K'), 'the file starts on a copied keyframe');
+    // the trim reads as starting at 0, and trimming it again stays exact: from 0.2 s the keyframe is
+    // a hidden one (lossless head), from 2.6 s there's a shown keyframe at 2.4 s (hidden lead-in)
+    const trimmed = (await fresh.listClips()).clips.find((c) => c.title === r.title);
+    const again = await fresh.trimInfo(trimmed.id);
+    assert.ok(again.keyframes.every((k) => k >= 0) && again.keyframes.includes(1.5), `keyframes ${again.keyframes}`);
+    const firstKept = [...all.slice(15, 87), ...all.slice(129, 198)];
+    for (const [start, end] of [[0.2, 1.4], [2.6, 4.4]]) {
+      const r2 = await fresh.trim(trimmed.id, [{ start, end }]);
+      const out2 = path.join(dir, 'Trimmed Clips', 'Game', `${r2.title}.mp4`);
+      assert.deepEqual(md5(['-i', out2, '-map', '0:v:0']), firstKept.slice(Math.round(start * 30), Math.round(end * 30)), `re-trim from ${start} s`);
+    }
   } finally {
     await fs.rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     await fs.rm(data, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });

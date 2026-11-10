@@ -1,4 +1,13 @@
 {
+  "2026-11-10-trimmed-clips-smooth-start": {
+    "title": "Klippta klipp startar mjukt",
+    "items": {
+      "No more stutter at the start of a trimmed clip": {
+        "title": "Inget mer hack i början av klippta klipp",
+        "text": "Klipp du klippt i Marquee brukade frysa och ladda en eller två sekunder i början och sedan plötsligt spela som vanligt. Nya klipp spelar nu mjukt från första bilden, börjar fortfarande på exakt den bild du valde och har full kvalitet."
+      }
+    }
+  },
   "2026-11-09-skip-intro-long-openings": {
     "title": "Hoppa över intro efter långa öppningar",
     "items": {

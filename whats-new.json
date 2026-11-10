@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-10-trimmed-clips-smooth-start",
+    "date": "2026-11-10",
+    "title": "Trimmed clips start smoothly",
+    "items": [
+      {
+        "title": "No more stutter at the start of a trimmed clip",
+        "text": "Clips you trimmed in Marquee used to freeze and buffer for a second or two at the start, then suddenly play normally. New trims now play smoothly from the first frame, and they still start on exactly the frame you picked, at full quality."
+      }
+    ]
+  },
+  {
     "id": "2026-11-09-skip-intro-long-openings",
     "date": "2026-11-09",
     "title": "Skip intro after long openings",

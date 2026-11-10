@@ -243,21 +243,27 @@ export async function unshare(id) {
 // ---------- lossless trimming ----------
 // Nothing is ever re-encoded with loss. A stream copy can only start on a keyframe (every 2 s in
 // recorder clips), so for AV1 clips (everything clip-replay records) a cut that lands between
-// keyframes is made exact like this: the frames from the cut up to the next keyframe are re-encoded
-// with SVT-AV1 in mathematically lossless mode (checked frame by frame against the original before
-// anything is saved), and everything from that keyframe on is copied. Every frame in the result
-// decodes to exactly the pixels it had in the original. Lossless frames are big (~600 Mbit/s at
-// 1440p60), but only for the < 2 s after each cut. Other codecs still start on the keyframe at or
-// before the chosen point (the UI shows where). Audio is copied (AAC frames are ~21 ms).
-// Lossless frames are slow to decode (~28 fps untiled at 1440p, so browsers stuttered right after
-// each cut); split into 8x4 tiles, dav1d decodes them in parallel (85 fps on 4 threads).
+// keyframes is made exact like this:
+// - The clip's start: the copy begins on the keyframe before the cut and an MP4 edit list hides the
+//   frames up to the cut (the "lead-in"). Players decode them but start showing at the cut, so every
+//   frame is the original, copied, at the original bitrate. (Checked against the original before
+//   anything is saved; Firefox's paused first paint can show the one hidden frame before the cut.)
+// - Later joins (a part after a removed bit): an edit list can only hide frames at the start, so
+//   the frames from the cut up to the next keyframe are re-encoded with SVT-AV1 in mathematically
+//   lossless mode (checked frame by frame against the original), and the rest is copied.
+// Every frame in the result decodes to exactly the pixels it had in the original. Lossless frames
+// are big (~600 Mbit/s at 1440p60) and slow to decode (~33 fps on a GPU, ~50 fps in dav1d on 4
+// threads at 1440p, even split into 8x4 tiles), so playback crawls through them: that's why the
+// start, where nearly every trim cuts, uses the hidden lead-in instead. Other codecs still start on
+// the keyframe at or before the chosen point (the UI shows where). Audio is copied (AAC frames are ~21 ms).
 async function videoPackets(file, stream = 'v:0') {
   // packet timestamps and flags only: no decoding, so it's fast even for AV1 on a GPU that can't decode it
   const out = await run(FFPROBE, ['-v', 'error', '-select_streams', stream, '-show_entries', 'packet=pts_time,duration_time,flags', '-of', 'csv=p=0', file]);
   const list = [];
   for (const line of out.split(/\r?\n/)) {
     const [t, d, flags] = line.split(',');
-    if (t && Number.isFinite(Number(t))) list.push({ t: Number(t), d: Number(d) || 0, key: Boolean(flags?.includes('K')) });
+    // D: a frame an edit list hides (a lead-in before the clip's real start)
+    if (t && Number.isFinite(Number(t))) list.push({ t: Number(t), d: Number(d) || 0, key: Boolean(flags?.includes('K')), hidden: Boolean(flags?.includes('D')) });
   }
   return list.sort((a, b) => a.t - b.t);
 }
@@ -292,15 +298,16 @@ export function mixTrack(audio) {
 }
 
 // Everything the editor and trim() need about a clip. Times are relative to the first keyframe
-// (the container's start offset), like the browser's currentTime.
+// (the container's start offset), like the browser's currentTime; in a clip with a hidden lead-in
+// (an edit list, see above) to the first frame that's shown, and the hidden frames are before 0.
 async function cutInfo(file) {
   const [{ duration, audio, v, start }, packets] = await Promise.all([probe(file), videoPackets(file)]);
-  const first = packets.find((p) => p.key)?.t ?? packets[0]?.t ?? 0;
+  const first = (packets.some((p) => p.hidden) ? packets.find((p) => !p.hidden)?.t : packets.find((p) => p.key)?.t) ?? packets[0]?.t ?? 0;
   const last = packets.at(-1);
   const gaps = packets.slice(1, 200).map((p, i) => p.t - packets[i].t).filter((d) => d > 0).sort((a, b) => a - b);
   return {
     duration, audio, v, start, first, packets,
-    keyframes: packets.filter((p) => p.key).map((p) => Math.round((p.t - first) * 1000) / 1000),
+    keyframes: packets.filter((p) => p.key && !p.hidden).map((p) => Math.round((p.t - first) * 1000) / 1000),
     frames: packets.map((p) => p.t - first),
     keyAt: packets.map((p) => p.key),
     end: last ? last.t + (last.d || gaps[0] || 0) - first : duration,
@@ -383,9 +390,10 @@ function audioParts(spans, packets, file) {
   return lines;
 }
 // The exact edit of an AV1 clip into `out` (video + every audio track, all copied except the
-// lossless heads). Parts are made separately and joined with the concat demuxer: video from the
-// lossless heads and the original (from a keyframe on), audio from an audio-only copy (cut
-// from the original directly, a seek would pull the audio back to the video's keyframe).
+// lossless heads of later parts). Parts are made separately and joined with the concat demuxer:
+// video from the lossless heads and the original (from a keyframe on), audio from an audio-only copy
+// (cut from the original directly, a seek would pull the audio back to the video's keyframe). The
+// first part copies its lead-in too, and the final mux hides it with an edit list.
 async function exactCut(src, parts, info, work, out) {
   const { v, packets, first, start: fileStart, audio } = info;
   const n = packets.length;
@@ -398,8 +406,24 @@ async function exactCut(src, parts, info, work, out) {
   const timescale = v.time_base.split('/')[1];
   const videoList = [];
   const audioSrc = path.join(work, 'audio.mp4');
+  // The first part's lead-in: from the keyframe at or before its first frame. A keyframe the source
+  // itself hides (re-trimming a trim right at its start) can't be copied from; that cut gets a head.
+  const p0 = parts[0];
+  let lead = null;
+  if (p0.k > p0.a) {
+    let ka = p0.a;
+    while (ka > 0 && !packets[ka].key) ka--;
+    if (packets[ka].key && !packets[ka].hidden) lead = { ka, frames: p0.a - ka };
+  }
   for (const [i, p] of parts.entries()) {
     const s = abs(p.a), e = abs(p.b), kt = abs(p.k);
+    if (i === 0 && lead) {
+      const from = abs(lead.ka);
+      videoList.push(`file ${listPath(src)}`, `inpoint ${secs(from + EPS / 5)}`);
+      if (p.b < n) videoList.push(`outpoint ${secs(e - EPS)}`);
+      videoList.push(`duration ${secs(e - from)}`);
+      continue;
+    }
     if (p.k > p.a) {
       const head = path.join(work, `head${i}.mp4`);
       const frames = String(p.k - p.a);
@@ -422,7 +446,17 @@ async function exactCut(src, parts, info, work, out) {
     }
   }
   await fs.promises.writeFile(path.join(work, 'video.txt'), videoList.join('\n') + '\n');
-  const args = ['-hide_banner', '-nostdin', '-y', '-f', 'concat', '-safe', '0', '-i', path.join(work, 'video.txt')];
+  let args = ['-hide_banner', '-nostdin', '-y', '-f', 'concat', '-safe', '0', '-i', path.join(work, 'video.txt')];
+  if (lead) {
+    // Join the video first, then copy it again from the cut's frame: a stream copy that starts
+    // between keyframes keeps the frames before it with negative times, and the MP4 muxer turns
+    // those into an edit list (media_time = the lead-in). -ss counts from the file's start time.
+    const joined = path.join(work, 'video.mp4');
+    await run(FFMPEG, [...args, '-map', '0:v:0', '-c', 'copy', '-video_track_timescale', timescale, joined]);
+    const jp = await videoPackets(joined);
+    if (!jp[lead.frames]) throw new Error('The joined video came out short, so nothing was saved.');
+    args = ['-hide_banner', '-nostdin', '-y', '-ss', secs(jp[lead.frames].t - jp[0].t), '-i', joined];
+  }
   if (audio.length) {
     await run(FFMPEG, ['-hide_banner', '-nostdin', '-y', '-i', src, '-map', '0:a', '-c', 'copy', '-copyts', audioSrc]);
     await fs.promises.writeFile(path.join(work, 'audio.txt'), audioParts(parts.map((p) => [abs(p.a), abs(p.b)]), await videoPackets(audioSrc, 'a:0'), audioSrc).join('\n') + '\n');
@@ -438,6 +472,20 @@ async function exactCut(src, parts, info, work, out) {
   });
   args.push('-movflags', '+faststart', out);
   await run(FFMPEG, args);
+  if (lead) {
+    // the edit list has to start on exactly the cut's frame: compare the first frames players show
+    // with the original's, and the number of frames shown with the edit's
+    const shown = (await videoPackets(out)).filter((p) => !p.hidden).length;
+    const check = Math.min(3, p0.b - p0.a);
+    const [want, got] = await Promise.all([
+      frameHashes(['-ss', secs(Math.max(0, abs(p0.a) - (fileStart || 0) - EPS)), '-i', src, '-map', '0:v:0', '-fps_mode', 'passthrough', '-frames:v', String(check)]),
+      frameHashes(['-i', out, '-map', '0:v:0', '-fps_mode', 'passthrough', '-frames:v', String(check)]),
+    ]);
+    const total = parts.reduce((t, p) => t + p.b - p.a, 0);
+    if (want.length !== check || got.join() !== want.join() || shown !== total) {
+      throw new Error('The cut didn’t start on the exact frame, so nothing was saved.');
+    }
+  }
 }
 // Which audio tracks the copy keeps. `remove` lists separate tracks (never the mix: that's rebuilt
 // from the tracks that stay). Returns null when nothing changes, so the copy stays a plain copy.
