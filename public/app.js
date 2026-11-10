@@ -778,14 +778,37 @@ function segmented(options, value, onPick, label) {
     }, text)));
 }
 
+function pickDiscover(changes) {
+  Object.assign(disc, changes, { list: null });
+  documentaries.reset();
+  if (disc.genre && !genreFits(disc.genre)) disc.genre = null;
+  window.scrollTo({ top: 0 });
+  renderDiscover();
+}
+// The header's Browse button (phones, tablets): what Discover shows right now, and a sheet to change it.
+function updateBrowseButton() {
+  const label = disc.genre ? disc.genre.name : disc.type === 'all' ? T('Browse') : (TYPE_LABELS.find(([k]) => k === disc.type) || [])[1];
+  $('#browse-label').textContent = label;
+  $('#browse-btn').classList.toggle('is-set', disc.type !== 'all' || Boolean(disc.genre));
+  $('#browse-btn').setAttribute('aria-label', T('Browse: {0}', label));
+}
+function openBrowse(opener) {
+  const choose = (changes) => { closeTopOverlay(); pickDiscover(changes); };
+  const types = h('div', { class: 'browse-types', role: 'group', 'aria-label': T('Show') }, TYPE_LABELS.map(([key, text]) =>
+    h('button', { type: 'button', class: 'browse-type', 'aria-pressed': String(disc.type === key && !disc.genre), onclick: () => choose({ type: key, genre: null }) }, text)));
+  const genres = disc.type !== 'docs' && (disc.genres || []).filter(genreFits);
+  $('#picker-body').replaceChildren(
+    h('h2', { id: 'picker-title' }, T('Browse')),
+    types,
+    genres && genres.length > 0 && h('h3', { class: 'browse-head' }, T('Genres')),
+    genres && genres.length > 0 && h('div', { class: 'browse-genres', role: 'group', 'aria-label': T('Genre') }, genres.map((g) =>
+      h('button', { type: 'button', class: 'chip', 'aria-pressed': String(disc.genre?.name === g.name), onclick: () => choose({ genre: g }) }, g.name))));
+  pushOverlay(showSheet($('#picker'), $('#picker-backdrop'), () => opener?.focus({ preventScroll: true })));
+}
+$('#browse-btn').addEventListener('click', (e) => openBrowse(e.currentTarget));
+
 function discoverFilters() {
-  const pick = (changes) => {
-    Object.assign(disc, changes, { list: null });
-    documentaries.reset();
-    if (disc.genre && !genreFits(disc.genre)) disc.genre = null;
-    window.scrollTo({ top: 0 });
-    renderDiscover();
-  };
+  const pick = pickDiscover;
   const open = Boolean(disc.genresOpen || disc.genre);
   const chips = h('div', { class: 'genre-chips', id: 'genre-chips', role: 'group', 'aria-label': T('Genre'), hidden: !open },
     h('button', { type: 'button', class: 'chip', 'aria-pressed': String(!disc.genre), onclick: () => pick({ genre: null }) }, T('All genres')),
@@ -1051,6 +1074,7 @@ async function pagedGrid(content, urlFor, signal, gridClass = 'grid') {
 
 async function renderDiscover() {
   const body = $('#discover-body');
+  if (state.view === 'discover') { $('#browse-btn').hidden = false; updateBrowseButton(); }
   const heading = $('#discover-heading');
   const q = state.query.trim();
   heading.textContent = q ? T('Results for “{0}”', q) : T('Discover');
@@ -2097,7 +2121,7 @@ async function applyLive() {
       } catch { return; }
       maybeShowWhatsNew(); // e.g. the server came back from an update
       if (state.view === 'settings' && state.me?.isOwner) await loadPeople();
-      if (state.view === 'settings' && !editingIn('#settings-body')) renderSettings();
+      if (state.view === 'settings') renderSettingsWhenStill();
     })());
   }
   if (has('notes') && view === 'notes') jobs.push(notesView.poll());
@@ -6854,9 +6878,17 @@ function renderSettings() {
         : T('Nothing is deleted automatically.'))));
 
   if (me.isOwner) out.push(...ownerSettings());
-  const top = window.scrollY;
   body.replaceChildren(...settingsLayout(out.filter(Boolean)));
-  window.scrollTo(0, top);
+}
+// Live updates redraw Settings; not in the middle of a scroll (on a phone that stops the scroll dead), but once it settles.
+let lastPageScroll = 0, settingsRedraw = null;
+window.addEventListener('scroll', () => { lastPageScroll = Date.now(); }, { passive: true });
+window.addEventListener('touchmove', () => { lastPageScroll = Date.now(); }, { passive: true });
+function renderSettingsWhenStill() {
+  clearTimeout(settingsRedraw);
+  const wait = 900 - (Date.now() - lastPageScroll);
+  if (wait > 0) { settingsRedraw = setTimeout(renderSettingsWhenStill, wait); return; }
+  if (state.view === 'settings' && !editingIn('#settings-body')) renderSettings();
 }
 
 // Settings in groups: each heading starts a card of rows, and wide screens get an index of the groups beside them.
@@ -6908,7 +6940,7 @@ function loadJellyfin() {
   jellyfinView.loading ??= api('/api/jellyfin')
     .then((d) => { jellyfinView.links = d.links; })
     .catch(() => { jellyfinView.links = jellyfinView.links || []; })
-    .finally(() => { jellyfinView.loading = null; if (state.view === 'settings') renderSettings(); });
+    .finally(() => { jellyfinView.loading = null; if (state.view === 'settings') renderSettingsWhenStill(); });
   return jellyfinView.loading;
 }
 function jellyfinRow() {
@@ -6966,7 +6998,7 @@ function notificationSettings() {
   const p = prefs();
   const out = [h('h3', { class: 'set-head' }, T('Notifications'))];
   if (!pushView.loaded) {
-    if (support === 'ok') { loadPush().then(() => { if (state.view === 'settings') renderSettings(); }); out.push(h('p', { class: 'muted' }, T('Loading…'))); return out; }
+    if (support === 'ok') { loadPush().then(() => { if (state.view === 'settings') renderSettingsWhenStill(); }); out.push(h('p', { class: 'muted' }, T('Loading…'))); return out; }
     pushView.loaded = true;
   }
   const on = Boolean(pushView.deviceId);
@@ -8461,6 +8493,7 @@ function clipCard(c) {
   });
   actions.push(h('button', { class: 'icon-btn clip-trim', 'aria-label': T('Edit {0}', c.title), title: T('Edit: trim or cut out parts (no quality loss)'), onclick: (e) => openTrim(c, e.currentTarget) }));
   actions.push(del);
+  if (s?.ready) thumb.append(h('span', { class: 'clip-badge' }, T('Shared')));
   const card = h('li', { class: 'clip' }, thumb,
     h('div', { class: 'clip-text' },
       clipTitle(c),
@@ -8479,19 +8512,27 @@ function renderClips() {
   if (!state.clips) return;
   if (!state.clips.configured) { body.replaceChildren(notice(T('No clips folder'), T('Set CLIPS_DIR in .env to the folder your desktop syncs clips to.'))); return; }
   const q = norm(state.query);
-  const list = state.clips.clips.filter((c) => !q || norm(`${c.title} ${c.game}`).includes(q));
-  if (!list.length) { body.replaceChildren(h('p', { class: 'muted' }, q ? T('Nothing matches.') : T('No clips yet.'))); return; }
-  const out = [];
-  let game = null;
-  let grid = null;
-  for (const c of [...list].sort((a, b) => a.game.localeCompare(b.game) || b.mtime - a.mtime)) {
-    if (c.game !== game) {
-      game = c.game;
-      grid = h('ul', { class: 'clip-grid' });
-      out.push(h('h3', { class: 'activity-head' }, game), grid);
-    }
-    grid.append(clipCard(c));
+  const all = state.clips.clips;
+  const list = all.filter((c) => !q || norm(`${c.title} ${c.game}`).includes(q));
+  if (!list.length) {
+    body.replaceChildren(q ? notice(T('Nothing matches.'), T('Try a game or part of a clip’s name.'))
+      : emptyState(T('No clips yet.'), T('Clips your desktop saves to the clips folder show up here, ready to trim and share.')));
+    return;
   }
+  // A line of what's here, then the newest clips across games, then one gallery per game (newest first).
+  const shared = all.filter((c) => c.share?.ready).length;
+  const out = [h('p', { class: 'clips-summary muted' }, [plural(all.length, 'clip'), fmtBytes(all.reduce((n, c) => n + (c.size || 0), 0)),
+    shared ? T('{0} shared', shared) : null].filter(Boolean).join(' · '))];
+  const newest = !q && all.length > 6 ? [...all].sort((a, b) => b.mtime - a.mtime).slice(0, 8) : [];
+  if (newest.length) out.push(h('section', { class: 'clips-section' }, h('h3', { class: 'clips-head' }, T('Latest')), h('ul', { class: 'clip-grid clip-latest' }, newest.map(clipCard))));
+  const games = new Map();
+  for (const c of [...list].sort((a, b) => a.game.localeCompare(b.game) || b.mtime - a.mtime)) {
+    if (!games.has(c.game)) games.set(c.game, []);
+    games.get(c.game).push(c);
+  }
+  for (const [game, clips] of games) out.push(h('section', { class: 'clips-section' },
+    h('h3', { class: 'clips-head' }, game, h('span', { class: 'clips-count' }, String(clips.length))),
+    h('ul', { class: 'clip-grid' }, clips.map(clipCard))));
   body.replaceChildren(...out);
 }
 
@@ -8613,6 +8654,7 @@ async function setView(view) {
   const show = () => {
     document.querySelectorAll('.view').forEach((v) => { v.hidden = v.id !== `view-${view}`; });
     document.body.classList.toggle('has-billboard', view === 'discover' && Boolean($('#discover-body .billboard')));
+    $('#browse-btn').hidden = view !== 'discover';
     window.scrollTo(0, 0);
   };
   if (smoothViews()) document.startViewTransition(show); else show();
@@ -8630,7 +8672,7 @@ async function setView(view) {
   if (view === 'clips') await loadClips();
   if (view === 'notes') await notesView.load();
   if (view === 'settings') await Promise.all([loadLibrary(), state.me?.isOwner ? loadPeople() : null]);
-  if (state.view === view) { renderView(); revealSectionTab(); }
+  if (state.view === view) { if (view === 'settings') renderSettingsWhenStill(); else renderView(); revealSectionTab(); }
   schedulePoll();
 }
 const sectionTabs = $('.tabs');

@@ -356,7 +356,9 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
         for (const el of [document.body, document.querySelector('main')]) if (el?.scrollTop) el.scrollTop = 0;
       }
       const visibleBottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
-      const tabs = !keyboard && document.querySelector('.tabs')?.getBoundingClientRect();
+      // The tab bar only counts where it is one: at the bottom (phones). Wide screens show the sections in the header.
+      const bar = !keyboard && document.querySelector('.tabs');
+      const tabs = bar && getComputedStyle(bar).position === 'fixed' ? bar.getBoundingClientRect() : null;
       const bottom = keyboard || !tabs ? visibleBottom : Math.min(visibleBottom, tabs.top);
       shell.style.height = `${Math.max(180, Math.round(bottom - shell.getBoundingClientRect().top - (keyboard ? 6 : 12)))}px`;
       if (end || state.follow) history.scrollTop = history.scrollHeight;

@@ -45,6 +45,8 @@
   <header class="top" id="top">
     <div class="top-inner">
       <h1 class="wordmark"><a href="/" id="home-link" aria-label="Marquee — Discover">Marquee</a></h1>
+      <!-- Phones and tablets: what Discover shows (type, genre) behind one button, so nothing sits on the billboard -->
+      <button type="button" class="browse-btn" id="browse-btn" aria-haspopup="dialog" hidden><span id="browse-label">Browse</span><i class="chev" aria-hidden="true"></i></button>
       <!-- The sections: a tab bar at the bottom on phones and tablets, links in this header on wide screens -->
       <nav class="tabs" aria-label="Sections">
         <button class="tab" data-view="discover" aria-current="page">

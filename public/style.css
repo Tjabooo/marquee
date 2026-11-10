@@ -333,6 +333,29 @@ body.searching .top-actions { flex: 1; margin-left: 0; }
 .search-cancel { flex: none; height: 40px; padding: 0 4px 0 10px; font-weight: 600; color: var(--text); background: none; border: 0; }
 body:not(.searching) .search-cancel { display: none; }
 
+/* Browse (phones, tablets): what Discover shows, picked from a sheet instead of pills over the billboard */
+.browse-btn {
+  display: inline-flex; align-items: center; gap: 7px; flex: none; min-width: 0; max-width: 34vw;
+  height: 36px; padding: 0 12px 0 14px;
+  font-size: 14px; font-weight: 700; color: var(--text); white-space: nowrap;
+  background: color-mix(in srgb, var(--velvet) 55%, transparent); border: 1px solid var(--hairline-2); border-radius: 999px;
+}
+.browse-btn span { overflow: hidden; text-overflow: ellipsis; }
+.browse-btn .chev { flex: none; width: 7px; height: 7px; margin-top: -3px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg); }
+.browse-btn.is-set { color: var(--on-bulb); background: var(--bulb); border-color: var(--bulb); }
+body.searching .browse-btn { display: none; }
+.browse-types { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2); margin: var(--s4) 0 var(--s2); }
+.browse-type {
+  min-height: 56px; padding: 0 14px; font-size: 16px; font-weight: 700; text-align: left; color: var(--text);
+  background: var(--surface-2); border: 1px solid var(--hairline); border-radius: var(--r-md);
+}
+.browse-type[aria-pressed="true"] { color: var(--velvet); background: var(--paper); border-color: var(--paper); }
+.picker .browse-head { margin: var(--s5) 0 var(--s3); font: 700 var(--t-h3)/1.2 var(--display); }
+.browse-genres { display: flex; flex-wrap: wrap; gap: var(--s2); padding-bottom: var(--s2); }
+@media (max-width: 899px) { #discover-body .discover-filters { display: none; } }
+@media (max-width: 599px) { .news-btn .news-label { display: none !important; } .news-btn { padding: 0 11px; } }
+@media (min-width: 900px) { .browse-btn { display: none !important; } }
+
 /* ---------- sections: tab bar on phones and tablets, links in the header on wide screens ---------- */
 .tabs {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
@@ -1994,23 +2017,42 @@ body.has-nowbar .preview-pill { bottom: calc(var(--tabs-h) + var(--safe-bottom) 
 .power-actions .retry.is-primary { color: var(--on-bulb); background: var(--bulb); border-color: var(--bulb); }
 .power-actions .retry.is-sure { color: var(--velvet); background: var(--alert); border-color: var(--alert); font-weight: 700; }
 
-/* ---------- Clips (server owner only) ---------- */
+/* ---------- Clips (server owner only): a gallery per game, newest first ---------- */
+.clips-summary { margin: calc(-1 * var(--s3)) 0 var(--s5); font-size: var(--t-small); }
+.clips-section { margin-bottom: var(--s6); }
+.clips-head { display: flex; align-items: center; gap: 10px; margin: 0 0 var(--s3); font: 700 var(--t-h2)/1.2 var(--display); letter-spacing: -.012em; }
+.clips-count { padding: 2px 9px; font: 700 12px/1.5 var(--body); color: var(--text-2); background: var(--surface-2); border-radius: 999px; }
 .clip-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px;
-  margin: 0 0 8px; padding: 0; list-style: none;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: var(--s4);
+  margin: 0; padding: 0; list-style: none;
 }
-.clip { display: flex; flex-direction: column; background: var(--curtain); border-radius: 14px; overflow: hidden; container-type: inline-size; }
-.clip-thumb { position: relative; display: block; width: 100%; aspect-ratio: 16 / 9; padding: 0; border: 0; background: var(--seat); cursor: pointer; }
-.clip-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* Latest: one row that scrolls, like the rows on Discover */
+.clip-grid.clip-latest { grid-auto-flow: column; grid-template-columns: none; grid-auto-columns: var(--row-wide); overflow-x: auto; scrollbar-width: none;
+  margin: -8px calc(-1 * var(--gutter)); padding: 8px var(--gutter) 10px; scroll-snap-type: x proximity; scroll-padding: 0 var(--gutter); }
+.clip-grid.clip-latest::-webkit-scrollbar { display: none; }
+.clip-latest > .clip { scroll-snap-align: start; }
+.clip { display: flex; flex-direction: column; background: var(--surface-1); border: 1px solid var(--hairline); border-radius: var(--r-md); overflow: hidden; container-type: inline-size;
+  transition: border-color var(--d-2), box-shadow var(--d-2) var(--ease-out); }
+@media (hover: hover) { .clip:hover { border-color: var(--hairline-2); box-shadow: var(--e2); } }
+.clip-thumb { position: relative; display: block; width: 100%; aspect-ratio: 16 / 9; padding: 0; border: 0; background: var(--surface-2); cursor: pointer; overflow: hidden; }
+.clip-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform var(--d-3) var(--ease-out); }
+@media (hover: hover) { .clip-thumb:hover img { transform: scale(1.04); } }
+.clip-thumb::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to top, rgb(var(--picture-dark) / .45), transparent 45%); pointer-events: none; }
+.clip-thumb:focus-visible { outline: none; box-shadow: inset 0 0 0 3px var(--bulb); }
 .clip-play {
-  position: absolute; inset: 0; margin: auto; width: 52px; height: 52px; border-radius: 50%;
+  position: absolute; z-index: 1; inset: 0; margin: auto; width: 52px; height: 52px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  background: color-mix(in srgb, var(--velvet) 70%, transparent); color: var(--bulb);
+  color: #fff; background: rgb(var(--picture-dark) / .55); border: 1.5px solid rgb(255 255 255 / .7);
+  opacity: .9; transition: opacity var(--d-2), transform var(--d-2) var(--ease-out);
 }
-.clip-play svg { width: 24px; height: 24px; fill: currentColor; margin-left: 3px; }
+@media (hover: hover) { .clip-play { opacity: 0; transform: scale(.85); } .clip-thumb:hover .clip-play, .clip-thumb:focus-visible .clip-play { opacity: 1; transform: none; } }
+.clip-play svg { width: 22px; height: 22px; fill: currentColor; margin-left: 3px; }
+.clip-badge { position: absolute; z-index: 1; top: 8px; left: 8px; display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px 0 8px;
+  font: 700 11px/1 var(--body); color: var(--on-bulb); background: var(--bulb); border-radius: var(--r-xs); box-shadow: 0 2px 10px rgb(0 0 0 / .35); }
+.clip-badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .clip-video { width: 100%; aspect-ratio: 16 / 9; background: #000; display: block; }
-.clip-text { padding: 10px 12px 0; }
-.clip-title { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; padding: 4px 6px; margin: -4px -6px 0; text-align: left; white-space: normal; line-height: 1.4; color: var(--paper); background: transparent; border: 1px solid transparent; border-radius: 6px; }
+.clip-text { padding: 12px 14px 0; }
+.clip-title { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; padding: 4px 6px; margin: -4px -6px 0; text-align: left; white-space: normal; line-height: 1.35; font-weight: 650; color: var(--text); background: transparent; border: 1px solid transparent; border-radius: var(--r-xs); }
 .clip-title span { min-width: 0; overflow-wrap: anywhere; }
 .clip-title svg { flex: none; width: 15px; height: 15px; opacity: 0; color: var(--bulb); transition: opacity .12s; }
 .clip-title:hover, .clip-title:focus-visible { border-color: var(--line); background: var(--seat); }
@@ -2020,7 +2062,7 @@ body.has-nowbar .preview-pill { bottom: calc(var(--tabs-h) + var(--safe-bottom) 
 .clip-rename-form input[readonly] { color: var(--dust); }
 .clip-rename-error { margin: 6px 0 0; color: var(--alert); font-size: 13px; }
 @media (hover: none) { .clip-title svg { opacity: 1; } .clip-title { border-color: var(--line); } }
-.clip-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px 12px; margin-top: auto; }
+.clip-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 14px 14px; margin-top: auto; }
 /* The text button shares the row with up to three 44px icon buttons, so it shrinks instead of
    wrapping its label onto a second line inside the 44px pill. */
 .clip-actions .retry {

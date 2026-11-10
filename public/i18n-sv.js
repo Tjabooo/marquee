@@ -1693,4 +1693,12 @@ export default {
   "Makes a one-time link (valid 7 days). They pick a password and are signed straight in.": "Skapar en engångslänk (giltig i 7 dagar). Personen väljer ett lösenord och loggas in direkt.",
   "Show password": "Visa lösenordet",
   "Hide password": "Dölj lösenordet",
+  "Browse": "Bläddra",
+  "Browse: {0}": "Bläddra: {0}",
+  "Try a game or part of a clip’s name.": "Prova ett spel eller en del av ett klipps namn.",
+  "Clips your desktop saves to the clips folder show up here, ready to trim and share.": "Klipp som datorn sparar i klippmappen dyker upp här, redo att klippas till och delas.",
+  "{0} shared": "{0} delade",
+  "Latest": "Senaste",
+  "clip": "klipp",
+  "clips": "klipp",
 };
