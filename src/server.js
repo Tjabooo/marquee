@@ -2778,6 +2778,9 @@ function announceArrivals(hash, arrived, claimants) {
   }
 }
 
+// /api/client/report: a few log lines a minute per person at most.
+const clientReports = new Map();
+
 async function handleApi(req, res, url) {
   const p = url.pathname;
   let m;
@@ -3055,6 +3058,21 @@ async function handleApi(req, res, url) {
   if (p === '/api/me/wrapped') {
     const year = Number(url.searchParams.get('year')) || new Date().getFullYear();
     return sendJson(res, 200, social.wrapped(user.id, year, personName, avatarOf));
+  }
+  // A browser feature failed on someone's device (picture in picture so far): log the browser's own reason,
+  // so it can be fixed without that device at hand. Only logged, never stored.
+  if (p === '/api/client/report' && req.method === 'POST') {
+    const { kind, detail } = await readJson(req, 4000);
+    const who = user.email || 'Home network';
+    const t = Date.now();
+    const recent = (clientReports.get(who) || []).filter((at) => t - at < 60_000);
+    if (recent.length < 6) {
+      if (clientReports.size > 200) clientReports.clear();
+      clientReports.set(who, [...recent, t]);
+      const clean = (s, n) => String(s ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, n);
+      console.log(`[client] ${who}: ${clean(kind, 30)} failed: ${clean(detail, 800)} · ${clean(req.headers['user-agent'], 160)}`);
+    }
+    return sendJson(res, 200, { ok: true });
   }
   // ---- social: thumbs up/down, who liked a title, Popular on Marquee ----
   if (p === '/api/social/rate' && req.method === 'POST') {
@@ -4189,7 +4207,7 @@ async function handleRequest(req, res) {
         || /^\/api\/admin\/notes(?:\/import|\/\d+(?:\/(?:trash|restore|share|unshare))?)?$/.test(url.pathname)
         || /^\/api\/admin\/notes\/uploads(?:\/[a-f0-9]{32}(?:\/(?:finish|cancel))?)?$/.test(url.pathname)
         || /^\/api\/watch(?:\/plan|\/[A-Za-z0-9_-]{24}\/(join|heartbeat|control|leave|switch|invite|chat|react|schedule|cancel))?$/.test(url.pathname)
-        || url.pathname === '/api/social/rate' || /^\/api\/tv\/pair\/(start|approve)$/.test(url.pathname)
+        || url.pathname === '/api/social/rate' || url.pathname === '/api/client/report' || /^\/api\/tv\/pair\/(start|approve)$/.test(url.pathname)
         || /^\/c\/jf\/v1\/(pair\/start|progress|disconnect)$/.test(url.pathname) || /^\/api\/jellyfin\/(approve|[\w-]+\/remove)$/.test(url.pathname)));
     if (!allowed) throw new HttpError(405, 'Method not allowed.');
     if (url.pathname.startsWith('/api/')) await handleApi(req, res, url);

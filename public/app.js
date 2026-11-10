@@ -5886,13 +5886,38 @@ function exitPip() {
   if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {});
   else if (video.webkitPresentationMode === 'picture-in-picture') try { video.webkitSetPresentationMode('inline'); } catch { /* already inline */ }
 }
+// Safari's presentation mode never says no: it just does nothing. Check a moment later.
+function webkitEnterPip(path) {
+  try { video.webkitSetPresentationMode('picture-in-picture'); } catch (err) { pipFailed(path, err); return; }
+  setTimeout(() => { if (!inPip() && !video.webkitDisplayingFullscreen) pipFailed(`${path} ignored`); }, 2000);
+}
 function enterPip() {
   if (!video.currentSrc || inPip()) return;
-  if (webkitPip()) {
-    try { video.webkitSetPresentationMode('picture-in-picture'); } catch { toast(T('Picture in picture isn’t available right now')); }
-  } else if (standardPip()) {
-    video.requestPictureInPicture().catch(() => toast(T(video.readyState < 1 ? 'Picture in picture works once the video has started' : 'Picture in picture isn’t available right now')));
-  }
+  if (webkitPip()) webkitEnterPip('webkit');
+  else if (standardPip()) {
+    video.requestPictureInPicture().catch((err) => {
+      // Still inside the tap (the refusal comes straight back), so Safari's own mode can have a go.
+      if (typeof video.webkitSetPresentationMode === 'function') { reportPip('standard', err); webkitEnterPip('webkit fallback'); }
+      else pipFailed('standard', err);
+    });
+  } else pipFailed('none');
+}
+function pipFailed(path, err) {
+  toast(T(video.readyState < 1 ? 'Picture in picture works once the video has started' : 'Picture in picture isn’t available right now'));
+  reportPip(path, err);
+}
+// The browser's own reason goes to the server log, so failures on phones can be fixed without the phone.
+function reportPip(path, err) {
+  const v = video;
+  const facts = {
+    path, error: err ? `${err.name}: ${err.message}` : null,
+    standard: Boolean(document.pictureInPictureEnabled), webkit: typeof v.webkitSetPresentationMode === 'function',
+    webkitPip: v.webkitSupportsPresentationMode?.('picture-in-picture') ?? null, webkitFullscreen: v.webkitSupportsPresentationMode?.('fullscreen') ?? null,
+    mode: v.webkitPresentationMode ?? null, readyState: v.readyState, paused: v.paused, size: `${v.videoWidth}x${v.videoHeight}`,
+    src: String(v.currentSrc || '').split(/[?#]/)[0].split('/').slice(-2).join('/'), standalone: isStandalone, night: night.captured,
+    tracks: v.textTracks?.length ?? null,
+  };
+  api('/api/client/report', jsonPost({ kind: 'pip', detail: JSON.stringify(facts) })).catch(() => {});
 }
 function togglePip() { if (inPip()) exitPip(); else enterPip(); }
 const syncPipBtn = () => { pipBtn.hidden = !standardPip() && !webkitPip(); };
