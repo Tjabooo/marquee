@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { fileLayout, readableBytes, fileProgress, startBytes, readyToStart, packPriorities, parsePartialId, PartialStreams } from '../src/partial-stream.js';
+import { fileLayout, readableBytes, fileProgress, startBytes, readyToStart, packPriorities, parsePartialId, PartialStreams, roomGate, ROOM_LEAD, ROOM_STOP } from '../src/partial-stream.js';
 import { BufferNotice, RebufferHold, pastDownloaded, progressLine, fmtEta } from '../public/player-partial.js';
 import { PhoneStreams } from '../src/phone-stream.js';
 
@@ -305,7 +305,7 @@ test('the popup says how far the download is', () => {
   assert.equal(progressLine({ progress: 0.43, paused: true, eta: 5 }), '43% downloaded · paused');
 });
 
-test('downloads list Play now and only the people it belongs to can open it', { timeout: 20000 }, async (t) => {
+test('downloads list Play now and only the people it belongs to can open it', { timeout: 30000 }, async (t) => {
   const { default: http } = await import('node:http');
   const { default: net } = await import('node:net');
   const { spawn } = await import('node:child_process');
@@ -366,6 +366,26 @@ test('downloads list Play now and only the people it belongs to can open it', { 
   // The file itself can't be fetched while it downloads, signed or not.
   assert.equal((await call(`/api/play-link?kind=part&id=${id}&variant=browser`, 'member@test.local')).status, 409);
   assert.equal((await fetch(`http://127.0.0.1:${port}/play/part/${id}/phone1080/9999999999/${'x'.repeat(32)}/index.m3u8`)).status, 403);
+
+  // Watch Together on it: only those who may watch the download can host; the room lets a guest in.
+  const host = 'host-client-0123456789', guest = 'guest-client-0123456789';
+  assert.equal((await call('/api/watch', 'stranger@test.local', { id, clientId: guest })).status, 403);
+  const made = await call('/api/watch', 'member@test.local', { id, clientId: host });
+  assert.equal(made.status, 200);
+  const room = await made.json();
+  assert.equal(room.media.kind, 'part'); assert.equal(room.media.id, id); assert.equal(room.media.mediaKey != null, true);
+  const base = `/api/watch/${room.token}`;
+  assert.equal((await call(`${base}/join`, 'stranger@test.local', { clientId: guest })).status, 200);
+  const link = await call(`${base}/play-link?clientId=${guest}`, 'stranger@test.local');
+  assert.equal(link.status, 200);
+  assert.equal((await link.json()).ready, false, 'the guest waits for the start like anyone');
+  const status = await (await call(`${base}/part-status?clientId=${guest}`, 'stranger@test.local')).json();
+  assert.equal(status.done, false); assert.equal(status.libraryId, null);
+  assert.equal((await call(`${base}/switch`, 'stranger@test.local', { clientId: guest })).status, 403, 'only the host switches');
+  assert.equal((await call(`${base}/switch`, 'member@test.local', { clientId: host })).status, 409, 'nothing to switch to yet');
+  await new Promise((r) => setTimeout(r, 2500)); // the room check runs every 2 s
+  const beat = await (await call(`${base}/heartbeat`, 'member@test.local', { clientId: host, ready: true })).json();
+  assert.equal(beat.download?.holding, true, 'held until the download is far enough ahead');
 });
 
 test('pack priorities: skipped files stay skipped, finished ones are left alone', () => {
@@ -410,4 +430,33 @@ test('rebuffer hold: waits for a useful buffer, longer when stalls repeat, and n
   h.end(11_000);
   h.begin(11_000 + 90_001);
   assert.equal(h.goal, 8, 'a good stretch starts over');
+});
+
+test('a Watch Together room on a download waits for a lead it can keep', () => {
+  const film = { duration: 6000, done: false };
+  // Keeps up (twice real time): plays once 30 s are there, stops only when nearly out.
+  assert.deepEqual(roomGate({ ...film, position: 0, edge: 10, rate: 2, holding: true }), { holding: true, wait: 20 / 1.7 });
+  assert.equal(roomGate({ ...film, position: 0, edge: ROOM_LEAD, rate: 2, holding: true }).holding, false);
+  assert.equal(roomGate({ ...film, position: 100, edge: 100 + ROOM_STOP + 1, rate: 2, holding: false }).holding, false);
+  assert.equal(roomGate({ ...film, position: 100, edge: 100 + ROOM_STOP - 1, rate: 2, holding: false }).holding, true);
+  // Half real time: waits until the rest arrives before playback gets there, or 5 minutes are buffered.
+  const slow = roomGate({ ...film, position: 0, edge: 60, rate: 0.5, holding: true });
+  assert.equal(slow.holding, true);
+  assert.ok(Math.abs(slow.wait - (300 - 60) / 0.425) < 1e-6, 'the 5-minute lead comes sooner than a full finish here');
+  assert.equal(roomGate({ ...film, position: 0, edge: 300, rate: 0.5, holding: true }).holding, false);
+  // Near the end of the download: no long lead needed.
+  const short = roomGate({ ...film, position: 5900, edge: 5960, rate: 0.9, holding: true });
+  assert.equal(short.holding, false);
+  // No speed (paused, no peers): it can't say when.
+  assert.deepEqual(roomGate({ ...film, position: 0, edge: 5, rate: 0, holding: true }), { holding: true, wait: null });
+  // Finished, or all there: never holds.
+  assert.equal(roomGate({ ...film, done: true, position: 0, edge: 0, rate: 0, holding: true }).holding, false);
+  assert.equal(roomGate({ ...film, position: 0, edge: 6000, rate: 0, holding: true }).holding, false);
+  // A seek past the download waits for it to get there plus the lead.
+  const ahead = roomGate({ ...film, position: 1000, edge: 400, rate: 2, holding: false });
+  assert.equal(ahead.holding, true); assert.ok(Math.abs(ahead.wait - 630 / 1.7) < 1e-6);
+});
+
+test('a crawling download gives no start estimate rather than days', () => {
+  assert.deepEqual(roomGate({ duration: 6000, done: false, position: 0, edge: 5, rate: 0.0001, holding: true }), { holding: true, wait: null });
 });

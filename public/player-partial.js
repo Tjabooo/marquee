@@ -91,10 +91,14 @@ const sleep = (ms, signal) => new Promise((resolve) => {
 // ctx: video, playerEl, seekEl, api, $, isCurrent(session), setSource(url, session, onMetadata),
 // setHlsSource(hls, url, session, onMetadata), onMetadata(session), setSpinner(on), showNote(text), hideNote(),
 // showError(text), fullItem(libraryId), switchToFull(item), leave(), toast(text)
+// In Watch Together: room() = the WatchSession (or null); the room starts playback, not this.
+// The room then decides when everyone plays and waits (the server holds it for the download), so the hold and
+// the buffering popup here stay out of it, and only the host is offered full quality: it switches the whole room.
 export async function playPartial(session, ctx) {
   const { video, playerEl, seekEl, api, $ } = ctx;
   const signal = session.abort.signal;
   const query = `id=${encodeURIComponent(session.key)}`;
+  const room = () => ctx.room?.() || null;
   const popup = $('#part-popup');
   const notice = new BufferNotice();
   const hold = new RebufferHold();
@@ -117,7 +121,7 @@ export async function playPartial(session, ctx) {
     }
   };
   const showBufferPopup = () => {
-    if (!ctx.isCurrent(session) || popupKind) return;
+    if (!ctx.isCurrent(session) || popupKind || room()) return;
     popupKind = 'buffer';
     const ahead = pastDownloaded(video.currentTime, session.part);
     $('#part-popup-label').textContent = T('Buffering');
@@ -149,7 +153,12 @@ export async function playPartial(session, ctx) {
     const primary = $('#part-popup-primary'), secondary = $('#part-popup-secondary');
     primary.textContent = T('Switch now');
     secondary.textContent = T('Keep watching');
-    primary.onclick = () => { hidePopup(); ctx.switchToFull(item); };
+    primary.onclick = () => {
+      hidePopup();
+      const party = room();
+      if (party) party.switchToFull().catch((e) => ctx.toast(e.message));
+      else ctx.switchToFull(item);
+    };
     secondary.onclick = hidePopup;
     popup.hidden = false;
     playerEl.classList.add('has-part-popup');
@@ -170,12 +179,12 @@ export async function playPartial(session, ctx) {
   };
   const beginHold = () => {
     // Safari's own HLS keeps its behaviour; the first frame and seeks have their own waits.
-    if (hold.holding || !session.hlsPlayer || !notice.started || video.seeking || video.paused || video.ended) return;
+    if (hold.holding || room() || !session.hlsPlayer || !notice.started || video.seeking || video.paused || video.ended) return;
     holdRate = video.playbackRate || 1;
     hold.begin();
     video.playbackRate = 0;
     holdTimer = setInterval(() => {
-      if (!ctx.isCurrent(session)) { releaseHold(); return; }
+      if (!ctx.isCurrent(session) || room()) { releaseHold(); return; }
       const left = Number.isFinite(video.duration) ? video.duration - video.currentTime : Infinity;
       if (!hold.ready(bufferedAhead(), left)) { ctx.setSpinner(true); return; }
       buffering = false;
@@ -208,11 +217,13 @@ export async function playPartial(session, ctx) {
   const pollStatus = async () => {
     if (signal.aborted) return;
     try {
-      const status = await api(`/api/part/status?${query}`, { signal });
+      const party = room();
+      const status = party ? await party.partStatus(signal) : await api(`/api/part/status?${query}`, { signal });
       if (!ctx.isCurrent(session)) return;
       paintStatus(status);
-      if (status.done && status.libraryId && !fullOffered) {
-        const item = ctx.fullItem(status.libraryId);
+      if (status.done && status.libraryId && !fullOffered && (!party || party.isHost)) {
+        // A guest may not have it in their library: the room's switch doesn't need that.
+        const item = party ? { id: status.libraryId } : ctx.fullItem(status.libraryId);
         if (item) { fullOffered = true; showFullPopup(item); }
       }
     } catch { /* the next round asks again */ }
@@ -253,7 +264,8 @@ export async function playPartial(session, ctx) {
   ctx.showNote(T('Getting the start of the video from the download…'));
   try {
     for (;;) {
-      opened = await api(`/api/part/open?${query}`, { signal });
+      const party = room();
+      opened = await api(party ? `${party.base}/play-link?clientId=${encodeURIComponent(party.clientId)}` : `/api/part/open?${query}`, { signal });
       if (!ctx.isCurrent(session)) return;
       paintStatus(opened.status);
       if (opened.ready) break;
@@ -299,6 +311,6 @@ export async function playPartial(session, ctx) {
     ctx.showError(T('This browser can’t play a video that’s still downloading. Wait for the download to finish and play it from your library.'));
     return;
   }
-  video.play().catch(() => { /* autoplay blocked: the controls are there */ });
   ctx.toast(T('Playing while it downloads, at up to 1080p.'));
+  if (!room()) video.play().catch(() => { /* autoplay blocked: the controls are there */ });
 }

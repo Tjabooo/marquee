@@ -15,6 +15,13 @@ All notable changes to Marquee. Versions follow [Semantic Versioning](https://se
 
 ### Added
 
+- **Watch Together on Play now.** A room can be started on a video that is still downloading; guests need no access to the
+  download, the room is their access. The server holds the room until the download is far enough ahead (30 s that it
+  keeps, or a lead that lets the rest arrive in time, or 5 minutes buffered) and stops it at 8 s left, so nobody's player
+  runs dry mid-scene; the room says it's waiting for the download, with an estimate. When the download finishes, the host's
+  Switch now moves everyone to the library file from the same spot; a room whose download has left qBittorrent moves by
+  itself. In a room, Play now's own stall hold and buffering popup stay out of the way.
+
 - **Preview switch (`PREVIEW_DIR`).** Point it at a second `public/` folder (for example a worktree of a redesign
   branch) and `/preview` switches one browser to it, with the live API, sign-in and permissions; `/preview/off`
   switches back. Missing files fall back to `public/`, the path guard is the same, preview pages get their own build

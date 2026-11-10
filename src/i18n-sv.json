@@ -496,5 +496,9 @@
  "The copy from SVT Play stopped. Try again.": "Kopieringen från SVT Play stoppades. Försök igen.",
  "The copy from SVT Play stopped early. Try again.": "Kopieringen från SVT Play tog slut för tidigt. Försök igen.",
  "There isn’t enough free space on the media disk.": "Det finns inte tillräckligt med ledigt utrymme på mediedisken.",
- "Not an SVT Play video.": "Det där är ingen video från SVT Play."
+ "Not an SVT Play video.": "Det där är ingen video från SVT Play.",
+ "This download has finished. Play it from your library.": "Nedladdningen är klar. Spela den från ditt bibliotek.",
+ "Only the host can switch the room to full quality.": "Bara värden kan byta rummet till full kvalitet.",
+ "This room is already playing the full-quality video.": "Rummet spelar redan videon i full kvalitet.",
+ "The full-quality video isn’t in the library yet.": "Videon i full kvalitet finns inte i biblioteket än."
 }

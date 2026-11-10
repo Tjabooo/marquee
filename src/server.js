@@ -61,7 +61,7 @@ import { checkConfig } from './config-check.js';
 import { raiseServer } from './priority.js';
 import { startPlaybackGuard } from './playback-guard.js';
 import { PhoneStreams, segmentIndex, isHeavy, probe as probePhone } from './phone-stream.js';
-import { PartialStreams, parsePartialId } from './partial-stream.js';
+import { PartialStreams, parsePartialId, roomGate } from './partial-stream.js';
 
 import { APP_DIR, DATA_DIR, CACHE_DIR, PUBLIC_DIR, dataDirProblem, ensureDataDir } from './paths.js';
 import * as preview from './preview.js';
@@ -2088,6 +2088,70 @@ async function partialAccess(user, id) {
   if (!STREAMABLE_TORRENT.test(t.state || '')) throw new HttpError(409, 'This download can’t be played right now. Try again in a moment.');
   return t;
 }
+// The signed Play now stream once the start of the video is there; { ready: false, status } before that.
+async function partialLink(req, id) {
+  let opened;
+  try { opened = await partialStreams.open(id); }
+  catch (e) { throw new HttpError(e.status || 500, e.message); }
+  const { entry, ready } = opened;
+  const status = partialStreams.status(entry);
+  if (!ready) return { ready: false, status };
+  if (!entry.announced) { entry.announced = true; activity.record(req, 'play', titleOf(entry.file), { quietMs: 3 * 3600 * 1000 }); }
+  const variant = 'phone1080';
+  const exp = Math.floor(Date.now() / 1000) + PLAY_LINK_HOURS * 3600;
+  return { ready: true, status, url: `/play/part/${id}/${variant}/${exp}/${signPlay('part', id, variant, exp)}/index.m3u8`,
+    sourceHeight: entry.info.height || null };
+}
+// The library copy of a finished download (by media key), if the library has it yet.
+async function libraryItemFor(key) {
+  if (!key) return null;
+  return ((await scanLibrary()) || []).find((i) => accounts.mediaKey(i.full) === key && !i.converting) || null;
+}
+
+// Watch Together on Play now: every room on a video that's still downloading keeps that download running
+// (open() is what keeps it boosted) and holds the room until the download is far enough ahead. When the
+// download has gone (finished and moved on), the room carries on with the library copy.
+const roomSpeeds = new Map(); // token -> smoothed seconds of video downloaded per second
+async function checkDownloadRooms() {
+  for (const room of watchRooms.roomsWith('part')) {
+    const { token } = room;
+    try {
+      const { entry } = await partialStreams.open(room.media.id);
+      const status = partialStreams.status(entry);
+      const duration = status.duration || 0;
+      const bitrate = entry.info?.bitrate || 0;
+      const now = bitrate > 0 ? (status.speed * 8) / bitrate : 0;
+      // Smoothed while it moves; a download that has stopped is stopped (smoothing would promise it for hours).
+      const rate = now <= 0 ? 0 : roomSpeeds.has(token) ? roomSpeeds.get(token) * 0.7 + now * 0.3 : now;
+      roomSpeeds.set(token, rate);
+      const gate = entry.info ? roomGate({ done: status.done, duration, position: watchRooms.current(room), edge: (status.inOrder || 0) * duration,
+        rate: status.paused ? 0 : rate, holding: room.download ? room.download.holding : true }) : { holding: true, wait: null };
+      watchRooms.setDownload(token, { ...gate, progress: status.progress, done: status.done });
+    } catch (e) {
+      if (e.status !== 404) continue;
+      const item = await libraryItemFor(room.media.mediaKey);
+      if (item) { try { watchRooms.switchMedia(token, roomLibraryMedia(item.id)); } catch { /* the room ended meanwhile */ } }
+    }
+  }
+  for (const token of roomSpeeds.keys()) if (!watchRooms.rooms.has(token)) roomSpeeds.delete(token);
+}
+let checkingRooms = false;
+setInterval(() => {
+  if (checkingRooms || !PARTIAL_ENABLED) return;
+  checkingRooms = true;
+  checkDownloadRooms().catch((e) => console.warn(`[watch] ${e.message}`)).finally(() => { checkingRooms = false; });
+}, 2000).unref();
+// What a room says about a library video.
+function roomLibraryMedia(id) {
+  const full = librarySource(id);
+  const key = accounts.mediaKey(full);
+  if (!isVideo(full) || !fs.existsSync(full)) throw new HttpError(404, 'That video is no longer available.');
+  const info = parseFile(full);
+  const film = info.season == null ? shows.knownFilm(key, info.title, info.year) : null;
+  return { kind: 'lib', id, mediaKey: key, ...info,
+    title: film?.title || info.title, size: fs.statSync(full).size, format: path.extname(full).slice(1) };
+}
+
 async function streamFile(kind, id, variant) {
   if (kind === 'part') throw new HttpError(409, 'This video hasn’t finished downloading yet.');
   if (PHONE_VARIANT.test(variant)) return streamFile(kind, id, 'browser-hevc');
@@ -2750,15 +2814,24 @@ async function handleApi(req, res, url) {
     const full = librarySource(id);
     const key = accounts.mediaKey(full);
     if (!key || !accounts.hasEntry(user.id, key)) throw new HttpError(403, 'Add this title to your library before hosting a room.');
-    if (!isVideo(full) || !fs.existsSync(full)) throw new HttpError(404, 'That video is no longer available.');
-    const info = parseFile(full);
+    return roomLibraryMedia(id);
+  };
+  // A video still downloading (Play now): whoever may watch the download may host a room on it.
+  const watchPartMedia = async (id) => {
+    if (!(await partialAccess(user, id))) throw new HttpError(409, 'This download has finished. Play it from your library.');
+    let opened;
+    try { opened = await partialStreams.open(id); }
+    catch (e) { throw new HttpError(e.status || 500, e.message); }
+    const file = opened.entry.file;
+    const key = accounts.mediaKey(file);
+    const info = parseFile(file);
     const film = info.season == null ? shows.knownFilm(key, info.title, info.year) : null;
-    return { kind: 'lib', id, mediaKey: key, ...info,
-      title: film?.title || info.title, size: fs.statSync(full).size, format: path.extname(full).slice(1) };
+    return { kind: 'part', id, mediaKey: key, ...info, title: film?.title || info.title, size: opened.entry.size, format: path.extname(file).slice(1) };
   };
   if (p === '/api/watch' && req.method === 'POST') {
     const body = await readJson(req);
-    const media = watchMedia(String(body.id || ''));
+    const id = String(body.id || '');
+    const media = parsePartialId(id) ? await watchPartMedia(id) : watchMedia(id);
     const room = watchRooms.create(user, media, String(body.clientId || ''), Number(body.position || 0));
     activity.record(req, 'watch', `started a room for ${media.title}`);
     return sendJson(res, 200, room);
@@ -2797,7 +2870,7 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, room);
   }
   if (p === '/api/watch/parties') return sendJson(res, 200, { parties: watchRooms.parties(user) });
-  if ((m = p.match(/^\/api\/watch\/([A-Za-z0-9_-]{24})\/(preview|join|events|heartbeat|control|leave|play-link|chat|react|schedule|cancel)$/))) {
+  if ((m = p.match(/^\/api\/watch\/([A-Za-z0-9_-]{24})\/(preview|join|events|heartbeat|control|leave|play-link|part-status|switch|chat|react|schedule|cancel)$/))) {
     const [, token, action] = m;
     if (action === 'preview') return sendJson(res, 200, watchRooms.preview(token));
     if (req.method === 'POST') {
@@ -2811,10 +2884,30 @@ async function handleApi(req, res, url) {
       if (action === 'heartbeat') return sendJson(res, 200, watchRooms.heartbeat(token, user, client, body));
       if (action === 'control') return sendJson(res, 200, watchRooms.control(token, user, client, body.action, body.position));
       if (action === 'leave') { watchRooms.leave(token, user, client); return sendJson(res, 200, { ok: true }); }
+      if (action === 'switch') {
+        // The host takes the room from Play now to the finished file in the library.
+        const room = watchRooms.room(token);
+        watchRooms.member(room, user, client);
+        if (room.host !== client) throw new HttpError(403, 'Only the host can switch the room to full quality.');
+        if (room.media.kind !== 'part') throw new HttpError(409, 'This room is already playing the full-quality video.');
+        const item = await libraryItemFor(room.media.mediaKey);
+        if (!item) throw new HttpError(409, 'The full-quality video isn’t in the library yet.');
+        return sendJson(res, 200, watchRooms.switchMedia(token, roomLibraryMedia(item.id), { user, client }));
+      }
     }
     const client = String(url.searchParams.get('clientId') || '');
     const room = watchRooms.room(token);
     watchRooms.member(room, user, client);
+    // A room on a download: the room is the access, so guests need no part of the download themselves.
+    if (action === 'play-link' && room.media.kind === 'part') return sendJson(res, 200, await partialLink(req, room.media.id));
+    if (action === 'part-status') {
+      if (room.media.kind !== 'part') return sendJson(res, 200, { done: true, libraryId: null });
+      let opened;
+      try { opened = await partialStreams.open(room.media.id); }
+      catch (e) { throw new HttpError(e.status || 500, e.message); }
+      const status = partialStreams.status(opened.entry);
+      return sendJson(res, 200, { ...status, libraryId: status.done ? (await libraryItemFor(room.media.mediaKey))?.id || null : null });
+    }
     if (action === 'play-link') {
       const asked = String(url.searchParams.get('variant') || '');
       const variant = asked === 'browser-hevc' || /^phone(1080|720)$/.test(asked) ? asked : 'browser';
@@ -3513,26 +3606,22 @@ async function handleApi(req, res, url) {
   if (p === '/api/part/open' || p === '/api/part/status') {
     const id = url.searchParams.get('id') || '';
     await partialAccess(user, id);
+    if (p === '/api/part/open') {
+      const link = await partialLink(req, id);
+      return sendJson(res, link.ready ? 200 : 202, link);
+    }
     let opened;
     try { opened = await partialStreams.open(id); }
     catch (e) { throw new HttpError(e.status || 500, e.message); }
-    const { entry, ready } = opened;
+    const { entry } = opened;
     const status = partialStreams.status(entry);
-    if (p === '/api/part/status') {
-      // The finished file in this person's library, once there is one to switch to.
-      let libraryId = null;
-      if (status.done) {
-        const key = accounts.mediaKey(entry.file);
-        if (key && accounts.libraryOf(user.id).has(key)) libraryId = (libraryCache.items || []).find((i) => accounts.mediaKey(i.full) === key)?.id || null;
-      }
-      return sendJson(res, 200, { ...status, libraryId });
+    // The finished file in this person's library, once there is one to switch to.
+    let libraryId = null;
+    if (status.done) {
+      const key = accounts.mediaKey(entry.file);
+      if (key && accounts.libraryOf(user.id).has(key)) libraryId = (libraryCache.items || []).find((i) => accounts.mediaKey(i.full) === key)?.id || null;
     }
-    if (!ready) return sendJson(res, 202, { ready: false, status });
-    if (!entry.announced) { entry.announced = true; activity.record(req, 'play', titleOf(entry.file), { quietMs: 3 * 3600 * 1000 }); }
-    const variant = 'phone1080';
-    const exp = Math.floor(Date.now() / 1000) + PLAY_LINK_HOURS * 3600;
-    return sendJson(res, 200, { ready: true, status, url: `/play/part/${id}/${variant}/${exp}/${signPlay('part', id, variant, exp)}/index.m3u8`,
-      sourceHeight: entry.info.height || null });
+    return sendJson(res, 200, { ...status, libraryId });
   }
   if (p === '/api/play-link') {
     const q = url.searchParams;
@@ -3999,7 +4088,7 @@ async function handleRequest(req, res) {
         || /^\/api\/title\/(movie|tv)\/\d+\/dub$/.test(url.pathname) || /^\/api\/watchlist(?:\/seen)?$/.test(url.pathname) || /^\/api\/travel(?:\/remove)?$/.test(url.pathname)
         || /^\/api\/admin\/notes(?:\/import|\/\d+(?:\/(?:trash|restore|share|unshare))?)?$/.test(url.pathname)
         || /^\/api\/admin\/notes\/uploads(?:\/[a-f0-9]{32}(?:\/(?:finish|cancel))?)?$/.test(url.pathname)
-        || /^\/api\/watch(?:\/plan|\/[A-Za-z0-9_-]{24}\/(join|heartbeat|control|leave|invite|chat|react|schedule|cancel))?$/.test(url.pathname)
+        || /^\/api\/watch(?:\/plan|\/[A-Za-z0-9_-]{24}\/(join|heartbeat|control|leave|switch|invite|chat|react|schedule|cancel))?$/.test(url.pathname)
         || url.pathname === '/api/social/rate' || /^\/api\/tv\/pair\/(start|approve)$/.test(url.pathname)
         || /^\/c\/jf\/v1\/(pair\/start|progress|disconnect)$/.test(url.pathname) || /^\/api\/jellyfin\/(approve|[\w-]+\/remove)$/.test(url.pathname)));
     if (!allowed) throw new HttpError(405, 'Method not allowed.');

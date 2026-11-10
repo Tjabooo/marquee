@@ -1,4 +1,21 @@
 {
+  "2026-11-10-watch-together-play-now": {
+    "title": "Titta tillsammans medan den laddas ner",
+    "items": {
+      "Start a room before the download finishes": {
+        "title": "Starta ett rum innan nedladdningen är klar",
+        "text": "När du tittar på något med Spela nu finns knappen Titta tillsammans också. Alla i rummet tittar på nedladdningen medan den kommer in, och de behöver inte ha den i sitt eget bibliotek."
+      },
+      "It waits instead of stuttering": {
+        "title": "Den väntar i stället för att hacka",
+        "text": "Om nedladdningen hamnar efter pausar rummet för alla samtidigt och visar att det väntar på nedladdningen, med en ungefärlig tid när det går. Sedan fortsätter ni tillsammans när det finns tillräckligt för att hålla igång."
+      },
+      "Full quality for the whole room": {
+        "title": "Full kvalitet för hela rummet",
+        "text": "När nedladdningen är klar kan den som är värd för rummet trycka på Byt nu. Alla går över till videon i full kvalitet från samma ställe, med undertexter och alla ljudspår."
+      }
+    }
+  },
   "2026-11-10-trimmed-clips-smooth-start": {
     "title": "Klippta klipp startar mjukt",
     "items": {
