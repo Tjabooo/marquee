@@ -1,5 +1,17 @@
 [
   {
+    "id": "2026-11-10-people-list-phone",
+    "date": "2026-11-10",
+    "title": "People list on phones",
+    "items": [
+      {
+        "title": "Names fit again in the People list",
+        "audience": "owner",
+        "text": "On a phone, the Password link and Remove buttons squeezed each person’s name and details into a narrow column, one letter per line. The buttons now sit underneath on small screens, so names, emails and last-seen details read normally."
+      }
+    ]
+  },
+  {
     "id": "2026-11-10-android-tv-anywhere",
     "date": "2026-11-10",
     "title": "Android TV app from anywhere",

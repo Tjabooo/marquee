@@ -2997,6 +2997,16 @@ html.wrapped-on { overflow: hidden; }
 .profile-face-remove:hover { color: var(--paper); }
 .activity-face { position: relative; flex: none; display: inline-grid; align-self: center; }
 .activity-face .activity-dot { position: absolute; right: -2px; bottom: -2px; width: 12px; height: 12px; border: 2px solid var(--curtain); }
+/* People + invite rows: on narrow lists the buttons drop under the details instead of squeezing the name to one letter per line. */
+.people-rows { container: people / inline-size; }
+.people-rows .row { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: var(--s3); row-gap: 10px; }
+.people-rows .row-actions { grid-column: 2; justify-self: start; }
+@container people (min-width: 560px) {
+  .people-rows .row { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .people-rows .row-actions { grid-column: 3; }
+}
+.invite-rows .row { flex-wrap: wrap; row-gap: 10px; }
+.invite-rows .row-text { flex: 1 1 14rem; }
 .wr-faces { display: flex; justify-content: center; margin: 4px 0 18px; }
 .wr-faces .face { box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.35); }
 .wr-faces .face + .face { margin-left: -16px; }

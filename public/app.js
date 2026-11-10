@@ -7357,7 +7357,7 @@ function peopleSection(q) {
     out.push(h('p', { class: 'muted invite-hint' }, a.passwords ? T('Makes a one-time link (valid 7 days). They pick a password and are signed straight in.') : T('Makes a one-time link (valid 7 days). They enter their email and can sign in from then on.')));
     const open = (a.invites || []).filter((i) => i.state === 'open');
     if (open.length) {
-      out.push(h('ul', { class: 'rows' }, open.map((i) => {
+      out.push(h('ul', { class: 'rows invite-rows' }, open.map((i) => {
         const url = `${location.origin}/c/i/${i.token}`;
         return h('li', { class: 'row' },
           h('span', { class: 'row-text' },
@@ -7386,7 +7386,7 @@ function peopleSection(q) {
   rows.sort((x, y) => (y.p?.at || 0) - (x.p?.at || 0));
   const list = rows.filter((r) => !q || norm(`${r.email} ${r.name} ${r.p ? activityDevice(r.p) : ''}`).includes(q));
 
-  out.push(list.length ? h('ul', { class: 'rows' }, list.map((r) => {
+  out.push(list.length ? h('ul', { class: 'rows people-rows' }, list.map((r) => {
     const { email, name, p, owner, member } = r;
     const isEmail = String(email).includes('@');
     const noPassword = member && a.passwords && !a.passwords.includes(key(email));
