@@ -1705,4 +1705,6 @@ export default {
   "Latest": "Senaste",
   "clip": "klipp",
   "clips": "klipp",
+  "Picture in picture isn’t available right now": "Bild i bild går inte just nu",
+  "Picture in picture works once the video has started": "Bild i bild fungerar när videon har startat",
 };

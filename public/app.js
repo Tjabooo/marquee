@@ -4725,15 +4725,21 @@ video.addEventListener('webkitendfullscreen', () => {
   const showing = [...video.textTracks].find((t) => t.kind === 'subtitles' && t.mode === 'showing');
   ccActive = showing ? showing.language : null;
   if (ccActive && ccActive === ccSecond) ccSecond = null;
-  nativeSubs = false;
+  nativeSubs = inPip(); // iOS's player can hand straight over to picture in picture
   applySubModes();
   ccBtn.classList.toggle('is-on', Boolean(ccActive));
   ccMenu.querySelectorAll('.cc-item[role="menuitemradio"]').forEach((b, i) => {
     b.setAttribute('aria-checked', String(i === 0 ? !ccActive : ccLangs[i - 1]?.code === ccActive));
   });
 });
-video.addEventListener('enterpictureinpicture', () => { nativeSubs = true; applySubModes(); });
-video.addEventListener('leavepictureinpicture', () => { nativeSubs = false; applySubModes(); });
+// Picture in picture shows the browser's own captions. iPhones report it as a presentation mode change.
+for (const event of ['enterpictureinpicture', 'leavepictureinpicture', 'webkitpresentationmodechanged']) {
+  video.addEventListener(event, () => {
+    if (video.webkitDisplayingFullscreen) return; // iOS's fullscreen player, handled above
+    nativeSubs = inPip();
+    applySubModes();
+  });
+}
 
 function clearSubTracks() {
   subtitleGeneration++;
@@ -5153,7 +5159,7 @@ function reflectNativeAudio() {
 }
 video.audioTracks?.addEventListener?.('change', reflectNativeAudio);
 video.addEventListener('loadedmetadata', reflectNativeAudio);
-for (const event of ['webkitbeginfullscreen', 'webkitendfullscreen', 'enterpictureinpicture', 'leavepictureinpicture']) video.addEventListener(event, () => { reflectNativeAudio(); renderAudioControls(); });
+for (const event of ['webkitbeginfullscreen', 'webkitendfullscreen', 'enterpictureinpicture', 'leavepictureinpicture', 'webkitpresentationmodechanged']) video.addEventListener(event, () => { reflectNativeAudio(); renderAudioControls(); });
 if (hasRemotePlayback) for (const event of ['connect', 'disconnect']) video.remote.addEventListener(event, () => {
   if (audioSuppressed()) cancelAudioIntent(current);
   renderAudioControls();
@@ -5869,13 +5875,35 @@ document.addEventListener('webkitfullscreenchange', updateFullscreen);
 updateFullscreen();
 fsBtn.addEventListener('click', toggleFullscreen);
 
-pipBtn.hidden = !document.pictureInPictureEnabled;
-pipBtn.replaceChildren(icon('pip'));
-function togglePip() {
-  if (!document.pictureInPictureEnabled || !video.currentSrc) return;
-  (document.pictureInPictureElement ? document.exitPictureInPicture() : video.requestPictureInPicture()).catch(() => {});
+// iPhones don't offer the standard picture-in-picture API to web pages, so the button used to be hidden
+// there. Safari's own presentation mode does the same job: use it wherever it's offered.
+function webkitPip() {
+  return typeof video.webkitSetPresentationMode === 'function' && video.webkitSupportsPresentationMode?.('picture-in-picture') === true;
 }
+function standardPip() { return Boolean(document.pictureInPictureEnabled && !video.disablePictureInPicture); }
+function inPip() { return document.pictureInPictureElement === video || video.webkitPresentationMode === 'picture-in-picture'; }
+function exitPip() {
+  if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {});
+  else if (video.webkitPresentationMode === 'picture-in-picture') try { video.webkitSetPresentationMode('inline'); } catch { /* already inline */ }
+}
+function enterPip() {
+  if (!video.currentSrc || inPip()) return;
+  if (webkitPip()) {
+    try { video.webkitSetPresentationMode('picture-in-picture'); } catch { toast(T('Picture in picture isn’t available right now')); }
+  } else if (standardPip()) {
+    video.requestPictureInPicture().catch(() => toast(T(video.readyState < 1 ? 'Picture in picture works once the video has started' : 'Picture in picture isn’t available right now')));
+  }
+}
+function togglePip() { if (inPip()) exitPip(); else enterPip(); }
+const syncPipBtn = () => { pipBtn.hidden = !standardPip() && !webkitPip(); };
+syncPipBtn();
+video.addEventListener('loadedmetadata', syncPipBtn);
+pipBtn.replaceChildren(icon('pip'));
 pipBtn.addEventListener('click', togglePip);
+// Phones: leaving the browser mid-film pops the video out (Chrome asks the page through Media Session).
+if (touchScreen()) {
+  try { navigator.mediaSession?.setActionHandler('enterpictureinpicture', () => { if (!video.paused && standardPip()) enterPip(); }); } catch { /* older browser */ }
+}
 
 // Buffering: a spinner, after a short wait so quick seeks don't flash it.
 let spinTimer = null;
@@ -6037,7 +6065,7 @@ const streamStats = createStreamStats({
       party: party ? [party.isHost ? 'host' : 'guest', party.connected ? 'connected' : 'reconnecting', T('clock {0} ms off', Math.round(party.clockOffset)),
         T('rtt {0} ms', Math.round(party.rtt)), $('#watch-members').textContent].filter(Boolean).join(' · ') : '',
       casting: onTvVersion ? T('AirPlay · TV version') : video.webkitCurrentPlaybackTargetIsWireless ? 'AirPlay'
-        : video.remote?.state === 'connected' ? T('Remote playback') : document.pictureInPictureElement === video ? T('Picture in picture') : '',
+        : video.remote?.state === 'connected' ? T('Remote playback') : inPip() ? T('Picture in picture') : '',
     };
   },
 });
@@ -6274,7 +6302,7 @@ async function openPlayer(f, opts = {}) {
     clearSleep();
     setTheme(pageThemeColor);
     if (fsElement()) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
-    if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {});
+    exitPip();
     playerEl.hidden = true;
     streamStats.close();
     document.body.style.overflow = '';
@@ -6362,7 +6390,7 @@ function updateUpNext() {
   if (sleep?.kind === 'episode' && session?.ready && !party && seeking == null && !video.seeking
     && isNextEpisodeTime({ ended: video.ended, time: video.currentTime, duration: video.duration, creditsAt: session.creditsAt })) sleepPause();
   const next = session && nextLibraryEpisode(session, state.library, state.libraryShows);
-  const externalPlayer = nativeSubs || video.webkitDisplayingFullscreen || document.pictureInPictureElement === video
+  const externalPlayer = nativeSubs || video.webkitDisplayingFullscreen || inPip()
     || video.webkitCurrentPlaybackTargetIsWireless || video.remote?.state === 'connected' || onTvVersion;
   const show = Boolean(session?.ready && next && !party && !session.upNextDismissed && !externalPlayer && seeking == null && !video.seeking
     && isNextEpisodeTime({ ended: video.ended, time: video.currentTime, duration: video.duration, creditsAt: session.creditsAt }));
@@ -6461,7 +6489,7 @@ upNextDismiss.addEventListener('click', () => {
   updateUpNext();
 });
 for (const event of ['timeupdate', 'ended', 'seeking', 'seeked', 'durationchange', 'loadedmetadata',
-  'webkitbeginfullscreen', 'webkitendfullscreen', 'enterpictureinpicture', 'leavepictureinpicture',
+  'webkitbeginfullscreen', 'webkitendfullscreen', 'enterpictureinpicture', 'leavepictureinpicture', 'webkitpresentationmodechanged',
   'webkitcurrentplaybacktargetiswirelesschanged']) video.addEventListener(event, updateUpNext);
 if (hasRemotePlayback) for (const event of ['connect', 'disconnect']) video.remote.addEventListener(event, updateUpNext);
 

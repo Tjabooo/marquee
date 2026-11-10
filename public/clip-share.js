@@ -253,10 +253,17 @@ document.addEventListener('fullscreenchange', updateFullscreen);
 document.addEventListener('webkitfullscreenchange', updateFullscreen);
 updateFullscreen();
 fsBtn.addEventListener('click', toggleFullscreen);
-pipBtn.hidden = !document.pictureInPictureEnabled;
+// iPhones only offer Safari's own presentation mode, not the standard API.
+const webkitPip = () => typeof video.webkitSetPresentationMode === 'function' && video.webkitSupportsPresentationMode?.('picture-in-picture') === true;
+pipBtn.hidden = !document.pictureInPictureEnabled && !webkitPip();
 setIcon(pipBtn, 'pip');
 function togglePip() {
-  if (!document.pictureInPictureEnabled || !video.currentSrc) return;
+  if (!video.currentSrc) return;
+  if (webkitPip()) {
+    try { video.webkitSetPresentationMode(video.webkitPresentationMode === 'picture-in-picture' ? 'inline' : 'picture-in-picture'); } catch { /* not ready */ }
+    return;
+  }
+  if (!document.pictureInPictureEnabled) return;
   (document.pictureInPictureElement ? document.exitPictureInPicture() : video.requestPictureInPicture()).catch(() => {});
 }
 pipBtn.addEventListener('click', togglePip);

@@ -1,4 +1,13 @@
 {
+  "2026-11-10-phone-pip": {
+    "title": "Bild i bild på mobilen",
+    "items": {
+      "Pop the video out on iPhone and Android": {
+        "title": "Lyft ut videon på iPhone och Android",
+        "text": "Knappen för bild i bild syns och fungerar nu även på iPhone och iPad, och undertexterna följer med in i det lilla fönstret. På Android lyfts filmen ut av sig själv när du lämnar webbläsaren medan den spelas."
+      }
+    }
+  },
   "2026-11-10-android-tv-updates": {
     "title": "Android TV-appen uppdaterar sig själv",
     "items": {

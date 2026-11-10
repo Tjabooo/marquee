@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-10-phone-pip",
+    "date": "2026-11-10",
+    "title": "Picture in picture on phones",
+    "items": [
+      {
+        "title": "Pop the video out on iPhone and Android",
+        "text": "The picture-in-picture button now shows up and works on iPhone and iPad too, and subtitles carry over into the small window. On Android, leaving the browser while a film plays pops it out by itself."
+      }
+    ]
+  },
+  {
     "id": "2026-11-10-android-tv-updates",
     "date": "2026-11-10",
     "title": "Android TV app updates itself",
