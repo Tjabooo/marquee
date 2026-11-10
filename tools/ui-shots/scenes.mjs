@@ -57,6 +57,9 @@ export const SCENES = [
     "const c = [...document.querySelectorAll('#discover-body .shelf-items .title-card')].filter((b) => b._title)[1]; c.scrollIntoView({ block: 'center' }); await __sleep(300); const r = c.getBoundingClientRect(); c.dispatchEvent(new PointerEvent('pointerdown', { pointerType: 'touch', bubbles: true, clientX: r.x + 20, clientY: r.y + 20 })); await __sleep(900);"],
     probe: "const p = document.querySelector('.peek'); return JSON.stringify({ hidden: p?.hidden, cls: p?.className, title: !!document.querySelector('#discover-body .shelf-items .title-card')?._title, n: document.querySelectorAll('.peek').length });" },
 
+  { name: 'motion-check', path: '/', ready: '#discover-body .billboard', sizes: ['desktop'], steps: ["await __sleep(10500);"],
+    probe: "const img = document.querySelector('.bb-slide.is-active .bb-img'); const active = [...document.querySelectorAll('.bb-bulb')].findIndex((b) => b.getAttribute('aria-current') === 'true'); return JSON.stringify({ slide: active, drift: getComputedStyle(img).animationName, trailer: !!document.querySelector('.bb-trailer'), viewAnim: getComputedStyle(document.querySelector('.view:not([hidden])')).animationName });" },
+
   // ---- Library ----
   { name: 'library', path: '/#library', ready: '.unified-library' , after: 1500 },
   { name: 'library-grid', path: '/#library', ready: '.unified-library .lib-group .title-card', steps: ["document.querySelector('.unified-library .lib-group:not([hidden])').scrollIntoView(); window.scrollBy(0, -80); await __sleep(400);"] },
