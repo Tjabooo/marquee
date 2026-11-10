@@ -195,7 +195,7 @@
       '<h1>Var finns Marquee?</h1>' +
       '<p class="lead">Skriv adressen till din Marquee-server, till exempel <b>192.168.1.10:8080</b>. ' +
       'Du hittar den i Marquee på telefonen under <b>Inställningar → Android TV</b>.</p>' +
-      '<form><input type="url" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" enterkeyhint="go" placeholder="192.168.1.10:8080">' +
+      '<form novalidate><input type="text" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" enterkeyhint="go" placeholder="192.168.1.10:8080">' +
       '<button type="submit">Anslut</button></form><p class="note" role="status"></p></div>';
     var input = app.querySelector('input'), button = app.querySelector('button'), msg = app.querySelector('.note'), form = app.querySelector('form');
     input.value = current ? current.replace(/^http:\/\//, '') : '';

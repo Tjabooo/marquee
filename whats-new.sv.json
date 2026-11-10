@@ -1,4 +1,13 @@
 {
+  "2026-11-10-android-tv": {
+    "title": "Marquee på Android TV",
+    "items": {
+      "A Marquee app for Android TV": {
+        "title": "En Marquee-app för Android TV",
+        "text": "Marquee har nu en app för Android TV och Google TV: Chromecast med Google TV, Nvidia Shield och TV-apparater med Google TV inbyggt. Den ser ut och fungerar precis som Samsung-appen. Öppna Inställningar → Android TV på telefonen hemma och följ stegen för att installera den på en TV. Det tar några minuter, och sedan håller appen sig uppdaterad själv."
+      }
+    }
+  },
   "2026-11-10-people-rows": {
     "title": "Snyggare personlista",
     "items": {

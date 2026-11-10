@@ -14,12 +14,14 @@
     android:theme="@style/Marquee"
     android:allowBackup="false"
     android:hardwareAccelerated="true"
-    android:usesCleartextTraffic="true">
+    android:usesCleartextTraffic="true"
+    android:enableOnBackInvokedCallback="true">
     <activity
       android:name=".MainActivity"
       android:exported="true"
       android:launchMode="singleTask"
       android:screenOrientation="landscape"
+      android:windowSoftInputMode="adjustPan|stateHidden"
       android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenLayout|screenSize|smallestScreenSize|uiMode|density|fontScale|locale|layoutDirection">
       <intent-filter>
         <action android:name="android.intent.action.MAIN" />

@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-10-android-tv",
+    "date": "2026-11-10",
+    "title": "Marquee on Android TV",
+    "items": [
+      {
+        "title": "A Marquee app for Android TV",
+        "text": "Marquee now has an app for Android TV and Google TV: Chromecast with Google TV, Nvidia Shield and TVs with Google TV built in. It looks and works just like the Samsung app. To put it on a TV, open Settings → Android TV on your phone at home and follow the steps. It takes a few minutes, and the app keeps itself up to date after that."
+      }
+    ]
+  },
+  {
     "id": "2026-11-10-people-rows",
     "date": "2026-11-10",
     "title": "Tidier People list",

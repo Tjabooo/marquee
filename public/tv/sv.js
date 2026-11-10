@@ -128,7 +128,7 @@ window.MarqueeTvStrings = {
   '{0} of {1} ready': '{0} av {1} klara',
   '{0} episodes on their way': '{0} avsnitt på väg',
   // The Android TV app's update offer (tv/android/app/src/main/assets/shell.html).
-  'A new version of the Marquee app is here': 'Det finns en ny version av Marquee-appen',
+  'A new version of the Marquee app is here': 'Ny version av Marquee-appen',
   'Version {0}. It takes about a minute.': 'Version {0}. Det tar ungefär en minut.',
   'Update now': 'Uppdatera nu',
   'Later': 'Senare',

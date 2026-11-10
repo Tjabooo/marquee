@@ -17,6 +17,7 @@ import android.view.SurfaceView;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.RenderProcessGoneDetail;
+import android.window.OnBackInvokedDispatcher;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
@@ -82,6 +83,11 @@ public class MainActivity extends Activity {
     server = savedServer();
     loadShell();
     web.requestFocus();
+    // Android 13+ hands Back to a callback instead of a key event (the manifest opts in, so every version
+    // behaves the same). The page decides what Back does; it leaves the app itself at its first screen.
+    if (Build.VERSION.SDK_INT >= 33) {
+      getOnBackInvokedDispatcher().registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, () -> sendKey(JS_BACK));
+    }
   }
 
   @SuppressLint("SetJavaScriptEnabled")
@@ -203,8 +209,9 @@ public class MainActivity extends Activity {
     int js;
     switch (e.getKeyCode()) {
       case KeyEvent.KEYCODE_BACK:
-      case KeyEvent.KEYCODE_BUTTON_B:
-      case KeyEvent.KEYCODE_ESCAPE: js = JS_BACK; break;
+        if (Build.VERSION.SDK_INT >= 33) return super.dispatchKeyEvent(e); // the back callback takes it (onCreate)
+        js = JS_BACK; break;
+      case KeyEvent.KEYCODE_BUTTON_B: js = JS_BACK; break; // game controllers (Escape reaches the page as it is)
       case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
       case KeyEvent.KEYCODE_HEADSETHOOK: js = JS_PLAY_PAUSE; break;
       case KeyEvent.KEYCODE_MEDIA_PLAY: js = JS_PLAY; break;

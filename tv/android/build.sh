@@ -19,7 +19,14 @@
 # Keep the key safe: an update signed with another key won't install over the app.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
-[ -f "$here/.env" ] && set -a && . "$here/.env" && set +a
+# .env fills in what the environment doesn't already set (MARQUEE_URL= on the command line wins).
+if [ -f "$here/.env" ]; then
+  while IFS='=' read -r key value; do
+    case "$key" in ''|\#*) continue ;; esac
+    value="${value%\"}"; value="${value#\"}"
+    [ -z "${!key+set}" ] && export "$key=$value"
+  done < "$here/.env"
+fi
 
 publish=0; install=0; variant=release
 for arg in "$@"; do
