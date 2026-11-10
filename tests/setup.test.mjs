@@ -285,3 +285,71 @@ test('clipper setup sets CLIPS_DIR and prints the gaming PC commands (dry run wr
   assert.match(r.stdout, /Restart Marquee/);
   assert.doesNotMatch(run().stdout, /Restart Marquee/, 'unchanged CLIPS_DIR needs no restart');
 });
+
+test('Marquee as Access sign-in: callback from the team, secret kept, login method values', async () => {
+  const { teamHost, accessCallback, oidcValues, loginMethod, loginMethodLines } = await import('../src/setup/oidc.js');
+  assert.equal(teamHost('https://MyTeam.cloudflareaccess.com/'), 'myteam.cloudflareaccess.com');
+  assert.equal(teamHost('myteam'), 'myteam.cloudflareaccess.com');
+  assert.equal(accessCallback('myteam.cloudflareaccess.com'), 'https://myteam.cloudflareaccess.com/cdn-cgi/access/callback');
+  assert.equal(accessCallback(''), '');
+  const fresh = oidcValues({}, 'myteam.cloudflareaccess.com');
+  assert.equal(fresh.OIDC_CLIENT_ID, 'cloudflare');
+  assert.ok(fresh.OIDC_CLIENT_SECRET.length >= 32);
+  assert.equal(fresh.OIDC_REDIRECT_URIS, 'https://myteam.cloudflareaccess.com/cdn-cgi/access/callback');
+  const kept = oidcValues({ ...fresh, OIDC_REDIRECT_URIS: 'https://other.example/cb' }, 'myteam.cloudflareaccess.com');
+  assert.equal(kept.OIDC_CLIENT_SECRET, fresh.OIDC_CLIENT_SECRET, 'an existing secret survives a re-run');
+  assert.equal(kept.OIDC_REDIRECT_URIS, 'https://other.example/cb,https://myteam.cloudflareaccess.com/cdn-cgi/access/callback');
+  assert.notEqual(oidcValues({ OIDC_CLIENT_SECRET: 'short' }, 'x').OIDC_CLIENT_SECRET, 'short', 'too-short secrets are replaced');
+  const m = loginMethod({ ...fresh, PUBLIC_URL: 'https://marquee.example.com/' });
+  assert.ok(m.ready);
+  assert.equal(m.authUrl, 'https://marquee.example.com/c/oidc/authorize');
+  assert.equal(m.certUrl, 'https://marquee.example.com/c/oidc/jwks');
+  assert.ok(loginMethodLines(m).some((l) => l.includes(fresh.OIDC_CLIENT_SECRET)));
+  assert.deepEqual(loginMethod({ ...fresh }).missing, ['PUBLIC_URL']);
+});
+
+test('unattended Cloudflare setup with Marquee sign-in writes OIDC_*, the cache folder and the content filter', (t) => {
+  const dir = tmp(t, 'oidc');
+  const envFile = path.join(dir, '.env');
+  const answers = path.join(dir, 'a.json');
+  const base = { MEDIA_DIR: path.join(dir, 'm'), DATA_DIR: path.join(dir, 'data'), CACHE_DIR: path.join(dir, 'cache'), PORT: '18767', autostart: false, install: [],
+    remoteAccess: 'cloudflare', ADMIN_EMAILS: 'owner@example.com', CF_ACCESS_TEAM_DOMAIN: 'myteam.cloudflareaccess.com', CF_ACCESS_AUD: 'aud-tag',
+    PUBLIC_URL: 'https://marquee.example.com', accessSignIn: 'marquee', CONTENT_FILTER: 'members' };
+  fs.writeFileSync(answers, JSON.stringify(base));
+  const r = runSetup(['--config', answers, '--env', envFile, '--offline']);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  const env = parseEnv(fs.readFileSync(envFile, 'utf8'));
+  assert.equal(env.OIDC_CLIENT_ID, 'cloudflare');
+  assert.equal(env.OIDC_REDIRECT_URIS, 'https://myteam.cloudflareaccess.com/cdn-cgi/access/callback');
+  assert.ok(env.OIDC_CLIENT_SECRET.length >= 32);
+  assert.ok(!r.stdout.includes(env.OIDC_CLIENT_SECRET), 'setup never prints the secret');
+  assert.match(r.stdout, /node setup\.js oidc shows what to enter/);
+  assert.equal(env.CACHE_DIR, base.CACHE_DIR);
+  assert.ok(fs.statSync(base.DATA_DIR).isDirectory() && fs.statSync(base.CACHE_DIR).isDirectory(), 'new data and cache folders are created');
+  assert.equal(env.CONTENT_FILTER, 'members');
+
+  const shown = runSetup(['oidc', '--env', envFile]);
+  assert.equal(shown.status, 0, shown.stderr + shown.stdout);
+  assert.ok(shown.stdout.includes(env.OIDC_CLIENT_SECRET) && shown.stdout.includes('https://marquee.example.com/c/oidc/token'));
+
+  // Re-run: the secret stays (Cloudflare already has it). Switching to Access's own logins clears it.
+  const again = runSetup(['--config', answers, '--env', envFile, '--offline']);
+  assert.equal(again.status, 0, again.stderr);
+  assert.equal(parseEnv(fs.readFileSync(envFile, 'utf8')).OIDC_CLIENT_SECRET, env.OIDC_CLIENT_SECRET);
+  fs.writeFileSync(answers, JSON.stringify({ ...base, accessSignIn: 'access' }));
+  const off = runSetup(['--config', answers, '--env', envFile, '--offline']);
+  assert.equal(off.status, 0, off.stderr);
+  const after = parseEnv(fs.readFileSync(envFile, 'utf8'));
+  assert.equal(after.OIDC_CLIENT_ID + after.OIDC_CLIENT_SECRET + after.OIDC_REDIRECT_URIS, '');
+  assert.equal(runSetup(['oidc', '--env', envFile]).status, 1);
+});
+
+test('config checks: half-set OIDC, short secret, missing PUBLIC_URL, unknown content filter', () => {
+  const keys = (env) => checkConfig(env, { tools: false }).map((c) => c.key);
+  const full = { OIDC_CLIENT_ID: 'cloudflare', OIDC_CLIENT_SECRET: 'x'.repeat(32), OIDC_REDIRECT_URIS: 'https://t.cloudflareaccess.com/cdn-cgi/access/callback', PUBLIC_URL: 'https://m.example.com' };
+  assert.ok(!keys(full).some((k) => /OIDC|PUBLIC_URL/.test(k)));
+  assert.ok(keys({ OIDC_CLIENT_ID: 'cloudflare' }).includes('OIDC_CLIENT_ID'));
+  assert.ok(keys({ ...full, OIDC_CLIENT_SECRET: 'short' }).includes('OIDC_CLIENT_SECRET'));
+  assert.ok(keys({ ...full, PUBLIC_URL: '' }).includes('PUBLIC_URL'));
+  assert.ok(keys({ CONTENT_FILTER: 'strict' }).includes('CONTENT_FILTER'));
+});

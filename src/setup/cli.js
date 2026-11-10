@@ -17,6 +17,7 @@ import { backup, migrateData } from './data.js';
 import * as clipper from './clipper.js';
 import { userCommand, USER_ACTIONS, askNewPassword } from './users.js';
 import { wizardCommand, WIZARD_ACTIONS } from './wizard.js';
+import { oidcValues, oidcConfigured, loginMethod, loginMethodLines, OIDC_KEYS } from './oidc.js';
 import { openAuthStore } from '../auth.js';
 import { checkConfig } from '../config-check.js';
 import { dataDirProblem, STATE_FILES } from '../paths.js';
@@ -34,15 +35,17 @@ Usage:
   node setup.js user add EMAIL [--owner]   Create a Marquee sign-in (or reset its password)
   node setup.js user passwd|remove|signout EMAIL, user list
   node setup.js gui              Windows: the graphical setup wizard (also MarqueeSetup.exe)
-  node setup.js wizard info|check|clipper [--config FILE]
+  node setup.js wizard info|check|clipper|oidc [--config FILE]
                                  JSON for graphical front ends (the Windows setup wizard); reads only
+  node setup.js oidc             What to enter in Cloudflare Access to sign in with Marquee passwords
   node setup.js clipper          Game clips: set up CLIPS_DIR and install Clipper (the recorder)
                                  on this PC, or print the commands for your gaming PC
 
 Options:
   --dry-run            Show what would change; write and run nothing
   --yes, -y            Accept defaults instead of asking
-  --config FILE        Answers as JSON: .env keys plus "autostart", "install", "serviceScope", "qbitSavePath"
+  --config FILE        Answers as JSON: .env keys plus "autostart", "install", "serviceScope", "qbitSavePath",
+                       "remoteAccess" (none|tailscale|cloudflare|proxy), "accessSignIn" (marquee|access)
   --allow-install      Unattended: may install missing packages (with sudo on Linux)
   --allow-service      Unattended: may register the autostart service
   --allow-sudo         Unattended: may use sudo for system-level steps
@@ -93,7 +96,7 @@ export function parseArgs(argv) {
   }
   if (positional.length) {
     opts.command = positional[0];
-    if (!['setup', 'doctor', 'backup', 'migrate-data', 'service', 'clipper', 'user', 'wizard', 'gui'].includes(opts.command)) throw new Error(`Unknown command ${opts.command}. Run node setup.js --help.`);
+    if (!['setup', 'doctor', 'backup', 'migrate-data', 'service', 'clipper', 'user', 'wizard', 'gui', 'oidc'].includes(opts.command)) throw new Error(`Unknown command ${opts.command}. Run node setup.js --help.`);
     if (opts.command === 'service') {
       opts.action = positional[1];
       if (!['install', 'status', 'restart', 'uninstall'].includes(opts.action)) throw new Error('Use: node setup.js service install|status|restart|uninstall');
@@ -256,6 +259,16 @@ async function setup(opts) {
   if (freshInstall && ('DATA_DIR' in answers || !opts.yes)) {
     set.DATA_DIR = await ask.text('DATA_DIR', 'Folder for Marquee\'s database and state (blank = the Marquee folder)', cur('DATA_DIR'));
   }
+  // Browser copies, previews and share copies can grow to hundreds of GB. Asked only on a fresh
+  // install: moving it later means stopping Marquee and moving the folder (docs/configuration.md).
+  if (freshInstall && ('CACHE_DIR' in answers || !opts.yes)) {
+    set.CACHE_DIR = await ask.text('CACHE_DIR', 'Folder for copies Marquee can always make again (browser copies, previews; can grow to hundreds of GB; blank = in the data folder)', cur('CACHE_DIR'));
+  }
+  for (const dir of [set.DATA_DIR, set.CACHE_DIR]) {
+    if (!dir || fs.existsSync(dir)) continue;
+    if (opts.dryRun) console.log(`  would create ${dir}`);
+    else { try { fs.mkdirSync(dir, { recursive: true }); done.push(`Created ${dir}`); } catch (e) { manual.push(`Create ${dir} (${e.code})`); } }
+  }
 
   // Network
   let port = Number(await ask.text('PORT', 'Port for the web app', cur('PORT', '8080')));
@@ -281,8 +294,14 @@ async function setup(opts) {
     set.QBIT_PASS = await ask.text('QBIT_PASS', 'qBittorrent password', cur('QBIT_PASS'), { secret: true });
   } else if ('QBIT_URL' in answers || !cur('QBIT_URL')) { set.QBIT_URL = ''; skipped.push('Downloads: no qBittorrent configured'); }
   set.OPENSUBTITLES_API_KEY = await ask.text('OPENSUBTITLES_API_KEY', 'OpenSubtitles API key for subtitles (blank = skip)', cur('OPENSUBTITLES_API_KEY'), { secret: true });
+  set.CONTENT_FILTER = await ask.choose('CONTENT_FILTER', 'Hide adult content in search and downloads?', [
+    ['on', 'Yes, for everyone (recommended)'],
+    ['members', 'For everyone except the owner'],
+    ['off', 'No'],
+  ], ['on', 'members', 'off'].includes(String(cur('CONTENT_FILTER', 'on')).toLowerCase()) ? String(cur('CONTENT_FILTER', 'on')).toLowerCase() : 'on');
 
   // Remote access
+  let accessSignIn = 'access';
   const remote = await ask.choose('remoteAccess', 'Remote access (outside your home network)?', [
     ['none', 'None: home network only (recommended to start)'],
     ['tailscale', 'Tailscale: your own devices, anywhere'],
@@ -295,6 +314,20 @@ async function setup(opts) {
     if (set.CF_ACCESS_TEAM_DOMAIN) set.CF_ACCESS_AUD = await ask.text('CF_ACCESS_AUD', 'Access application AUD tag', cur('CF_ACCESS_AUD'), { secret: true });
     set.PUBLIC_URL = await ask.text('PUBLIC_URL', 'Public address, e.g. https://marquee.example.com', cur('PUBLIC_URL'));
     manual.push('Finish Cloudflare Tunnel + Access: docs/remote-access.md#cloudflare-tunnel-and-access');
+    // Marquee as Access's login (src/oidc.js) needs the team's callback address, so it's offered
+    // only with a team domain.
+    if (set.CF_ACCESS_TEAM_DOMAIN) {
+      accessSignIn = await ask.choose('accessSignIn', 'How do people sign in to Cloudflare Access?', [
+        ['marquee', 'With their Marquee password: no email codes, invites sign people straight in (recommended)'],
+        ['access', 'With Cloudflare\'s own login methods (one-time email codes, Google, ...)'],
+      ], oidcConfigured(values) || freshInstall ? 'marquee' : 'access');
+      if (accessSignIn === 'marquee') {
+        Object.assign(set, oidcValues({ ...values, ...answers }, set.CF_ACCESS_TEAM_DOMAIN));
+        if (!values.OIDC_CLIENT_SECRET) done.push('Generated OIDC_CLIENT_SECRET for the Marquee sign-in');
+        manual.push('Add Marquee as a login method in Cloudflare Access: node setup.js oidc shows what to enter');
+      }
+    }
+    if (accessSignIn !== 'marquee' && oidcConfigured(values)) for (const k of OIDC_KEYS) set[k] = '';
   } else if (remote === 'tailscale') manual.push('Install Tailscale and open http://<this machine\'s tailnet name>:' + port + ' (docs/remote-access.md#tailscale)');
   else if (remote === 'proxy') manual.push('Put Marquee behind an authenticating proxy: docs/remote-access.md#reverse-proxy');
   if (remote !== 'cloudflare') {
@@ -384,9 +417,9 @@ async function setup(opts) {
 
   if (!env.CLIPS_DIR) skipped.push('Game clips: not set up (node setup.js clipper)');
 
-  // The owner's own sign-in (auth.js), unless Cloudflare Access signs people in.
+  // The owner's own sign-in (auth.js), unless Cloudflare Access signs people in with its own logins.
   const ownerEmail = String(env.ADMIN_EMAILS || '').split(',')[0].trim().toLowerCase();
-  if (ownerEmail && remote !== 'cloudflare' && !opts.dryRun) {
+  if (ownerEmail && (remote !== 'cloudflare' || accessSignIn === 'marquee') && !opts.dryRun) {
     const dataDir = env.DATA_DIR ? path.resolve(env.DATA_DIR) : APP_DIR;
     let store = null;
     try {
@@ -415,6 +448,7 @@ async function setup(opts) {
   console.log(`  Startup:  ${startup}`);
   console.log(`  Check:    node setup.js doctor`);
   if (manual.length) { console.log(bold('\nStill to do')); for (const m of manual) console.log(`  - ${m}`); }
+  if (accessSignIn === 'marquee' && !opts.yes && loginMethod(env).ready) { console.log(''); for (const l of loginMethodLines(loginMethod(env))) console.log(`  ${l}`); }
   if (opts.dryRun) console.log(dim('\nDry run: nothing was written or run.'));
   ask.close();
   return 0;
@@ -514,7 +548,9 @@ function securityChecks({ env, dataDir, report }) {
     : 'Home network shares one account; visitors from the internet must sign in');
   report(logins.length ? 'ok' : 'info', logins.length ? `${logins.length} Marquee sign-in(s): ${logins.join(', ')}` : 'No Marquee sign-ins', logins.length ? null : 'Create one with: node setup.js user add you@example.com --owner');
   const owners = String(env.ADMIN_EMAILS || '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
-  if (!env.CF_ACCESS_TEAM_DOMAIN && owners.length && !owners.some((o) => logins.includes(o))) {
+  if (oidcConfigured(env) && owners.length && !owners.some((o) => logins.includes(o))) {
+    report('warn', 'Access signs people in with Marquee passwords (OIDC_*), but no owner has one yet', `node setup.js user add ${owners[0]}`);
+  } else if (!env.CF_ACCESS_TEAM_DOMAIN && owners.length && !owners.some((o) => logins.includes(o))) {
     report('info', 'No owner (ADMIN_EMAILS) has a Marquee sign-in; the owner tabs then need Cloudflare Access or a proxy', `node setup.js user add ${owners[0]}`);
   }
   if (mode === 'signin' && !logins.length && !env.CF_ACCESS_TEAM_DOMAIN) report('error', 'HOME_NETWORK_ACCESS=signin but nobody can sign in', 'node setup.js user add you@example.com --owner');
@@ -646,6 +682,23 @@ function openGui() {
 }
 
 // Adds `email` to ADMIN_EMAILS in .env (owners are read at startup, so Marquee needs a restart).
+// `node setup.js oidc`: the login method to add in Cloudflare (it shows the client secret: that's
+// what it's for, so it's only printed when asked for).
+function oidcInfo(opts) {
+  const file = opts.envFile ? path.resolve(opts.envFile) : ENV_FILE;
+  const env = { ...parseEnv(readEnvFile(file) ?? ''), ...Object.fromEntries(OIDC_KEYS.concat('PUBLIC_URL').filter((k) => process.env[k]).map((k) => [k, process.env[k]])) };
+  const m = loginMethod(env);
+  if (!oidcConfigured(env)) {
+    console.log(`${mark.info} Marquee isn't set up as Cloudflare Access's sign-in. Run node setup.js, pick Cloudflare Tunnel + Access`);
+    console.log('  and "With their Marquee password", or see docs/remote-access.md#marquee-as-the-sign-in-for-access-no-email-codes');
+    return 1;
+  }
+  if (!m.ready) { console.log(`${mark.warn} Missing or too short in .env: ${m.missing.join(', ')}. Run node setup.js to fill them in.`); return 1; }
+  for (const l of loginMethodLines(m)) console.log(l);
+  console.log(dim(`\nCallback address(es) Marquee accepts: ${m.redirectUris.join(', ')}`));
+  return 0;
+}
+
 function addOwnerEmail(file, email) {
   const text = readEnvFile(file) ?? '';
   const list = String(parseEnv(text).ADMIN_EMAILS || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
@@ -663,6 +716,7 @@ export async function main(argv = process.argv.slice(2)) {
     if (opts.command === 'service') return await service(opts);
     if (opts.command === 'clipper') return await clipperSetup(opts);
     if (opts.command === 'gui') return openGui();
+    if (opts.command === 'oidc') return oidcInfo(opts);
     if (opts.command === 'wizard') {
       const answers = opts.config ? JSON.parse(fs.readFileSync(opts.config, 'utf8')) : {};
       const out = await wizardCommand({ action: opts.action, envFile: opts.envFile ? path.resolve(opts.envFile) : ENV_FILE, answers });

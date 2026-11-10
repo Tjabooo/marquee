@@ -156,7 +156,10 @@ an invite signs the new person straight in: they pick a password on the invite p
 Marquee without seeing a login page. Marquee acts as an OpenID Connect provider under `/c/oidc/`
 (already public through the `/c` bypass).
 
-1. In `.env` set `OIDC_CLIENT_ID` (e.g. `cloudflare`), `OIDC_CLIENT_SECRET` (a long random string,
+1. Run `node setup.js` (or Marquee Setup on Windows), pick Cloudflare Tunnel + Access, give the team domain
+   and choose **With their Marquee password**. It writes the three settings below and keeps them on later runs;
+   `node setup.js oidc` prints everything step 2 needs. By hand instead: in `.env` set `OIDC_CLIENT_ID`
+   (e.g. `cloudflare`), `OIDC_CLIENT_SECRET` (a long random string,
    `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`) and
    `OIDC_REDIRECT_URIS=https://<team>.cloudflareaccess.com/cdn-cgi/access/callback`. Restart Marquee.
 2. Zero Trust → Settings → Authentication → Login methods → Add new → **OpenID Connect**:

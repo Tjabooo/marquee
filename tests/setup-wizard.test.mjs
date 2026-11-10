@@ -24,7 +24,7 @@ test('wizard and gui commands parse; unknown wizard actions are refused', () => 
   assert.deepEqual([a.command, a.action], ['wizard', 'info']);
   assert.equal(parseArgs(['wizard', 'check', '--config', 'x.json']).config, 'x.json');
   assert.equal(parseArgs(['gui']).command, 'gui');
-  assert.throws(() => parseArgs(['wizard', 'write']), /info\|check\|clipper/);
+  assert.throws(() => parseArgs(['wizard', 'write']), /info\|check\|clipper\|oidc/);
 });
 
 test('secrets are reported as set or not, never by value', () => {
@@ -58,6 +58,24 @@ test('wizard info reads .env without printing secrets', (t) => {
   assert.equal(json.node.ok, true);
   assert.ok(json.clipper.quality.some((q) => q.value === 'balanced'));
   assert.ok(Array.isArray(json.clipper.installs.windows));
+});
+
+test('wizard info suggests the new choices; wizard oidc shows the Access login method from .env', (t) => {
+  const dir = tmp(t, 'wizard-oidc');
+  const envFile = path.join(dir, '.env');
+  fs.writeFileSync(envFile, 'MEDIA_DIR=/srv/films\nCF_ACCESS_TEAM_DOMAIN=t.cloudflareaccess.com\nCF_ACCESS_AUD=aud\nCONTENT_FILTER=Members\n');
+  const info = wizard(['info', '--env', envFile]).json;
+  assert.equal(info.defaults.CONTENT_FILTER, 'members');
+  assert.equal(info.defaults.CACHE_DIR, '');
+  assert.equal(info.defaults.accessSignIn, 'access', 'an existing Access setup keeps its own logins until asked');
+  assert.equal(wizard(['oidc', '--env', envFile]).json.configured, false);
+  fs.appendFileSync(envFile, `OIDC_CLIENT_ID=cloudflare\nOIDC_CLIENT_SECRET=${'s'.repeat(40)}\nOIDC_REDIRECT_URIS=https://t.cloudflareaccess.com/cdn-cgi/access/callback\nPUBLIC_URL=https://m.example.com\n`);
+  assert.equal(wizard(['info', '--env', envFile]).json.defaults.accessSignIn, 'marquee');
+  const m = wizard(['oidc', '--env', envFile]).json;
+  assert.equal(m.ready, true);
+  assert.equal(m.tokenUrl, 'https://m.example.com/c/oidc/token');
+  assert.ok(m.lines.some((l) => l.includes('s'.repeat(40))));
+  assert.ok(m.lines.every((l) => /^[\x20-\x7e]*$/.test(l)), 'plain ASCII for the Windows wizard');
 });
 
 test('wizard check reports a busy port; wizard clipper builds the gaming-PC command', async (t) => {

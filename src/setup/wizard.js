@@ -3,7 +3,9 @@
 // changes the installation still goes through the normal commands (`setup --config`, `user add`,
 // `service install`, `clipper --config`), so the GUI and the terminal can never drift apart.
 //
-// Each command prints one JSON object on stdout. Secrets are never printed, only whether they're set.
+// Each command prints one JSON object on stdout. Secrets are never printed, only whether they're set;
+// the one exception is `wizard oidc`, which exists to show the Access client secret to paste into
+// Cloudflare (like `setup.js oidc`).
 import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
@@ -14,9 +16,10 @@ import { readEnvFile, parseEnv, SECRET_KEYS } from './envfile.js';
 import * as detect from './detect.js';
 import { checkTmdb, checkQbit, checkOpenSubtitles } from './integrations.js';
 import * as clipper from './clipper.js';
+import { oidcConfigured, loginMethod, loginMethodLines } from './oidc.js';
 import { openAuthStore } from '../auth.js';
 
-export const WIZARD_ACTIONS = ['info', 'check', 'clipper'];
+export const WIZARD_ACTIONS = ['info', 'check', 'clipper', 'oidc'];
 
 const portFree = (port) => new Promise((resolve) => {
   const srv = net.createServer().once('error', () => resolve(false)).once('listening', () => srv.close(() => resolve(true)));
@@ -99,10 +102,14 @@ export async function wizardInfo({ envFile }) {
     defaults: {
       MEDIA_DIR: mediaDefault,
       DATA_DIR: all.DATA_DIR || '',
+      CACHE_DIR: all.CACHE_DIR || '',
+      CONTENT_FILTER: ['on', 'members', 'off'].includes(String(all.CONTENT_FILTER || '').trim().toLowerCase()) ? String(all.CONTENT_FILTER).trim().toLowerCase() : 'on',
       PORT: String(port),
       HOST: all.HOST || '0.0.0.0',
       HOME_NETWORK_ACCESS: all.HOME_NETWORK_ACCESS || 'shared',
       remoteAccess: remoteAccessOf(all),
+      // Marquee as Access's login: on when it's set up, and suggested for new Cloudflare setups.
+      accessSignIn: oidcConfigured(all) || !all.CF_ACCESS_TEAM_DOMAIN ? 'marquee' : 'access',
       CLIPS_DIR: all.CLIPS_DIR || clipper.defaultClipsDir({ MEDIA_DIR: mediaDefault }),
     },
     running: running ? { version: running.version || null } : null,
@@ -166,9 +173,17 @@ export function wizardClipper({ envFile, answers }) {
   return out;
 }
 
+// The login method to add in Cloudflare, read from the .env setup just wrote.
+export function wizardOidc({ envFile }) {
+  const env = parseEnv(readEnvFile(envFile) ?? '');
+  const m = loginMethod(env);
+  return { configured: oidcConfigured(env), ...m, lines: m.ready ? loginMethodLines(m) : [] };
+}
+
 export async function wizardCommand({ action, envFile, answers = {} }) {
   if (action === 'info') return wizardInfo({ envFile });
   if (action === 'check') return wizardCheck({ envFile, answers });
   if (action === 'clipper') return wizardClipper({ envFile, answers });
+  if (action === 'oidc') return wizardOidc({ envFile });
   throw new Error(`Use: node setup.js wizard ${WIZARD_ACTIONS.join('|')}`);
 }

@@ -139,6 +139,26 @@ for item in $APP_ITEMS; do [ -e "$STAGE/$item" ] && run mv "$STAGE/$item" "$DIR/
 run rm -rf "$STAGE"
 [ -n "$CURRENT" ] && say "Previous version kept in $BACKUP (delete it once the new one runs fine)"
 
+# ---------- Android TV app (best effort) ----------
+# Releases carry the Android TV app built without a server address (it asks on its first start);
+# Marquee offers it at /android. An app of your own with the same or a newer version is left alone.
+DIST="$DIR/tv/android/dist"
+json_field() { sed -n "s/.*\"$1\": *\"\{0,1\}\([^\",}]*\).*/\1/p" "$2" | head -n1; }
+if fetch "$BASE/Marquee.json" "$TMP/Marquee.json" 2>/dev/null; then
+  NEW_CODE=$(json_field versionCode "$TMP/Marquee.json"); APK_SUM=$(json_field sha256 "$TMP/Marquee.json")
+  HAVE_CODE=0
+  if [ -f "$DIST/Marquee.apk" ] && [ -f "$DIST/Marquee.json" ]; then HAVE_CODE=$(json_field versionCode "$DIST/Marquee.json"); fi
+  case "$NEW_CODE$HAVE_CODE" in *[!0-9]*|'') NEW_CODE=0 ;; esac
+  if [ "${NEW_CODE:-0}" -gt "${HAVE_CODE:-0}" ] && [ -n "$APK_SUM" ]; then
+    if fetch "$BASE/Marquee.apk" "$TMP/Marquee.apk" && [ "$(sha256 "$TMP/Marquee.apk")" = "$APK_SUM" ]; then
+      run mkdir -p "$DIST"
+      run cp "$TMP/Marquee.apk" "$DIST/Marquee.apk"
+      run cp "$TMP/Marquee.json" "$DIST/Marquee.json"
+      say "Added the Android TV app (Marquee offers it at /android on your home network)"
+    else say "Note: skipped the Android TV app (download or checksum failed); Marquee works without it"; fi
+  fi
+fi
+
 if [ "$DRY" = 1 ]; then say "Dry run: nothing was changed."; exit 0; fi
 if [ "$SETUP" = 1 ]; then
   say ""

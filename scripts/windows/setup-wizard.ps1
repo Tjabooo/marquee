@@ -519,6 +519,13 @@ function Find-Winget {
                 <Button x:Name="DataDirBtn" Grid.Column="1" Style="{StaticResource Small}" Content="Browse..." Margin="8,0,0,0"/>
               </Grid>
               <TextBlock Style="{StaticResource Hint}" Text="Leave empty to keep it in the Marquee folder. Pick another folder to keep your data apart from the program, e.g. on a drive you back up."/>
+              <TextBlock Style="{StaticResource Label}" Text="Cache folder (optional)"/>
+              <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <TextBox x:Name="CacheDir"/>
+                <Button x:Name="CacheDirBtn" Grid.Column="1" Style="{StaticResource Small}" Content="Browse..." Margin="8,0,0,0"/>
+              </Grid>
+              <TextBlock Style="{StaticResource Hint}" Text="Copies Marquee can always make again: versions for browsers and phones, previews and share copies. They can grow to hundreds of GB, so pick a big drive if C: is small. Leave empty to keep them with the database."/>
             </StackPanel>
             <TextBlock Style="{StaticResource Section}" Text="VIDEO TOOLS"/>
             <Border Style="{StaticResource Panel}" Margin="0,8,0,0">
@@ -586,6 +593,8 @@ function Find-Winget {
               <StackPanel x:Name="CfAudBox">
                 <TextBlock Style="{StaticResource Label}" Text="Access application AUD tag"/>
                 <PasswordBox x:Name="CfAud"/>
+                <CheckBox x:Name="OidcOn" Content="People sign in to Access with their Marquee password" Margin="0,16,0,0"/>
+                <TextBlock Style="{StaticResource Hint}" Margin="31,0,0,0" Text="Recommended. No one-time email codes, and an invite signs the new person straight in. At the end, Setup shows what to enter in Cloudflare."/>
               </StackPanel>
             </StackPanel>
             <StackPanel x:Name="UrlBox" Margin="30,0,0,0">
@@ -605,6 +614,13 @@ function Find-Winget {
             <PasswordBox x:Name="OpenSubs"/>
             <TextBlock Style="{StaticResource Hint}"><Run x:Name="OsHint" Text="Optional. opensubtitles.com, Profile, API consumers."/> <Hyperlink x:Name="OsLink" NavigateUri="https://www.opensubtitles.com/en/consumers">Get a key</Hyperlink></TextBlock>
             <TextBlock x:Name="OsState" Style="{StaticResource Hint}"/>
+            <TextBlock Style="{StaticResource Label}" Text="Adult content"/>
+            <ComboBox x:Name="ContentFilter">
+              <ComboBoxItem Tag="on" Content="Hidden for everyone (recommended)"/>
+              <ComboBoxItem Tag="members" Content="Hidden for everyone except you, the owner"/>
+              <ComboBoxItem Tag="off" Content="Not hidden"/>
+            </ComboBox>
+            <TextBlock Style="{StaticResource Hint}" Text="Leaves adult titles and releases out of search, Discover and downloads."/>
             <TextBlock Style="{StaticResource Section}" Text="DOWNLOADS"/>
             <CheckBox x:Name="QbitOn" Content="Download with qBittorrent"/>
             <StackPanel x:Name="QbitBox" Margin="31,0,0,0">
@@ -742,6 +758,12 @@ function Find-Winget {
               <TextBlock x:Name="RemoteLead" Style="{StaticResource Hint}" FontSize="13"/>
               <TextBox x:Name="RemoteCmd" IsReadOnly="True" TextWrapping="Wrap" Height="Auto" Padding="10,8" FontFamily="Cascadia Mono, Consolas" FontSize="11.5" Margin="0,8,0,0"/>
               <Button x:Name="CopyBtn" Style="{StaticResource Small}" Content="Copy command" HorizontalAlignment="Left" Margin="0,8,0,0"/>
+            </StackPanel>
+            <StackPanel x:Name="OidcBox" Visibility="Collapsed">
+              <TextBlock Style="{StaticResource Section}" Text="IN CLOUDFLARE ACCESS"/>
+              <TextBlock x:Name="OidcLead" Style="{StaticResource Hint}" FontSize="13" Text="Add Marquee as a login method, so people sign in with their Marquee password. It includes a secret: paste it only into Cloudflare. To see it again later, run node setup.js oidc in the Marquee folder."/>
+              <TextBox x:Name="OidcText" IsReadOnly="True" TextWrapping="Wrap" Height="Auto" Padding="10,8" FontFamily="Cascadia Mono, Consolas" FontSize="11.5" Margin="0,8,0,0"/>
+              <Button x:Name="OidcCopy" Style="{StaticResource Small}" Content="Copy" HorizontalAlignment="Left" Margin="0,8,0,0"/>
             </StackPanel>
             <StackPanel x:Name="TodoBox">
               <TextBlock Style="{StaticResource Section}" Text="STILL TO DO"/>
@@ -1042,6 +1064,8 @@ function Fill-FromInfo {
   $U.SideFoot.Text = "Marquee $($i.version)`n$($i.appDir)"
   $U.MediaDir.Text = $d.MEDIA_DIR
   $U.DataDir.Text = $d.DATA_DIR
+  $U.CacheDir.Text = [string]$d.CACHE_DIR
+  $U.ContentFilter.SelectedIndex = [Math]::Max(0, [array]::IndexOf(@('on', 'members', 'off'), [string]$d.CONTENT_FILTER))
   $U.DataBox.Visibility = if ($i.freshInstall) { 'Visible' } else { 'Collapsed' }
   if ($i.ffmpeg) {
     $U.FfState.Text = "$(Glyph ok)  FFmpeg $($i.ffmpeg.version)"; $U.FfHint.Text = $i.ffmpeg.path; $U.FfInstall.Visibility = 'Collapsed'; $U.FfInstall.IsChecked = $false
@@ -1061,6 +1085,7 @@ function Fill-FromInfo {
   $U.RemoteProxy.IsChecked = $d.remoteAccess -eq 'proxy'; $U.RemoteTailscale.IsChecked = $false
   $U.CfTeam.Text = [string]$v.CF_ACCESS_TEAM_DOMAIN
   $U.PublicUrl.Text = [string]$v.PUBLIC_URL
+  $U.OidcOn.IsChecked = $d.accessSignIn -ne 'access'
   foreach ($pair in @(@('Tmdb', 'TMDB_TOKEN'), @('OpenSubs', 'OPENSUBTITLES_API_KEY'), @('QbitPass', 'QBIT_PASS'), @('CfAud', 'CF_ACCESS_AUD'))) {
     $box = $U[$pair[0]]
     $box.Tag = [bool]($i.secrets.($pair[1]))
@@ -1100,6 +1125,9 @@ function Selected-Remote { foreach ($n in 'None', 'Tailscale', 'Cloudflare', 'Pr
 function Selected-Where { foreach ($n in 'Here', 'Windows', 'Linux', 'None') { if ($U["Where$n"].IsChecked) { return $n.ToLower() } }; 'here' }
 function Selected-Quality { if ($U.Quality.SelectedItem) { [string]$U.Quality.SelectedItem.Tag } else { 'balanced' } }
 function Vis([bool]$on) { if ($on) { 'Visible' } else { 'Collapsed' } }
+# Marquee as Cloudflare Access's sign-in: needs Cloudflare and a team domain (its callback lives there).
+function Oidc-On { (Selected-Remote) -eq 'cloudflare' -and $U.CfTeam.Text.Trim() -ne '' -and [bool]$U.OidcOn.IsChecked }
+function Selected-Filter { if ($U.ContentFilter.SelectedItem) { [string]$U.ContentFilter.SelectedItem.Tag } else { 'on' } }
 
 function Update-Visibility {
   $remote = Selected-Remote
@@ -1108,6 +1136,7 @@ function Update-Visibility {
   $U.UrlBox.Visibility = Vis ($remote -in 'cloudflare', 'proxy')
   $hasLogin = $S.Info -and $S.Info.ownerHasLogin -and $S.Info.logins -contains $U.OwnerEmail.Text.Trim().ToLower()
   $U.PwHint.Text = if ($hasLogin) { "$(Glyph ok)  You already have a Marquee password. Type a new one only to change it." }
+    elseif (Oidc-On) { 'At least 10 characters. Needed: Cloudflare Access signs you in with this password.' }
     elseif ($remote -eq 'cloudflare') { 'Optional with Cloudflare Access (it signs people in). A password also lets you sign in at home.' }
     else { 'At least 10 characters. You sign in with it from outside your home, and at home if everyone signs in.' }
   $U.QbitBox.Visibility = Vis ([bool]$U.QbitOn.IsChecked)
@@ -1156,6 +1185,8 @@ function Validate-Page([string]$key) {
       if (-not [IO.Path]::IsPathRooted($m)) { return Field-Error 'Use a full path, like D:\Media.' $U.MediaDir }
       $dd = $U.DataDir.Text.Trim()
       if ($dd -and -not [IO.Path]::IsPathRooted($dd)) { return Field-Error 'Use a full path for the database folder, or leave it empty.' $U.DataDir }
+      $cd = $U.CacheDir.Text.Trim()
+      if ($cd -and -not [IO.Path]::IsPathRooted($cd)) { return Field-Error 'Use a full path for the cache folder, or leave it empty.' $U.CacheDir }
     }
     'PNetwork' {
       $p = 0
@@ -1176,6 +1207,8 @@ function Validate-Page([string]$key) {
         return Field-Error 'Everyone signs in (Network page), so set a password, or nobody can get in.' $U.OwnerPw
       }
       if ((Selected-Remote) -eq 'cloudflare' -and -not $e) { return Field-Error 'Cloudflare Access needs the owner''s email (as you sign in there).' $U.OwnerEmail }
+      if ((Oidc-On) -and -not $pw -and -not ($S.Info.logins -contains $e.ToLower())) { return Field-Error 'Access will sign people in with Marquee passwords: set yours, or you can''t get in from outside.' $U.OwnerPw }
+      if ((Oidc-On) -and -not $U.PublicUrl.Text.Trim()) { return Field-Error 'Signing in with Marquee passwords needs the public address.' $U.PublicUrl }
       if ((Selected-Remote) -in 'cloudflare', 'proxy' -and $U.PublicUrl.Text.Trim() -and $U.PublicUrl.Text.Trim() -notmatch '^https?://') { return Field-Error 'The public address starts with https://' $U.PublicUrl }
     }
     'PServices' {
@@ -1211,7 +1244,7 @@ function Validate-Page([string]$key) {
 function Answers {
   $a = [ordered]@{}
   $a.MEDIA_DIR = $U.MediaDir.Text.Trim()
-  if ($S.Info.freshInstall) { $a.DATA_DIR = $U.DataDir.Text.Trim() }
+  if ($S.Info.freshInstall) { $a.DATA_DIR = $U.DataDir.Text.Trim(); $a.CACHE_DIR = $U.CacheDir.Text.Trim() }
   $a.PORT = $U.Port.Text.Trim()
   $a.HOST = if ($U.HostLocal.IsChecked) { '127.0.0.1' } else { '0.0.0.0' }
   $a.HOME_NETWORK_ACCESS = if ($U.HomeSignin.IsChecked) { 'signin' } else { 'shared' }
@@ -1225,10 +1258,12 @@ function Answers {
   if ($remote -eq 'cloudflare') {
     $a.CF_ACCESS_TEAM_DOMAIN = $U.CfTeam.Text.Trim()
     if ($U.CfAud.Password) { $a.CF_ACCESS_AUD = $U.CfAud.Password }
+    $a.accessSignIn = if (Oidc-On) { 'marquee' } else { 'access' }
   }
   if ($remote -in 'cloudflare', 'proxy') { $a.PUBLIC_URL = $U.PublicUrl.Text.Trim() }
   if ($U.Tmdb.Password) { $a.TMDB_TOKEN = $U.Tmdb.Password.Trim() }
   if ($U.OpenSubs.Password) { $a.OPENSUBTITLES_API_KEY = $U.OpenSubs.Password.Trim() }
+  $a.CONTENT_FILTER = Selected-Filter
   if ($U.QbitOn.IsChecked) {
     $a.QBIT_URL = $U.QbitUrl.Text.Trim(); $a.QBIT_USER = $U.QbitUser.Text.Trim()
     if ($U.QbitPass.Password) { $a.QBIT_PASS = $U.QbitPass.Password }
@@ -1260,16 +1295,18 @@ function Fill-Review {
   if ($Fresh) { Review-Row 'Install' ("Marquee $(if ($Version) { $Version } else { '(latest release)' }) in $($U.InstallDir.Text.Trim())") }
   Review-Row 'Library' $a.MEDIA_DIR
   if ($a.DATA_DIR) { Review-Row 'Database' $a.DATA_DIR }
+  if ($a.CACHE_DIR) { Review-Row 'Cache' $a.CACHE_DIR }
   if ($U.FfInstall.IsChecked -and $U.FfInstall.Visibility -eq 'Visible') { Review-Row 'FFmpeg' 'Install with winget' }
   Review-Row 'Address' ("Port $($a.PORT), " + $(if ($a.HOST -eq '127.0.0.1') { 'this computer only' } else { 'whole home network' }) + ', ' + $(if ($a.HOME_NETWORK_ACCESS -eq 'signin') { 'everyone signs in' } else { 'no sign-in at home' }))
   $owner = if ($a.ADMIN_EMAILS) { ($a.ADMIN_EMAILS -split ',')[0] } else { 'none' }
   Review-Row 'Owner' ($owner + $(if ($U.OwnerPw.Password) { ', new password' } elseif ($S.Info.logins -contains $owner) { ', existing password' } else { '' }))
-  Review-Row 'Remote access' (@{ none = 'Home network only'; tailscale = 'Tailscale'; cloudflare = 'Cloudflare Tunnel and Access'; proxy = 'Your reverse proxy' }[$a.remoteAccess] + $(if ($a.PUBLIC_URL) { " ($($a.PUBLIC_URL))" } else { '' }))
+  Review-Row 'Remote access' (@{ none = 'Home network only'; tailscale = 'Tailscale'; cloudflare = 'Cloudflare Tunnel and Access'; proxy = 'Your reverse proxy' }[$a.remoteAccess] + $(if ($a.PUBLIC_URL) { " ($($a.PUBLIC_URL))" } else { '' }) + $(if ($a.accessSignIn -eq 'marquee') { ', sign in with Marquee passwords' } else { '' }))
   $svc = @()
   if ($a.TMDB_TOKEN -or $U.Tmdb.Tag) { $svc += 'TMDB' }
   if ($a.OPENSUBTITLES_API_KEY -or $U.OpenSubs.Tag) { $svc += 'OpenSubtitles' }
   if ($a.QBIT_URL) { $svc += "qBittorrent ($($a.QBIT_URL))" }
   Review-Row 'Services' $(if ($svc) { $svc -join ', ' } else { 'None' })
+  Review-Row 'Adult content' (@{ on = 'Hidden for everyone'; members = 'Hidden, except for you'; off = 'Not hidden' }[$a.CONTENT_FILTER])
   if ($U.ClipsOn.IsChecked) {
     $where = @{ here = 'Clipper installed on this PC'; windows = 'Clipper on another Windows PC (command shown at the end)'; linux = 'Clipper on another Linux PC (command shown at the end)'; none = 'folder only' }[(Selected-Where)]
     $qual = if ((Selected-Where) -ne 'none' -and $U.Quality.SelectedItem) { ', ' + (([string]$U.Quality.SelectedItem.Content -split "  $Dash  ")[0]).ToLower() } else { '' }
@@ -1516,12 +1553,20 @@ function Fill-Done {
     if (-not $U.ShareMake.IsChecked) { foreach ($l in @($S.ClipPlan.shareLines)) { if ($l -match 'New-SmbShare') { [void]$S.Todo.Add("Share the clips folder (elevated PowerShell): $($l.Trim())") } } }
   }
   $owner = $U.OwnerEmail.Text.Trim().ToLower()
-  if ($owner -and -not $U.OwnerPw.Password -and -not ($S.Info.logins -contains $owner) -and (Selected-Remote) -ne 'cloudflare') {
+  if ($owner -and -not $U.OwnerPw.Password -and -not ($S.Info.logins -contains $owner) -and ((Selected-Remote) -ne 'cloudflare' -or (Oidc-On))) {
     [void]$S.Todo.Add("Give $owner a password so you can sign in: run Marquee Setup again (Sign-in page)")
   }
   if ((Selected-Remote) -eq 'cloudflare') { [void]$S.Todo.Add('Finish Cloudflare Tunnel and Access: docs\remote-access.md in the Marquee folder') }
   if ((Selected-Remote) -eq 'tailscale') { [void]$S.Todo.Add("Install Tailscale on this PC and your devices, then open http://$($env:COMPUTERNAME.ToLower()):$($U.Port.Text.Trim())") }
   if ((Selected-Remote) -eq 'proxy') { [void]$S.Todo.Add('Point your reverse proxy at this PC: docs\remote-access.md in the Marquee folder') }
+  $U.OidcBox.Visibility = 'Collapsed'
+  if ((Oidc-On) -and -not $Screenshot) {
+    Wizard-Json 'oidc' $null {
+      param($m, $err)
+      if ($m -and $m.ready) { $U.OidcText.Text = (@($m.lines) -join "`r`n"); $U.OidcBox.Visibility = 'Visible' }
+      elseif ($m) { [void]$U.TodoList.Children.Add((Bullet-Row (Glyph dot) $B.Bulb "Marquee sign-in for Access is missing $(@($m.missing) -join ', '): run Marquee Setup again")); $U.TodoBox.Visibility = 'Visible' }
+    }
+  }
   $U.TodoList.Children.Clear()
   foreach ($t in ($S.Todo | Select-Object -Unique)) { [void]$U.TodoList.Children.Add((Bullet-Row (Glyph dot) $B.Bulb $t)) }
   $U.TodoBox.Visibility = Vis ($S.Todo.Count -gt 0)
@@ -1726,6 +1771,7 @@ $U.InstallDirBtn.add_Click({ Pick-Folder $U.InstallDir 'Where to install Marquee
 $U.InstallDir.add_TextChanged({ Fill-InstallDirHint })
 $U.MediaDirBtn.add_Click({ Pick-Folder $U.MediaDir 'Folder with your films and shows' })
 $U.DataDirBtn.add_Click({ Pick-Folder $U.DataDir 'Folder for Marquee''s database' })
+$U.CacheDirBtn.add_Click({ Pick-Folder $U.CacheDir 'Folder for Marquee''s cache' })
 $U.ClipsDirBtn.add_Click({ Pick-Folder $U.ClipsDir 'Folder for game clips'; Refresh-ClipPlan })
 $U.MediaDir.add_LostFocus({ if ($S.Info -and -not $S.Info.values.CLIPS_DIR -and $U.MediaDir.Text.Trim()) { try { $U.ClipsDir.Text = Join-Path (Split-Path ([IO.Path]::GetFullPath($U.MediaDir.Text.Trim())) -Parent) 'Clips' } catch { } } })
 $U.Port.add_LostFocus({ Check-Port })
@@ -1733,7 +1779,7 @@ $U.TestBtn.add_Click({ Test-Services })
 foreach ($n in 'RemoteNone', 'RemoteTailscale', 'RemoteCloudflare', 'RemoteProxy', 'WhereHere', 'WhereWindows', 'WhereLinux', 'WhereNone') {
   $U[$n].add_Checked({ Update-Visibility; if ($Pages[$S.Page].Key -eq 'PClips') { Refresh-ClipPlan } })
 }
-foreach ($n in 'QbitOn', 'ClipsOn', 'AutoOn') { $U[$n].add_Checked({ Update-Visibility; if ($Pages[$S.Page].Key -eq 'PClips') { Refresh-ClipPlan } }); $U[$n].add_Unchecked({ Update-Visibility }) }
+foreach ($n in 'QbitOn', 'ClipsOn', 'AutoOn', 'OidcOn') { $U[$n].add_Checked({ Update-Visibility; if ($Pages[$S.Page].Key -eq 'PClips') { Refresh-ClipPlan } }); $U[$n].add_Unchecked({ Update-Visibility }) }
 $U.CfTeam.add_TextChanged({ Update-Visibility })
 $U.OwnerEmail.add_LostFocus({ Update-Visibility })
 $U.Quality.add_SelectionChanged({ Update-Visibility; if ($Pages[$S.Page].Key -eq 'PClips') { Refresh-ClipPlan } })
@@ -1754,6 +1800,7 @@ $U.StartBtn.add_Click({
   }
 })
 $U.CopyBtn.add_Click({ [Windows.Clipboard]::SetText($U.RemoteCmd.Text); $U.CopyBtn.Content = "$(Glyph ok)  Copied" })
+$U.OidcCopy.add_Click({ [Windows.Clipboard]::SetText($U.OidcText.Text); $U.OidcCopy.Content = "$(Glyph ok)  Copied" })
 $U.LogBtn.add_Click({
   $f = Join-Path ([IO.Path]::GetTempPath()) 'marquee-setup.log'
   [IO.File]::WriteAllText($f, $S.Log.ToString(), (New-Object Text.UTF8Encoding $false))
@@ -1868,6 +1915,8 @@ if ($SelfTest -or $Screenshot) {
       $U.WhereWindows.IsChecked = $true; $U.ShareMake.IsChecked = $true
       [void]$S.Todo.Add('Finish Cloudflare Tunnel and Access: docs\remote-access.md')
       Show-Page $i
+      $U.OidcText.Text = "Cloudflare Zero Trust, Settings, Authentication, Login methods, Add new, OpenID Connect:`r`n  App ID:           cloudflare`r`n  Client secret:    (sample)`r`n  Auth URL:         https://marquee.example.com/c/oidc/authorize"
+      $U.OidcBox.Visibility = 'Visible'
     } else { Show-Page $i }
     if ($key -eq 'PInstall') { $U.NodeState.Text = 'Node.js is not installed'; $U.NodeState.Foreground = $B.Bulb; $U.NodeHint.Text = 'Marquee needs Node.js 22.16 or later. Setup installs the current LTS for you (with winget) when you press Install.'; $U.NodeBtn.Visibility = 'Collapsed' }
     if ($key -eq 'PNetwork') { $U.PortState.Text = "$(Glyph ok)  free"; $U.PortState.Foreground = $B.Good }

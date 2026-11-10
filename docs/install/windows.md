@@ -10,10 +10,15 @@ and double-click it. It's a normal Windows window, no terminal:
 
 1. **Install:** installs Node.js LTS with winget if it's missing, then downloads the release, checks it
    against `SHA256SUMS` and unpacks it (`%USERPROFILE%\marquee` unless you pick another folder; an
-   existing installation is updated and keeps its settings and data).
+   existing installation is updated and keeps its settings and data). It also adds the release's
+   Android TV app, which Marquee offers at `/android`.
 2. **Library, Network, Sign-in, Services:** the same questions as `node setup.js`, with folder
    pickers, a live port check, **Test connections** for TMDB, OpenSubtitles and qBittorrent, and your
-   owner password. FFmpeg can be installed from the Library page.
+   owner password. FFmpeg can be installed from the Library page, and a new installation can keep its
+   cache (browser copies and previews, which can grow to hundreds of GB) on another drive. Services
+   also asks whether to hide adult content. With **Cloudflare Tunnel and Access** and a team domain,
+   *People sign in to Access with their Marquee password* sets Marquee up as Access's login, and the
+   last page shows what to enter in Cloudflare (with a Copy button).
 3. **Game clips (add-on):** turn on Clipper to set up the Clips tab. *On this PC* downloads the pinned,
    hash-checked Clipper and installs it; *another Windows or Linux PC* gives you one command to paste
    there and can share the clips folder on the network for you.
@@ -51,18 +56,18 @@ Use an **elevated PowerShell** (Run as administrator) if you want setup to regis
 the same run.
 
 ```powershell
-Invoke-WebRequest https://raw.githubusercontent.com/Tjabooo/marquee/v1.2.0/install.ps1 -OutFile install.ps1
+Invoke-WebRequest https://raw.githubusercontent.com/Tjabooo/marquee/v1.3.0/install.ps1 -OutFile install.ps1
 notepad install.ps1
 powershell -ExecutionPolicy Bypass -File install.ps1
 ```
 
-This installs to `%USERPROFILE%\marquee`. Use `-Dir D:\Apps\Marquee` for another folder, `-Version v1.2.0`
+This installs to `%USERPROFILE%\marquee`. Use `-Dir D:\Apps\Marquee` for another folder, `-Version v1.3.0`
 to pin a release, `-DryRun` to preview. The script verifies the archive against `SHA256SUMS` and runs
 `node setup.js`.
 
-By hand: download `marquee-v1.2.0.tar.gz` and `SHA256SUMS` from the release, compare
-`(Get-FileHash marquee-v1.2.0.tar.gz).Hash` with the value in `SHA256SUMS`, then
-`tar -xzf marquee-v1.2.0.tar.gz -C D:\Apps\Marquee --strip-components=1` and run `node setup.js` there.
+By hand: download `marquee-v1.3.0.tar.gz` and `SHA256SUMS` from the release, compare
+`(Get-FileHash marquee-v1.3.0.tar.gz).Hash` with the value in `SHA256SUMS`, then
+`tar -xzf marquee-v1.3.0.tar.gz -C D:\Apps\Marquee --strip-components=1` and run `node setup.js` there.
 
 ## 3. Configure
 

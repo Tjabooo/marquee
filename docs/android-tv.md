@@ -28,7 +28,12 @@ install apps; the app opens that switch for you and carries on when you press Ba
 
 ## Building the app
 
-The server offers whatever is in `tv/android/dist` (or `ANDROID_APP_DIR`). Build it on any Linux or macOS machine
+The server offers whatever is in `tv/android/dist` (or `ANDROID_APP_DIR`). Releases carry a ready-made app
+(`Marquee.apk` + `Marquee.json`, built without a server address, so it asks for it on its first start), and
+`install.sh`, `install.ps1` and MarqueeSetup.exe put it there unless an app with the same or a newer version is
+already in place. Docker and git installs can download both from the
+[latest release](https://github.com/Tjabooo/marquee/releases/latest) into that folder. To build your own (with your
+server's address built in, or after changing the app), use any Linux or macOS machine
 with a JDK 17–21 and the Android SDK (platform 36 + build-tools; the build fetches the rest):
 
 ```sh

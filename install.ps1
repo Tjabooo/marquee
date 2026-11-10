@@ -127,6 +127,29 @@ try {
     foreach ($item in $AppItems) { $p = Join-Path $stage $item; if (Test-Path $p) { Move-Item $p (Join-Path $Dir $item) } }
     Remove-Item -Recurse -Force $stage
   }
+
+  # ---------- Android TV app (best effort) ----------
+  # Releases carry the Android TV app built without a server address (it asks on its first start);
+  # Marquee offers it at /android. An app of your own with the same or a newer version is left alone.
+  try {
+    $meta = $null
+    try { $meta = Invoke-RestMethod "$base/Marquee.json" -UseBasicParsing } catch { }   # this release has none
+    $dist = Join-Path $Dir 'tv\android\dist'
+    $have = 0
+    if ((Test-Path (Join-Path $dist 'Marquee.apk')) -and (Test-Path (Join-Path $dist 'Marquee.json'))) {
+      try { $have = [int](Get-Content (Join-Path $dist 'Marquee.json') -Raw | ConvertFrom-Json).versionCode } catch { }
+    }
+    if ($meta -and $meta.sha256 -and [int]$meta.versionCode -gt $have) {
+      $apk = Join-Path $tmp 'Marquee.apk'
+      Invoke-WebRequest "$base/Marquee.apk" -OutFile $apk -UseBasicParsing
+      if ((Get-FileHash $apk -Algorithm SHA256).Hash.ToLower() -ne [string]$meta.sha256) { throw 'checksum mismatch' }
+      Step "add the Android TV app $($meta.versionName) to $dist" {
+        New-Item -ItemType Directory -Force $dist | Out-Null
+        Copy-Item $apk (Join-Path $dist 'Marquee.apk') -Force
+        [IO.File]::WriteAllText((Join-Path $dist 'Marquee.json'), ($meta | ConvertTo-Json -Compress), (New-Object Text.UTF8Encoding $false))
+      }
+    }
+  } catch { Write-Host "Note: skipped the Android TV app ($($_.Exception.Message)); Marquee works without it" }
 } finally {
   Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
 }
