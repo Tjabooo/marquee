@@ -71,6 +71,10 @@ All notable changes to Marquee. Versions follow [Semantic Versioning](https://se
   runs (and uses that release's `install.ps1`), so an older copy of the exe no longer installs an
   older Marquee. Offline, it falls back to the release it was built for.
 
+### Fixed
+
+- **Watch Together links for films open again.** The link page (`/c/w/…`) crashed with a server error for films, because the artwork lookup treated a film's missing episode still as text.
+
 ## [1.2.0] - 2026-11-05
 
 ### Security

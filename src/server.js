@@ -107,8 +107,9 @@ const watchRooms = new WatchRooms({ avatarOf: (id) => accounts.userById(id)?.ava
 function watchArtwork(media) {
   const art = media.season == null ? shows.knownFilm(media.mediaKey, media.title, media.year) : shows.knownShow(media.title, media.year);
   // An episode shows its own still (full size: link previews are large), then the show's backdrop.
-  const still = media.season != null && shows.knownEpisode(media.title, media.year, media.season, media.episode)?.still;
-  const image = still?.replace('/t/p/w300/', '/t/p/original/') || art?.backdrop || art?.poster;
+  // (A film has no still: `false?.replace` would throw, so films check the type first.)
+  const still = media.season != null ? shows.knownEpisode(media.title, media.year, media.season, media.episode)?.still : null;
+  const image = (typeof still === 'string' ? still.replace('/t/p/w300/', '/t/p/original/') : null) || art?.backdrop || art?.poster;
   return image ? { image } : null;
 }
 setInterval(() => watchRooms.cleanup(), 3000).unref();

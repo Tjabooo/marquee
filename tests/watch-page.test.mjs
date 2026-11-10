@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
 import { handleWatchPage } from '../src/watch-page.js';
 
 const TOKEN = 'abcdefghijklmnopqrstuvwx';
@@ -30,4 +32,20 @@ test('ended rooms say so, and other paths are left alone', () => {
   assert.match(ended.body, /og:image" content="[^"]*\/c\/marquee\.png"/);
   assert.equal(render('/c/w/short', {}).handled, false);
   assert.equal(render(`/c/${TOKEN.slice(0, 16)}`, {}).handled, false);
+});
+
+test('link artwork works for films (no still) and prefers the full-size episode still', () => {
+  const source = fs.readFileSync(new URL('../src/server.js', import.meta.url), 'utf8');
+  const code = source.slice(source.indexOf('function watchArtwork('), source.indexOf('setInterval(() => watchRooms.cleanup()'));
+  const shows = {
+    knownFilm: () => ({ backdrop: 'https://image.tmdb.org/t/p/w780/film.jpg' }),
+    knownShow: () => ({ backdrop: 'https://image.tmdb.org/t/p/w780/show.jpg' }),
+    knownEpisode: () => ({ still: 'https://image.tmdb.org/t/p/w300/ep.jpg' }),
+  };
+  const context = vm.createContext({ shows });
+  vm.runInContext(`${code}; this.watchArtwork = watchArtwork;`, context);
+  assert.equal(context.watchArtwork({ title: 'Arrival', year: 2016, season: null, episode: null, mediaKey: 'films/arrival' }).image, 'https://image.tmdb.org/t/p/w780/film.jpg');
+  assert.equal(context.watchArtwork({ title: 'House', season: 3, episode: 1 }).image, 'https://image.tmdb.org/t/p/original/ep.jpg');
+  shows.knownEpisode = () => null;
+  assert.equal(context.watchArtwork({ title: 'House', season: 3, episode: 1 }).image, 'https://image.tmdb.org/t/p/w780/show.jpg');
 });
