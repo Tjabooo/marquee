@@ -30,6 +30,8 @@ All notable changes to Marquee. Versions follow [Semantic Versioning](https://se
 - **Title page data.** `GET /api/title/:type/:id/page` (TMDB logo art, tagline, runtime, genres, age rating, cast
   with photos, recommendations; one cached TMDB call) and `GET /api/tv/:id/season/:n` (episode descriptions,
   running times, air dates and stills). Not used by the current web app yet.
+- **`GET /api/art?path=/t/p/w300/…`.** Small TMDB pictures through the server (TMDB's host and sizes up to w300 only, kept in
+  memory for a day), so the web app can read their colours: TMDB's CDN sometimes serves a copy cached without CORS headers.
 
 - **Play now.** Watch a film or episode while it downloads, in any browser and on iPhones, whatever its format. qBittorrent downloads
   it in order, and ffmpeg reads it through a loopback server that holds each read until those pieces are verified

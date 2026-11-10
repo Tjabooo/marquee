@@ -500,5 +500,9 @@
  "This download has finished. Play it from your library.": "Nedladdningen är klar. Spela den från ditt bibliotek.",
  "Only the host can switch the room to full quality.": "Bara värden kan byta rummet till full kvalitet.",
  "This room is already playing the full-quality video.": "Rummet spelar redan videon i full kvalitet.",
- "The full-quality video isn’t in the library yet.": "Videon i full kvalitet finns inte i biblioteket än."
+ "The full-quality video isn’t in the library yet.": "Videon i full kvalitet finns inte i biblioteket än.",
+ "Not a TMDB picture.": "Det är ingen TMDB-bild.",
+ "TMDB didn’t answer.": "TMDB svarade inte.",
+ "No such picture.": "Den bilden finns inte.",
+ "That picture is too big.": "Den bilden är för stor."
 }

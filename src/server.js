@@ -476,6 +476,12 @@ function pickTrailer(videos, lang) {
 
 // What /api/title/:type/:id/page sends: the parts of a TMDB details answer the title page uses.
 const TMDB_IMG = 'https://image.tmdb.org/t/p/';
+const TMDB_IMAGE_ORIGIN = 'https://image.tmdb.org';
+const artCache = new Map(); // /api/art: path -> { at, type, body }
+function sendArt(res, art) {
+  res.writeHead(200, { 'Content-Type': art.type, 'Cache-Control': 'private, max-age=86400', 'Content-Length': art.body.length });
+  res.end(art.body);
+}
 function pickLogo(logos, original) {
   const score = (l) => (l.iso_639_1 === 'en' ? 300 : l.iso_639_1 === original ? 200 : l.iso_639_1 == null ? 100 : 0)
     + (/\.png$/i.test(l.file_path) ? 20 : 0) + (Number(l.vote_average) || 0) * 2 + Math.min(Number(l.width) || 0, 2000) / 1000;
@@ -3277,6 +3283,24 @@ async function handleApi(req, res, url) {
     const d = await cachedTmdb(m[1] === 'tv' ? `/tv/${m[2]}/aggregate_credits` : `/movie/${m[2]}/credits`, {}, 24 * 3600 * 1000);
     const people = (d.cast || []).filter((c) => c.name && c.id).slice(0, 5).map((c) => ({ name: c.name, id: c.id }));
     return sendJson(res, 200, { cast: people.map((c) => c.name), people });
+  }
+  // A small TMDB picture through this server, so the web app can read its colours (a title page's colour wash,
+  // whether a logo is light). TMDB's image CDN only adds CORS headers when asked and can serve a copy cached
+  // without them, which a page can't read. TMDB's host and small sizes only; kept in memory for a day.
+  if (p === '/api/art') {
+    const want = String(url.searchParams.get('path') || '');
+    if (!/^\/t\/p\/w(92|154|185|300)\/[A-Za-z0-9_-]{4,64}\.(jpg|png)$/.test(want)) throw new HttpError(400, 'Not a TMDB picture.');
+    const hit = artCache.get(want);
+    if (hit && Date.now() - hit.at < 24 * 3600 * 1000) return sendArt(res, hit);
+    let r;
+    try { r = await fetch(TMDB_IMAGE_ORIGIN + want, { signal: AbortSignal.timeout(8000) }); } catch { throw new HttpError(502, 'TMDB didn’t answer.'); }
+    if (!r.ok) throw new HttpError(404, 'No such picture.');
+    const body = Buffer.from(await r.arrayBuffer());
+    if (body.length > 400 * 1024) throw new HttpError(413, 'That picture is too big.');
+    const art = { at: Date.now(), type: want.endsWith('.png') ? 'image/png' : 'image/jpeg', body };
+    artCache.set(want, art);
+    if (artCache.size > 300) artCache.delete(artCache.keys().next().value);
+    return sendArt(res, art);
   }
   // A title page's extras beyond the card: logo art, runtime, genres, tagline, age rating, the cast with
   // faces and titles like it. One TMDB call (append_to_response), cached 12 h like the trailer.
