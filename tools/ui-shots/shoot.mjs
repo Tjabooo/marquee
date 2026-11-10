@@ -26,6 +26,7 @@ const SIZES = {
   tablet: { width: 768, height: 1024, mobile: true, scale: 1 },
   desktop: { width: 1440, height: 900, mobile: false, scale: 1 },
   tv: { width: 1920, height: 1080, mobile: false, scale: 1 },
+  tvapp: { width: 1920, height: 1080, mobile: false, scale: 0.5 }, // the Samsung TV app: a fixed 1920×1080 canvas, shot at half size
 };
 const sizes = String(args.sizes || 'phone,tablet,desktop,tv').split(',');
 const langs = String(args.langs || 'en,sv').split(',');
@@ -178,6 +179,13 @@ for (const scene of scenes) {
         for (const step of scene.steps || []) {
           if (typeof step === 'string') { await evalIn(page.s, step); continue; }
           if (step.wait) { await sleep(step.wait); continue; } // e.g. while the page navigates
+          if (step.keys) { // remote-control presses (key codes), e.g. the Samsung TV app's D-pad
+            for (const code of step.keys) {
+              for (const type of ['rawKeyDown', 'keyUp']) await page.s('Input.dispatchKeyEvent', { type, windowsVirtualKeyCode: code, nativeVirtualKeyCode: code });
+              await sleep(step.gap ?? 250);
+            }
+            continue;
+          }
           // { mouse: selector, fallback: JS expression for the element }: a real mouse move onto it (for :hover)
           const box = await evalIn(page.s, `const el = ${step.fallback || `document.querySelector(${JSON.stringify(step.mouse)})`}; if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 };`);
           if (!box) throw new Error('nothing to point at for ' + step.mouse);

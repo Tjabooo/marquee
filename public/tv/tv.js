@@ -55,6 +55,21 @@
   function token() { try { return localStorage.getItem(TOKEN_KEY); } catch (e) { return null; } }
 
   // "Medverkande: …" under a description; stays empty when TMDB has no cast or the title isn't on TMDB.
+  // The title as TMDB's logo art when there is one (like the web app's title pages); the text stays until it has loaded.
+  function titleLogo(heading, type, id, name) {
+    if (!id || (type !== 'movie' && type !== 'tv')) return heading;
+    api('/api/title/' + type + '/' + id + '/page').then(function (d) {
+      var logo = d.page && d.page.logo;
+      if (!logo || !logo.url) return;
+      var pic = new Image();
+      pic.className = 'title-logo';
+      pic.alt = name || '';
+      pic.onload = function () { heading.textContent = ''; heading.appendChild(pic); };
+      pic.src = logo.url;
+    }).catch(function () {});
+    return heading;
+  }
+
   function castLine(type, id, cls) {
     var line = h('p', { class: cls });
     if (id) api('/api/title/' + type + '/' + id + '/cast').then(function (d) {
@@ -1280,7 +1295,7 @@
     var alive = true, busy = false, pollTimer = null;
     var lib = libraryEntry(t);
     var backdrop = h('div', { class: 'discover-backdrop' }, img(t.backdrop || t.poster));
-    var title = h('h1', { text: t.title });
+    var title = titleLogo(h('h1', { text: t.title }), t.type, t.id, t.title);
     var meta = h('div', { class: 'discover-meta', text: [t.year, t.type === 'tv' ? T('Series') : T('Film'), t.rating ? '★ ' + t.rating : null]
       .concat(genreNames(t.type, t.genres)).filter(Boolean).join(' · ') });
     var overview = h('p', { class: 'discover-overview', text: t.overview || T('No description available.') });
@@ -1441,7 +1456,7 @@
     strip.set(onWayHere());
     var el = h('div', { class: 'screen show' },
       h('div', { class: 'backdrop' }, img(s.backdrop)),
-      h('div', { class: 'show-head' }, h('h1', { text: s.title }), s.overview ? h('p', { class: 'overview', text: s.overview }) : null, castLine('tv', s.tmdbId, 'show-cast'), strip.el),
+      h('div', { class: 'show-head' }, titleLogo(h('h1', { text: s.title }), 'tv', s.tmdbId, s.title), s.overview ? h('p', { class: 'overview', text: s.overview }) : null, castLine('tv', s.tmdbId, 'show-cast'), strip.el),
       tabs, h('div', { class: 'list-viewport' }, list));
     var waited = onWayHere() ? onWayHere().items.length : 0;
     followPending(function () { return open; }, function () {

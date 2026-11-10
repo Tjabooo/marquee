@@ -140,4 +140,12 @@ export const SCENES = [
     { wait: 5000 },
     "await __waitFor('#discover-body', 20000); await __sleep(2000); if (document.querySelector('.preview-pill') || document.querySelector('script[src=\"/billboard.js\"]') || document.querySelector('.billboard')) throw new Error('still in the preview'); if (document.cookie.includes('marquee_preview')) throw new Error('cookie still readable');",
   ], probe: "return 'back on live: ' + (document.querySelector('link[rel=icon]')?.getAttribute('href') || '').slice(0, 24);" },
+
+  // ---- The Samsung TV app (public/tv) in a copy of its shell: --overlay a folder with tv-shell.html (see README) ----
+  { name: 'tvapp-home', path: '/tv-shell.html', ready: '.row .card', sizes: ['tvapp'], storage: { 'marquee:tv-session': 'home' }, after: 2500 },
+  { name: 'tvapp-home-down', path: '/tv-shell.html', ready: '.row .card', sizes: ['tvapp'], storage: { 'marquee:tv-session': 'home' }, steps: [{ keys: [40, 39, 39] }], after: 1500 },
+  { name: 'tvapp-discover', path: '/tv-shell.html', ready: '.row .card', sizes: ['tvapp'], storage: { 'marquee:tv-session': 'home' }, steps: [{ keys: [38, 13], gap: 600 }, { wait: 4000 }, { keys: [40, 39], gap: 500 }], after: 2500 },
+  { name: 'tvapp-title', path: '/tv-shell.html', ready: '.row .card', sizes: ['tvapp'], storage: { 'marquee:tv-session': 'home' }, steps: [{ keys: [38, 13], gap: 600 }, { wait: 4000 }, { keys: [40, 13], gap: 600 }, { wait: 3000 }], after: 2000 },
+  { name: 'tvapp-show', path: '/tv-shell.html', ready: '.row .card', sizes: ['tvapp'], storage: { 'marquee:tv-session': 'home' }, steps: [{ keys: [40, 13], gap: 600 }, { wait: 3000 }], after: 2000 },
+  { name: 'tvapp-pair', path: '/tv-shell.html', ready: '.pair', sizes: ['tvapp'], storage: { 'marquee:tv-session': '' }, after: 1500 },
 ];

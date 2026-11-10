@@ -42,5 +42,9 @@
     }
   });
   if (!server) { note('Den här appen byggdes utan Marquee-adress. Bygg om den med MARQUEE_URL.'); return; }
+  // Marquee's own lettering for the splash (the same font the TV app uses), from the server.
+  var face = document.createElement('style');
+  face.textContent = '@font-face{font-family:"Bricolage Grotesque";font-weight:200 800;src:url("' + server + '/fonts/bricolage-grotesque-latin.woff2") format("woff2")}';
+  document.head.appendChild(face);
   load();
 })();

@@ -10,7 +10,11 @@
 <style>
   html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: #1F1019; color: #F6EADF; font-family: "SamsungOne", "Tizen Sans", sans-serif; }
   .shell { position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
-  .shell b { font-size: 96px; font-weight: 800; color: #F4C152; }
+  /* The splash while the TV app loads from the server: the lit wordmark under a row of marquee bulbs */
+  html, body { background: radial-gradient(ellipse 1500px 700px at 50% -160px, #3D2234 0%, rgba(61, 34, 52, 0) 100%), linear-gradient(#1F1019, #160B12); }
+  .shell::before { content: ''; width: 330px; height: 16px; margin-bottom: 30px;
+    background: radial-gradient(circle, #F4C152 5px, rgba(244, 193, 82, .35) 6.5px, rgba(244, 193, 82, 0) 9px) 0 50% / 33px 16px repeat-x; }
+  .shell b { font-family: "Bricolage Grotesque", "SamsungOne", sans-serif; font-size: 120px; font-weight: 800; letter-spacing: -0.03em; color: #F4C152; text-shadow: 0 0 26px rgba(244, 193, 82, .45); }
   .shell p { max-width: 1100px; margin-top: 28px; font-size: 32px; color: #BA9DAD; }
 </style>
 </head>
