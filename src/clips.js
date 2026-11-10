@@ -644,7 +644,9 @@ export function page({ title, desc, url, image, images = [], video, body }) {
   <meta name="twitter:player:height" content="${video.height}">
   <meta name="twitter:player:stream" content="${esc(video.url)}">
   <meta name="twitter:player:stream:content_type" content="video/mp4">` : ''}
+  <link rel="icon" href="/c/favicon.svg" type="image/svg+xml">
   <style>${PAGE_CSS}</style>
+  <link rel="stylesheet" href="/c/pages.css">
 </head>
 <body><main>${body}</main></body>
 </html>`;
@@ -671,11 +673,16 @@ export async function handlePublic(req, res, url, { sendVideo, previews }) {
     }));
   }
   // The shared clip player: Marquee's own stylesheet and a player script for one clip.
+  // Under /c/, so they load for visitors without a sign-in (Cloudflare Access lets /c/ through): the pages'
+  // look (pages.css), its font and the favicon.
   const playerFiles = { '/c/style.css': '../public/style.css', '/c/player.js': '../public/clip-share.js', '/c/seek-preview.js': '../public/seek-preview.js',
-    '/c/i18n.js': '../public/i18n.js', '/c/i18n-sv.js': '../public/i18n-sv.js' };
+    '/c/i18n.js': '../public/i18n.js', '/c/i18n-sv.js': '../public/i18n-sv.js', '/c/pages.css': '../public/pages.css', '/c/favicon.svg': '../public/favicon.svg',
+    '/c/fonts/bricolage-grotesque-latin.woff2': '../public/fonts/bricolage-grotesque-latin.woff2',
+    '/c/fonts/bricolage-grotesque-latin-ext.woff2': '../public/fonts/bricolage-grotesque-latin-ext.woff2' };
+  const fileTypes = { '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.woff2': 'font/woff2' };
   if (Object.hasOwn(playerFiles, p)) {
     const file = new URL(playerFiles[p], import.meta.url);
-    try { return send(200, p.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/javascript; charset=utf-8', await fs.promises.readFile(file), { 'Cache-Control': 'no-cache' }); }
+    try { return send(200, fileTypes[p.slice(p.lastIndexOf('.'))], await fs.promises.readFile(file), { 'Cache-Control': 'no-cache' }); }
     catch { return send(404, 'text/plain', 'Not found.'); }
   }
   if (p === '/c/marquee.png') {
@@ -735,7 +742,7 @@ function playerPage({ title, game, link }) {
   <meta name="color-scheme" content="dark">
   <meta name="robots" content="noindex">
   <title>${esc(title)}</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎞️</text></svg>">
+  <link rel="icon" href="/c/favicon.svg" type="image/svg+xml">
   ${og}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

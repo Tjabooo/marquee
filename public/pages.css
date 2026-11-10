@@ -1,0 +1,98 @@
+/* Pages the server draws itself: /signin and the share pages under /c/ (clips.js page(), invites, notes,
+   Watch Together links). Loaded after their own small styles and overrides them with Marquee's look:
+   the velvet room, a lit wordmark, a row of marquee bulbs, one glowing primary button.
+   These pages are public and carry no theme, so they use Marquee's own colours. */
+@font-face {
+  font-family: "Bricolage Grotesque"; font-style: normal; font-weight: 200 800; font-display: swap;
+  src: url("fonts/bricolage-grotesque-latin.woff2") format("woff2"); /* relative: /c/fonts/ for share pages, /fonts/ for the preview */
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122, U+2212, U+FEFF, U+FFFD;
+}
+:root {
+  --velvet: #1F1019; --curtain: #2B1724; --seat: #3A2031; --paper: #F6EADF; --dust: #BA9DAD; --bulb: #F4C152; --alert: #FF9B85;
+  --hairline: rgb(246 234 223 / .1); --hairline-2: rgb(246 234 223 / .18);
+  --display: "Bricolage Grotesque", "Avenir Next", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  color-scheme: dark;
+}
+body {
+  margin: 0; min-height: 100vh; min-height: 100dvh;
+  color: var(--paper);
+  background:
+    radial-gradient(120% 70% at 50% -10%, rgb(58 32 49 / .95), transparent 60%),
+    radial-gradient(60% 40% at 50% -8%, rgb(244 193 82 / .1), transparent 70%),
+    linear-gradient(var(--velvet), #140a10);
+  background-attachment: fixed;
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  padding: max(24px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+}
+h1 { font-family: var(--display); letter-spacing: -.025em; text-wrap: balance; }
+a { color: var(--bulb); text-underline-offset: 3px; }
+
+/* A row of marquee bulbs over the card, a few of them lit */
+.card::before, body > main:has(form[action$="/login"])::before {
+  content: ""; display: block; height: 10px; margin: 0 auto 22px; width: 154px;
+  background:
+    radial-gradient(circle, var(--bulb) 3px, rgb(244 193 82 / .35) 4px, transparent 6px) 0 50% / 22px 10px repeat-x;
+  filter: drop-shadow(0 0 6px rgb(244 193 82 / .6));
+}
+
+/* ---- the share card (clips.js page()) ---- */
+.card {
+  position: relative;
+  max-width: 480px; padding: 30px 28px 28px;
+  background: linear-gradient(180deg, rgb(58 32 49 / .7), rgb(43 23 36 / .92));
+  border: 1px solid var(--hairline-2); border-radius: 24px;
+  box-shadow: 0 40px 100px -30px rgb(0 0 0 / .75), inset 0 1px 0 rgb(255 255 255 / .06);
+  text-align: center;
+}
+.card h1 { margin: 0 0 10px; font-size: clamp(26px, 5vw, 34px); line-height: 1.1; }
+.card p { color: var(--dust); }
+.card form { justify-items: stretch; text-align: left; }
+.card .brand { display: inline-flex; align-items: center; gap: 8px; margin-top: 6px; font-weight: 700; color: var(--bulb); text-decoration: none; }
+.card .brand::after { content: "›"; font-size: 1.2em; line-height: 1; }
+label { font-size: 13px; font-weight: 600; color: var(--dust); }
+input[type=email], input[type=password], input[type=text] {
+  width: 100%; height: 50px; padding: 0 16px;
+  font: inherit; font-size: 16px; color: var(--paper);
+  background: rgb(18 9 14 / .7); border: 1px solid var(--hairline-2); border-radius: 14px;
+  transition: border-color .15s, box-shadow .15s;
+}
+input:focus { outline: none; border-color: rgb(244 193 82 / .7); box-shadow: 0 0 0 4px rgb(244 193 82 / .18); }
+button {
+  height: 52px; padding: 0 22px;
+  font: 700 16px/1 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--velvet);
+  background: var(--bulb); border: 0; border-radius: 999px; cursor: pointer;
+  box-shadow: 0 12px 32px -12px rgb(244 193 82 / .7), inset 0 1px 0 rgb(255 255 255 / .3);
+  transition: filter .15s, transform .12s;
+}
+button:hover { filter: brightness(1.06); }
+button:active { transform: scale(.97); }
+button:focus-visible { outline: 2px solid var(--paper); outline-offset: 3px; }
+.foot { color: var(--dust); font-size: 13px; }
+.err { color: var(--alert); }
+.ok { color: var(--bulb); }
+/* a shared clip: the video big, framed like a screen in the dark */
+video { border: 1px solid var(--hairline-2); border-radius: 18px; box-shadow: 0 40px 100px -30px rgb(0 0 0 / .8), 0 0 80px -40px rgb(244 193 82 / .25); }
+.wait { border-color: var(--hairline-2); border-radius: 18px; background: rgb(43 23 36 / .6); }
+
+/* ---- /signin ---- */
+body > main:has(form[action$="/login"]) {
+  max-width: 400px; padding: 34px 30px 26px;
+  background: linear-gradient(180deg, rgb(58 32 49 / .7), rgb(43 23 36 / .92));
+  border: 1px solid var(--hairline-2); border-radius: 26px;
+  box-shadow: 0 40px 100px -30px rgb(0 0 0 / .75), inset 0 1px 0 rgb(255 255 255 / .06);
+}
+body > main:has(form[action$="/login"]) > h1 {
+  margin: 0 0 6px; text-align: center;
+  font: 800 40px/1 var(--display); letter-spacing: -.03em; color: var(--bulb);
+  text-shadow: 0 0 28px rgb(244 193 82 / .45);
+}
+body > main:has(form[action$="/login"]) > p:first-of-type { text-align: center; color: var(--dust); margin-bottom: 22px; }
+body > main:has(form[action$="/login"]) label { margin: 16px 0 7px; }
+body > main:has(form[action$="/login"]) button { width: 100%; margin-top: 24px; }
+body > main:has(form[action$="/login"]) .err { padding: 12px 14px; color: #ffd6cc; background: rgb(255 155 133 / .12); border: 1px solid rgb(255 155 133 / .35); border-radius: 12px; }
+body > main:has(form[action$="/login"]) .foot { text-align: center; }
+body > main:has(form[action$="/login"]) .foot a { color: var(--dust); }
+body > main:has(form[action$="/login"]) .foot b { color: var(--paper); }
+code { padding: 1px 6px; border-radius: 6px; background: rgb(0 0 0 / .3); color: var(--paper); }
+@media (prefers-reduced-motion: reduce) { button { transition: none; } }

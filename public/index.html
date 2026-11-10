@@ -36,30 +36,48 @@
     } catch { /* storage blocked: English until the app has started */ }
   </script>
   <style>html.i18n-wait body { visibility: hidden; }</style>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎞️</text></svg>">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&display=swap" rel="stylesheet">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preload" href="/fonts/bricolage-grotesque-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/style.css">
   <link rel="stylesheet" href="/notes.css">
 </head>
 <body>
-  <header class="top">
+  <header class="top" id="top">
     <div class="top-inner">
-      <div class="top-row">
-        <h1 class="wordmark"><a href="/" id="home-link" aria-label="Marquee — Discover">Marquee</a></h1>
+      <h1 class="wordmark"><a href="/" id="home-link" aria-label="Marquee — Discover">Marquee</a></h1>
+      <!-- The sections: a tab bar at the bottom on phones and tablets, links in this header on wide screens -->
+      <nav class="tabs" aria-label="Sections">
+        <button class="tab" data-view="discover" aria-current="page">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4z"/><path d="M10 9.5v5l4-2.5z"/></svg>
+          <span>Discover</span>
+        </button>
+        <button class="tab" data-view="library">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4v16M10 4v16M15 5l4 14.5"/></svg>
+          <span>Library</span>
+          <b class="tab-badge" id="dl-badge" hidden></b>
+        </button>
+        <button class="tab" data-view="settings">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+          <span>Settings</span>
+        </button>
+      </nav>
+      <div class="top-actions">
+        <form class="search" role="search" id="search-form">
+          <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+          <label class="sr-only" for="q">Search</label>
+          <input id="q" type="search" enterkeyhint="search" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="Search films and shows">
+          <button type="button" class="search-clear" id="q-clear" aria-label="Clear search" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+          </button>
+        </form>
+        <button type="button" class="search-cancel" id="search-cancel">Cancel</button>
+        <button type="button" class="icon-btn search-toggle" id="search-toggle" aria-label="Search" aria-controls="search-form" aria-expanded="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+        </button>
         <button type="button" class="news-btn" id="whats-new-btn" aria-haspopup="dialog" hidden>
           <span class="news-bulb" aria-hidden="true"></span><span class="news-label">What’s new</span><span class="news-count" hidden></span>
         </button>
       </div>
-      <form class="search" role="search" id="search-form">
-        <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
-        <label class="sr-only" for="q">Search</label>
-        <input id="q" type="search" enterkeyhint="search" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="Search films and shows">
-        <button type="button" class="search-clear" id="q-clear" aria-label="Clear search" hidden>
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
-        </button>
-      </form>
     </div>
   </header>
 
@@ -85,21 +103,6 @@
     </section>
   </main>
 
-  <nav class="tabs" aria-label="Sections">
-    <button class="tab" data-view="discover" aria-current="page">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4z"/><path d="M10 9.5v5l4-2.5z"/></svg>
-      <span>Discover</span>
-    </button>
-    <button class="tab" data-view="library">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4v16M10 4v16M15 5l4 14.5"/></svg>
-      <span>Library</span>
-      <b class="tab-badge" id="dl-badge" hidden></b>
-    </button>
-    <button class="tab" data-view="settings">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
-      <span>Settings</span>
-    </button>
-  </nav>
 
   <!-- Title details: bottom sheet on phones, centered panel on wide screens -->
   <div class="sheet-backdrop" id="sheet-backdrop" hidden></div>
@@ -221,22 +224,7 @@
         <section class="room-section" aria-labelledby="watch-people-label">
           <h3 class="room-label" id="watch-people-label">In the room <span id="watch-count"></span></h3>
           <ul class="room-roster" id="watch-members"></ul>
-          <button class="room-ready" id="watch-ready" type="button" hidden>I’m ready: join playback</button>
           <p class="room-hint" id="watch-hint"></p>
-        </section>
-        <section class="room-section" id="watch-host-tools" aria-labelledby="watch-start-label" hidden>
-          <h3 class="room-label" id="watch-start-label">Start together</h3>
-          <div class="room-later" id="watch-later" role="group" aria-label="Start with a countdown">
-            <button class="room-pill" type="button" data-min="2">2 min</button>
-            <button class="room-pill" type="button" data-min="5">5 min</button>
-            <button class="room-pill" type="button" data-min="10">10 min</button>
-            <button class="room-pill" type="button" data-min="15">15 min</button>
-            <button class="room-pill" type="button" data-min="30">30 min</button>
-          </div>
-          <div class="room-counting">
-            <button class="room-pill primary" id="watch-start-now" type="button" hidden>Start now</button>
-            <button class="room-pill" id="watch-clear-start" type="button" hidden>Cancel countdown</button>
-          </div>
         </section>
         <section class="room-section" aria-labelledby="watch-invite-label">
           <h3 class="room-label" id="watch-invite-label">Invite</h3>

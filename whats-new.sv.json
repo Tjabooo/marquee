@@ -1,4 +1,33 @@
 {
+  "2026-11-10-new-look": {
+    "title": "Ett helt nytt utseende",
+    "items": {
+      "Discover feels like a cinema": {
+        "title": "Upptäck känns som en biograf",
+        "text": "Populära titlar fyller nu skärmens överkant, en i taget, med sin egen titelbild. På en dator börjar trailern spelas tyst efter en stund. Svep mellan dem på telefonen."
+      },
+      "Rows made for you": {
+        "title": "Rader gjorda för dig",
+        "text": "Upptäck börjar nu med det du tittar på och det som är på väg, och sedan tips utifrån det du såg senast, nyheter i ditt bibliotek och några stämningar som byts varje dag."
+      },
+      "Bigger title pages": {
+        "title": "Större titelsidor",
+        "text": "När du öppnar en film eller serie får den hela skärmen: titelbilden, hur lång den är, åldersgränsen, skådespelarna med ansikten, varje avsnitt med bild och en kort beskrivning, och Mer som det här."
+      },
+      "A quick look without opening": {
+        "title": "En snabbtitt utan att öppna",
+        "text": "På en dator: vila muspekaren på en affisch en stund för att se mer. På en telefon: tryck och håll på en affisch."
+      },
+      "Watch Together is simpler": {
+        "title": "Titta tillsammans är enklare",
+        "text": "Ingen Redo-knapp eller starttider längre: öppna ett rum, bjud in någon och tryck på Spela upp när de är med. Alla startar samtidigt."
+      },
+      "Tidier everywhere else": {
+        "title": "Snyggare överallt",
+        "text": "En större layout på datorer och TV, Inställningar i tydliga grupper, renare spelarmenyer, och inloggnings- och inbjudningssidorna i samma stil."
+      }
+    }
+  },
   "2026-11-10-marquee-passwords": {
     "title": "Logga in med ett eget lösenord",
     "items": {

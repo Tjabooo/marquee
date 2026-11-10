@@ -423,7 +423,7 @@ export function signInPage({ next = '/', error = '', hasLogins = true, remote = 
   const langLink = (code, name) => (currentLanguage() === code ? `<b>${name}</b>` : `<a href="/signin?lang=${code}&amp;next=${encodeURIComponent(safeNext(next))}">${name}</a>`);
   return `<!doctype html><html lang="${currentLanguage()}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex">
-<title>${tr('Sign in · Marquee')}</title><style>
+<title>${tr('Sign in · Marquee')}</title><link rel="icon" href="/c/favicon.svg" type="image/svg+xml"><style>
 :root{color-scheme:dark;--bg:#0d0d10;--card:#17171c;--line:#2a2a33;--text:#ecebf0;--dim:#9a99a6;--accent:#f0a83a}
 *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--bg);color:var(--text);font:16px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;padding:24px}
 main{width:100%;max-width:360px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:28px}
@@ -433,7 +433,7 @@ input{width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--lin
 input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent}
 button{margin-top:20px;width:100%;padding:12px;border:0;border-radius:10px;background:var(--accent);color:#1a1205;font:600 15px system-ui,sans-serif;cursor:pointer}
 .err{color:#ff8a80;background:#2a1414;border-radius:8px;padding:10px 12px;margin:0 0 6px}code{font-size:12px;color:var(--text)}
-.foot{margin:18px 0 0;font-size:12px}</style></head><body><main>
+.foot{margin:18px 0 0;font-size:12px}</style><link rel="stylesheet" href="/c/pages.css"></head><body><main>
 <h1>Marquee</h1><p>${remote ? tr('You’re connecting from outside the home network. ') : ''}${tr('Sign in to carry on.')}</p>${message}
 <form method="post" action="${esc(action)}">
 <input type="hidden" name="next" value="${esc(safeNext(next))}">

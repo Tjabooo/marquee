@@ -1,5 +1,36 @@
 [
   {
+    "id": "2026-11-10-new-look",
+    "date": "2026-11-10",
+    "title": "A whole new look",
+    "items": [
+      {
+        "title": "Discover feels like a cinema",
+        "text": "Trending titles now fill the top of the screen, one at a time, with their own title art. On a computer the trailer starts playing quietly after a moment. Swipe between them on your phone."
+      },
+      {
+        "title": "Rows made for you",
+        "text": "Discover now starts with what you're watching and what's on its way, then picks based on what you watched last, new things in your library and a few moods that change every day."
+      },
+      {
+        "title": "Bigger title pages",
+        "text": "Opening a film or show gives it the whole screen: its title art, how long it is, the age rating, the cast with their faces, every episode with a picture and a short description, and More like this."
+      },
+      {
+        "title": "A quick look without opening",
+        "text": "On a computer, rest the mouse on a poster for a moment to see more. On a phone, press and hold a poster."
+      },
+      {
+        "title": "Watch Together is simpler",
+        "text": "No more Ready button or start times: open a room, invite someone, and when they're in, press Play. Everyone starts together."
+      },
+      {
+        "title": "Tidier everywhere else",
+        "text": "A bigger layout on computers and TVs, Settings in clear groups, cleaner player menus, and the sign-in and invite pages in the same style."
+      }
+    ]
+  },
+  {
     "id": "2026-11-10-marquee-passwords",
     "date": "2026-11-10",
     "title": "Sign in with your own password",
