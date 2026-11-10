@@ -6800,7 +6800,31 @@ function renderSettings() {
         : T('Nothing is deleted automatically.'))));
 
   if (me.isOwner) out.push(...ownerSettings());
-  body.replaceChildren(...out.filter(Boolean));
+  const top = window.scrollY;
+  body.replaceChildren(...settingsLayout(out.filter(Boolean)));
+  window.scrollTo(0, top);
+}
+
+// Settings in groups: each heading starts a card of rows, and wide screens get an index of the groups beside them.
+function settingsLayout(nodes) {
+  const groups = [];
+  let current = { title: T('You'), items: [] };
+  for (const node of nodes) {
+    if (node.matches?.('h3.set-head')) {
+      if (current.items.length || current.head) groups.push(current);
+      current = { title: node.textContent.trim(), head: node, items: [] };
+    } else current.items.push(node);
+  }
+  if (current.items.length || current.head) groups.push(current);
+  const sections = groups.map((g, i) => {
+    const head = g.head || h('h3', { class: 'set-head' }, g.title);
+    head.id = `set-group-${i}`;
+    return h('section', { class: 'set-group', 'aria-labelledby': head.id }, head, h('div', { class: 'set-stack' }, g.items));
+  });
+  const jump = (i) => (e) => { e.preventDefault(); $(`#set-group-${i}`)?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }); };
+  const index = h('nav', { class: 'set-index', 'aria-label': T('Settings sections') },
+    h('ul', {}, groups.map((g, i) => h('li', {}, h('a', { href: `#set-group-${i}`, onclick: jump(i) }, g.title)))));
+  return [index, h('div', { class: 'set-groups' }, sections)];
 }
 
 // The Marquee app on a TV (tv/tizen) shows a code; entering it here signs that TV in as you.
@@ -8541,6 +8565,9 @@ navigator.serviceWorker?.addEventListener('message', async (event) => {
     return;
   }
   state.me = state.status.me;
+  // The preview of a redesign (PREVIEW_DIR on the server): a small way back to the live app.
+  if (state.status.preview) document.body.append(h('a', { class: 'preview-pill', href: '/preview/off', title: T('Leave the preview and go back to the live app') },
+    h('span', { class: 'preview-pill-bulb', 'aria-hidden': 'true' }), h('strong', {}, T('Preview mode')), h('span', { class: 'preview-pill-sep', 'aria-hidden': 'true' }, '·'), T('Back to live')));
   syncLanguage();
   state.rules = state.status.rules;
   applyTheme(prefs().theme);

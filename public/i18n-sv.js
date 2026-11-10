@@ -1668,4 +1668,8 @@ export default {
   "Trending · #{0}": "Trendar · #{0}",
   "Show {0}": "Visa {0}",
   "Find something to watch": "Hitta något att titta på",
+  "Settings sections": "Delar av inställningarna",
+  "Leave the preview and go back to the live app": "Lämna förhandsvisningen och gå tillbaka till den vanliga appen",
+  "Back to live": "Tillbaka till vanliga",
+  "Preview mode": "Förhandsvisning",
 };
