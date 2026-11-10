@@ -1640,4 +1640,13 @@ export default {
   "1 episode": "1 avsnitt",
   "{0} episodes": "{0} avsnitt",
   "Saved from SVT Play to your library in full quality, with Swedish subtitles. SVT Play only works in Sweden.": "Sparas från SVT Play till ditt bibliotek i full kvalitet, med svensk text. SVT Play fungerar bara i Sverige.",
+  "Save password": "Spara lösenord",
+  "Pick a password for Marquee": "Välj ett lösenord för Marquee",
+  "Marquee now signs you in with your own password instead of codes sent by email. Pick one to carry on.": "Marquee loggar nu in dig med ett eget lösenord i stället för koder via mejl. Välj ett för att fortsätta.",
+  "Same password again": "Samma lösenord igen",
+  "The two passwords aren’t the same.": "Lösenorden är inte likadana.",
+  "Password link": "Lösenordslänk",
+  "Password link copied: send it to them": "Lösenordslänken är kopierad: skicka den till personen",
+  "No password yet": "Inget lösenord än",
+  "Makes a one-time link (valid 7 days). They pick a password and are signed straight in.": "Skapar en engångslänk (giltig i 7 dagar). Personen väljer ett lösenord och loggas in direkt.",
 };

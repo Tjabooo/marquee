@@ -615,8 +615,9 @@ video{display:block;width:100%;aspect-ratio:16/9;background:#000;border-radius:1
 .card h1{margin-bottom:8px}.card p+p{margin-top:10px}
 form{margin-top:20px;display:grid;gap:10px}
 label{font-size:14px;color:#BA9DAD}
-input[type=email]{font:inherit;color:#F6EADF;background:#1F1019;border:1px solid #4B2C3F;border-radius:12px;padding:12px 14px}
-input[type=email]:focus{outline:2px solid #F4C152;border-color:transparent}
+input[type=email],input[type=password]{font:inherit;color:#F6EADF;background:#1F1019;border:1px solid #4B2C3F;border-radius:12px;padding:12px 14px}
+input[type=email]:focus,input[type=password]:focus{outline:2px solid #F4C152;border-color:transparent}
+input[readonly]{opacity:.75}
 button{font:700 16px/1 system-ui,sans-serif;color:#1F1019;background:#F4C152;border:0;border-radius:999px;padding:14px 18px;cursor:pointer}
 .err{color:#FF9B85}.ok{color:#F4C152;font-weight:700}`;
 

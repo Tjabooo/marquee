@@ -178,6 +178,9 @@ Invites add people to the email list your Cloudflare Access policy allows. See
 | `CF_ACCOUNT_ID` | | Cloudflare account ID. |
 | `CF_ACCESS_LIST_ID` | | ID of the email list (Zero Trust → Reusable components → Lists). |
 | `INVITE_DAYS` | `7` | How long an invite link stays valid. |
+| `OIDC_CLIENT_ID` | | With the two below: Marquee becomes Cloudflare Access's login method, so people sign in with a Marquee password and invites sign people straight in ([remote-access.md](remote-access.md#marquee-as-the-sign-in-for-access-no-email-codes)). |
+| `OIDC_CLIENT_SECRET` | | Long random string, also entered in the Access login method. |
+| `OIDC_REDIRECT_URIS` | | Comma-separated; for Access `https://<team>.cloudflareaccess.com/cdn-cgi/access/callback`. |
 
 ## Previewing a redesign
 
