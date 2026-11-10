@@ -1670,7 +1670,7 @@ function renderShow() {
   if (!show) { $('#sheet-body').replaceChildren(h('div', { class: 'sheet-content' }, h('h2', { id: 'sheet-title' }, T('Series')), h('p', {}, T('This show is no longer in your library.')))); return; }
   const numbers = new Set(files.map(f => f.season));
   for (const d of entry.transfers) { if (d.season != null) numbers.add(d.season); for (const ep of d.episodes || []) if (ep.season != null) numbers.add(ep.season); }
-  const seasons = [...numbers].sort((a,b) => a-b).map(number => ({ ...(show.seasons || []).find(se => se.number === number), number, name: localSeasonName(show.seasons || []).find(se => se.number === number)?.name || seasonName(number, number) }));
+  const seasons = [...numbers].sort((a,b) => a-b).map(number => ({ ...(show.seasons || []).find(se => se.number === number), number, name: localSeasonName((show.seasons || []).find(se => se.number === number)?.name, number) }));
   const single = seasons.length === 1;
   const open = single ? seasons[0] : seasons.find(se => se.number === showView.season);
   const pick = n => { showView.season = n; renderShow(); $('#sheet').scrollTo({ top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); };
@@ -2294,10 +2294,34 @@ function pageTitle(title, type, id) {
   pageInfo(type, id).then((page) => {
     if (!page?.logo || !heading.isConnected) return;
     const logo = h('img', { class: `page-logo${page.logo.aspect > 3.2 ? ' is-wide' : ''}`, src: page.logo.url, alt: title, decoding: 'async' });
+    // Light themes: a white logo would vanish on the page, so light logos are drawn dark there.
+    if (document.documentElement.dataset.scheme === 'light') logoIsLight(page.logo.url).then((light) => logo.classList.toggle('on-light', light));
     if (loadedLogos.has(page.logo.url)) heading.replaceChildren(logo);
     else logo.addEventListener('load', () => { loadedLogos.add(page.logo.url); if (heading.isConnected) heading.replaceChildren(logo); }, { once: true });
   }).catch(() => {});
   return heading;
+}
+// Whether a logo is mostly light (white lettering): the average brightness of its visible pixels.
+const logoTones = new Map();
+function logoIsLight(url) {
+  if (!logoTones.has(url)) logoTones.set(url, new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const c = document.createElement('canvas'); c.width = 48; c.height = 24;
+        const g = c.getContext('2d', { willReadFrequently: true });
+        g.drawImage(img, 0, 0, 48, 24);
+        const d = g.getImageData(0, 0, 48, 24).data;
+        let sum = 0, n = 0;
+        for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 128) { sum += (0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]) / 255; n++; }
+        resolve(n > 0 && sum / n > 0.62);
+      } catch { resolve(false); }
+    };
+    img.onerror = () => resolve(false);
+    img.src = `${url}?wash`;
+  }));
+  return logoTones.get(url);
 }
 const fmtRuntime = (min) => (min >= 60 ? T('{0} h {1} min', Math.floor(min / 60), min % 60) : T('{0} min', min));
 // One quiet line of facts: year · age rating · running time or seasons · genres · ★. TMDB's extras fill in when they arrive.

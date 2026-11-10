@@ -196,6 +196,19 @@ for (const scene of scenes) {
         fs.mkdirSync(path.join(OUT, 'small'), { recursive: true });
         fs.writeFileSync(path.join(OUT, 'small', `${name}.jpg`), Buffer.from(small.data, 'base64'));
         if (scene.probe) note = await evalIn(page.s, scene.probe);
+        // Text that spills out of its button or heading, or a page that scrolls sideways (long Swedish words)
+        const overflow = await evalIn(page.s, `
+          const bad = [];
+          for (const el of document.querySelectorAll('button, a.chip, .chip, .tab, .play-btn, .btn-glass, .btn-primary, h1, h2, h3, .set-label, .row-title, .ep-title, .cc-item, .row-menu-item, .news-btn, .head-btn')) {
+            const r = el.getBoundingClientRect();
+            if (!r.width || !r.height || r.bottom < 0 || r.top > innerHeight) continue;
+            const cs = getComputedStyle(el);
+            if (cs.textOverflow === 'ellipsis' || cs.webkitLineClamp !== 'none' || cs.overflowX !== 'visible' || el.closest('.sr-only') || !el.textContent.trim()) continue;
+            if (el.scrollWidth > el.clientWidth + 2) bad.push((el.getAttribute('aria-label') || el.textContent).trim().replace(/\\s+/g, ' ').slice(0, 40));
+          }
+          const wide = document.documentElement.scrollWidth > innerWidth + 1 ? ['PAGE ' + document.documentElement.scrollWidth + 'px'] : [];
+          return [...wide, ...new Set(bad)].slice(0, 6).join(' | ');`);
+        if (overflow) note = `${note ? note + ' ' : ''}OVERFLOW: ${overflow}`;
       } catch (err) { note = 'FAILED: ' + err.message; }
       report.push({ name, errors: page.errors, note });
       process.stdout.write(`${note?.startsWith?.('FAILED') ? '✗' : page.errors.length ? '!' : '✓'} ${name}${page.errors.length ? ` (${page.errors.length} console errors)` : ''}${note ? ` ${String(note).slice(0, 160)}` : ''}\n`);

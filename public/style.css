@@ -663,12 +663,12 @@ body.has-billboard .genre-chips .chip[aria-pressed="true"] { color: #141014; bac
   .bb-actions > * { flex: 1 1 0; min-width: 0; padding: 0 14px; }
 }
 @media (min-width: 600px) {
-  .bb-slide { height: min(56.25vw, 76vh); min-height: 460px; }
+  .bb-slide { height: clamp(540px, 74vh, 780px); }
   .bb-copy { left: var(--gutter); right: auto; bottom: clamp(48px, 9vh, 120px); width: min(560px, 60%); align-items: flex-start; text-align: left; }
   .bb-title { max-width: 16ch; }
   .bb-meta { justify-content: flex-start; }
   .bb-actions { justify-content: flex-start; }
-  .bb-overview { display: -webkit-box; margin: var(--s3) 0 0; max-width: 52ch; font-size: var(--t-body); line-height: 1.5; color: rgb(255 255 255 / .9); text-shadow: 0 1px 10px rgb(0 0 0 / .5); -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .bb-overview { display: -webkit-box; margin: var(--s3) 0 0; max-width: 52ch; font-size: var(--t-body); line-height: 1.5; color: rgb(255 255 255 / .9); text-shadow: 0 1px 10px rgb(0 0 0 / .5); -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .bb-art::after {
     background:
       linear-gradient(to top, var(--velvet) 0%, color-mix(in srgb, var(--velvet) 0%, transparent) 18%),
@@ -679,19 +679,21 @@ body.has-billboard .genre-chips .chip[aria-pressed="true"] { color: #141014; bac
   .bb-logo { max-width: min(46vw, 460px); }
 }
 @media (min-width: 900px) {
-  .bb-slide { height: min(56.25vw, 82vh); min-height: 520px; }
+  .bb-slide { height: min(56.25vw, 82vh); min-height: 560px; }
+  .bb-overview { -webkit-line-clamp: 3; }
   .bb-slide.is-active .bb-img { animation: drift 24s var(--ease-in-out) both; }
   .btn-primary, .btn-glass { height: clamp(48px, 40px + .6vw, 58px); padding: 0 clamp(22px, 16px + .6vw, 32px); font-size: clamp(16px, 14px + .2vw, 19px); }
 }
 @keyframes drift { from { transform: scale(1.06); } to { transform: scale(1); } }
 /* While the billboard loads */
 .skel-billboard { height: min(calc(100vw * 1.22), 78vh); min-height: 420px; background: radial-gradient(80% 60% at 50% 30%, var(--surface-1), var(--velvet)); }
+@media (min-width: 600px) { .skel-billboard { height: clamp(540px, 74vh, 780px); } }
+@media (min-width: 900px) { .skel-billboard { height: min(56.25vw, 82vh); min-height: 560px; } }
 .skel-billboard .bb-copy { gap: 12px; }
 .skel-line { height: 14px; width: 40%; border-radius: 7px; }
 .skel-line.wide { height: 44px; width: min(70%, 380px); border-radius: 12px; }
 .skel-btn { height: 48px; width: 220px; border-radius: 999px; }
 .shelf-skel-head { width: 180px; height: 18px; margin-bottom: 14px; }
-@media (min-width: 600px) { .skel-billboard { height: min(56.25vw, 82vh); min-height: 460px; } }
 
 /* Home rows: rows only paint when they're near the screen (cheap scrolling on mid-range phones) */
 .shelf-items { content-visibility: auto; contain-intrinsic-size: auto 260px; }
@@ -931,6 +933,7 @@ html.has-vt .view { animation: none; }
 :root[data-scheme="light"] #sheet .sheet-content > h2 { text-shadow: none; }
 .page-logo { display: block; max-width: min(78%, 420px); max-height: clamp(70px, 9vw + 40px, 150px); width: auto; height: auto; object-fit: contain; object-position: left bottom; filter: drop-shadow(0 2px 18px rgb(var(--picture-dark) / .55)); }
 :root[data-scheme="light"] .page-logo { filter: drop-shadow(0 1px 1px rgb(0 0 0 / .45)) drop-shadow(0 2px 14px rgb(0 0 0 / .25)); }
+:root[data-scheme="light"] .page-logo.on-light { filter: brightness(0) drop-shadow(0 1px 0 rgb(255 255 255 / .5)); opacity: .88; }
 .page-logo.is-wide { max-width: min(88%, 520px); }
 .page-tagline { margin: var(--s3) 0 0; font: 600 italic var(--t-small)/1.4 var(--body); color: var(--text-2); max-width: 60ch; }
 
