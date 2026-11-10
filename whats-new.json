@@ -1,5 +1,17 @@
 [
   {
+    "id": "2026-11-10-people-rows",
+    "date": "2026-11-10",
+    "title": "Tidier People list",
+    "items": [
+      {
+        "title": "Names and details fit again",
+        "audience": "owner",
+        "text": "In Settings → People, each person's name, email and storage sit on one line again, with their switches and library choice underneath, instead of being squeezed into a narrow column."
+      }
+    ]
+  },
+  {
     "id": "2026-11-10-update-notifications",
     "date": "2026-11-10",
     "title": "Hear about new features",

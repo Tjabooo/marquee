@@ -2299,9 +2299,16 @@ body.has-nowbar .preview-pill { bottom: calc(var(--tabs-h) + var(--safe-bottom) 
 .switch input:checked + span::after { transform: translateX(20px); background: var(--on-bulb); }
 .switch input:focus-visible + span { outline: 2px solid var(--bulb); outline-offset: 2px; }
 
-.person { flex-wrap: wrap; }
-.person .row-title { display: flex; align-items: center; }
-.person-controls { display: flex; gap: 8px 16px; flex-wrap: wrap; margin-left: auto; }
+/* Owner's People list: face + name/details on top, the switches on their own line under the text,
+   so the name column never gets squeezed into one word per line. */
+.person { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: var(--s3); row-gap: 12px; }
+.person .row-title { display: flex; align-items: center; gap: 8px; }
+.person .row-meta { gap: 2px 12px; }
+.person-controls {
+  grid-column: 2; display: flex; align-items: center; flex-wrap: wrap; gap: 10px 24px;
+  padding-top: 12px; border-top: 1px solid var(--hairline);
+}
+@media (max-width: 560px) { .person-controls { grid-column: 1 / -1; } }
 .person-toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--dust); }
 .person-library .sub-select { max-width: 240px; }
 
