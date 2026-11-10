@@ -7027,16 +7027,25 @@ function showPasswordGate() {
   const user = h('input', { type: 'email', name: 'username', value: email, autocomplete: 'username', readonly: '', hidden: '' });
   const pass = h('input', { type: 'password', id: 'gate-password', minlength: '10', required: '', autocomplete: 'new-password', 'aria-describedby': 'gate-msg' });
   const again = h('input', { type: 'password', id: 'gate-again', minlength: '10', required: '', autocomplete: 'new-password' });
-  const save = h('button', { type: 'submit', class: 'password-gate-save' }, T('Save password'));
+  const save = h('button', { type: 'submit', class: 'play-btn password-gate-save' }, T('Save password'));
   const msg = h('p', { class: 'password-gate-msg', id: 'gate-msg', role: 'alert' });
+  // Typing a new password blind on a phone is how typos happen: one button shows both fields.
+  const show = h('button', { type: 'button', class: 'password-gate-show', 'aria-pressed': 'false', 'aria-controls': 'gate-password gate-again' }, T('Show password'));
+  show.addEventListener('click', () => {
+    const on = show.getAttribute('aria-pressed') !== 'true';
+    pass.type = again.type = on ? 'text' : 'password';
+    show.setAttribute('aria-pressed', String(on));
+    show.textContent = on ? T('Hide password') : T('Show password');
+  });
   const form = h('form', { class: 'password-gate-card' },
+    h('div', { class: 'password-gate-bulbs', 'aria-hidden': 'true' }),
     h('h2', { id: 'gate-title' }, T('Pick a password for Marquee')),
     h('p', {}, T('Marquee now signs you in with your own password instead of codes sent by email. Pick one to carry on.')),
     email && h('p', { class: 'password-gate-email' }, email),
     user,
-    h('label', { for: 'gate-password' }, T('New password (10+ characters)')), pass,
-    h('label', { for: 'gate-again' }, T('Same password again')), again,
-    msg, save);
+    h('div', { class: 'password-gate-field' }, h('label', { for: 'gate-password' }, T('New password (10+ characters)')), pass),
+    h('div', { class: 'password-gate-field' }, h('label', { for: 'gate-again' }, T('Same password again')), again),
+    show, msg, save);
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (pass.value !== again.value) { msg.textContent = T('The two passwords aren’t the same.'); return; }
@@ -7047,7 +7056,8 @@ function showPasswordGate() {
       location.reload();
     } catch (err) { msg.textContent = err.message; save.disabled = false; }
   });
-  const gate = h('div', { id: 'password-gate', class: 'password-gate', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'gate-title' }, form);
+  const gate = h('div', { id: 'password-gate', class: 'password-gate', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'gate-title' },
+    h('p', { class: 'password-gate-brand', 'aria-hidden': 'true' }, 'Marquee'), form);
   // Nothing behind it can be reached: no Escape, no clicks, no tabbing out.
   gate.addEventListener('keydown', (e) => { if (e.key === 'Escape') e.preventDefault(); });
   document.body.append(gate);

@@ -1688,4 +1688,6 @@ export default {
   "Password link copied: send it to them": "Lösenordslänken är kopierad: skicka den till personen",
   "No password yet": "Inget lösenord än",
   "Makes a one-time link (valid 7 days). They pick a password and are signed straight in.": "Skapar en engångslänk (giltig i 7 dagar). Personen väljer ett lösenord och loggas in direkt.",
+  "Show password": "Visa lösenordet",
+  "Hide password": "Dölj lösenordet",
 };

@@ -3226,26 +3226,56 @@ html.wrapped-on { overflow: hidden; }
 .jf-link .chip { grid-column: 2; grid-row: 1 / span 2; }
 
 /* ---------- password step: Cloudflare-code users pick a Marquee password before anything else ---------- */
+/* Pick a password: a full-screen step before anything else (app.js showPasswordGate). The same room as the
+   sign-in page: the lit wordmark, a row of bulbs, one card, one lit button. Nothing behind it shows or reacts. */
 .password-gate {
-  position: fixed; inset: 0; z-index: 10000; display: grid; place-items: center; overflow-y: auto;
-  padding: calc(24px + var(--safe-top)) var(--gutter) calc(24px + var(--safe-bottom));
-  background: rgba(20, 9, 16, 0.92); backdrop-filter: blur(10px);
+  position: fixed; inset: 0; z-index: 10000;
+  display: flex; flex-direction: column; align-items: center; justify-content: safe center; gap: var(--s5);
+  overflow-y: auto; overscroll-behavior: contain;
+  padding: calc(var(--s6) + var(--safe-top)) var(--gutter) calc(var(--s6) + var(--safe-bottom));
+  background: var(--room); background-color: var(--velvet);
+  animation: view-in var(--d-3) var(--ease-out);
+}
+.password-gate-brand {
+  margin: 0; font: 800 clamp(38px, 30px + 2vw, 52px)/1 var(--display); letter-spacing: -.03em; color: var(--bulb);
+  text-shadow: 0 0 28px color-mix(in srgb, var(--bulb) 45%, transparent);
 }
 .password-gate-card {
-  width: 100%; max-width: 400px; display: grid; gap: 8px;
-  padding: 28px 24px; background: var(--curtain); border: 1px solid var(--line); border-radius: 18px; color: var(--paper);
+  width: 100%; max-width: 420px; display: grid; gap: var(--s3);
+  padding: var(--s6) var(--s5) var(--s5);
+  color: var(--text);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--seat) 75%, transparent), color-mix(in srgb, var(--curtain) 95%, transparent));
+  border: 1px solid var(--hairline-2); border-radius: var(--r-lg);
+  box-shadow: var(--e3), inset 0 1px 0 rgb(255 255 255 / .06);
 }
-.password-gate-card h2 { margin: 0 0 4px; font: 700 22px/1.2 var(--display); }
-.password-gate-card p { margin: 0 0 8px; color: var(--dust); font-size: 15px; line-height: 1.45; }
-.password-gate-card .password-gate-email { color: var(--paper); font-weight: 600; }
-.password-gate-card label { font-size: 14px; color: var(--dust); margin-top: 6px; }
+.password-gate-bulbs {
+  height: 10px; width: 154px; margin: 0 auto var(--s2);
+  background: radial-gradient(circle, var(--bulb) 3px, color-mix(in srgb, var(--bulb) 35%, transparent) 4px, transparent 6px) 0 50% / 22px 10px repeat-x;
+  filter: drop-shadow(0 0 6px var(--glow-color));
+}
+.password-gate-card h2 { margin: 0; text-align: center; font: 800 clamp(24px, 20px + 1vw, 30px)/1.12 var(--display); letter-spacing: -.02em; }
+.password-gate-card p { margin: 0; text-align: center; color: var(--text-2); font-size: 15px; line-height: 1.5; }
+.password-gate-card .password-gate-email {
+  justify-self: center; padding: 6px 14px; font-weight: 650; color: var(--text);
+  background: color-mix(in srgb, var(--velvet) 60%, transparent); border: 1px solid var(--hairline-2); border-radius: 999px;
+  overflow-wrap: anywhere;
+}
+.password-gate-field { display: grid; gap: 7px; margin-top: var(--s1); }
+.password-gate-card label { font-size: 13px; font-weight: 650; color: var(--text-2); }
 .password-gate-card input {
-  font: inherit; color: var(--paper); background: var(--velvet); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px;
+  width: 100%; height: 50px; padding: 0 16px;
+  font: inherit; font-size: 16px; color: var(--text);
+  background: color-mix(in srgb, var(--velvet) 75%, transparent); border: 1px solid var(--hairline-2); border-radius: var(--r-md);
+  transition: border-color var(--d-1), box-shadow var(--d-1);
 }
-.password-gate-card input:focus { outline: 2px solid var(--bulb); border-color: transparent; }
-.password-gate-card .password-gate-msg { color: var(--alert); margin: 4px 0 0; min-height: 1em; }
-.password-gate-save {
-  margin-top: 10px; font: 700 16px/1 var(--body); color: var(--on-bulb); background: var(--bulb);
-  border: 0; border-radius: 999px; padding: 14px 18px; cursor: pointer;
+.password-gate-card input:focus { outline: none; border-color: color-mix(in srgb, var(--bulb) 70%, transparent); box-shadow: 0 0 0 4px var(--bulb-dim); }
+.password-gate-show {
+  justify-self: start; min-height: 36px; padding: 0 2px;
+  font-size: 13px; font-weight: 650; color: var(--text-2); background: none; border: 0;
+  text-decoration: underline; text-decoration-color: var(--hairline-2); text-underline-offset: 3px;
 }
+.password-gate-show:hover { color: var(--text); }
+.password-gate-card .password-gate-msg { min-height: 1.5em; color: var(--alert); text-align: center; font-size: 14px; }
+.password-gate-msg:empty { min-height: 0; }
+.password-gate-save { width: 100%; height: 52px; margin-top: var(--s1); font-size: 17px; }
 .password-gate-save:disabled { opacity: 0.6; cursor: wait; }

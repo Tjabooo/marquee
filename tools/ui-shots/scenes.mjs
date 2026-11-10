@@ -115,6 +115,8 @@ export const SCENES = [
     "document.querySelector('#player').dispatchEvent(new MouseEvent('mousemove', { bubbles: true })); await __sleep(300);",
     { mouse: '#watch-btn', click: true }, "await __sleep(2500);"],
     probe: "return 'status: ' + document.querySelector('#watch-status')?.textContent;" },
+  { name: 'password-gate', path: '/', ready: '#password-gate', probe: "return 'inert behind: ' + [...document.body.children].filter((e) => e.id !== 'password-gate').every((e) => e.inert);" },
+  { name: 'oidc-signin', path: '/c/oidc/authorize?client_id=cloudflare&redirect_uri=https%3A%2F%2Fexample.test%2Fcdn-cgi%2Faccess%2Fcallback&response_type=code&scope=openid%20email%20profile&state=s1&nonce=n1&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256', ready: 'form', signedOut: true },
   { name: 'signin', path: '/signin', ready: 'form', signedOut: true },
   { name: 'signin-error', path: '/signin?error=wrong', ready: 'form', signedOut: true },
   { name: 'share-invite', path: `/c/i/${process.env.MQ_INVITE || 'x'}`, ready: 'body', signedOut: true },
