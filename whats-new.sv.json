@@ -1,4 +1,17 @@
 {
+  "2026-11-10-android-tv-updates": {
+    "title": "Android TV-appen uppdaterar sig själv",
+    "items": {
+      "English search keyboard": {
+        "title": "Engelskt söktangentbord",
+        "text": "På en Android TV som inte är inställd på svenska har sökningens tangentbord inte längre å, ä och ö. Där finns i stället apostrof, & och !, för titlar som Schindler’s List."
+      },
+      "The Android TV app keeps itself up to date": {
+        "title": "Android TV-appen håller sig uppdaterad",
+        "text": "På Android 12 och senare uppdaterar Marquee-appen sig nu själv: en ny version hämtas i bakgrunden och installeras när du inte använder appen. Uppdatera en sista gång när den frågar (version 1.2.0), och tillåt Marquee att installera appar om TV:n frågar; sedan finns det inget att trycka på."
+      }
+    }
+  },
   "2026-11-10-cast-arrows": {
     "title": "Pilar i rollistan",
     "items": {

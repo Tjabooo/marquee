@@ -32,9 +32,13 @@ Downloader. They sign in with the code like at home, from their phone signed in 
 
 **Language.** The app speaks Swedish on a TV set to Swedish and English on every other TV.
 
-**Updates.** When the server has a newer app (`/android.json`), the app offers it as it starts (never during a
-video): **Update now** downloads it and Android asks to confirm. The first time, Android wants Marquee allowed to
-install apps; the app opens that switch for you and carries on when you press Back.
+**Updates.** The app checks the server for a newer version (`/android.json`) when it opens and every 6 hours.
+On Android 12 and later, once Marquee may install apps, it updates itself with no questions: the new version
+downloads in the background (its size, SHA-256, package and version are checked) and installs while the app isn't
+on screen, a few seconds after you leave it, or in the background between uses. Before that permission, and on
+Android 7–11, the app offers the update as it starts (never during a video): **Update now** downloads it and Android
+asks to confirm. The first time, Android wants Marquee allowed to install apps; the app opens that switch for you
+and carries on when you press Back; from then on, Android 12+ TVs update by themselves.
 
 ## Building the app
 
@@ -57,7 +61,7 @@ No restart is needed: the server reads `dist` on each request. The first build m
 with another key won't install over the app (the TV would have to uninstall it first, losing its sign-in).
 
 To ship a new version of the app itself, raise `code` (and `name`) in `tv/android/version.properties`, build and
-publish; installed apps offer the update on their next start. Changes to `public/tv` need no new app at all.
+publish; installed apps update themselves (Android 12+) or offer it on their next start. Changes to `public/tv` need no new app at all.
 
 `--install` with `TV=<address>` installs over adb instead (Developer options → USB/network debugging on the TV);
 `--debug` builds a debuggable app whose page shows up in `chrome://inspect`.

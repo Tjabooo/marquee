@@ -3,6 +3,10 @@
   <uses-permission android:name="android.permission.INTERNET" />
   <!-- Installs the app's own updates from the Marquee server (the TV asks once). -->
   <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+  <!-- Android 12+: once allowed, the app updates itself without asking (only while it isn't on screen). -->
+  <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
+  <!-- The update check every few hours carries on after the TV restarts. -->
+  <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
   <uses-feature android:name="android.software.leanback" android:required="false" />
   <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
@@ -34,5 +38,12 @@
       android:authorities="app.marquee.tv.update"
       android:exported="false"
       android:grantUriPermissions="true" />
+    <service
+      android:name=".UpdateJob"
+      android:permission="android.permission.BIND_JOB_SERVICE"
+      android:exported="false" />
+    <receiver
+      android:name=".UpdateReceiver"
+      android:exported="false" />
   </application>
 </manifest>

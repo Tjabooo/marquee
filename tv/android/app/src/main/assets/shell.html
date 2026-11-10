@@ -242,13 +242,16 @@
   }
 
   // ---------- updates of the app itself ----------
-  // The server tells which app version it has (/android.json); a newer one is offered once per start,
+  // The server tells which app version it has (/android.json). On Android 12+ the app updates itself
+  // quietly once it may install apps (SelfUpdate.java); otherwise a newer one is offered once per start,
   // never in the middle of a video.
   function checkForUpdate() {
     fetch(server + '/android.json', { credentials: 'omit', cache: 'no-store' })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (info) {
         if (!info || !(info.versionCode > N.versionCode())) return;
+        // Android 12+ with Marquee allowed to install: it downloads by itself and installs once the app is left.
+        if (N.updatesItself && N.updatesItself(info.versionCode)) return;
         (function offer() {
           if (document.documentElement.classList.contains('mq-video')) { setTimeout(offer, 30000); return; }
           offerUpdate(info);
@@ -304,7 +307,11 @@
     }
     __mq.handlers.update = function (e) {
       if (e.s === 'progress') { var i = acts.querySelector('i'); if (i) i.style.width = e.pct + '%'; }
-      else if (e.s === 'installing') { text.textContent = T('Confirm with Install on the screen that opens.'); progress(100); closeOnly = true; setTimeout(close, 1500); }
+      else if (e.s === 'later') {
+        title.textContent = T('The update is ready');
+        text.textContent = T('It installs by itself when you leave Marquee. From now on the app keeps itself up to date.');
+        choices([{ label: T('OK'), act: close }]);
+      } else if (e.s === 'installing') { text.textContent = T('Confirm with Install on the screen that opens.'); progress(100); closeOnly = true; setTimeout(close, 1500); }
       else if (e.s === 'allow') {
         title.textContent = T('Let Marquee install its update');
         text.textContent = T('Turn on Marquee in the list that opened, then press Back. The update carries on by itself.');

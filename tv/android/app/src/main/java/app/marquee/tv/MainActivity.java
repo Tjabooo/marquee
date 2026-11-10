@@ -80,6 +80,8 @@ public class MainActivity extends Activity {
 
     player = new VideoPlayer(this, videoBox, surface, userAgent(), this::send);
     updater = new Updater(this);
+    SelfUpdate.tidy(this);
+    UpdateJob.schedule(this);
     web.addJavascriptInterface(new Bridge(this), "MarqueeNative");
     server = savedServer();
     loadShell();
@@ -236,6 +238,9 @@ public class MainActivity extends Activity {
   // ---------- lifecycle ----------
   @Override protected void onStart() {
     super.onStart();
+    SelfUpdate.onScreen = true;
+    // Android 12+: look for an update now, so it's downloaded by the time the viewer leaves (it installs then).
+    if (SelfUpdate.canInstallQuietly(this)) new Thread(() -> SelfUpdate.run(getApplicationContext()), "marquee-update-check").start();
     main.removeCallbacks(pauseTimers);
     if (web != null) { web.resumeTimers(); web.onResume(); }
     updater.resume();
@@ -246,6 +251,8 @@ public class MainActivity extends Activity {
     if (player.active()) { sendKey(JS_STOP); player.pause(); }
     if (web != null) web.onPause();
     main.postDelayed(pauseTimers, 3000); // after the resume point is saved
+    SelfUpdate.onScreen = false;
+    UpdateJob.soon(this); // a waiting update installs now that nobody is looking
     super.onStop();
   }
 

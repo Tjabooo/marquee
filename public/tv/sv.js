@@ -144,5 +144,7 @@ window.MarqueeTvStrings = {
   'The update was not installed': 'Uppdateringen installerades inte',
   'Marquee wasn’t allowed to install apps. You can update next time the app starts.': 'Marquee fick inte installera appar. Du kan uppdatera nästa gång appen startar.',
   'The update didn’t download': 'Uppdateringen gick inte att hämta',
+  'The update is ready': 'Uppdateringen är klar',
+  'It installs by itself when you leave Marquee. From now on the app keeps itself up to date.': 'Den installeras av sig själv när du lämnar Marquee. Från och med nu håller appen sig uppdaterad själv.',
   'Marquee will offer it again next time the app starts.': 'Marquee frågar igen nästa gång appen startar.',
 };

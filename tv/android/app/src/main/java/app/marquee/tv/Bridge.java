@@ -35,7 +35,9 @@ final class Bridge {
   @JavascriptInterface public int versionCode() { return BuildConfig.VERSION_CODE; }
   @JavascriptInterface public String versionName() { return BuildConfig.VERSION_NAME; }
   @JavascriptInterface public String playVariant() { return Codecs.playVariant(); }
-  @JavascriptInterface public void update(String apkUrl) { onMain(() -> app.updater.start(apkUrl)); }
+  @JavascriptInterface public void update(String apkUrl) { onMain(() -> app.updater.start()); }
+  /** True when this version arrives by itself (Android 12+, see SelfUpdate): the page offers nothing then. */
+  @JavascriptInterface public boolean updatesItself(int code) { return SelfUpdate.updatesItself(app, code); }
 
   /** Checks the address answers as Marquee, then switches to it. Answers with a "server" event. */
   @JavascriptInterface public void setServer(String typed) {

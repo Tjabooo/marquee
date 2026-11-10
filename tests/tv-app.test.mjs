@@ -60,6 +60,17 @@ test('TV logic: library genre rows and search keys', () => {
   assert.ok(L.searchKey('Spider-Man').includes(L.searchKey('spider man')));
 });
 
+test('the search keyboard has å ä ö only on a Swedish TV', () => {
+  const js = read('public/tv/tv.js');
+  const m = js.match(/var KEYBOARD = \(window\.MarqueeTvStrings \? ('[^']*')\s*: ('(?:[^'\\]|\\.)*')\)\.split/);
+  assert.ok(m, 'KEYBOARD picks its layout by language');
+  const [sv, en] = [m[1], m[2]].map((s) => vm.runInNewContext(s).split(''));
+  assert.ok(sv.includes('å') && sv.includes('ö'));
+  assert.deepEqual(en.filter((c) => /[åäö]/.test(c)), []);
+  const rows = Number(js.match(/var KEY_ROWS = (\d+);/)[1]);
+  for (const keys of [sv, en]) { assert.equal(keys.length, rows * 6); assert.equal(new Set(keys).size, keys.length); }
+});
+
 test('TV reconnect keeps the current position and never plays from zero after a failed restore seek', () => {
   for (const path of ['public/tv/tv.js', 'public/tv/tv.js']) {
     const js = read(path);

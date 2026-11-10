@@ -40,7 +40,8 @@ test('every line in the TV app has Swedish, with the same blanks', () => {
   const sandbox = { window: {} };
   vm.runInNewContext(read('public/tv/sv.js'), sandbox);
   const strings = sandbox.window.MarqueeTvStrings;
-  const lines = [...linesIn(read('public/tv/tv.js')), ...linesIn(read('public/tv/logic.js'))];
+  const lines = [...linesIn(read('public/tv/tv.js')), ...linesIn(read('public/tv/logic.js')),
+    ...linesIn(read('tv/android/app/src/main/assets/shell.html'))]; // the Android shell's update offer too
   assert.ok(lines.length > 80);
   for (const line of lines) assert.ok(line in strings, line);
   for (const [en, line] of Object.entries(strings)) assert.equal(blanks(line), blanks(en), en);

@@ -1181,7 +1181,9 @@
   // An on-screen keyboard for the remote (a USB/Bluetooth keyboard and the remote's number keys type too).
   // Your library answers at once; TMDB (via the server) once you stop typing.
   var KEY_ROWS = 7;
-  var KEYBOARD = 'abcdefghijklmnopqrstuvwxyzåäö1234567890-:.'.split('');
+  // A Swedish TV (sv.js loaded) gets å ä ö; every other TV a plain English keyboard. Both are 7 rows of 6.
+  var KEYBOARD = (window.MarqueeTvStrings ? 'abcdefghijklmnopqrstuvwxyzåäö1234567890-:.'
+    : 'abcdefghijklmnopqrstuvwxyz1234567890\'&-:.!').split('');
   function libraryMatches(query) {
     var q = L.searchKey(query);
     if (!q) return [];

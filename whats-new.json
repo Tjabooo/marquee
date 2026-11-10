@@ -1,5 +1,20 @@
 [
   {
+    "id": "2026-11-10-android-tv-updates",
+    "date": "2026-11-10",
+    "title": "Android TV app updates itself",
+    "items": [
+      {
+        "title": "English search keyboard",
+        "text": "On an Android TV that isn’t set to Swedish, the search keyboard no longer has å, ä and ö. It has an apostrophe, & and ! instead, for titles like Schindler’s List."
+      },
+      {
+        "title": "The Android TV app keeps itself up to date",
+        "text": "On Android 12 and later, the Marquee app now updates by itself: a new version downloads in the background and installs when you’re not using the app. Update it once more when it asks (version 1.2.0), and allow Marquee to install apps if the TV asks; after that there’s nothing to press."
+      }
+    ]
+  },
+  {
     "id": "2026-11-10-cast-arrows",
     "date": "2026-11-10",
     "title": "Cast row arrows",
