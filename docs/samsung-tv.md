@@ -1,12 +1,20 @@
 # Samsung TV app
 
 Marquee's Samsung TV app is a small Tizen shell (`tv/tizen`, package `MrqTvApp01.Marquee`) that loads the app itself
-from the server (`public/tv`) every time it starts, so a Marquee update reaches the TV without reinstalling.
+from the server every time it starts, so a Marquee update reaches the TV without reinstalling.
 The app is in Swedish (`public/tv/sv.js`).
+
+The app is written in Rust (`tv/rust`, built into `public/tv-rs/marquee_tv.wasm`): every screen is drawn with WebGL
+in one canvas, so the TV's slow CPU does no page layout or styling at all. The shell starts it through
+`public/tv-rs/host.js`. If a TV can't run it (no WebGL or WebAssembly) or it stops, the shell starts the
+JavaScript app in `public/tv` instead, which the Android TV app also uses. To force the JavaScript app on a TV, set
+`localStorage['marquee:tv-engine'] = 'js'` (over DevTools). See [tv/rust/README.md](../tv/rust/README.md).
 
 ## 1. Have Marquee running
 
-The TV loads `public/tv/` from the server; those files are read directly, so updating them needs no restart.
+The TV loads `public/tv-rs/` (and `public/tv/` as the fallback) from the server; those files are read directly, so
+updating them needs no restart. Changes to the Rust app need `bash tv/rust/build.sh` before committing (the built
+`.wasm` is committed, so the server needs no Rust).
 
 Use a LAN URL that the TV can reach, for example `http://192.168.1.10:8080`.
 

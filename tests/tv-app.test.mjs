@@ -73,3 +73,30 @@ test('TV reconnect keeps the current position and never plays from zero after a 
       path + ': a failed restore seek should retry/fail instead of starting over');
   }
 });
+
+test('Rust TV app: every line has Swedish, the shell starts it and falls back to the JavaScript app', () => {
+  const sandbox = { window: {} };
+  vm.runInNewContext(read('public/tv/sv.js'), sandbox);
+  const strings = sandbox.window.MarqueeTvStrings;
+  const dir = new URL('../tv/rust/src/', import.meta.url);
+  const src = fs.readdirSync(dir, { recursive: true }).filter((f) => f.endsWith('.rs')).map((f) => fs.readFileSync(new URL(f, dir), 'utf8')).join('\n');
+  const lines = [...src.matchAll(/(?<![A-Za-z_])t!\(\s*"((?:[^"\\]|\\.)*)"/g)].map((m) => m[1]);
+  assert.ok(lines.length > 100);
+  for (const line of lines) assert.ok(line in strings, line);
+  const shell = read('tv/tizen/shell.js');
+  assert.match(shell, /\/tv-rs\/host\.js/);
+  assert.match(shell, /onFail/);
+  assert.match(shell, /\/tv\/tv\.js/);
+});
+
+test('Rust TV host is old-browser JavaScript and the built app is in public/', () => {
+  const host = read('public/tv-rs/host.js');
+  assert.doesNotThrow(() => new vm.Script(host));
+  assert.doesNotMatch(host, /\?\./, 'Chrome 69 must not see optional chaining');
+  assert.doesNotMatch(host, /\?\?/, 'Chrome 69 must not see nullish coalescing');
+  const wasm = fs.readFileSync(new URL('../public/tv-rs/marquee_tv.wasm', import.meta.url));
+  assert.deepEqual([...wasm.subarray(0, 4)], [0, 0x61, 0x73, 0x6d]);
+  // Every function Rust imports is one host.js provides.
+  const mod = new WebAssembly.Module(wasm);
+  for (const imp of WebAssembly.Module.imports(mod)) assert.match(host, new RegExp('\\b' + imp.name + ': '), imp.name);
+});

@@ -1,0 +1,27 @@
+[package]
+name = "marquee-tv"
+version = "0.1.0"
+edition = "2021"
+description = "Marquee's Samsung TV app: the whole UI in Rust, drawn with WebGL"
+license = "MIT"
+build = "build.rs"
+
+[lib]
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[dependencies]
+serde_json = { version = "1", default-features = false, features = ["alloc"] }
+dlmalloc = { version = "0.2", features = ["global"] }
+libm = "0.2"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+debug = false
+strip = true
+
+[profile.dev]
+panic = "abort"

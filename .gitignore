@@ -38,3 +38,6 @@ desktop.ini
 
 # Playback stress test output
 tools/playback-stress/results/
+
+# Rust TV app build output
+tv/rust/target/

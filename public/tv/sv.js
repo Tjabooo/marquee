@@ -127,6 +127,8 @@ window.MarqueeTvStrings = {
   'Saved to your library in full quality, with Swedish subtitles.': 'Sparas i ditt bibliotek i full kvalitet, med svensk text.',
   '{0} of {1} ready': '{0} av {1} klara',
   '{0} episodes on their way': '{0} avsnitt på väg',
+  // The Rust TV app (tv/rust): the search field's placeholder.
+  'Films and shows': 'Filmer och serier',
   // The Android TV app's update offer (tv/android/app/src/main/assets/shell.html).
   'A new version of the Marquee app is here': 'Ny version av Marquee-appen',
   'Version {0}. It takes about a minute.': 'Version {0}. Det tar ungefär en minut.',
