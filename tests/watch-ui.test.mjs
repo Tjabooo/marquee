@@ -106,3 +106,19 @@ test('dismissal waits for the browser popstate before a new player can be pushed
   assert.equal(closed, 1);
   assert.equal(vm.runInContext('overlayStack.length', context), 0);
 });
+
+test('open a room, invite, join, play: no Ready button or start-time options, and the first tap of the host also starts the room', async () => {
+  const html = await fs.readFile(new URL('../public/index.html', import.meta.url), 'utf8');
+  for (const id of ['watch-ready', 'watch-host-tools', 'watch-later', 'watch-start-now', 'watch-clear-start']) assert.doesNotMatch(html, new RegExp(`id="${id}"`), id);
+  assert.doesNotMatch(source, /openPlanParty\((f|file), /, 'no Plan a watch party buttons');
+  assert.match(source, /if \(alreadyPlaying \|\| navigator\.userActivation\?\.hasBeenActive\) party\.blocked = false;/, 'joining counts as the tap that lets the video play');
+  const calls = [];
+  const context = vm.createContext({ party: { isHost: true, blocked: true, state: { intentPlaying: false }, unlock: () => calls.push('unlock'), control: (a) => calls.push(a) },
+    video: { paused: true, ended: false }, osd() {}, icon() {} });
+  vm.runInContext(source.slice(source.indexOf('function togglePlay('), source.indexOf('function updatePlayState(')), context);
+  vm.runInContext('togglePlay()', context);
+  assert.deepEqual(calls, ['unlock', 'play']);
+  calls.length = 0;
+  vm.runInContext('party.isHost = false; togglePlay()', context);
+  assert.deepEqual(calls, ['unlock'], 'a guest only unlocks: the host has the remote');
+});

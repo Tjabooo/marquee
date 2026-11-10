@@ -1678,4 +1678,5 @@ export default {
   "Standard": "Standard",
   "For a phone screen": "För en mobilskärm",
   "Sharp on a tablet or laptop": "Skarpt på surfplatta eller dator",
+  "Paused · press Play to start it for everyone": "Pausad · tryck på Spela upp så startar den för alla",
 };

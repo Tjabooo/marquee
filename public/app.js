@@ -588,7 +588,6 @@ function fileRow(f) {
       // Everything but Play waits behind one ⋯ button, with words, so a row has one obvious thing to press.
       rowMenu(T('More for {0}', title), [
         [icon('tv'), T('Play on TV'), (opener) => openPicker(f, opener)],
-        f.kind === 'lib' && [icon('party'), T('Plan a watch party'), (opener) => openPlanParty(f, opener)],
         f.kind === 'lib' && [icon('phone'), T('Download to phone'), (opener) => openTravel(f, opener)],
         f.kind === 'lib' && [icon('trash'), T('Delete'), (opener) => openDelete(f, opener), 'is-danger'],
       ]),
@@ -1573,7 +1572,6 @@ function renderFilm() {
         h('button', { class: 'play-btn', disabled: f.converting, onclick: () => openPlayer(file) }, icon('play'),
           f.converting ? T('Preparing playback…') : partlyWatched(progress) ? T('Resume at {0}', fmtTime(progress.time)) : T('Play')),
         h('button', { class: 'chip', onclick: (e) => openPicker(file, e.currentTarget) }, icon('tv'), T('Play on TV')),
-        !f.converting && h('button', { class: 'chip', onclick: (e) => openPlanParty(file, e.currentTarget) }, icon('party'), T('Watch party')),
         h('button', { class: 'chip', onclick: (e) => openTravel(file, e.currentTarget) }, icon('phone'), T('To phone')),
         h('button', { class: 'chip', onclick: (e) => openDelete(file, e.currentTarget) }, icon('trash'), T('Delete')),
         state.me?.isOwner && h('button', { class: 'chip', onclick: (e) => openFilmIdentity(f, e.currentTarget) }, T('Identify film'))),
@@ -4016,7 +4014,7 @@ roomDocks.addEventListener?.('change', () => { if (party) renderParty(); });
 function roomStatus(room, host) {
   const counting = party.startsIn != null && party.startsIn > 0;
   if (!party.connected || !party.online) return ['alert', T('Reconnecting… playback is paused')];
-  if (counting) return ['count', T('Starts {0}{1}', startLabel(room.startsAt), party.blocked ? T(' · tap Ready so it can start for you') : '')];
+  if (counting) return ['count', T('Starts {0}', startLabel(room.startsAt))];
   if (party.blocked) return ['alert', T('Press Play to join playback')];
   if (room.waitingForDownload) {
     const eta = room.download?.wait > 0 ? fmtWait(room.download.wait) : null;
@@ -4024,7 +4022,7 @@ function roomStatus(room, host) {
   }
   if (room.waitingFor.length) return ['wait', T('Waiting for {0}', namesText(room.waitingFor))];
   if (room.playing) return ['live', T('Playing for {0}', room.members.length === 1 ? T('you') : T('all {0}', room.members.length))];
-  return ['wait', party.isHost ? T('Paused · press Play when everyone’s ready') : T('Paused · {0} has the remote', host)];
+  return ['wait', party.isHost ? T('Paused · press Play to start it for everyone') : T('Paused · {0} has the remote', host)];
 }
 // Where one viewer is: ready, getting ready, needs a tap, or still connecting.
 function memberState(m) {
@@ -4089,10 +4087,6 @@ function renderParty() {
   if (!party) { roomDrawn = ''; return; }
   updatePlayState();
   const room = party.state;
-  const counting = party.startsIn != null && party.startsIn > 0;
-  $('#watch-host-tools').hidden = !party.isHost;
-  $('#watch-later').hidden = !party.isHost || counting;
-  $('#watch-start-now').hidden = $('#watch-clear-start').hidden = !party.isHost || !counting;
   const hostMember = room.members.find((m) => m.id === room.host);
   const host = hostMember ? personName(hostMember) : T('The host');
   const [tone, status] = roomStatus(room, host);
@@ -4104,7 +4098,6 @@ function renderParty() {
   renderRoster(room);
   $('#watch-hint').textContent = party.isHost ? T('You have the remote: everyone follows your play, pause and seeking.')
     : T('{0} has the remote: play, pause and seeking follow them.', host);
-  $('#watch-ready').hidden = !party.blocked;
   playerEl.classList.toggle('party-guest', !party.isHost);
   airplayBtn.hidden = true;
   audioBtn.hidden = true;
@@ -4152,7 +4145,9 @@ function attachWatchRoom(room, joined = false) {
     onChat: partyChat, onReaction: (r) => { if (r.from !== watchClient) social.burst($('#reaction-layer'), r.emoji, r.name, r.avatar); } });
   partyUnread = 0;
   renderChatLog();
-  if (alreadyPlaying) party.blocked = false;
+  // The tap on Watch together or Join and watch already counts as permission to play in most browsers, so there's
+  // no separate "ready" step: if a browser still refuses when the host presses Play, the Play button asks for a tap.
+  if (alreadyPlaying || navigator.userActivation?.hasBeenActive) party.blocked = false;
   watchPanelOpen = false;
   renderParty();
   return party;
@@ -4300,7 +4295,7 @@ function updatePartyCountdown() {
       faces.length ? h('span', { class: 'party-countdown-here' }, people.faces(faces, { size: 28, max: 5 }),
         h('span', {}, T('{0} {1} here', namesText(faces.map((m) => personName(m))), faces.length === 1 ? T('is') : T('are'))))
         : h('span', { class: 'party-countdown-here muted' }, T('Nobody else is here yet')),
-      party.blocked ? h('button', { type: 'button', class: 'play-btn', onclick: () => party?.unlock() }, T('I’m ready'))
+      party.blocked ? h('button', { type: 'button', class: 'play-btn', onclick: () => party?.unlock() }, icon('play'), T('Join playback'))
         : h('span', { class: 'muted' }, party.isHost ? T('Playback starts by itself. You can start early from the room.') : T('You’re ready. Playback starts by itself.')));
     el.dataset.blocked = String(party.blocked); el.dataset.here = hereKey;
   }
@@ -4309,13 +4304,6 @@ function updatePartyCountdown() {
   el.hidden = false;
   countdownTimer ||= setInterval(() => { if (!party?.startsIn || party.startsIn <= 0) { party?.pulse(); } updatePartyCountdown(); }, 1000);
 }
-$('#watch-later').addEventListener('click', async (e) => {
-  const minutes = Number(e.target.closest?.('[data-min]')?.dataset.min);
-  if (!party || !minutes) return;
-  try { await party.schedule(party.serverNow + minutes * 60000); } catch (err) { toast(err.message); }
-});
-$('#watch-start-now').addEventListener('click', () => party?.control('play'));
-$('#watch-clear-start').addEventListener('click', async () => { try { await party?.schedule(null); } catch (err) { toast(err.message); } });
 
 // ---- Marquee Wrapped: a story of slides over everything; tap or arrow keys to move ----
 async function openWrapped(year, opener) {
@@ -4366,15 +4354,7 @@ async function openWrapped(year, opener) {
 // ---- planned watch parties ----
 const partyLink = (token) => `${location.origin}/c/w/${token}`;
 const partyTitle = (m) => [m.filmTitle || m.title, episodeLabel(m)].filter(Boolean).join(' · ');
-function openPlanParty(f, opener) {
-  const title = partyTitle(f);
-  const copy = (link) => copyWithToast(link, T('Invite copied. Everyone uses their usual Marquee sign-in.'));
-  $('#picker-body').replaceChildren(...social.planPartyBody({ file: f, title, onPlanned: (room) => {
-    $('#picker-body').replaceChildren(...social.plannedBody({ room, title, link: partyLink(room.token), copy }));
-    loadParties();
-  } }));
-  pushOverlay(showSheet($('#picker'), $('#picker-backdrop'), () => opener?.focus({ preventScroll: true })));
-}
+// Rooms are opened and started on the spot (Watch together in the player); parties planned earlier still show in the Library.
 let partiesRequest = null;
 async function loadParties() {
   if (!libraryUI?.parties) return;
@@ -4401,7 +4381,6 @@ document.addEventListener('click', (event) => {
   if (!watchPanelOpen || roomDocked() || !event.target.isConnected) return;
   if (!event.target.closest?.('#watch-bar, #watch-btn')) setWatchPanel(false);
 });
-$('#watch-ready').addEventListener('click', () => party?.unlock());
 $('#watch-copy').addEventListener('click', () => {
   // /c/w/ shows a preview in Discord and other chats, then forwards to /?watch=
   if (party) copyWithToast(`${location.origin}/c/w/${party.state.token}`, T('Room link copied. Everyone uses their usual Marquee sign-in.'));
@@ -5695,7 +5674,8 @@ function osd(content) {
 }
 
 function togglePlay(feedback = false) {
-  if (party?.blocked) { party.unlock(); return; }
+  // A browser that hasn't let this page play with sound yet: this tap unlocks it (and the host's also starts the room).
+  if (party?.blocked) { party.unlock(); if (party.isHost && !party.state.intentPlaying) party.control('play'); return; }
   if (party) { party.control(party.state.intentPlaying ? 'pause' : 'play'); return; }
   const play = video.paused || video.ended;
   if (play) video.play().catch(() => {}); else video.pause();

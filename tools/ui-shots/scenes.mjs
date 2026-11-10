@@ -67,7 +67,6 @@ export const SCENES = [
   { name: 'picker', path: '/#library', ready: '.unified-library .lib-group .title-card', steps: [...filmPage, "await __clickText('^(Play on TV|Spela på TV)$'); await __waitFor('#picker.open'); await __sleep(1500);"] },
   { name: 'delete', path: '/#library', ready: '.unified-library .lib-group .title-card', steps: [...filmPage, "await __clickText('^(Delete|Radera)$'); await __waitFor('#picker.open'); await __sleep(1200);"] },
   { name: 'travel', path: '/#library', ready: '.unified-library .lib-group .title-card', steps: [...filmPage, "await __clickText('^(To phone|Till telefonen)$'); await __waitFor('#picker.open'); await __sleep(1500);"] },
-  { name: 'party-plan', path: '/#library', ready: '.unified-library .lib-group .title-card', steps: [...filmPage, "await __clickText('^(Watch party|Tittarkväll)$'); await __waitFor('#picker.open'); await __sleep(1200);"] },
 
   // ---- Player (paused, so the controls stay up) ----
   { name: 'player', path: '/#library', ready: '.unified-library .lib-group .title-card', steps: [...filmPage, ...openPlayer] },
@@ -110,7 +109,9 @@ export const SCENES = [
   { name: 'owner-watch-room', path: '/#library', ready: '.unified-library .lib-group .title-card', steps: [
     "const c = [...document.querySelectorAll('.unified-library .title-card')].find((b) => /^Arrival/.test(b.querySelector('.name')?.textContent || '')); c.click();", sheetOpen,
     "await __click('#sheet .library-film-actions .play-btn'); await __waitFor('#player:not([hidden])'); await __sleep(2500); document.querySelector('#video').pause();",
-    "await __click('#watch-btn'); await __sleep(2500);"] },
+    "document.querySelector('#player').dispatchEvent(new MouseEvent('mousemove', { bubbles: true })); await __sleep(300);",
+    { mouse: '#watch-btn', click: true }, "await __sleep(2500);"],
+    probe: "return 'status: ' + document.querySelector('#watch-status')?.textContent;" },
   { name: 'signin', path: '/signin', ready: 'form', signedOut: true },
   { name: 'signin-error', path: '/signin?error=wrong', ready: 'form', signedOut: true },
   { name: 'share-invite', path: `/c/i/${process.env.MQ_INVITE || 'x'}`, ready: 'body', signedOut: true },

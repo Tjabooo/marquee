@@ -3047,9 +3047,8 @@ html.wrapped-on { overflow: hidden; }
 .room-member-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 700; }
 .room-member-state { font-size: 11px; line-height: 1.2; color: var(--dust); }
 .room-member.is-ready .room-member-state { color: var(--bulb); }
-.room-ready { height: 44px; border: 0; border-radius: 12px; font-weight: 800; color: var(--on-bulb); background: var(--bulb); }
 
-.room-later, .room-counting, .room-invite-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.room-invite-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .room-pill {
   display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 14px;
   font-size: 13px; font-weight: 600; color: var(--paper);

@@ -182,6 +182,7 @@ for (const scene of scenes) {
           const box = await evalIn(page.s, `const el = ${step.fallback || `document.querySelector(${JSON.stringify(step.mouse)})`}; if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 };`);
           if (!box) throw new Error('nothing to point at for ' + step.mouse);
           for (const [x, y] of [[box.x - 40, box.y - 40], [box.x, box.y]]) await page.s('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+          if (step.click) for (const type of ['mousePressed', 'mouseReleased']) await page.s('Input.dispatchMouseEvent', { type, x: box.x, y: box.y, button: 'left', clickCount: 1 }); // a real, trusted click
         }
         await evalIn(page.s, `await __settle(${scene.after ?? 700});`);
         const shot = { format: 'png', captureBeyondViewport: Boolean(scene.full) };
