@@ -23,6 +23,7 @@ import * as screenTime from './screentime.js';
 import * as clips from './clips.js';
 import * as invites from './invites.js';
 import { createAndroidTv, isAndroidPath } from './android-tv.js';
+import { innerPath as tvGatewayPath, gatewayAllows as tvGatewayAllows, createPairLimit } from './tv-gateway.js';
 import { createOidc } from './oidc.js';
 import * as shows from './shows.js';
 import * as season from './season.js';
@@ -137,6 +138,7 @@ function notify(userIds, kind, message) {
 }
 const auth = createAuth({ dataDir: DATA_DIR });
 const tvPairing = createTvPairing();
+const tvPairLimit = createPairLimit(); // sign-in codes asked for from outside the home network (tv-gateway.js)
 // The Jellyfin plugin (jellyfin.js, jellyfin/): someone's own Jellyfin server showing their Marquee library.
 const jellyfin = createJellyfin({
   dataDir: DATA_DIR,
@@ -2831,13 +2833,15 @@ async function handleApi(req, res, url) {
   }
 
   // Signing in the TV app (tv.js): the TV asks for a code and waits; a signed-in phone approves it.
-  // Home network only, like casting: the TV and the phone are in the same room.
+  // From the home network, or from anywhere through the TV gateway (/c/tv, tv-gateway.js): the code is only
+  // good once a signed-in person enters it on their phone.
   if (p === '/api/tv/pair/start' && req.method === 'POST') {
-    if (req.auth.remote) throw new HttpError(403, 'Sign in a TV from the home network.');
+    if (req.auth.remote && !req.tvGateway) throw new HttpError(403, 'Sign in a TV from the home network.');
+    if (req.auth.remote && !tvPairLimit(clientAddress(req))) throw Object.assign(new HttpError(429, 'Too many sign-in codes. Wait a few minutes and try again.'), { retryAfter: 600 });
     return sendJson(res, 200, tvPairing.start());
   }
   if (p === '/api/tv/pair/poll') {
-    if (req.auth.remote) throw new HttpError(403, 'Sign in a TV from the home network.');
+    if (req.auth.remote && !req.tvGateway) throw new HttpError(403, 'Sign in a TV from the home network.');
     return sendJson(res, 200, tvPairing.poll(url.searchParams.get('id')));
   }
 
@@ -4073,7 +4077,7 @@ function publicPath(req, url) {
   if (p.startsWith('/api/auth/') || p === '/c' || p.startsWith('/c/') || p.startsWith('/play/')) return true;
   if (/^\/api\/(house\/(report|summary|load|boot)|screentime|agent\/notify)$/.test(p)) return true;
   if (/^\/api\/tv\/pair\/(start|poll)$/.test(p)) return true; // home network only (checked in the route)
-  if (isAndroidPath(p)) return !req.auth.remote; // the Android TV app's steps and file, at home (android-tv.js)
+  if (isAndroidPath(p)) return !req.auth.remote || Boolean(req.tvGateway); // the Android TV app's steps and file (android-tv.js)
   if (p.startsWith('/api/subs/file/') && !req.auth.remote) return true;
   if (p.startsWith('/api/')) return false;
   const ext = path.extname(p).toLowerCase();
@@ -4153,7 +4157,16 @@ async function handleAuth(req, res, p) {
 const server = http.createServer((req, res) => inLanguage(languageOf(req), () => handleRequest(req, res)));
 async function handleRequest(req, res) {
   try {
-    const url = new URL(req.url, 'http://localhost');
+    let url = new URL(req.url, 'http://localhost');
+    // TV apps from outside the home network come in under /c/tv (tv-gateway.js): served as the path behind it.
+    const tvInner = tvGatewayPath(url.pathname);
+    if (tvInner !== null) {
+      if (!tvGatewayAllows(tvInner)) throw new HttpError(404, 'Not found.');
+      req.url = tvInner + url.search;
+      url = new URL(req.url, 'http://localhost');
+      req.tvGateway = true;
+      delete req.headers.cookie; // only the TV's own session counts here
+    }
     // Liveness for Docker, service managers and setup.js doctor. Says nothing about the library.
     if (url.pathname === '/api/health' && (req.method === 'GET' || req.method === 'HEAD')) return sendJson(res, 200, { status: 'ok', version: VERSION });
     await trust.sanitize(req);
@@ -4189,7 +4202,7 @@ async function handleRequest(req, res) {
         && !(await invites.handlePublic(req, res, url, { auth: oidc.configured ? auth : null }))
         && !(await noteShare.handlePublic(req, res, url, { notes, media: sharedMedia, sendVideo, nameFor: (email) => accounts.displayNameFor(email) })) && !(await clips.handlePublic(req, res, url, { sendVideo, previews }))) throw new HttpError(404, 'Not found.');
     }
-    else if (isAndroidPath(url.pathname)) androidTv.handle(req, res, url, { home: !req.auth.remote });
+    else if (isAndroidPath(url.pathname)) androidTv.handle(req, res, url, { home: !req.auth.remote, gateway: Boolean(req.tvGateway) });
     else if (!(req.method === 'GET' && preview.previewRoute(req, res, url.pathname, PREVIEW_DIR))) await serveStatic(req, res, url.pathname);
   } catch (err) {
     const status = err.status || 500;

@@ -19,8 +19,18 @@ Show the steps** (the page is `/android` on your server). It shows these steps w
 4. **Sign in.** Press **Open**. The TV shows a code: on your phone, open Marquee → Settings → **Sign in a TV** and
    enter it (or press Down on the TV for the shared Home network account, when there is one).
 
-Marquee then sits among the TV's apps, with its own banner on the home screen. The page and the file are only
-offered on the home network (the app reaches Marquee there, like the Samsung app).
+Marquee then sits among the TV's apps, with its own banner on the home screen. An app built with a home address
+is only offered on the home network (it reaches Marquee there, like the Samsung app).
+
+**From anywhere.** Build the app with your public address plus `/c/tv` (`MARQUEE_URL=https://marquee.example.com/c/tv`)
+and it works on any TV with internet, for people who don't live with the server. Behind Cloudflare Access only `/c/...`
+is open (see [remote-access.md](remote-access.md)), so the TV gateway (`src/tv-gateway.js`) answers there: it serves
+the TV app's own files, the sign-in code and updates, and the TV app's API calls only with the TV's own session from
+signing in (cookies are ignored). Such an app is offered to anyone: send people
+`https://marquee.example.com/c/tv/android`, and they type `https://marquee.example.com/c/tv/android.apk` in
+Downloader. They sign in with the code like at home, from their phone signed in to Marquee.
+
+**Language.** The app speaks Swedish on a TV set to Swedish and English on every other TV.
 
 **Updates.** When the server has a newer app (`/android.json`), the app offers it as it starts (never during a
 video): **Update now** downloads it and Android asks to confirm. The first time, Android wants Marquee allowed to

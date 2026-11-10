@@ -6,7 +6,7 @@
 (function () {
   'use strict';
   var L = window.MarqueeTvLogic;
-  var T = L.T; // the TV app speaks Swedish: public/tv/sv.js, English where a line is missing
+  var T = L.T; // Swedish when the shell loaded public/tv/sv.js (Samsung always; Android on a Swedish TV), else English
   var SERVER = String(window.MARQUEE_SERVER || '').replace(/\/+$/, '');
   var TOKEN_KEY = 'marquee:tv-session';    // a session token, or "home" for the shared Home network account
   var WATCHED_KEY = 'marquee:tv-watched';  // episodes finished on this TV, to pick where a show continues
@@ -80,7 +80,7 @@
   }
 
   function api(path, body) {
-    var headers = { 'X-Marquee-TV': '1', 'X-Marquee-Lang': 'sv' };
+    var headers = { 'X-Marquee-TV': '1', 'X-Marquee-Lang': window.MarqueeTvStrings ? 'sv' : 'en' };
     var t = token();
     if (t && t !== 'home') headers['X-Marquee-Session'] = t;
     if (body !== undefined) headers['Content-Type'] = 'application/json';

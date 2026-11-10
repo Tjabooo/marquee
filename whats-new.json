@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-10-android-tv-anywhere",
+    "date": "2026-11-10",
+    "title": "Android TV app from anywhere",
+    "items": [
+      {
+        "title": "The Android TV app works away from home",
+        "text": "The Marquee app for Android TV and Google TV now works on any TV with internet, not just at home, so friends and family elsewhere can use it too. Get it from Settings → Android TV, sign the TV in with the code from your phone, and it carries on as before. It speaks English, or Swedish when the TV is set to Swedish. A TV that already has the app offers the update when it starts."
+      }
+    ]
+  },
+  {
     "id": "2026-11-10-samsung-tv-rust",
     "date": "2026-11-10",
     "title": "Faster Samsung TV app",

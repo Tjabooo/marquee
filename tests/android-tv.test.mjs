@@ -66,3 +66,34 @@ test('the address a TV types is a home-network one', () => {
   assert.equal(homeAddress(fakeReq('127.0.0.1'), 8080, { lo: nics.lo }), null);
   assert.ok(isAndroidPath('/android') && isAndroidPath('/android.apk') && !isAndroidPath('/android/x'));
 });
+
+test('an app built for a public https address is handed out anywhere, with gateway links', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-android-'));
+  const tv = createAndroidTv({ dir, port: 8080 });
+  const gatewayGet = (p) => {
+    const res = fakeRes();
+    assert.equal(tv.handle(fakeReq(), res, new URL(p, 'http://x'), { home: false, gateway: true }), true);
+    return res;
+  };
+  try {
+    await fs.writeFile(path.join(dir, 'Marquee.apk'), 'PK-fake-apk');
+    // A home build stays at home, even through the gateway.
+    await fs.writeFile(path.join(dir, 'Marquee.json'), JSON.stringify({ versionCode: 3, versionName: '1.2.0', server: 'http://192.168.1.5:8080' }));
+    assert.equal(gatewayGet('/android.apk').status, 404);
+    assert.equal(gatewayGet('/android.json').status, 404);
+
+    await fs.writeFile(path.join(dir, 'Marquee.json'), JSON.stringify({ versionCode: 4, versionName: '1.3.0', server: 'https://marquee.example.com/c/tv' }));
+    const page = gatewayGet('/android').body();
+    assert.match(page, /https:\/\/marquee\.example\.com\/c\/tv\/android\.apk/, 'the public address to type in Downloader');
+    assert.match(page, /href="\/c\/tv\/android\.apk"/, 'the download link stays under the gateway');
+    assert.doesNotMatch(page, /same network/);
+    assert.equal(JSON.parse(gatewayGet('/android.json').body()).versionCode, 4);
+    const apk = gatewayGet('/android.apk');
+    await apk.done;
+    assert.equal(apk.status, 200);
+    // A signed-in visitor from outside (the phone's Settings → Android TV) gets the steps too.
+    assert.match(get(tv, '/android', { home: false }).body(), /marquee\.example\.com\/c\/tv\/android\.apk/);
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});

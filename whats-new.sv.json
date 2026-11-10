@@ -1,4 +1,13 @@
 {
+  "2026-11-10-android-tv-anywhere": {
+    "title": "Android TV-appen var du än är",
+    "items": {
+      "The Android TV app works away from home": {
+        "title": "Android TV-appen fungerar borta hemifrån",
+        "text": "Marquee-appen för Android TV och Google TV fungerar nu på alla TV-apparater med internet, inte bara hemma, så att vänner och familj på andra ställen också kan använda den. Hämta den under Inställningar → Android TV, logga in TV:n med koden från telefonen, så fungerar allt som förut. Den pratar engelska, eller svenska när TV:n är inställd på svenska. En TV som redan har appen erbjuder uppdateringen när den startar."
+      }
+    }
+  },
   "2026-11-10-samsung-tv-rust": {
     "title": "Snabbare Samsung-TV-app",
     "items": {

@@ -32,6 +32,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -123,10 +124,12 @@ public class MainActivity extends Activity {
       @Override public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
         Uri u = request.getUrl();
         String path = u.getPath();
-        if (path == null || !path.startsWith("/fonts/bricolage-grotesque-") || !path.endsWith(".woff2")) return null;
-        if (!(u.getScheme() + "://" + u.getAuthority() + "/").equals(baseUrl())) return null;
+        // /fonts/… from the shell, or …/fonts/… beside tv.css (under /c/tv for an app that reaches Marquee from anywhere)
+        int at = path == null ? -1 : path.lastIndexOf("/fonts/bricolage-grotesque-");
+        if (at < 0 || !path.endsWith(".woff2") || path.indexOf('/', at + 7) >= 0) return null;
+        if (!baseUrl().startsWith(u.getScheme() + "://" + u.getAuthority() + "/")) return null;
         try {
-          WebResourceResponse r = new WebResourceResponse("font/woff2", null, getAssets().open(path.substring(1)));
+          WebResourceResponse r = new WebResourceResponse("font/woff2", null, getAssets().open(path.substring(at + 1)));
           Map<String, String> headers = new HashMap<>();
           headers.put("Access-Control-Allow-Origin", "*");
           headers.put("Cache-Control", "max-age=31536000");
@@ -175,7 +178,9 @@ public class MainActivity extends Activity {
     if (web == null) return;
     String html = asset("shell.html")
         .replace("\"__MARQUEE_SERVER__\"", JSONObject.quote(server))
-        .replace("\"__MARQUEE_BUILT_IN__\"", JSONObject.quote(BuildConfig.MARQUEE_URL));
+        .replace("\"__MARQUEE_BUILT_IN__\"", JSONObject.quote(BuildConfig.MARQUEE_URL))
+        // The TV's own language: Swedish TVs get Swedish, every other TV English.
+        .replace("\"__MARQUEE_LANG__\"", JSONObject.quote(Locale.getDefault().getLanguage()));
     web.loadDataWithBaseURL(baseUrl(), html, "text/html", "utf-8", null);
   }
 

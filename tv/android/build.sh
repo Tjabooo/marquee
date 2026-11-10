@@ -11,6 +11,8 @@
 #
 # Settings (environment, or tv/android/.env):
 #   MARQUEE_URL        where the TV reaches Marquee, e.g. http://192.168.1.10:8080. Empty: the app asks on its first start.
+#                      From anywhere (behind Cloudflare Access): https://marquee.example.com/c/tv (the TV gateway);
+#                      the server then hands the app out to anyone at /c/tv/android.
 #   PUBLISH_TO         scp target for --publish, e.g. server:/opt/marquee/tv/android/dist/
 #   TV                 the TV's address for --install (adb; port 5555 is added when missing)
 #   ANDROID_HOME       the Android SDK (platform 36, build-tools); JAVA_HOME a JDK 17–21
@@ -75,8 +77,8 @@ mkdir -p dist
 cp "$apk" dist/Marquee.apk
 code="$(sed -n 's/^code=//p' version.properties)"; name="$(sed -n 's/^name=//p' version.properties)"
 sha="$(sha256sum dist/Marquee.apk | cut -d' ' -f1)"
-printf '{"versionCode":%s,"versionName":"%s","size":%s,"sha256":"%s","debug":%s}\n' \
-  "$code" "$name" "$(stat -c %s dist/Marquee.apk)" "$sha" "$([ "$variant" = debug ] && echo true || echo false)" > dist/Marquee.json
+printf '{"versionCode":%s,"versionName":"%s","size":%s,"sha256":"%s","debug":%s,"server":"%s"}\n' \
+  "$code" "$name" "$(stat -c %s dist/Marquee.apk)" "$sha" "$([ "$variant" = debug ] && echo true || echo false)" "$server" > dist/Marquee.json
 echo "Built dist/Marquee.apk (version $name, $(( $(stat -c %s dist/Marquee.apk) / 1024 )) KB) for ${server:-an address asked on first start}"
 
 if [ "$publish" = 1 ]; then

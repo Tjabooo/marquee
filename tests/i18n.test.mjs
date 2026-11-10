@@ -46,12 +46,17 @@ test('every line in the TV app has Swedish, with the same blanks', () => {
   for (const [en, line] of Object.entries(strings)) assert.equal(blanks(line), blanks(en), en);
 });
 
-test('the TV app is in Swedish and asks the server for Swedish', () => {
+test('the TV app speaks Swedish when the shell loads sv.js, else English, and asks the server for the same', () => {
   const sandbox = { MarqueeTvStrings: { 'Season {0}': 'Säsong {0}' } };
   vm.runInNewContext(read('public/tv/logic.js'), sandbox);
   assert.equal(sandbox.MarqueeTvLogic.T('Season {0}', 3), 'Säsong 3');
-  assert.match(read('public/tv/tv.js'), /'X-Marquee-Lang': 'sv'/);
-  assert.match(read('tv/tizen/shell.js'), /\/tv\/sv\.js/);
+  const english = {};
+  vm.runInNewContext(read('public/tv/logic.js'), english);
+  assert.equal(english.MarqueeTvLogic.T('Season {0}', 3), 'Season 3');
+  assert.match(read('public/tv/tv.js'), /'X-Marquee-Lang': window\.MarqueeTvStrings \? 'sv' : 'en'/);
+  assert.match(read('tv/tizen/shell.js'), /\/tv\/sv\.js/); // Samsung: always Swedish
+  const android = read('tv/android/app/src/main/assets/shell.html');
+  assert.match(android, /MARQUEE_SWEDISH \? \['sv\.js', 'logic\.js', 'tv\.js'\] : \['logic\.js', 'tv\.js'\]/); // Android: the TV's language
 });
 
 test('server messages: exact lines, lines with blanks, and unknown text', () => {

@@ -1,7 +1,8 @@
 // Marquee's Android TV app (tv/android): the install steps (/android), the app itself (/android.apk) and its
 // version (/android.json, which installed apps check to offer their own update). The app is built with
-// tv/android/build.sh into tv/android/dist (or ANDROID_APP_DIR). Like the Samsung app it runs on the home
-// network, and its build holds the server's home address, so the file is only handed out there.
+// tv/android/build.sh into tv/android/dist (or ANDROID_APP_DIR). Its build holds the server's address: a home
+// one (the file is only handed out at home), or a public https one through the TV gateway (/c/tv,
+// tv-gateway.js), and then the steps, file and updates are open to anyone at /c/tv/android.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -38,15 +39,20 @@ export function createAndroidTv({ dir = process.env.ANDROID_APP_DIR || DEFAULT_D
     if (!stat.isFile()) return null;
     let meta = {};
     try { meta = JSON.parse(fs.readFileSync(path.join(dir, 'Marquee.json'), 'utf8')); } catch { /* built without it: version 1 */ }
-    return { file, size: stat.size, versionCode: Number(meta.versionCode) || 1, versionName: String(meta.versionName || '1.0.0'), sha256: meta.sha256 || null };
+    const server = typeof meta.server === 'string' ? meta.server.replace(/\/+$/, '') : '';
+    // Built for an https address: it works from anywhere, so it may be handed out anywhere.
+    const anywhere = /^https:\/\/[^/]+/i.test(server) && !privateV4(server.replace(/^https:\/\//i, ''));
+    return { file, size: stat.size, versionCode: Number(meta.versionCode) || 1, versionName: String(meta.versionName || '1.0.0'), sha256: meta.sha256 || null, server, anywhere };
   }
 
-  // Returns true when it answered. `home` is false for requests from outside the home network.
-  function handle(req, res, url, { home }) {
+  // Returns true when it answered. `home` is false for requests from outside the home network; `gateway`
+  // is true under /c/tv, where the page's own links need that prefix too.
+  function handle(req, res, url, { home, gateway = false }) {
     const p = url.pathname;
     if (!PATHS.has(p)) return false;
     const head = req.method === 'HEAD';
     const found = app();
+    home = home || Boolean(found?.anywhere); // a public build is handed out anywhere
     if (p === '/android.json') {
       const body = home && found ? JSON.stringify({ versionCode: found.versionCode, versionName: found.versionName, size: found.size, sha256: found.sha256, apk: '/android.apk' }) : '{}';
       res.writeHead(home && found ? 200 : 404, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
@@ -69,7 +75,8 @@ export function createAndroidTv({ dir = process.env.ANDROID_APP_DIR || DEFAULT_D
       fs.createReadStream(found.file).on('error', () => res.destroy()).pipe(res);
       return true;
     }
-    const html = page({ home, found, address: homeAddress(req, portNow()) });
+    const address = found?.anywhere ? found.server : homeAddress(req, portNow());
+    const html = page({ home, found, address, prefix: gateway ? '/c/tv' : '' });
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' });
     res.end(head ? undefined : html);
     return true;
@@ -78,7 +85,7 @@ export function createAndroidTv({ dir = process.env.ANDROID_APP_DIR || DEFAULT_D
   return { handle, app };
 }
 
-function page({ home, found, address }) {
+function page({ home, found, address, prefix = '' }) {
   const typed = address ? `${address}/android.apk` : '';
   const steps = [
     [tr('Get Downloader'), `<p>${esc(tr('On the TV, open Google Play, search for Downloader and install it. It’s free, made by AFTVnews, with an orange icon.'))}</p>`],
@@ -96,8 +103,8 @@ function page({ home, found, address }) {
     const size = `${(found.size / 1048576).toFixed(1)} MB`;
     body = `<ol class="steps">${steps.map(([title, text], i) => `<li class="card"><span class="n">${i + 1}</span><div><h2>${esc(title)}</h2>${text}</div></li>`).join('')}</ol>
       <p class="after">${esc(tr('Marquee is now among the TV’s apps. It keeps itself up to date: when there’s a new version, the TV offers it as the app starts. Downloader may offer to delete the file it fetched; the app stays.'))}</p>
-      <p class="after">${esc(tr('The TV has to be on the same network as Marquee.'))}</p>
-      <a class="download" href="/android.apk" download="Marquee.apk">${esc(tr('Download the app ({0} · version {1})', size, found.versionName))}</a>`;
+      ${found.anywhere ? '' : `<p class="after">${esc(tr('The TV has to be on the same network as Marquee.'))}</p>`}
+      <a class="download" href="${prefix}/android.apk" download="Marquee.apk">${esc(tr('Download the app ({0} · version {1})', size, found.versionName))}</a>`;
   }
   return `<!doctype html>
 <html lang="${currentLanguage()}">

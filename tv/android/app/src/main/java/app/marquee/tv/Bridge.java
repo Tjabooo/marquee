@@ -59,7 +59,8 @@ final class Bridge {
     try {
       URL u = new URL(s);
       if (u.getHost().isEmpty()) return null;
-      return u.getProtocol() + "://" + u.getAuthority();
+      // The path stays: an app that reaches Marquee from anywhere uses https://<Marquee>/c/tv.
+      return u.getProtocol() + "://" + u.getAuthority() + u.getPath().replaceAll("/+$", "");
     } catch (Exception e) {
       return null;
     }
