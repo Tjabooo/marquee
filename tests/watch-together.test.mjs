@@ -207,3 +207,40 @@ test('a Play now room holds for the download, then switches everyone to the fini
   assert.equal(state.intentPlaying, true, 'the room carries on once everyone has reloaded');
   assert.deepEqual(rooms.roomsWith('part'), []);
 });
+
+test('the host sets the room’s audio language; others can’t, and odd values are refused', () => {
+  const rooms = new WatchRooms({ now: () => 10000 });
+  const { token } = rooms.create(a, media, ac); rooms.join(token, b, bc);
+  assert.equal(rooms.snapshot(rooms.room(token)).audioLang, null);
+  const seen = []; rooms.subscribe(token, b, bc, (s) => seen.push(s));
+  assert.equal(rooms.setAudio(token, a, ac, 'EN').audioLang, 'en');
+  assert.equal(seen.at(-1).audioLang, 'en', 'pushed to everyone');
+  assert.throws(() => rooms.setAudio(token, b, bc, 'it'), { status: 403 });
+  assert.throws(() => rooms.setAudio(token, a, ac, '../x'), { status: 400 });
+  const before = seen.length; rooms.setAudio(token, a, ac, 'en'); assert.equal(seen.length, before, 'no change, no push');
+});
+
+test('a viewer’s own source swap never steers the room, and the room doesn’t wait for it', async () => {
+  let now = 0;
+  class Video extends EventTarget {
+    paused = false; currentTime = 40; readyState = 4; playbackRate = 1; duration = 600; seeking = false; ended = false;
+    play() { this.paused = false; return Promise.resolve(); } pause() { this.paused = true; }
+  }
+  const video = new Video(), posts = [];
+  const room = { token: 't'.repeat(24), host: ac, revision: 1, serverNow: 0, position: 40, at: 0, playing: true, intentPlaying: true, members: [] };
+  const session = new WatchSession({ video, room, clientId: ac, now: () => now, onState() {}, onEnd() {}, onError() {},
+    request: async (url, opts) => { if (url.endsWith('/clock')) return { serverNow: now }; posts.push(url.split('/').pop()); return { ...room, revision: 1, serverNow: now }; },
+    makeEvents: () => ({ close() {} }) });
+  await session.start(); session.blocked = false; posts.length = 0;
+  session.beginSwap();
+  video.readyState = 0; session.waiting = true;
+  assert.equal(session.health().buffering, false, 'private while the room plays');
+  for (const e of ['pause', 'seeking', 'play']) video.dispatchEvent(new Event(e));
+  session.endSwap(); video.currentTime = 10;
+  video.dispatchEvent(new Event('seeking'));
+  now += 2000; video.currentTime = 90; video.dispatchEvent(new Event('seeking'));
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual(posts.filter((p) => p === 'control').length, 1, 'only the real seek after the quiet spell');
+  session.close({ notify: false });
+});
+

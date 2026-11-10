@@ -83,14 +83,14 @@ export class WatchSession {
       this.waiting = false; this.pulse(); this.sync();
     });
     this.listen('play', () => {
-      if (this.isHost && !this.blocked && !this.controlling && this.now() > (this.quietUntil || 0) && !this.state.intentPlaying) this.control('play');
+      if (this.isHost && !this.inSwap && !this.blocked && !this.controlling && this.now() > (this.quietUntil || 0) && !this.state.intentPlaying) this.control('play');
     });
     this.listen('pause', () => {
-      if (this.isHost && !this.blocked && !this.controlling && !this.waiting && !this.video.ended && this.now() > (this.quietUntil || 0) && this.state.intentPlaying) this.control('pause');
+      if (this.isHost && !this.inSwap && !this.blocked && !this.controlling && !this.waiting && !this.video.ended && this.now() > (this.quietUntil || 0) && this.state.intentPlaying) this.control('pause');
     });
     this.listen('seeking', () => {
       this.pulse();
-      if (this.isHost && !this.controlling && (this.internalSeek == null || Math.abs(this.video.currentTime - this.internalSeek) > 0.2)) this.control('seek');
+      if (this.isHost && !this.controlling && !this.inSwap && (this.internalSeek == null || Math.abs(this.video.currentTime - this.internalSeek) > 0.2)) this.control('seek');
     });
     this.listen('seeked', () => { this.internalSeek = null; });
     this.listen('waiting', () => { this.waiting = true; this.pulse(); });
@@ -119,7 +119,8 @@ export class WatchSession {
     const stalled = this.waiting || this.video.readyState < 3;
     if (!stalled) this.stalledSince = null;
     else this.stalledSince ??= this.now();
-    const hiccup = stalled && !this.video.seeking && this.state.playing && this.now() - this.stalledSince < STALL_GRACE;
+    // Reloading for another audio language is private too: the room carries on and sync() catches this viewer up.
+    const hiccup = stalled && !this.video.seeking && this.state.playing && (this.now() - this.stalledSince < STALL_GRACE || this.swapping);
     return { ready: this.connected && !this.video.seeking && (this.video.readyState >= 3 || hiccup), buffering: stalled && !hiccup };
   }
 
@@ -204,6 +205,24 @@ export class WatchSession {
     return message;
   }
 
+  // A viewer's own source change (another audio language): the element empties, reloads and seeks by itself.
+  // None of that is the host steering the room, so play/pause/seek events from it aren't sent. The quiet spell
+  // after it covers the seek that puts the new source back at the old position.
+  beginSwap() {
+    this.swapping = true;
+    clearTimeout(this.swapTimer);
+    this.swapTimer = setTimeout(() => this.endSwap(), 30000); // a swap that never finished
+  }
+  endSwap() {
+    if (!this.swapping) return;
+    clearTimeout(this.swapTimer);
+    this.swapping = false;
+    this.swapQuiet = this.now() + 1500;
+  }
+  get inSwap() { return Boolean(this.swapping) || this.now() < (this.swapQuiet || 0); }
+  // Host: share the audio language picked in the player, so the room hears the same one.
+  async setAudio(language) { this.receive(await this.post('audio', { language })); }
+
   // Play now rooms: the download's progress for this room, and (host) moving everyone to the finished file.
   partStatus(signal) { return this.request(`${this.base}/part-status?clientId=${encodeURIComponent(this.clientId)}`, { signal }); }
   async switchToFull() { this.receive(await this.post('switch')); }
@@ -223,7 +242,7 @@ export class WatchSession {
     if (this.closed) return;
     this.closed = true;
     this.events?.close();
-    clearInterval(this.syncTimer); clearInterval(this.pulseTimer); clearInterval(this.clockTimer); clearTimeout(this.startTimer);
+    clearInterval(this.syncTimer); clearInterval(this.pulseTimer); clearInterval(this.clockTimer); clearTimeout(this.startTimer); clearTimeout(this.swapTimer);
     for (const [event, callback] of this.listeners) this.video.removeEventListener(event, callback);
     this.video.playbackRate = 1;
     if (notify) this.post('leave', {}, true).catch(() => {});

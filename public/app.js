@@ -4105,8 +4105,10 @@ function renderParty() {
     requestAnimationFrame(layoutSubs);
   }
   updateUpNext();
-  if (party) cancelAudioIntent(current);
   renderAudioControls();
+  // A language the host picked before opening the room counts too.
+  if (party?.isHost && current?.audio?.userChoice) shareRoomAudio(current.audio);
+  followRoomAudio();
   updatePartyCountdown();
   if (!party) { roomDrawn = ''; return; }
   updatePlayState();
@@ -4601,7 +4603,7 @@ function restorePlayback(snapshot) {
   if (canSetVolume) video.volume = snapshot.volume;
   video.playbackRate = snapshot.rate;
   applySubModes();
-  if (party) { party.pulse(); party.sync(); }
+  if (party) { party.endSwap(); party.pulse(); party.sync(); }
   else if (snapshot.playing) video.play().catch(() => {});
   else video.pause();
 }
@@ -4609,6 +4611,7 @@ function swapSource(url, onReady) {
   const session = current;
   if (!session) return;
   const snapshot = session.sourceSnapshot = capturePlayback(session);
+  party?.beginSwap();
   setPlayerSource(url, session, () => {
     session.sourceSnapshot = null;
     restorePlayback(snapshot);
@@ -4661,6 +4664,7 @@ async function attachBridge(session, url, onMetadata) {
 // Back to what played before a failed audio switch: the plain file, or the bridge it was on.
 function restoreAudioSource(session, snapshot, bridge) {
   session.sourceSnapshot = snapshot;
+  party?.beginSwap();
   const back = () => { session.sourceSnapshot = null; restorePlayback(snapshot); $('#player-error').hidden = true; };
   if (!bridge) { setPlayerSource(snapshot.url, session, back); return; }
   attachBridge(session, bridge.url, back).then((ok) => { if (ok && session.bridge) session.bridge.track = bridge.track; });
@@ -5078,7 +5082,8 @@ let audioRows = new Map();
 let audioMessage = null;
 let audioRetry = null;
 const audioCasting = () => Boolean(onTvVersion || video.webkitCurrentPlaybackTargetIsWireless || video.remote?.state === 'connected');
-const audioSuppressed = () => Boolean(party || audioCasting());
+// Casting only: in Watch Together everyone picks their own language (the host's is the room's default).
+const audioSuppressed = () => audioCasting();
 function closeAudioMenu() { audioMenu.hidden = true; audioBtn.setAttribute('aria-expanded', 'false'); }
 function announceAudio(message) { if (audioStatus.textContent !== message) audioStatus.textContent = message; }
 function audioLabel(a, index) { return audioChoices(a.tracks).find(t => t.index === index)?.label || T('Audio'); }
@@ -5097,7 +5102,7 @@ function renderAudioControls() {
     const rows = choices.map(track => {
       const status = h('span', { class: 'audio-row-status' });
       const button = h('button', { type: 'button', role: 'menuitemradio', class: 'cc-item', tabindex: '-1',
-        'data-audio-index': track.index, onclick: () => selectAudioTrack(track.index) }, h('span', {}, track.label), status);
+        'data-audio-index': track.index, onclick: () => { if (current?.audio) current.audio.ownPick = true; selectAudioTrack(track.index); } }, h('span', {}, track.label), status);
       audioRows.set(track.index, { button, status });
       return button;
     });
@@ -5187,6 +5192,25 @@ function installAudioMetadata(session, data, reset = false) {
   if (a.actual != null) a.activeLabel = audioLabel(a, a.actual);
   renderAudioControls();
   reflectNativeAudio();
+  followRoomAudio();
+}
+// Watch Together: the host's language becomes the room's (party.state.audioLang). Everyone who hasn't picked
+// their own in the menu switches to it, including people who join later; their own pick stays private.
+function shareRoomAudio(a) {
+  if (!party?.isHost || a.actual == null) return;
+  const language = audioLanguage(a.tracks.find(t => t.index === a.actual)?.language);
+  if (!language || language === (party.state.audioLang || '') || party.sharingAudio === language) return;
+  const room = party;
+  room.sharingAudio = language;
+  room.setAudio(language).catch(() => {}).finally(() => { if (room.sharingAudio === language) room.sharingAudio = null; });
+}
+function followRoomAudio() {
+  const session = current, a = session?.audio, want = party?.state?.audioLang;
+  if (!a || !want || !session.ready || party.isHost || a.ownPick || a.pending != null || a.swap || audioSuppressed()) return;
+  const track = a.tracks.find(t => audioLanguage(t.language) === want);
+  if (!track || track.index === a.actual || track.index === a.followed) return;
+  a.followed = track.index;
+  selectAudioTrack(track.index);
 }
 async function refreshAudioMetadata(session, reset = false) {
   const audio = session.audio;
@@ -5250,13 +5274,14 @@ function switchAudioSource(session, a, generation, link, valid) {
       a.actual = link.track; a.pending = null; a.upgrading = null; a.failed = null; a.error = ''; a.usingFallback = !link.original;
       a.intentUserChoice = null;
       a.activeLabel = audioLabel(a, a.actual);
-      renderAudioControls(); announceAudio(T('{0} audio selected.', a.activeLabel)); resolve(true);
+      renderAudioControls(); announceAudio(T('{0} audio selected.', a.activeLabel)); shareRoomAudio(a); resolve(true);
     };
     const swap = { cancel: restoreSource => { cleanup(); if (restoreSource && current === session) restore(); resolve(false); } };
     a.swap = swap;
     video.addEventListener('error', failed);
     video.addEventListener('canplay', commit);
     timer = setTimeout(failed, 15000);
+    party?.beginSwap();
     setPlayerSource(link.url, session, () => {
       if (!valid() || a.swap !== swap) return;
       metadataReady = true;
@@ -5292,7 +5317,7 @@ async function bridgeAudio(session, a, index, valid) {
       session.bridge.track = index;
       a.actual = index; a.pending = null; a.upgrading = index; a.usingFallback = true; a.intentUserChoice = null;
       a.activeLabel = audioLabel(a, index);
-      renderAudioControls(); announceAudio(T('{0} audio selected.', a.activeLabel));
+      renderAudioControls(); announceAudio(T('{0} audio selected.', a.activeLabel)); shareRoomAudio(a);
       resolve(true);
     };
     const swap = { cancel: restoreSource => {
@@ -5305,6 +5330,7 @@ async function bridgeAudio(session, a, index, valid) {
     video.addEventListener('error', failed);
     video.addEventListener('canplay', commit);
     timer = setTimeout(failed, 20000);
+    party?.beginSwap();
     attachBridge(session, link.url, () => {
       if (!valid() || a.swap !== swap) return;
       metadataReady = true;
@@ -5352,7 +5378,7 @@ async function selectAudioTrack(index) {
       if (mapping.get(index).enabled && [...mapping].every(([id, track]) => track.enabled === (id === index))) {
         a.actual = index; a.activeLabel = audioLabel(a, index);
         a.intentUserChoice = null;
-        renderAudioControls(); announceAudio(T('{0} audio selected.', a.activeLabel)); return;
+        renderAudioControls(); announceAudio(T('{0} audio selected.', a.activeLabel)); shareRoomAudio(a); return;
       }
     } catch { /* use the server-prepared rendition */ }
     for (const [track, enabled] of before) try { track.enabled = enabled; } catch { /* read-only implementation */ }

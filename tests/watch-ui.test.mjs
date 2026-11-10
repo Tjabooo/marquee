@@ -77,7 +77,7 @@ test('blocked guests can press Play to unlock their browser; ordinary guest play
   const context = vm.createContext({ T: englishT, $, party: { isHost: false, blocked: true, connected: true, online: true,
     state: { host: 'host', intentPlaying: false, playing: false, waitingFor: [], members: [] }, unlock: () => unlocks++ },
     watchPanelOpen: false, current: { kind: 'lib', id: 'movie' }, state: { library: [] }, mediaId: (f) => f.id,
-    playerEl: new Element('div'), playBtns: [play], airplayBtn: new Element('button'), audioBtn: new Element('button'), seekEl: new Element('div'), updatePlayState() {}, updateUpNext() {}, cancelAudioIntent() {}, renderAudioControls() {}, partyUnread: 0, updatePartyCountdown() {},
+    playerEl: new Element('div'), playBtns: [play], airplayBtn: new Element('button'), audioBtn: new Element('button'), seekEl: new Element('div'), updatePlayState() {}, updateUpNext() {}, cancelAudioIntent() {}, renderAudioControls() {}, followRoomAudio() {}, shareRoomAudio() {}, partyUnread: 0, updatePartyCountdown() {},
     renderRoomButton() {}, renderRoster() {}, roomStatus: () => ['wait', ''], roomDocked: () => false, layoutSubs() {}, requestAnimationFrame: (f) => f(),
     episodeLabel: () => '', personName: (m) => m.name, watchClient: 'me',
   });

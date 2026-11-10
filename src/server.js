@@ -2953,6 +2953,7 @@ async function handleApi(req, res, url) {
       if (action === 'join') return sendJson(res, 200, watchRooms.join(token, user, client));
       if (action === 'heartbeat') return sendJson(res, 200, watchRooms.heartbeat(token, user, client, body));
       if (action === 'control') return sendJson(res, 200, watchRooms.control(token, user, client, body.action, body.position));
+      if (action === 'audio') return sendJson(res, 200, watchRooms.setAudio(token, user, client, body.language));
       if (action === 'leave') { watchRooms.leave(token, user, client); return sendJson(res, 200, { ok: true }); }
       if (action === 'switch') {
         // The host takes the room from Play now to the finished file in the library.

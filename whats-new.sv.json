@@ -1,4 +1,26 @@
 {
+  "2026-11-11-room-audio": {
+    "title": "Ljudspråk i Titta tillsammans",
+    "items": {
+      "Everyone hears the host's language": {
+        "title": "Alla hör värdens språk",
+        "text": "När värden i ett Titta tillsammans-rum väljer ett annat ljudspråk byter alla i rummet till det, även de som går med senare. Var och en kan fortfarande välja sitt eget språk med Ljud-knappen; det gäller bara dem, och rummet fortsätter spela medan de byter."
+      }
+    }
+  },
+  "2026-11-11-audio-switch-fast": {
+    "title": "Snabbare byte av ljudspråk",
+    "items": {
+      "Your language starts in a second or two": {
+        "title": "Ditt språk börjar på en sekund eller två",
+        "text": "Att välja ett annat ljudspråk betydde förut att vänta i flera minuter medan Marquee gjorde en kopia av hela videon. Nu spelas språket du väljer direkt, i upp till 1080p, från samma ställe. När kopian i full kvalitet är klar går spelaren tillbaka till den av sig själv."
+      },
+      "New Audio button": {
+        "title": "Ny Ljud-knapp",
+        "text": "Knappen för ljudspråk i spelaren har nu den vanliga översättningsikonen."
+      }
+    }
+  },
   "2026-11-11-home-screen-pip": {
     "title": "Bild i bild från hemskärmsappen",
     "items": {

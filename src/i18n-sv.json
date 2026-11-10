@@ -532,5 +532,7 @@
  "Whoever runs Marquee can build it with tv/android/build.sh (see docs/android-tv.md).": "Den som sköter Marquee kan bygga den med tv/android/build.sh (se docs/android-tv.md).",
  "Open this page at home.": "Öppna den här sidan hemma.",
  "The Android TV app installs and runs on the home network, where Marquee is.": "Android TV-appen installeras och körs på hemnätverket, där Marquee finns.",
- "This audio can’t be streamed right away.": "Det här ljudet kan inte strömmas direkt."
+ "This audio can’t be streamed right away.": "Det här ljudet kan inte strömmas direkt.",
+ "Only the host sets the room’s audio language.": "Bara värden väljer rummets ljudspråk.",
+ "Unknown language.": "Okänt språk."
 }

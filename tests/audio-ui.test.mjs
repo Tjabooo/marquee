@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
-import { audioChoices, nativeAudioMapping, sameAudio } from '../public/player-audio.js';
+import { audioChoices, audioLanguage, nativeAudioMapping, sameAudio } from '../public/player-audio.js';
 
 const tracks = [
   { index: 1, audioIndex: 0, streamId: '0x2', language: 'kor', title: '', channels: 2, codec: 'aac', default: true },
@@ -59,7 +59,7 @@ function harness({ native, request, autoplayBlocked = false, kind = 'lib', bridg
   Object.assign(video, { currentSrc: sourceUrl, currentTime: 17, duration: 180, paused: false, ended: false, readyState: 3, muted: true, volume: .4, playbackRate: 1.5, audioTracks: native,
     play() { calls.push(['play']); this.paused = autoplayBlocked; return autoplayBlocked ? Promise.reject(Error('gesture needed')) : Promise.resolve(); }, pause() { this.paused = true; calls.push(['pause']); } });
   const current = { id: 'episode', kind, ready: true, sourceUrl, abort: new AbortController() };
-  const context = vm.createContext({ T: englishT, $, video, current, document, Node: Element, audioChoices, nativeAudioMapping, sameAudio, AbortController, URL, location: { href: 'https://example.test/' },
+  const context = vm.createContext({ T: englishT, $, video, current, document, Node: Element, audioChoices, audioLanguage, nativeAudioMapping, sameAudio, AbortController, URL, location: { href: 'https://example.test/' },
     party: null, nativeSubs: false, onTvVersion: false, hasRemotePlayback: false, canSetVolume: true,
     closeCcMenu() {}, extraPlayable: () => '', browserVariant: () => 'browser', mediaId: f => f.id,
     applySubModes: () => calls.push(['subtitles']), updateUpNext() {}, toast() {},
@@ -159,13 +159,19 @@ test('source load errors restore the previous source and expose a usable retry, 
   assert.equal(h.current.audio.error, '');
 });
 
-test('single-track files hide Audio, downloads support it, and party/casting suppress requests', async () => {
+const room = (extra = {}) => ({ isHost: false, state: {}, swaps: [], beginSwap() { this.swaps.push('begin'); }, endSwap() { this.swaps.push('end'); }, pulse() {}, sync() {},
+  shared: [], setAudio(language) { this.shared.push(language); this.state.audioLang = language; return Promise.resolve(); }, ...extra });
+
+test('single-track files hide Audio, downloads and rooms support it, and casting suppresses requests', async () => {
   const h = harness({ kind: 'dl' }); assert.equal(h.$('#sync-btn').hidden, false);
   h.context.audioInfo = { ...info, tracks: [tracks[0]] }; h.run('installAudioMetadata(current, audioInfo)');
   assert.equal(h.$('#sync-btn').hidden, true);
   h.context.audioInfo = info; h.run('installAudioMetadata(current, audioInfo)');
-  h.context.party = {}; h.run('renderAudioControls()'); assert.equal(h.$('#sync-btn').hidden, true);
-  await h.run('selectAudioTrack(3)'); assert.equal(h.calls.filter(c => c[0] === 'api').length, 0);
+  const party = h.context.party = room(); h.run('renderAudioControls()'); assert.equal(h.$('#sync-btn').hidden, false);
+  const selection = h.run('selectAudioTrack(3)'); await flush(); h.metadata(); h.canplay(); await selection;
+  assert.equal(h.current.audio.actual, 3);
+  assert.deepEqual(party.swaps, ['begin', 'end'], 'the room ignores the reload');
+  assert.deepEqual(party.shared, [], 'only the host shares a language');
   h.context.party = null; h.video.webkitCurrentPlaybackTargetIsWireless = true;
   h.run('renderAudioControls()'); assert.equal(h.$('#sync-btn').hidden, true);
 });
@@ -331,3 +337,20 @@ test('the same audio is found again in a converted copy by language, codec and c
   assert.equal(sameAudio({ index: 1, audioIndex: 0, language: 'ita', codec: 'ac3', channels: 6 }, converted).index, 2);
   assert.equal(sameAudio({ index: 1, audioIndex: 0, language: 'fre', codec: 'ac3', channels: 6 }, converted), null);
 });
+
+test('in a room the host’s pick becomes the room language, and viewers follow it unless they picked their own', async () => {
+  const host = harness(); const hostRoom = host.context.party = room({ isHost: true });
+  const picked = host.run('selectAudioTrack(3)'); await flush(); host.metadata(); host.canplay(); await picked;
+  assert.deepEqual(hostRoom.shared, ['en']);
+
+  const guest = harness(); guest.context.party = room({ state: { audioLang: 'en' } });
+  const follow = guest.run('followRoomAudio()'); await flush(); guest.metadata(); guest.canplay(); await follow;
+  assert.equal(guest.current.audio.actual, 3);
+  guest.run('followRoomAudio()'); await flush();
+  assert.equal(guest.calls.filter(c => c[0] === 'api').length, 1, 'already there: nothing to do');
+
+  const own = harness(); own.context.party = room({ state: { audioLang: 'en' } });
+  own.current.audio.ownPick = true; own.run('followRoomAudio()'); await flush();
+  assert.equal(own.calls.filter(c => c[0] === 'api').length, 0, 'their own pick stays');
+});
+

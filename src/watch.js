@@ -184,6 +184,7 @@ export class WatchRooms {
   snapshot(room) {
     return { token: room.token, media: room.media, host: room.host, revision: room.revision, serverNow: this.now(),
       position: room.position, at: room.at, playing: room.playing, intentPlaying: room.wantPlay,
+      audioLang: room.audioLang || null,
       startsAt: room.started ? null : room.startsAt,
       waitingFor: room.wantPlay ? this.blockers(room).map((m) => m.name) : [],
       waitingForDownload: Boolean(room.wantPlay && this.downloadHolds(room)),
@@ -232,6 +233,18 @@ export class WatchRooms {
     if (action !== 'seek') room.wantPlay = action === 'play';
     if (action === 'play' && room.startsAt != null && !room.started) { room.started = true; this.persist(room); } // the host started early
     this.changed(room);
+    return this.snapshot(room);
+  }
+
+  // The host's audio language ("en", "it"...): viewers who haven't picked their own switch to it, including
+  // people who join later. Everyone can still pick their own in the player; that stays private.
+  setAudio(token, user, client, language) {
+    const room = this.room(token);
+    this.member(room, user, client);
+    if (room.host !== client) throw fail(403, 'Only the host sets the room’s audio language.');
+    const lang = String(language || '').trim().toLowerCase();
+    if (lang && !/^[a-z]{2,3}(?:-[a-z0-9]{2,8})?$/.test(lang)) throw fail(400, 'Unknown language.');
+    if ((room.audioLang || '') !== lang) { room.audioLang = lang || null; this.changed(room); }
     return this.snapshot(room);
   }
 

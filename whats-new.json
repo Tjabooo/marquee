@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-11-room-audio",
+    "date": "2026-11-11",
+    "title": "Audio language in Watch Together",
+    "items": [
+      {
+        "title": "Everyone hears the host's language",
+        "text": "When the host of a Watch Together room picks another audio language, everyone in the room switches to it, also people who join later. Anyone can still pick their own language with the Audio button; that stays just theirs, and the room keeps playing while they switch."
+      }
+    ]
+  },
+  {
     "id": "2026-11-11-audio-switch-fast",
     "date": "2026-11-11",
     "title": "Faster audio language switching",
