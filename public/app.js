@@ -2368,17 +2368,17 @@ function pageFacts(base, type, id) {
 // The cast with faces; each opens the person on TMDB.
 function castRail(type, id) {
   if (!id || !['movie', 'tv'].includes(type) || !state.status.search) return null;
-  const section = h('section', { class: 'page-section cast-section', hidden: true, 'aria-labelledby': `cast-${type}-${id}` });
+  const section = h('section', { class: 'page-section cast-section', hidden: true });
   pageInfo(type, id).then((page) => {
     const people = page?.cast || [];
     if (!people.length || !section.isConnected) return;
-    section.replaceChildren(h('h3', { id: `cast-${type}-${id}` }, T('Cast')),
-      h('ul', { class: 'cast-rail' }, people.map((p) => h('li', {},
+    // Same arrows as the other rows (hidden on touch screens and while every face fits).
+    section.replaceChildren(carousel(T('Cast'), h('ul', { class: 'cast-rail', tabindex: '0', 'aria-label': T('Cast') }, people.map((p) => h('li', {},
         h('a', { class: 'cast-person', href: `https://www.themoviedb.org/person/${encodeURIComponent(p.id)}`, target: '_blank', rel: 'noopener noreferrer' },
           p.photo ? h('span', { class: 'cast-face' }, h('img', { src: p.photo, alt: '', loading: 'lazy', decoding: 'async' }))
             : h('span', { class: 'cast-face no-photo', 'aria-hidden': 'true' }, p.name.split(/\s+/).map((w) => w[0]).slice(0, 2).join('')),
           h('span', { class: 'cast-name' }, p.name),
-          p.character && h('span', { class: 'cast-role' }, p.character))))));
+          p.character && h('span', { class: 'cast-role' }, p.character))))), null, 'page-shelf'));
     section.hidden = false;
   }).catch(() => {});
   return section;

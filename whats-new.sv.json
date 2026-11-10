@@ -1,4 +1,13 @@
 {
+  "2026-11-10-cast-arrows": {
+    "title": "Pilar i rollistan",
+    "items": {
+      "Arrows on the cast row": {
+        "title": "Pilar på rollistan",
+        "text": "På datorn har rollistan på en titelsida nu samma pilar som de andra raderna, så du kan bläddra igenom alla utan styrplatta. De döljs när alla ansikten redan får plats."
+      }
+    }
+  },
   "2026-11-10-clipper-rust": {
     "title": "Clipper utan Python",
     "items": {

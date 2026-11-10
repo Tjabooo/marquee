@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-10-cast-arrows",
+    "date": "2026-11-10",
+    "title": "Cast row arrows",
+    "items": [
+      {
+        "title": "Arrows on the cast row",
+        "text": "On a computer, the cast on a title page now has the same arrows as the other rows, so you can scroll through everyone without a trackpad. They hide when every face already fits."
+      }
+    ]
+  },
+  {
     "id": "2026-11-10-clipper-rust",
     "date": "2026-11-10",
     "title": "Clipper without Python",
