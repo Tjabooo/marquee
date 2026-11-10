@@ -68,7 +68,8 @@ export function createDocumentaries(ui) {
       const cat = (id) => data.categories.find((c) => c.id === id);
       const [first, ...rows] = data.rows.map((r) => ui.carousel(r.title, list(r.items, r.title, r.source), seeAll(cat(r.id))));
       content.replaceChildren(...[
-        data.featured.length > 0 && ui.carousel(T('Documentaries'), h('ul', { class: 'hero', tabindex: '0', 'aria-label': T('Documentaries') }, data.featured.map(ui.heroSlide))),
+        data.featured.length > 0 && (ui.billboard ? ui.billboard(data.featured, { signal, label: T('Documentaries') })
+          : ui.carousel(T('Documentaries'), h('ul', { class: 'hero', tabindex: '0', 'aria-label': T('Documentaries') }, data.featured.map(ui.heroSlide)))),
         first,
         browse(data.categories),
         ...rows,
