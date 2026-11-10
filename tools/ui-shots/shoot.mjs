@@ -38,8 +38,8 @@ const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/jav
 fs.mkdirSync(OUT, { recursive: true });
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'mq-shots-'));
 const chrome = spawn(String(args.chrome || 'chromium'), ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profile}`,
-  '--no-first-run', '--no-default-browser-check', '--hide-scrollbars', '--mute-audio', '--autoplay-policy=no-user-gesture-required',
-  '--disable-features=Translate,MediaRouter', 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'] });
+  '--no-first-run', '--no-default-browser-check', '--hide-scrollbars', '--mute-audio', '--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4', '--autoplay-policy=no-user-gesture-required',
+  '--disable-features=Translate,MediaRouter,BlockInsecurePrivateNetworkRequests,PrivateNetworkAccessSendPreflights,PrivateNetworkAccessRespectPreflightResults,LocalNetworkAccessChecks', 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'] });
 const wsUrl = await new Promise((ok, fail) => {
   let buf = '';
   chrome.stderr.on('data', (d) => { buf += d; const m = buf.match(/DevTools listening on (ws:\/\/\S+)/); if (m) ok(m[1]); });
@@ -142,7 +142,11 @@ async function newPage(size, lang, scene) {
     ...Object.keys(patches).map((re) => ({ urlPattern: `*${re.replace(/[\^$]/g, '').replace(/\\/g, '')}*`, requestStage: 'Response' }))] });
   await s('Emulation.setDeviceMetricsOverride', { width: size.width, height: size.height, deviceScaleFactor: size.scale, mobile: size.mobile });
   if (size.mobile) await s('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
-  await s('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: args['reduced-motion'] ? 'reduce' : 'no-preference' }] });
+  // Headless Chromium has no pointing device: desktop sizes pretend to have a mouse, phones a finger.
+  const input = size.mobile ? [{ name: 'hover', value: 'none' }, { name: 'pointer', value: 'coarse' }, { name: 'any-hover', value: 'none' }, { name: 'any-pointer', value: 'coarse' }]
+    : [{ name: 'hover', value: 'hover' }, { name: 'pointer', value: 'fine' }, { name: 'any-hover', value: 'hover' }, { name: 'any-pointer', value: 'fine' }];
+  await s('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: args['reduced-motion'] ? 'reduce' : 'no-preference' }, ...input] }).catch(() =>
+    s('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: args['reduced-motion'] ? 'reduce' : 'no-preference' }] }));
   if (size.mobile) await s('Emulation.setUserAgentOverride', { userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Mobile Safari/537.36' });
   if (args.preview) await s('Network.setCookie', { name: 'marquee_preview', value: '1', url: BASE });
   // --as owner@x: an identity header (servers trust them from loopback), for owner screens on a local server
@@ -170,7 +174,13 @@ for (const scene of scenes) {
         await page.s('Page.navigate', { url: BASE + (scene.path || '/') });
         await sleep(300);
         await evalIn(page.s, `await __waitFor(${JSON.stringify(scene.ready || 'main')}, 20000); await __settle(${scene.settle ?? 800});`);
-        for (const step of scene.steps || []) await evalIn(page.s, step);
+        for (const step of scene.steps || []) {
+          if (typeof step === 'string') { await evalIn(page.s, step); continue; }
+          // { mouse: selector, fallback: JS expression for the element }: a real mouse move onto it (for :hover)
+          const box = await evalIn(page.s, `const el = ${step.fallback || `document.querySelector(${JSON.stringify(step.mouse)})`}; if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 };`);
+          if (!box) throw new Error('nothing to point at for ' + step.mouse);
+          for (const [x, y] of [[box.x - 40, box.y - 40], [box.x, box.y]]) await page.s('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+        }
         await evalIn(page.s, `await __settle(${scene.after ?? 700});`);
         const shot = { format: 'png', captureBeyondViewport: Boolean(scene.full) };
         if (scene.full) {
@@ -180,7 +190,9 @@ for (const scene of scenes) {
         const { data } = await page.s('Page.captureScreenshot', shot);
         fs.writeFileSync(path.join(OUT, `${name}.png`), Buffer.from(data, 'base64'));
         // A half-size JPEG for quick looks (cheap to view).
-        const small = await page.s('Page.captureScreenshot', { format: 'jpeg', quality: 70, captureBeyondViewport: Boolean(scene.full), clip: { ...(shot.clip || { x: 0, y: 0, width: size.width, height: size.height }), scale: 0.5 } });
+        // clip coordinates are the document's: a scrolled page needs its scroll position
+        const scroll = scene.full ? { x: 0, y: 0 } : await evalIn(page.s, 'return { x: scrollX, y: scrollY };');
+        const small = await page.s('Page.captureScreenshot', { format: 'jpeg', quality: 70, captureBeyondViewport: Boolean(scene.full), clip: { ...(shot.clip || { x: scroll.x, y: scroll.y, width: size.width, height: size.height }), scale: 0.5 } });
         fs.mkdirSync(path.join(OUT, 'small'), { recursive: true });
         fs.writeFileSync(path.join(OUT, 'small', `${name}.jpg`), Buffer.from(small.data, 'base64'));
         if (scene.probe) note = await evalIn(page.s, scene.probe);

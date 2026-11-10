@@ -861,7 +861,7 @@ const pageInfo = (type, id) => cachedFor(`/api/title/${type}/${id}/page`, 6 * 36
 function quickAction(t) {
   if (!t?.id || !['movie', 'tv'].includes(t.type)) return null;
   if (t.type === 'tv') {
-    const show = state.libraryShows.find((x) => x.tmdbId === t.id);
+    const show = matchesFor(t).some((f) => f.done) && state.libraryShows.find((x) => x.tmdbId === t.id);
     if (show) return { icon: 'play', label: T('Watch'), run: (b) => openShow(show.id, b) };
     if (!canGet() && !serverMatchesFor(t).length) return null;
     return { icon: 'plus', label: T('Add'), run: (b) => {
@@ -2268,7 +2268,7 @@ function washColour(url) {
       } catch { resolve(null); }
     };
     img.onerror = () => resolve(null);
-    img.src = small;
+    img.src = `${small}?wash`; // its own cache entry: TMDB adds the CORS header only when asked, and a plain cached copy has none
   }));
   return washes.get(small);
 }

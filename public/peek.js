@@ -95,7 +95,12 @@ export function createPeek({ h, icon, pageInfo, openDetails, quickAction, owners
     if (mode === 'hover' && !panel.contains(to) && !card?.contains(to)) hide();
   });
   panel.addEventListener('pointerleave', (e) => { if (mode === 'hover' && !card?.contains(e.relatedTarget)) hide(); });
-  window.addEventListener('scroll', () => { if (mode === 'hover') hide(); clearTimeout(hoverTimer); }, { passive: true, capture: true });
+  // The page or a row moving under the pointer ends a hover peek (the billboard turning its own slides doesn't).
+  window.addEventListener('scroll', (e) => {
+    if (e.target?.closest?.('.billboard')) return;
+    if (mode === 'hover') hide();
+    clearTimeout(hoverTimer);
+  }, { passive: true, capture: true });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && mode) { e.stopPropagation(); hide(); } }, true);
 
   // ---- touch: long press ----
@@ -108,7 +113,7 @@ export function createPeek({ h, icon, pageInfo, openDetails, quickAction, owners
     pressTimer = setTimeout(() => {
       pressStart = null;
       swallowUntil = Date.now() + 800;
-      navigator.vibrate?.(8);
+      if (navigator.userActivation?.hasBeenActive) navigator.vibrate?.(8);
       show(c, 'press');
     }, PRESS_MS);
   }, { passive: true });

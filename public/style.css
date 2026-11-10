@@ -2307,7 +2307,12 @@ body.has-nowbar .preview-pill { bottom: calc(var(--tabs-h) + var(--safe-bottom) 
   --paper: #F4F4F4; --dust: #B5B5B5;
 }
 
-/* Owners have up to seven tabs: keep them on one line */
+/* Owners have up to seven tabs: keep them on one line (phones: icons only once there are seven; the name stays for screen readers) */
+@media (max-width: 599px) {
+  .tabs:has(.tab:nth-child(7)) .tab { min-width: 0; flex: 1 1 0; }
+  .tabs:has(.tab:nth-child(7)) .tab span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; padding: 0; }
+  .tabs:has(.tab:nth-child(7)) .tab svg { width: 25px; height: 25px; }
+}
 .tabs:has(.tab:nth-child(6)) .tab { font-size: 11px; }
 .tabs:has(.tab:nth-child(6)) .tab svg { width: 20px; height: 20px; }
 @media (max-width: 420px) {

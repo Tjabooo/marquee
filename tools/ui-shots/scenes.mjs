@@ -18,12 +18,13 @@ const filmPage = [libraryCard('movie'), sheetOpen];
 const openPlayer = ["await __click('#sheet .library-film-actions .play-btn'); await __waitFor('#player:not([hidden])'); await __sleep(5000); const v = document.querySelector('#video'); v.pause(); await __sleep(500);"];
 const menu = (sel) => `const b = document.querySelector('${sel}'); if (b && !b.hidden) { b.click(); await __sleep(700); } else return 'no ${sel}';`;
 
-const MOCK_SESSION = { id: 'mock-session', title: 'Arrival', deviceName: 'Living room TV', state: 'playing', position: 1260, duration: 6960, mine: true, kind: 'dlna' };
+const MOCK_SESSION = { id: 'mock-session', deviceId: 'living-room', title: 'Arrival', deviceName: 'Living room TV', state: 'playing', position: 1260, duration: 6960, mine: true, kind: 'dlna' };
 const dl = (o) => ({ mediaType: 'movie', tmdbId: null, showKey: null, showId: null, poster: null, backdrop: null, added: Date.now() - 3600e3,
   ready: false, hasVideo: true, episodes: [], canPlayNow: false, packFiles: 1, skippedFiles: 0, dualAudio: false, others: false,
   libraryIds: [], mine: true, canManage: true, speed: 0, eta: null, seeds: 0, swarmSeeds: 0, size: 4.2e9, transferComplete: false,
   done: false, converting: false, convertPercent: null, subs: [], ...o,
   files: [{ name: `${o.name}.mkv`, size: 4.2e9, progress: o.progress, available: false, index: 0, mediaKey: null, libraryId: null }] });
+const DOWNLOADS_ON = { '^/api/status$': (j) => { j.downloads = true; return j; } };
 const MOCK_DOWNLOADS = [
   dl({ hash: 'a'.repeat(40), name: 'Dune.Part.Two.2024.2160p.WEB-DL', title: 'Dune: Part Two', canonicalTitle: 'Dune: Part Two', year: 2024, progress: 0.42, speed: 6.4e6, eta: 380, seeds: 41, swarmSeeds: 380, state: 'downloading', canPlayNow: true }),
   dl({ hash: 'b'.repeat(40), name: 'Oppenheimer.2023.1080p.BluRay', title: 'Oppenheimer', canonicalTitle: 'Oppenheimer', year: 2023, progress: 0.07, state: 'stalledDL', seeds: 0, swarmSeeds: 0 }),
@@ -46,6 +47,14 @@ export const SCENES = [
   { name: 'title-show', path: '/', ready: '#discover-body .shelf', steps: [shelfCard('popular shows|populära serier'), sheetOpen] },
   { name: 'title-show-add', path: '/', ready: '#discover-body .shelf', steps: [shelfCard('popular shows|populära serier', 3), sheetOpen,
     "const b = document.querySelector('#sheet .action-row button'); if (b) { b.click(); await __sleep(1500); }"] },
+
+  { name: 'peek-hover', path: '/', ready: '#discover-body .shelf .title-card', sizes: ['desktop', 'tv'], steps: [
+    "const c = [...document.querySelectorAll('#discover-body .shelf-items .title-card')].filter((b) => b._title)[2]; c.scrollIntoView({ block: 'center' }); await __sleep(400);",
+    { mouse: 'peek card', fallback: "[...document.querySelectorAll('#discover-body .shelf-items .title-card')].filter((b) => b._title)[2]" }, "await __sleep(1400);"],
+    probe: "return JSON.stringify({ hover: matchMedia('(hover: hover)').matches, fine: matchMedia('(pointer: fine)').matches, hovered: !!document.querySelector('.title-card:hover'), peek: document.querySelector('.peek')?.className });" },
+  { name: 'peek-press', path: '/', ready: '#discover-body .shelf .title-card', sizes: ['phone', 'tablet'], steps: [
+    "const c = [...document.querySelectorAll('#discover-body .shelf-items .title-card')].filter((b) => b._title)[1]; c.scrollIntoView({ block: 'center' }); await __sleep(300); const r = c.getBoundingClientRect(); c.dispatchEvent(new PointerEvent('pointerdown', { pointerType: 'touch', bubbles: true, clientX: r.x + 20, clientY: r.y + 20 })); await __sleep(900);"],
+    probe: "const p = document.querySelector('.peek'); return JSON.stringify({ hidden: p?.hidden, cls: p?.className, title: !!document.querySelector('#discover-body .shelf-items .title-card')?._title, n: document.querySelectorAll('.peek').length });" },
 
   // ---- Library ----
   { name: 'library', path: '/#library', ready: '.unified-library' , after: 1500 },
@@ -84,8 +93,9 @@ export const SCENES = [
     "const c = [...document.querySelectorAll('.unified-library .title-card')].find((b) => /Jesse James/.test(b.textContent)); c.scrollIntoView({ block: 'center' }); await __sleep(400); c.click();", sheetOpen] },
   { name: 'owner-long-title-card', path: '/#library', ready: '.unified-library .lib-group .title-card', steps: [
     "const c = [...document.querySelectorAll('.unified-library .title-card')].find((b) => /Jesse James/.test(b.textContent)); c.scrollIntoView({ block: 'center' }); await __sleep(600);"] },
-  { name: 'owner-downloads', path: '/#library', ready: '.unified-library', mocks: { '^/api/downloads': () => ({ items: MOCK_DOWNLOADS }) }, after: 1500 },
-  { name: 'owner-downloads-only', path: '/#library', ready: '.unified-library', mocks: { '^/api/downloads': () => ({ items: MOCK_DOWNLOADS }) },
+  { name: 'owner-downloads', path: '/#library', ready: '.unified-library', mocks: { '^/api/downloads': () => ({ items: MOCK_DOWNLOADS }) }, patch: DOWNLOADS_ON, after: 1500 },
+  { name: 'owner-downloads-home', path: '/', ready: '#discover-body .shelf', mocks: { '^/api/downloads': () => ({ items: MOCK_DOWNLOADS }) }, patch: DOWNLOADS_ON, steps: ["document.querySelector('.home-shelf, .continue-shelf')?.scrollIntoView({ block: 'center' }); await __sleep(500);"] },
+  { name: 'owner-downloads-only', path: '/#library', ready: '.unified-library', mocks: { '^/api/downloads': () => ({ items: MOCK_DOWNLOADS }) }, patch: DOWNLOADS_ON,
     steps: ["const s = document.querySelector('.library-availability select'); s.value = 'downloading'; s.dispatchEvent(new Event('change')); await __sleep(800);"] },
   { name: 'owner-library-empty', path: '/#library', ready: '.unified-library', mocks: { '^/api/library': { items: [], server: [], shows: [] }, '^/api/downloads': { items: [] } }, after: 1200 },
   { name: 'owner-settings', path: '/#settings', ready: '#settings-body h3', full: true, after: 1500 },
@@ -95,7 +105,7 @@ export const SCENES = [
   { name: 'owner-notes', path: '/#notes', ready: '#notes-body', after: 1500 },
   { name: 'owner-wrapped', path: '/#settings', ready: '#settings-body h3', steps: ["await __clickText('(Wrapped)', '#settings-body button, #settings-body a'); await __sleep(1800);"] },
   { name: 'owner-nowbar', path: '/', ready: '#discover-body .shelf', mocks: { '^/api/cast/sessions': { sessions: [MOCK_SESSION] } }, after: 1000 },
-  { name: 'owner-remote', path: '/', ready: '#nowbar:not([hidden])', mocks: { '^/api/cast/sessions': { sessions: [MOCK_SESSION] } }, steps: ["document.querySelector('#nowbar').click(); await __sleep(1500);"] },
+  { name: 'owner-remote', path: '/', ready: '#nowbar:not([hidden])', mocks: { '^/api/cast/sessions': { sessions: [MOCK_SESSION] }, '^/api/cast/living-room/status': { state: 'playing', position: 1260, duration: 6960, volume: 0.6 } }, steps: ["document.querySelector('#nowbar').click(); await __sleep(1500);"] },
   { name: 'owner-watch-room', path: '/#library', ready: '.unified-library .lib-group .title-card', steps: [
     "const c = [...document.querySelectorAll('.unified-library .title-card')].find((b) => /^Arrival/.test(b.querySelector('.name')?.textContent || '')); c.click();", sheetOpen,
     "await __click('#sheet .library-film-actions .play-btn'); await __waitFor('#player:not([hidden])'); await __sleep(2500); document.querySelector('#video').pause();",
