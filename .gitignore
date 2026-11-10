@@ -41,3 +41,5 @@ tools/playback-stress/results/
 
 # Rust TV app build output
 tv/rust/target/
+.marquee-*.pem
+.marquee-*.bak*
