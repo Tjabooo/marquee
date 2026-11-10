@@ -32,7 +32,7 @@ Ubuntu and Debian's `ffmpeg` includes libx264. Set `qbittorrent-nox`'s Web UI po
 ## 2. Install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Tjabooo/marquee/v1.2.0/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/Tjabooo/marquee/v1.3.0/install.sh -o install.sh
 less install.sh
 sh install.sh
 ```

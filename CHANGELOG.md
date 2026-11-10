@@ -4,24 +4,56 @@ All notable changes to Marquee. Versions follow [Semantic Versioning](https://se
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-10
+
+The biggest release so far: a new web app, Android TV and a faster Samsung TV app, Play now, Swedish, documentaries
+and SVT Play, anime, shared libraries, and Cloudflare Access signing people in with their Marquee password.
+
 ### Added
 
+- **A new web app.** The whole web app was redesigned: a cinematic home screen with a billboard and rows, peek
+  previews, full title pages (logo art, tagline, cast, recommendations), season pages with episode descriptions,
+  a new player, settings in groups, sheets and toasts, and the sign-in and password pages in the same style.
+- **Marquee as the sign-in for Cloudflare Access (OIDC).** Access can use Marquee's own accounts as its login
+  (`/c/oidc/`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_REDIRECT_URIS`): people sign in with their Marquee
+  password instead of email codes, and an invite signs the new person straight in. Anyone without a password yet
+  is asked to pick one; owners can send a Password link. See docs/remote-access.md.
+- **Setup knows the new settings.** `node setup.js` and the Windows wizard (MarqueeSetup.exe) now offer the
+  Marquee sign-in for Access (they generate the client secret, work out the callback address from the team
+  domain and show what to enter in Cloudflare; `node setup.js oidc` shows it again), a cache folder for
+  browser copies and previews (`CACHE_DIR`, new installs) and the adult-content filter (`CONTENT_FILTER`).
+  With the Marquee sign-in on, the owner's password is required. `doctor` checks half-set `OIDC_*`, short
+  secrets, a missing `PUBLIC_URL` and unknown `CONTENT_FILTER` values.
+- **Android TV app.** `tv/android` is the Samsung app's twin for Android TV and Google TV, offered at `/android`
+  on the home network (install steps with Downloader) with self-updates through `/android.json`. Releases now
+  carry `Marquee.apk` and `Marquee.json`, built without a server address (the app asks on its first start), and
+  `install.sh` / `install.ps1` / MarqueeSetup.exe put them in `tv/android/dist` unless a newer app is there.
+  See docs/android-tv.md.
+- **The Samsung TV app in Rust.** Rewritten in Rust compiled to WebAssembly and drawn with WebGL
+  (`public/tv-rs`): faster browsing and the revamp look, with Skip intro, Up next, downloads and search.
+- **Shared libraries.** People can share one library; titles one of them adds show up for all of them.
+- **Versions.** One title can have several qualities, with a picker and shared progress; a second copy of the
+  same quality is refused.
+- **Upgrade quality and Best Quality by picture.** Best Quality ranks releases by source and bitrate instead of
+  seeders, and Upgrade quality sits on season pages and in the player's Quality menu.
+- **Anime.** Nyaa search, season batches, AniList-aligned numbering, episode ranges for long seasons and a Dubbed
+  choice (dual-audio releases only).
+- **Add to library in one press** when someone else already has the title, and **Remove from my library** while
+  it's still downloading.
+- **Profile pictures** everywhere, and a redesigned Watch Together room; rooms now open, invite and play without a
+  Ready step.
+- **Trailers** on title pages, a **Cast** line under descriptions (names link to TMDB) and **seeder counts** in
+  download details.
+- **Phone quality.** Big 4K files play on phones as a live 1080p/720p stream (`PHONE_STREAMS_MAX`).
+- **Adult-content filter** for search and downloads (`CONTENT_FILTER=on|members|off`, `CONTENT_FILTER_WORDS`).
+- **Subtitles:** people's translations first and machine-translated ones labelled and replaced when a better one
+  appears, Georgian and Tagalog, rare languages found behind common ones, and English OCR mistakes fixed as
+  subtitles are served.
+- **Play on TV** starts with the player's default subtitles, and the phone remote has Skip intro and Next episode.
 - **Update notifications.** Each new update in `whats-new.json` is pushed once to everyone who hasn't read it, with
   its title, a short summary and "Tap to read more", which opens its notes (`/?update=<id>`). New setting
   **Settings → Notifications → Marquee updates** (`pushUpdate`, on by default). Only updates dated today or yesterday
   go out, after the file has been unchanged for 90 s; sent ids are kept in `DATA_DIR/.marquee-update-pushes.json`.
-
-### Changed
-
-- **Skip intro finds titles after very long cold opens.** When the first eight minutes hold no shared theme song, the search reaches fifteen minutes, and both neighbouring episodes must agree on what it finds. Results from the normal search are unchanged.
-- **Play now stutters less.** It starts with up to 45 s in order when the download brings that within 20 s of the old minimum of 20 s.
-  In hls.js browsers a stall now holds the picture until a useful amount is buffered (8, then 16, then 32 s when stalls repeat) instead of
-  stopping after every 4 s piece. Episodes in season packs now really download in order: top file priority, which libtorrent
-  fetches rarest-first even in sequential mode, is used only when many earlier files are missing. HDR streams decode on the GPU
-  (13 % faster). The server log says how often a Play now stream had to wait for the download.
-
-### Added
-
 - **Watch Together on Play now.** A room can be started on a video that is still downloading; guests need no access to the
   download, the room is their access. The server holds the room until the download is far enough ahead (30 s that it
   keeps, or a lead that lets the rest arrive in time, or 5 minutes buffered) and stops it at 8 s left, so nobody's player
@@ -53,17 +85,6 @@ All notable changes to Marquee. Versions follow [Semantic Versioning](https://se
   torrent can be found. `SVT_PLAY=off` leaves it out.
 - **Knaben as a torrent source** (`KNABEN_URL`), 1337x's Documentaries category for documentaries, and searches with å, ä and ö
   also try the plain spelling that release names use.
-
-### Changed
-
-- **Notifications stay with your library.** Someone else's download no longer notifies people who only follow a show;
-  it reaches those with an episode of it in their library. Your own downloads and auto-downloads still notify you.
-- **One TV app, in Swedish.** The Samsung TV Preview replaced the old TV app: `public/tv` and `tv/tizen` now hold it
-  under the original package `MrqTvApp01.Marquee`, and `tv-preview`/`tizen-preview` are gone. It's in Swedish, with
-  å, ä and ö on the on-screen keyboard. Remove an installed Marquee Preview with `tizen uninstall -p MrqTvPrv01.MarqueePreview`.
-
-### Added
-
 - **Downloads on the TV.** Titles on their way show in an On its way row in the TV library with live progress, and a
   Go to library button appears after adding a title. Smart-download messages and House warnings are translated too.
 - **Languages.** Settings → Language switches all of Marquee between English and Svenska: the web app, player,
@@ -83,6 +104,21 @@ All notable changes to Marquee. Versions follow [Semantic Versioning](https://se
 
 ### Changed
 
+- **Conversions** run copies and encodes side by side, keep their cache on any drive (`CACHE_DIR`,
+  `AUDIO_FIX_DIR`), cap browser copies (`BROWSER_COPIES_MAX_GB`) and wait when a drive is nearly full
+  (`MIN_FREE_GB`). Browsers that play HEVC keep HEVC, and the banner says what each job is for.
+- **Clip trims** start with a hidden lead-in instead of lossless frames, which removes the stutter at the start.
+- **Skip intro finds titles after very long cold opens.** When the first eight minutes hold no shared theme song, the search reaches fifteen minutes, and both neighbouring episodes must agree on what it finds. Results from the normal search are unchanged.
+- **Play now stutters less.** It starts with up to 45 s in order when the download brings that within 20 s of the old minimum of 20 s.
+  In hls.js browsers a stall now holds the picture until a useful amount is buffered (8, then 16, then 32 s when stalls repeat) instead of
+  stopping after every 4 s piece. Episodes in season packs now really download in order: top file priority, which libtorrent
+  fetches rarest-first even in sequential mode, is used only when many earlier files are missing. HDR streams decode on the GPU
+  (13 % faster). The server log says how often a Play now stream had to wait for the download.
+- **Notifications stay with your library.** Someone else's download no longer notifies people who only follow a show;
+  it reaches those with an episode of it in their library. Your own downloads and auto-downloads still notify you.
+- **One TV app, in Swedish.** The Samsung TV Preview replaced the old TV app: `public/tv` and `tv/tizen` now hold it
+  under the original package `MrqTvApp01.Marquee`, and `tv-preview`/`tizen-preview` are gone. It's in Swedish, with
+  å, ä and ö on the on-screen keyboard. Remove an installed Marquee Preview with `tizen uninstall -p MrqTvPrv01.MarqueePreview`.
 - **MarqueeSetup.exe installs the newest release.** It looks up the latest release on GitHub when it
   runs (and uses that release's `install.ps1`), so an older copy of the exe no longer installs an
   older Marquee. Offline, it falls back to the release it was built for.

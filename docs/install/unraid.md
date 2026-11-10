@@ -23,7 +23,7 @@ chown 99:100 /mnt/user/appdata/marquee
 | Field | Value |
 | --- | --- |
 | Name | `marquee` |
-| Repository | `ghcr.io/tjabooo/marquee:1.2.0` |
+| Repository | `ghcr.io/tjabooo/marquee:1.3.0` |
 | Network Type | `Bridge` |
 | Extra Parameters | `--user 99:100` |
 | Port | Container `8080` → Host `8080` |
@@ -55,7 +55,7 @@ Turn on **Autostart** for the container on the Docker tab.
 ## 6. Update
 
 Back up first (`docker exec marquee node setup.js backup`). Edit the container, change the tag in
-Repository (for example to `:1.2.0`), and apply.
+Repository (for example to `:1.3.0`), and apply.
 
 ## 7. Troubleshooting
 

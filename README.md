@@ -60,7 +60,7 @@ Anything you don't set up is simply off, so you can start small.
 ## Quick start
 
 ```sh
-git clone --branch v1.2.0 https://github.com/Tjabooo/marquee.git
+git clone --branch v1.3.0 https://github.com/Tjabooo/marquee.git
 cd marquee
 node setup.js
 ```
@@ -77,18 +77,18 @@ Prefer an installer script? It downloads a release, verifies its checksum, and k
 your settings and data (read it first: [install.sh](install.sh), [install.ps1](install.ps1)):
 
 ```sh
-curl -fsSLO https://raw.githubusercontent.com/Tjabooo/marquee/v1.2.0/install.sh && sh install.sh
+curl -fsSLO https://raw.githubusercontent.com/Tjabooo/marquee/v1.3.0/install.sh && sh install.sh
 ```
 
 ```powershell
-irm https://raw.githubusercontent.com/Tjabooo/marquee/v1.2.0/install.ps1 -OutFile install.ps1; powershell -ExecutionPolicy Bypass -File install.ps1
+irm https://raw.githubusercontent.com/Tjabooo/marquee/v1.3.0/install.ps1 -OutFile install.ps1; powershell -ExecutionPolicy Bypass -File install.ps1
 ```
 
 ## Docker
 
 ```sh
-curl -fsSLO https://raw.githubusercontent.com/Tjabooo/marquee/v1.2.0/docker-compose.yml
-curl -fsSL https://raw.githubusercontent.com/Tjabooo/marquee/v1.2.0/.env.example -o marquee.env   # add your tokens
+curl -fsSLO https://raw.githubusercontent.com/Tjabooo/marquee/v1.3.0/docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/Tjabooo/marquee/v1.3.0/.env.example -o marquee.env   # add your tokens
 MEDIA_PATH=/srv/media docker compose up -d
 ```
 

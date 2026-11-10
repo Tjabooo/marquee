@@ -47,14 +47,14 @@ All four end with the same folder layout and the same `node setup.js`.
 Linux and macOS (installs to `~/marquee`):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Tjabooo/marquee/v1.2.0/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/Tjabooo/marquee/v1.3.0/install.sh -o install.sh
 less install.sh
 sh install.sh
 ```
 
 | Option | Effect |
 | --- | --- |
-| `--version v1.2.0` | Install this release instead of the latest |
+| `--version v1.3.0` | Install this release instead of the latest |
 | `--dir /opt/marquee` | Install somewhere other than `~/marquee` (or set `MARQUEE_DIR`) |
 | `--dry-run` | Show what would happen; change nothing |
 | `--no-setup` | Don't run `node setup.js` afterwards |
@@ -71,12 +71,12 @@ Windows: see [windows.md](windows.md). `install.ps1` takes the same options as `
 ### B. Release archive by hand
 
 ```sh
-curl -fsSLO https://github.com/Tjabooo/marquee/releases/download/v1.2.0/marquee-v1.2.0.tar.gz
-curl -fsSLO https://github.com/Tjabooo/marquee/releases/download/v1.2.0/SHA256SUMS
+curl -fsSLO https://github.com/Tjabooo/marquee/releases/download/v1.3.0/marquee-v1.3.0.tar.gz
+curl -fsSLO https://github.com/Tjabooo/marquee/releases/download/v1.3.0/SHA256SUMS
 sha256sum -c SHA256SUMS            # macOS: shasum -a 256 -c SHA256SUMS
-gh attestation verify marquee-v1.2.0.tar.gz --repo Tjabooo/marquee   # optional
+gh attestation verify marquee-v1.3.0.tar.gz --repo Tjabooo/marquee   # optional
 mkdir -p ~/marquee
-tar -xzf marquee-v1.2.0.tar.gz -C ~/marquee --strip-components=1
+tar -xzf marquee-v1.3.0.tar.gz -C ~/marquee --strip-components=1
 cd ~/marquee && node setup.js
 ```
 
@@ -85,7 +85,7 @@ cd ~/marquee && node setup.js
 ```sh
 git clone https://github.com/Tjabooo/marquee.git ~/marquee
 cd ~/marquee
-git checkout v1.2.0
+git checkout v1.3.0
 node setup.js
 ```
 
@@ -94,7 +94,7 @@ checkout; update it with git (see [Updating](#updating)).
 
 ### D. Docker
 
-`ghcr.io/tjabooo/marquee:1.2.0` for `linux/amd64` and `linux/arm64`, with ffmpeg and Tesseract
+`ghcr.io/tjabooo/marquee:1.3.0` for `linux/amd64` and `linux/arm64`, with ffmpeg and Tesseract
 included. See [docker.md](docker.md).
 
 ## First run
