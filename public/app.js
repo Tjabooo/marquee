@@ -648,8 +648,8 @@ function openTravel(file, opener) {
             } }, item.state === 'ready' ? T('Get it') : item.state === 'failed' ? T('Try again') : T('Make it'));
         return h('li', { class: 'row travel-row' },
           h('div', { class: 'row-text' },
-            h('div', { class: 'row-title' }, `${q.label} · ${q.height}p`),
-            h('div', { class: 'row-meta' }, [sizeWords(item, fmtBytes), q.note, mine || item.state === 'ready' ? stateWords(item) : null].filter(Boolean).map((t) => h('span', {}, t))),
+            h('div', { class: 'row-title' }, `${T(q.label)} · ${q.height}p`),
+            h('div', { class: 'row-meta' }, [sizeWords(item, fmtBytes), q.note && T(q.note), mine || item.state === 'ready' ? stateWords(item) : null].filter(Boolean).map((t) => h('span', {}, t))),
             travelProgress(item)),
           action && h('div', { class: 'row-actions' }, action));
       }),
@@ -663,7 +663,8 @@ function openTravel(file, opener) {
       h('p', { class: 'muted picker-sub' }, title),
       h('ul', { class: 'rows travel-list' }, rows),
       h('p', { class: 'muted travel-note' }, T('Small and Standard are made on the server first, so you can close this and come back (with notifications on, you’ll hear when one is ready). They play in your phone’s own video player, subtitles included, and stay here for a week after your last download.')),
-      travelView.items.length > 0 && h('button', { type: 'button', class: 'retry', onclick: () => openTravelList() }, T('All phone copies')));
+      // (replaceChildren would print a bare `false`)
+      travelView.items.length > 0 ? h('button', { type: 'button', class: 'retry', onclick: () => openTravelList() }, T('All phone copies')) : '');
   }
   travelOverlay(opener, draw);
   if (!travelView.loaded) loadTravel();
@@ -680,7 +681,7 @@ function openTravelSeason(files, label, opener) {
       h('ul', { class: 'rows travel-list' }, ['small', 'standard'].map((quality) => {
         const q = quality === 'small' ? { label: T('Small · 480p'), note: T('About 230 MB per half hour') } : { label: T('Standard · 720p'), note: T('About 520 MB per half hour') };
         return h('li', { class: 'row travel-row' },
-          h('div', { class: 'row-text' }, h('div', { class: 'row-title' }, q.label), h('div', { class: 'row-meta' }, h('span', {}, q.note))),
+          h('div', { class: 'row-text' }, h('div', { class: 'row-title' }, T(q.label)), h('div', { class: 'row-meta' }, h('span', {}, q.note ? T(q.note) : ''))),
           h('div', { class: 'row-actions' }, h('button', { type: 'button', class: 'chip', onclick: async (e) => {
             if (await askTravel(items, quality, e.currentTarget)) openTravelList();
           } }, T('Make them'))));

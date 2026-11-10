@@ -1672,4 +1672,7 @@ export default {
   "Leave the preview and go back to the live app": "Lämna förhandsvisningen och gå tillbaka till den vanliga appen",
   "Back to live": "Tillbaka till vanliga",
   "Preview mode": "Förhandsvisning",
+  "Standard": "Standard",
+  "For a phone screen": "För en mobilskärm",
+  "Sharp on a tablet or laptop": "Skarpt på surfplatta eller dator",
 };
