@@ -1,4 +1,21 @@
 {
+  "2026-11-10-marquee-passwords": {
+    "title": "Logga in med ett eget lösenord",
+    "items": {
+      "No more codes by email": {
+        "title": "Inga fler koder via mejl",
+        "text": "Marquee loggar nu in dig med din mejladress och ett eget lösenord i stället för en kod som skickas till din inkorg. Har du inte valt något lösenord än ber Marquee om ett nästa gång du öppnar den. På en ny telefon eller dator loggar du in med mejladressen och lösenordet."
+      },
+      "Invites sign people straight in": {
+        "title": "Inbjudna loggas in direkt",
+        "text": "Den du bjuder in väljer ett lösenord på inbjudningssidan och kommer direkt in i Marquee, utan någon Cloudflare-inloggning att förklara."
+      },
+      "Password links": {
+        "title": "Lösenordslänkar",
+        "text": "Under Personer står det \"Inget lösenord än\" vid den som inte har valt något lösenord. Tryck på Lösenordslänk och skicka den till personen: den låter bara personen välja lösenord för sin egen mejladress."
+      }
+    }
+  },
   "2026-11-10-watch-together-play-now": {
     "title": "Titta tillsammans medan den laddas ner",
     "items": {

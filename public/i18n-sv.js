@@ -1679,4 +1679,13 @@ export default {
   "For a phone screen": "För en mobilskärm",
   "Sharp on a tablet or laptop": "Skarpt på surfplatta eller dator",
   "Paused · press Play to start it for everyone": "Pausad · tryck på Spela upp så startar den för alla",
+  "Save password": "Spara lösenord",
+  "Pick a password for Marquee": "Välj ett lösenord för Marquee",
+  "Marquee now signs you in with your own password instead of codes sent by email. Pick one to carry on.": "Marquee loggar nu in dig med ett eget lösenord i stället för koder via mejl. Välj ett för att fortsätta.",
+  "Same password again": "Samma lösenord igen",
+  "The two passwords aren’t the same.": "Lösenorden är inte likadana.",
+  "Password link": "Lösenordslänk",
+  "Password link copied: send it to them": "Lösenordslänken är kopierad: skicka den till personen",
+  "No password yet": "Inget lösenord än",
+  "Makes a one-time link (valid 7 days). They pick a password and are signed straight in.": "Skapar en engångslänk (giltig i 7 dagar). Personen väljer ett lösenord och loggas in direkt.",
 };

@@ -1,5 +1,25 @@
 [
   {
+    "id": "2026-11-10-marquee-passwords",
+    "date": "2026-11-10",
+    "title": "Sign in with your own password",
+    "items": [
+      {
+        "title": "No more codes by email",
+        "text": "Marquee now signs you in with your email and your own password instead of a code sent to your inbox. If you haven't picked a password yet, Marquee asks for one the next time you open it. On a new phone or computer, sign in with that email and password."
+      },
+      {
+        "title": "Invites sign people straight in",
+        "text": "Someone you invite picks a password on the invite page and goes straight into Marquee, with no Cloudflare login to explain."
+      },
+      {
+        "title": "Password links",
+        "audience": "owner",
+        "text": "In People, anyone who still has no password shows \"No password yet\". Press Password link and send it to them: it only lets them set the password for their own email."
+      }
+    ]
+  },
+  {
     "id": "2026-11-10-watch-together-play-now",
     "date": "2026-11-10",
     "title": "Watch Together while it downloads",

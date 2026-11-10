@@ -149,6 +149,28 @@ Marquee adds it to the Zero Trust email list your Access policy allows.
 
 Invite links expire after `INVITE_DAYS` and work once. Send them privately.
 
+### Marquee as the sign-in for Access (no email codes)
+
+Access can use Marquee's own accounts as its login, so people sign in with a Marquee password and
+an invite signs the new person straight in: they pick a password on the invite page and land in
+Marquee without seeing a login page. Marquee acts as an OpenID Connect provider under `/c/oidc/`
+(already public through the `/c` bypass).
+
+1. In `.env` set `OIDC_CLIENT_ID` (e.g. `cloudflare`), `OIDC_CLIENT_SECRET` (a long random string,
+   `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`) and
+   `OIDC_REDIRECT_URIS=https://<team>.cloudflareaccess.com/cdn-cgi/access/callback`. Restart Marquee.
+2. Zero Trust → Settings → Authentication → Login methods → Add new → **OpenID Connect**:
+   App ID and Client secret as above; Auth URL `https://<your Marquee>/c/oidc/authorize`, Token URL
+   `.../c/oidc/token`, Certificate URL `.../c/oidc/jwks`; PKCE on; scopes `openid email profile`.
+3. In the Marquee application: allow only this login method and turn on **Instant Auth**, so Access
+   goes straight to Marquee. Keep the email-list policy: it still decides who is let in.
+
+With it set up, anyone who still signs in through Access without a Marquee password gets a step in
+the app they can't close until they pick one (the API refuses everything else meanwhile). Owners see
+"No password yet" in People and can send such a person a **Password link**: an invite tied to their
+email that only sets their password. Open invites never accept an email that's already on the list.
+Removing someone deletes their password and ends their Access sign-ins.
+
 ## Reverse proxy
 
 If you already run a reverse proxy with an authentication layer (Authelia, Authentik, oauth2-proxy,

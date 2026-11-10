@@ -22,6 +22,7 @@ import * as load from './load.js';
 import * as screenTime from './screentime.js';
 import * as clips from './clips.js';
 import * as invites from './invites.js';
+import { createOidc } from './oidc.js';
 import * as shows from './shows.js';
 import * as season from './season.js';
 import { matchesRelease, exactFirst } from './release-match.js';
@@ -214,6 +215,14 @@ const webBuildFor = (req) => (preview.inPreview(req, PREVIEW_DIR) ? preview.prev
 screenTime.initScreenTime({ dataDir: DATA_DIR });
 clips.initClips({ dataDir: DATA_DIR, cacheDir: CACHE_DIR, getEncoder: () => converter.converterStatus().encoder });
 invites.initInvites({ dataDir: DATA_DIR, onEvent: activity.record });
+// Marquee as the sign-in provider for Cloudflare Access (oidc.js): with it set up, invites sign people
+// straight in and everyone signing in through Access is asked to pick a Marquee password.
+const oidc = createOidc({
+  dataDir: DATA_DIR, auth, nameFor: (email) => accounts.displayNameFor(email),
+  onSignIn: (req, email) => activity.record(req, 'signin', 'Signed in to Marquee', { user: email }),
+});
+// Signed in through Access/a proxy but no Marquee password yet: the app blocks until they pick one.
+const needsPassword = (req) => oidc.configured && req.auth?.via === 'proxy' && Boolean(req.auth.email) && !auth.hasPassword(req.auth.email);
 cast.initCasting({ lanIp: LAN_IP });
 subsync.initSubsync({ dataDir: DATA_DIR, cacheDir: CACHE_DIR, audioShift: (video) => converter.syncState(video).shift });
 // English subtitles get OCR mistakes fixed as they're served, using words learned from the library.
@@ -3162,7 +3171,8 @@ async function handleApi(req, res, url) {
       let error = null;
       try { members = await invites.members(); } catch (e) { error = e.message; }
       const names = Object.fromEntries((members || []).map((email) => [email, accounts.displayNameFor(email)]));
-      return sendJson(res, 200, { configured: true, members, names, error, owners: activity.adminEmails(), invites: invites.listInvites() });
+      return sendJson(res, 200, { configured: true, members, names, error, owners: activity.adminEmails(), invites: invites.listInvites(),
+        passwords: oidc.configured ? auth.store.emails() : null });
     }
     if (p === '/api/access/rename' && req.method === 'POST') {
       const body = await readJson(req);
@@ -3181,6 +3191,16 @@ async function handleApi(req, res, url) {
       activity.record(req, 'invite', inv.note || 'a new invite');
       return sendJson(res, 200, inv);
     }
+    // A one-time link that lets an existing member (who signed in with Cloudflare's codes) pick a password.
+    if (p === '/api/access/password-link' && req.method === 'POST') {
+      if (!oidc.configured) throw new HttpError(400, 'Marquee sign-in for Cloudflare isn’t set up (OIDC_* in .env).');
+      const { email } = await readJson(req);
+      const identity = typeof email === 'string' ? email.trim().toLowerCase() : '';
+      if (!(await invites.members()).includes(identity)) throw new HttpError(404, 'That person is no longer in the access list.');
+      const inv = invites.createInvite(req, `Password for ${accounts.displayNameFor(identity) || identity}`, identity);
+      activity.record(req, 'invite', inv.note);
+      return sendJson(res, 200, inv);
+    }
     if ((m = p.match(/^\/api\/access\/invite\/([a-f0-9]{8})\/revoke$/)) && req.method === 'POST') {
       invites.revokeInvite(m[1]);
       return sendJson(res, 200, { ok: true });
@@ -3188,6 +3208,8 @@ async function handleApi(req, res, url) {
     if (p === '/api/access/remove' && req.method === 'POST') {
       const { email } = await readJson(req);
       const left = await invites.removeMember(email, activity.adminEmails());
+      auth.store.remove(String(email || '')); // their Marquee password and sessions go too
+      invites.revokeAccess(String(email || '')).catch((e) => console.warn('[invites] revoke:', e.message)); // and their Cloudflare sign-ins
       const gone = accounts.listUsers().find((u) => u.email && u.email === String(email || '').trim().toLowerCase());
       if (gone) { push.forgetUser(gone.id); jellyfin.store.removeUser(gone.id); } // their devices stop getting notifications, their Jellyfin servers lose access
       activity.record(req, 'revoke', String(email || '').toLowerCase());
@@ -3250,7 +3272,7 @@ async function handleApi(req, res, url) {
       casting: await castAllowed(req),
       admin: activity.isAdmin(req),
       clips: activity.isAdmin(req) && clips.clipsConfigured(),
-      me: { ...accounts.publicUser(user), via: req.auth.via },
+      me: { ...accounts.publicUser(user), via: req.auth.via, hasPassword: auth.hasPassword(req.auth.email), needsPassword: needsPassword(req) },
       rules: accounts.serverSettings(),
       subLangs: subtitles.subtitleLanguages(),
       whatsNew: whatsNew.statusFor(user, webBuildFor(req)),
@@ -4059,7 +4081,14 @@ async function readCredentials(req) {
 
 async function handleAuth(req, res, p) {
   if (p === '/api/auth/status') {
-    return sendJson(res, 200, { via: req.auth.via, email: req.auth.email, remote: req.auth.remote, homeNetwork: auth.mode, localLogins: auth.hasLogins() });
+    return sendJson(res, 200, { via: req.auth.via, email: req.auth.email, remote: req.auth.remote, homeNetwork: auth.mode, localLogins: auth.hasLogins(), hasPassword: auth.hasPassword(req.auth.email), needsPassword: needsPassword(req) });
+  }
+  if (p === '/api/auth/first-password' && req.method === 'POST') {
+    const body = await readJson(req, 4096);
+    const { email, setCookie } = await auth.setFirstPassword(req, body.password);
+    activity.record(req, 'signin', 'Set a Marquee password', { user: email });
+    res.setHeader('Set-Cookie', setCookie);
+    return sendJson(res, 200, { ok: true });
   }
   if (p === '/api/auth/login' && req.method === 'POST') {
     const body = await readCredentials(req);
@@ -4103,11 +4132,15 @@ async function handleRequest(req, res) {
     if (url.pathname === '/signin' || url.pathname.startsWith('/c/')) preview.previewPageStyles(req, res, PREVIEW_DIR);
     if (url.pathname === '/signin' && (req.method === 'GET' || req.method === 'HEAD')) return sendSignIn(req, res, url);
     if (!req.auth.via && !publicPath(req, url)) return refuseSignedOut(req, res, url);
+    // The app shows a password step it can't be closed past; the API holds the same line.
+    if (needsPassword(req) && url.pathname.startsWith('/api/') && !/^\/api\/(status$|auth\/)/.test(url.pathname)) {
+      return sendJson(res, 403, { error: 'Pick a Marquee password first.', setPassword: true });
+    }
     const allowed = req.method === 'GET' || req.method === 'HEAD'
       || (req.method === 'POST' && (url.pathname.startsWith('/api/cast/') || url.pathname === '/api/downloads/add' || url.pathname === '/api/downloads/smart' || url.pathname === '/api/svt/add' || url.pathname === '/api/subs/fetch' || url.pathname === '/api/subs/sync' || url.pathname === '/api/library/delete' || url.pathname === '/api/library/delete-many' || url.pathname === '/api/library/delete-many-info' || /^\/api\/downloads\/\w+\/(pause|resume|retry|delete|leave)$/.test(url.pathname) || /^\/api\/media\/\w+\/[\w-]+\/sync$/.test(url.pathname)
         || /^\/api\/(house\/(report|boot|power)|screentime|agent\/notify)$/.test(url.pathname) || /^\/api\/clips\/[\w-]+\/(share|unshare|delete|trim|rename)$/.test(url.pathname)
-        || /^\/api\/access\/(invite|remove|rename|invite\/\w+\/revoke)$/.test(url.pathname) || /^\/c\/i\/[\w-]+\/?$/.test(url.pathname)
-        || /^\/api\/auth\/(login|logout|password)$/.test(url.pathname)
+        || /^\/api\/access\/(invite|remove|rename|password-link|invite\/\w+\/revoke)$/.test(url.pathname) || /^\/c\/i\/[\w-]+\/?$/.test(url.pathname)
+        || /^\/api\/auth\/(login|logout|password|first-password)$/.test(url.pathname) || /^\/c\/oidc\/(login|token|userinfo)$/.test(url.pathname)
         || /^\/api\/(me|me\/progress|me\/avatar|library\/add|library\/extend|library\/identify|admin\/settings|admin\/users\/\d+|admin\/users\/\d+\/avatar|push\/subscribe|push\/unsubscribe|push\/test)$/.test(url.pathname)
         || /^\/api\/title\/(movie|tv)\/\d+\/dub$/.test(url.pathname) || /^\/api\/watchlist(?:\/seen)?$/.test(url.pathname) || /^\/api\/travel(?:\/remove)?$/.test(url.pathname)
         || /^\/api\/admin\/notes(?:\/import|\/\d+(?:\/(?:trash|restore|share|unshare))?)?$/.test(url.pathname)
@@ -4121,8 +4154,9 @@ async function handleRequest(req, res) {
     // Public: shared clips, shared note previews and the Marquee invite card (bypassed in Cloudflare Access; see docs/remote-access.md)
     else if (url.pathname === '/c' || url.pathname.startsWith('/c/')) {
       if (url.pathname.startsWith('/c/jf/')) { if (!(await jellyfin.handlePublic(req, res, url))) throw new HttpError(404, 'Not found.'); }
+      else if (await oidc.handle(req, res, url)) { /* sign-in provider for Cloudflare Access */ }
       else if (!handleWatchPage(req, res, url, { rooms: watchRooms, artwork: watchArtwork })
-        && !(await invites.handlePublic(req, res, url))
+        && !(await invites.handlePublic(req, res, url, { auth: oidc.configured ? auth : null }))
         && !(await noteShare.handlePublic(req, res, url, { notes, media: sharedMedia, sendVideo, nameFor: (email) => accounts.displayNameFor(email) })) && !(await clips.handlePublic(req, res, url, { sendVideo, previews }))) throw new HttpError(404, 'Not found.');
     }
     else if (!(req.method === 'GET' && preview.previewRoute(req, res, url.pathname, PREVIEW_DIR))) await serveStatic(req, res, url.pathname);

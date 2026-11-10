@@ -6790,7 +6790,7 @@ function renderSettings() {
     out.push(open);
   }
 
-  if (me.via === 'session') out.push(accountSection());
+  if (me.via === 'session' || me.hasPassword) out.push(accountSection());
 
   out.push(...appearanceSection());
 
@@ -7019,6 +7019,42 @@ function notificationSettings() {
   return out;
 }
 
+// Signed in through Cloudflare's email codes but no Marquee password yet: a full-screen step with no
+// way past it (the API refuses everything else too) until they pick one. Then the page reloads.
+function showPasswordGate() {
+  if ($('#password-gate')) return;
+  const email = state.me?.email || '';
+  const user = h('input', { type: 'email', name: 'username', value: email, autocomplete: 'username', readonly: '', hidden: '' });
+  const pass = h('input', { type: 'password', id: 'gate-password', minlength: '10', required: '', autocomplete: 'new-password', 'aria-describedby': 'gate-msg' });
+  const again = h('input', { type: 'password', id: 'gate-again', minlength: '10', required: '', autocomplete: 'new-password' });
+  const save = h('button', { type: 'submit', class: 'password-gate-save' }, T('Save password'));
+  const msg = h('p', { class: 'password-gate-msg', id: 'gate-msg', role: 'alert' });
+  const form = h('form', { class: 'password-gate-card' },
+    h('h2', { id: 'gate-title' }, T('Pick a password for Marquee')),
+    h('p', {}, T('Marquee now signs you in with your own password instead of codes sent by email. Pick one to carry on.')),
+    email && h('p', { class: 'password-gate-email' }, email),
+    user,
+    h('label', { for: 'gate-password' }, T('New password (10+ characters)')), pass,
+    h('label', { for: 'gate-again' }, T('Same password again')), again,
+    msg, save);
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (pass.value !== again.value) { msg.textContent = T('The two passwords aren’t the same.'); return; }
+    save.disabled = true;
+    msg.textContent = '';
+    try {
+      await api('/api/auth/first-password', jsonPost({ password: pass.value }));
+      location.reload();
+    } catch (err) { msg.textContent = err.message; save.disabled = false; }
+  });
+  const gate = h('div', { id: 'password-gate', class: 'password-gate', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'gate-title' }, form);
+  // Nothing behind it can be reached: no Escape, no clicks, no tabbing out.
+  gate.addEventListener('keydown', (e) => { if (e.key === 'Escape') e.preventDefault(); });
+  document.body.append(gate);
+  for (const el of document.body.children) if (el !== gate) el.inert = true;
+  pass.focus();
+}
+
 // Marquee's own sign-in: change the password, sign out of this browser.
 function accountSection() {
   const current = h('input', { type: 'password', class: 'invite-note', autocomplete: 'current-password', placeholder: T('Current password'), 'aria-label': T('Current password') });
@@ -7039,7 +7075,8 @@ function accountSection() {
   out.addEventListener('click', async () => {
     out.disabled = true;
     try { await api('/api/auth/logout', { method: 'POST' }); } catch { /* signed out either way */ }
-    location.assign('/signin');
+    // Through Cloudflare Access its own sign-in has to end too, or the next visit walks straight back in.
+    location.assign(state.me?.via === 'proxy' ? '/cdn-cgi/access/logout' : '/signin');
   });
   return h('div', {}, settingsRow(T('Sign out'), T('Signs this browser out of Marquee.'), out),
     h('details', { class: 'set-details' }, h('summary', {}, T('Change password')), form));
@@ -7192,6 +7229,16 @@ async function makeInvite(btn) {
   await loadActivity();
   renderActivity();
 }
+// For someone already on the list who has no Marquee password yet (they used Cloudflare's email codes).
+async function makePasswordLink(email, btn) {
+  btn.disabled = true;
+  try {
+    const inv = await api('/api/access/password-link', jsonPost({ email }));
+    await copyWithToast(inv.url, T('Password link copied: send it to them'));
+  } catch (err) { toast(err.message); }
+  await loadActivity();
+  renderActivity();
+}
 // copyText() (above) has the iOS fallback; this adds the toast, or shows the link if copying failed
 async function copyWithToast(text, msg) {
   if (await copyText(text)) toast(msg); else prompt(T('Copy this link'), text);
@@ -7235,7 +7282,7 @@ function peopleSection(q) {
       oninput: (e) => { state.inviteNote = e.currentTarget.value; } });
     out.push(h('div', { class: 'invite-new' }, noteInput,
       h('button', { class: 'retry', onclick: (e) => makeInvite(e.currentTarget) }, T('Invite someone'))));
-    out.push(h('p', { class: 'muted invite-hint' }, T('Makes a one-time link (valid 7 days). They enter their email and can sign in from then on.')));
+    out.push(h('p', { class: 'muted invite-hint' }, a.passwords ? T('Makes a one-time link (valid 7 days). They pick a password and are signed straight in.') : T('Makes a one-time link (valid 7 days). They enter their email and can sign in from then on.')));
     const open = (a.invites || []).filter((i) => i.state === 'open');
     if (open.length) {
       out.push(h('ul', { class: 'rows' }, open.map((i) => {
@@ -7270,6 +7317,7 @@ function peopleSection(q) {
   out.push(list.length ? h('ul', { class: 'rows' }, list.map((r) => {
     const { email, name, p, owner, member } = r;
     const isEmail = String(email).includes('@');
+    const noPassword = member && a.passwords && !a.passwords.includes(key(email));
     return h('li', { class: 'row' },
       h('span', { class: 'activity-face' }, people.face({ name, avatar: p?.avatar }, { size: 34 }),
         h('span', { class: `activity-dot${p && Date.now() - p.at < 3 * 60000 ? ' is-on' : ''}`, 'aria-hidden': 'true' })),
@@ -7278,9 +7326,12 @@ function peopleSection(q) {
         h('span', { class: 'row-meta' },
           isEmail && h('span', {}, email),
           owner && h('span', {}, T('owner')),
+          noPassword && h('span', {}, T('No password yet')),
           h('span', {}, p ? lastSeenText(p.at) : T('Hasn’t signed in yet')),
           p && h('span', {}, activityDevice(p)))),
-      member && !owner && h('span', { class: 'row-actions' }, h('button', {
+      (noPassword || (member && !owner)) && h('span', { class: 'row-actions' },
+        noPassword && h('button', { class: 'retry', onclick: (e) => makePasswordLink(email, e.currentTarget) }, T('Password link')),
+        member && !owner && h('button', {
         class: 'retry',
         onclick: (e) => {
           const b = e.currentTarget;
@@ -8603,6 +8654,7 @@ navigator.serviceWorker?.addEventListener('message', async (event) => {
   if (state.status.preview) document.body.append(h('a', { class: 'preview-pill', href: '/preview/off', title: T('Leave the preview and go back to the live app') },
     h('span', { class: 'preview-pill-bulb', 'aria-hidden': 'true' }), h('strong', {}, T('Preview mode')), h('span', { class: 'preview-pill-sep', 'aria-hidden': 'true' }, '·'), T('Back to live')));
   syncLanguage();
+  if (state.me?.needsPassword) { showPasswordGate(); return; }
   state.rules = state.status.rules;
   applyTheme(prefs().theme);
   $('#find-torrents').hidden = !state.status.torrents || !canDownload();

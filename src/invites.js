@@ -7,10 +7,16 @@
 // Needs, in .env: CF_API_TOKEN (permission "Zero Trust: Edit"), CF_ACCOUNT_ID and CF_ACCESS_LIST_ID.
 // Invite pages live under /c/i/, so the same Cloudflare Access bypass as shared clips covers them.
 // Links are single use and expire.
+//
+// When Marquee is Cloudflare's sign-in provider (oidc.js, handlePublic gets `auth`), the invite page
+// also asks for a password, creates the Marquee account and signs the browser in, so the person lands
+// in Marquee without seeing a login page. A "password link" is an invite tied to one existing member's
+// email: the only way to claim an email that's already on the list.
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { esc, page, baseUrl } from './clips.js';
+import { passwordProblem } from './auth.js';
 
 const CF_API = (process.env.CF_API_BASE || 'https://api.cloudflare.com/client/v4').replace(/\/+$/, '');
 const CF_TOKEN = process.env.CF_API_TOKEN || '';
@@ -20,7 +26,7 @@ const INVITE_DAYS = Math.max(1, Number(process.env.INVITE_DAYS) || 7);
 const EMAIL = /^[^\s@<>"']{1,64}@[^\s@<>"']+\.[^\s@<>"']{2,}$/;
 
 let file = null;
-let invites = {};        // token -> { id, note, created, expires, usedAt, email }
+let invites = {};        // token -> { id, note, created, expires, usedAt, email, forEmail }
 let record = () => {};   // activity logger, from server.js
 const attempts = [];     // timestamps of invite form posts, for a simple global rate limit
 
@@ -59,6 +65,16 @@ async function addMember(email) {
   if ((await members()).includes(email)) return;
   await cf('PATCH', '', { append: [{ value: email, description: 'Marquee invite' }] });
 }
+// Ends every Cloudflare Access sign-in this person has (they must sign in again, which they can't once removed).
+export async function revokeAccess(email) {
+  if (!invitesConfigured() || !EMAIL.test(String(email || ''))) return;
+  const r = await fetch(`${CF_API}/accounts/${CF_ACCOUNT}/access/organizations/revoke_user`, {
+    method: 'POST', headers: { Authorization: `Bearer ${CF_TOKEN}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: String(email).toLowerCase() }), signal: AbortSignal.timeout(10000),
+  });
+  if (!r.ok) throw new Error(`Cloudflare refused: HTTP ${r.status}`);
+}
+
 export async function removeMember(email, admins = []) {
   email = String(email || '').toLowerCase();
   if (admins.includes(email)) throw httpError(400, 'Owners (ADMIN_EMAILS) can’t be removed here.');
@@ -75,9 +91,9 @@ export function listInvites() {
     .sort((a, b) => b.created - a.created)
     .slice(0, 50);
 }
-export function createInvite(req, note = '') {
+export function createInvite(req, note = '', forEmail = null) {
   const token = crypto.randomBytes(12).toString('base64url');
-  const inv = { id: crypto.randomBytes(4).toString('hex'), note: String(note).slice(0, 60), created: Date.now(), expires: Date.now() + INVITE_DAYS * 86400000, usedAt: null, email: null };
+  const inv = { id: crypto.randomBytes(4).toString('hex'), note: String(note).slice(0, 60), created: Date.now(), expires: Date.now() + INVITE_DAYS * 86400000, usedAt: null, email: null, forEmail: forEmail ? String(forEmail).toLowerCase() : null };
   invites[token] = inv;
   // forget used/expired invites after 30 days
   for (const [t, i] of Object.entries(invites)) if (Date.now() - i.created > 30 * 86400000 && state(i) !== 'open') delete invites[t];
@@ -101,7 +117,8 @@ async function readForm(req) {
 }
 
 // Returns true when it handled the request.
-export async function handlePublic(req, res, url) {
+// `auth`: Marquee's sign-in (auth.js), passed when Marquee is Cloudflare's sign-in provider.
+export async function handlePublic(req, res, url, { auth = null } = {}) {
   const m = url.pathname.match(/^\/c\/i\/([A-Za-z0-9_-]{16})\/?$/);
   if (!m) return false;
   const send = (status, body, extra = {}) => {
@@ -121,7 +138,22 @@ export async function handlePublic(req, res, url) {
   }
   if (!invitesConfigured()) return view('Invites aren’t set up', '<h1>Invites aren’t set up yet</h1><p>The server owner still needs to connect Marquee to Cloudflare.</p>');
 
-  const form = (email = '', error = '') => `
+  const bound = inv.forEmail;
+  const title = bound ? 'Pick your Marquee password' : 'You’re invited to Marquee';
+  const form = (email = '', error = '') => (auth ? `
+    <h1>${bound ? 'Pick a password' : 'You’re invited to Marquee'}</h1>
+    <p>${bound ? 'From now on you sign in to Marquee with your email and this password.' : 'Films and shows from the home server, on your phone, in a browser or on the TV.'}</p>
+    <form method="post">
+      <label for="email">Your email</label>
+      <input id="email" name="email" type="email" required autocomplete="username" ${bound ? 'readonly' : 'autofocus'} value="${esc(bound || email)}" placeholder="you@example.com">
+      <label for="password">Choose a password (10+ characters)</label>
+      <input id="password" name="password" type="password" required minlength="10" autocomplete="new-password" ${bound ? 'autofocus' : ''}>
+      <label for="again">Same password again</label>
+      <input id="again" name="again" type="password" required minlength="10" autocomplete="new-password">
+      ${error ? `<p class="err">${esc(error)}</p>` : ''}
+      <button type="submit">${bound ? 'Save password' : 'Join Marquee'}</button>
+    </form>
+    <p class="foot">On a new phone or computer, open Marquee and sign in with this email and password.</p>` : `
     <h1>You’re invited to Marquee</h1>
     <p>Films and shows from the home server, on your phone, in a browser or on the TV.</p>
     <form method="post">
@@ -130,9 +162,10 @@ export async function handlePublic(req, res, url) {
       ${error ? `<p class="err">${esc(error)}</p>` : ''}
       <button type="submit">Get access</button>
     </form>
-    <p class="foot">Next you choose how to sign in: a one-time code sent to this email, or an account like Google if it uses the same address.</p>`;
+    <p class="foot">Next you choose how to sign in: a one-time code sent to this email, or an account like Google if it uses the same address.</p>`);
 
-  if (req.method !== 'POST') return view('You’re invited to Marquee', form());
+  if (bound && !auth) return view('Invite not valid', '<h1>This link doesn’t work right now</h1><p>Ask whoever sent it for a new one.</p>');
+  if (req.method !== 'POST') return view(title, form());
 
   // ---- accept ----
   const now = Date.now();
@@ -140,8 +173,39 @@ export async function handlePublic(req, res, url) {
   if (attempts.length >= 20) return send(429, page({ title: 'Slow down', desc: '', url: '', body: '<div class="card"><h1>Too many tries</h1><p>Wait a minute and try again.</p></div>' }));
   attempts.push(now);
 
-  const email = String((await readForm(req)).email || '').trim().toLowerCase();
-  if (!EMAIL.test(email) || email.length > 254) return view('You’re invited to Marquee', form(email, 'That doesn’t look like an email address.'));
+  const body = await readForm(req);
+  const email = bound || String(body.email || '').trim().toLowerCase();
+  if (!EMAIL.test(email) || email.length > 254) return view(title, form(email, 'That doesn’t look like an email address.'));
+  if (auth) {
+    // An open invite may only create a new account: an email that's already on the list or already has
+    // a password belongs to someone, and only a password link made for that email may set it.
+    const password = String(body.password || '');
+    if (password !== String(body.again || '')) return view(title, form(email, 'The two passwords aren’t the same.'));
+    const problem = passwordProblem(password, email);
+    if (problem) return view(title, form(email, problem));
+    if (!bound && auth.hasPassword(email)) return view(title, form(email, 'That email already has a Marquee account. Open Marquee and sign in.'));
+    if (!bound) {
+      let taken = false;
+      try { taken = (await members()).includes(email); } catch (e) { console.error('[invites]', e.message); return view(title, form(email, 'Couldn’t add you right now. Try again in a minute, or tell whoever sent the link.')); }
+      if (taken) return view(title, form(email, 'That email already has access. Ask whoever sent the link for a password link instead.'));
+    }
+    try {
+      if (!bound) await addMember(email);
+      await auth.store.setPassword(email, password);
+    } catch (e) {
+      console.error('[invites]', e.message);
+      return view(title, form(email, e.status === 400 ? e.message : 'Couldn’t add you right now. Try again in a minute, or tell whoever sent the link.'));
+    }
+    inv.usedAt = now;
+    inv.email = email;
+    save();
+    record(req, bound ? 'signin' : 'joined', bound ? 'Set a Marquee password' : (inv.note || 'with an invite'), { user: email });
+    const { setCookie } = auth.startSession(req, email);
+    // Straight in: Cloudflare sends them to Marquee's sign-in, which sees this session and lets them through.
+    res.writeHead(303, { Location: '/', 'Set-Cookie': setCookie, 'Cache-Control': 'no-store' });
+    res.end();
+    return true;
+  }
   try {
     await addMember(email);
   } catch (e) {

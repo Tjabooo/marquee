@@ -186,6 +186,7 @@ export function openAuthStore(dataDir) {
       (SELECT MAX(last_seen) FROM sessions s WHERE s.email = l.email) AS lastSeen FROM logins l ORDER BY l.email`).all(Date.now()),
     revokeSessions: (email) => db.prepare('DELETE FROM sessions WHERE email = ?').run(normalEmail(email)).changes + dropTvs(normalEmail(email)),
     count: () => db.prepare('SELECT COUNT(*) AS n FROM logins').get().n,
+    emails: () => db.prepare('SELECT email FROM logins').all().map((r) => r.email),
     close: () => db.close(),
   };
 }
@@ -347,12 +348,29 @@ export function createAuth({
     const ok = login ? await verifyPassword(password, login.password) : (await verifyPassword(password, await decoy), false);
     if (!ok) { limiter.fail(e, address); throw httpError(401, 'That email and password don’t match.'); }
     limiter.success(e);
+    return startSession(req, e);
+  }
+
+  // A browser session for someone who has just proved who they are (password, or a fresh invite).
+  function startSession(req, email) {
+    const e = normalEmail(email);
+    if (!store.login(e)) throw httpError(400, 'That account has no password yet.');
     const token = crypto.randomBytes(32).toString('base64url');
     const t = now();
     store.db.prepare('INSERT INTO sessions (id, email, created_at, expires_at, last_seen, address, agent) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .run(tokenHash(token), e, t, t + days * 86400_000, t, address, String(req.headers['user-agent'] || '').slice(0, 200));
+      .run(tokenHash(token), e, t, t + days * 86400_000, t, clientAddress(req), String(req.headers['user-agent'] || '').slice(0, 200));
     store.db.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(t);
     return { email: e, setCookie: cookie(req, token, days * 86400) };
+  }
+
+  // Someone signed in through Cloudflare Access (or a proxy) who has no Marquee password yet picks
+  // one. Only for their own account and only while it has none: changing one needs the old one.
+  async function setFirstPassword(req, password) {
+    const e = req.auth?.via === 'proxy' ? normalEmail(req.auth.email) : '';
+    if (!e) throw httpError(400, 'Only people signed in with an email can set a password here.');
+    if (store.login(e)) throw httpError(409, 'You already have a password. Change it in Settings.');
+    await store.setPassword(e, password);
+    return startSession(req, e);
   }
 
   function signOut(req) {
@@ -362,8 +380,8 @@ export function createAuth({
   }
 
   async function changePassword(req, current, next) {
-    if (req.auth?.via !== 'session') throw httpError(400, 'Your password is managed where you sign in (Cloudflare or your proxy).');
-    const login = store.login(req.auth.email);
+    const login = req.auth?.email ? store.login(req.auth.email) : null;
+    if (!login && req.auth?.via !== 'session') throw httpError(400, 'Your password is managed where you sign in (Cloudflare or your proxy).');
     if (!login || !(await verifyPassword(current, login.password))) {
       limiter.fail(req.auth.email, clientAddress(req));
       throw httpError(403, 'Your current password isn’t right.');
@@ -378,10 +396,13 @@ export function createAuth({
     guard,
     identify,
     signIn,
+    startSession,
+    setFirstPassword,
     signOut,
     createSession,
     changePassword,
     hasLogins: () => store.count() > 0,
+    hasPassword: (email) => Boolean(email && store.login(email)),
   };
 }
 
@@ -393,7 +414,8 @@ export function safeNext(next) {
   return n.startsWith('/') && !n.startsWith('//') && !n.startsWith('/\\') && !/[\r\n]/.test(n) ? n : '/';
 }
 
-export function signInPage({ next = '/', error = '', hasLogins = true, remote = false } = {}) {
+// `action`: where the form posts (the OIDC sign-in under /c/ posts to its own path).
+export function signInPage({ next = '/', error = '', hasLogins = true, remote = false, action = '/api/auth/login' } = {}) {
   const message = error ? `<p class="err" role="alert">${esc(translate(error))}</p>` : '';
   const help = hasLogins
     ? tr('Ask the server’s owner if you don’t have a password.')
@@ -413,7 +435,7 @@ button{margin-top:20px;width:100%;padding:12px;border:0;border-radius:10px;backg
 .err{color:#ff8a80;background:#2a1414;border-radius:8px;padding:10px 12px;margin:0 0 6px}code{font-size:12px;color:var(--text)}
 .foot{margin:18px 0 0;font-size:12px}</style><link rel="stylesheet" href="/c/pages.css"></head><body><main>
 <h1>Marquee</h1><p>${remote ? tr('You’re connecting from outside the home network. ') : ''}${tr('Sign in to carry on.')}</p>${message}
-<form method="post" action="/api/auth/login">
+<form method="post" action="${esc(action)}">
 <input type="hidden" name="next" value="${esc(safeNext(next))}">
 <label for="email">${tr('Email')}</label><input id="email" name="email" type="email" autocomplete="username" required autofocus>
 <label for="password">${tr('Password')}</label><input id="password" name="password" type="password" autocomplete="current-password" required>
