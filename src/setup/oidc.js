@@ -70,6 +70,7 @@ export function loginMethodLines(m) {
     `  Proof Key for Code Exchange (PKCE): on`,
     `  Scopes:           ${m.scopes}`,
     'Then in the Marquee application in Access > Login methods: allow only Marquee and turn on Instant Auth.',
-    'Keep the email-list policy: it still decides who gets in.',
+    'In its Allow policy, add Include > Login methods > Marquee next to the email list. New invitees then get in at once:',
+    'Cloudflare can take minutes to see a freshly added list email, and only your invites and password links make Marquee logins.',
   ];
 }
