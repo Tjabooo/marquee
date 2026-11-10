@@ -2204,7 +2204,7 @@ body.has-nowbar .preview-pill { bottom: calc(var(--tabs-h) + var(--safe-bottom) 
 .set-stack > * + * { border-top: 1px solid var(--hairline); }
 .set-stack > :is(.set-row, .set-card, .profile, .rows, .swatches, .custom-colors, p, details, div:not([class])) { margin: 0; border-radius: 0; background: none; }
 .set-stack > :is(.swatches, .custom-colors, p, details, .rows) { padding: var(--s4); }
-.set-stack > .wrapped-open { margin: var(--s3); border-radius: var(--r-md); }
+.set-stack > .wrapped-open { width: auto; margin: var(--s3); border-radius: var(--r-md); }
 .set-stack > .wrapped-open + *, .set-stack > * + .wrapped-open { border-top: 0; }
 .set-hint { font-size: 13px; line-height: 1.45; color: var(--text-2); margin: 0; }
 .set-row {
@@ -2229,9 +2229,26 @@ body.has-nowbar .preview-pill { bottom: calc(var(--tabs-h) + var(--safe-bottom) 
   .set-index a { display: block; padding: 8px 12px; border-radius: var(--r-sm); color: var(--text-2); font-weight: 600; text-decoration: none; transition: color var(--d-1), background-color var(--d-1); }
   .set-index a:hover { color: var(--text); background: var(--surface-1); }
 }
-.account-password { display: grid; gap: 8px; margin-top: 8px; }
-.account-password .chip { justify-self: start; }
-.set-details summary { cursor: pointer; padding: 10px 0; color: var(--muted, inherit); }
+/* You: Sign out row + Change password, a row that opens into a small form */
+.set-account > .set-row { margin: 0; background: none; }
+.set-account > .set-details { border-top: 1px solid var(--hairline); }
+.set-details > summary {
+  list-style: none; cursor: pointer; display: flex; align-items: center; gap: 16px;
+  padding: 14px 16px; transition: background-color var(--d-1);
+}
+.set-details > summary::-webkit-details-marker { display: none; }
+.set-details > summary:hover { background: var(--surface-2); }
+.set-details > summary:focus-visible { outline: 2px solid var(--bulb); outline-offset: -2px; }
+.set-details-chev {
+  flex: none; width: 9px; height: 9px; margin-right: 6px;
+  border-right: 2px solid var(--text-2); border-bottom: 2px solid var(--text-2);
+  transform: rotate(45deg) translateY(-3px); transition: transform var(--d-1);
+}
+.set-details[open] .set-details-chev { transform: rotate(225deg) translate(-2px, -2px); }
+.account-password { display: grid; gap: 10px; max-width: 420px; margin: 0; padding: 4px 16px 18px; background: none; border-radius: 0; }
+.account-password .invite-note { height: 44px; }
+.account-password .chip { justify-self: start; margin-top: 2px; }
+.account-password .set-hint:empty { display: none; }
 .set-signin { margin-top: 8px; }
 .set-signin summary { cursor: pointer; font-weight: 600; }
 .set-signin ol { margin: 6px 0 10px; padding-left: 20px; color: var(--dust); font-size: 14px; }

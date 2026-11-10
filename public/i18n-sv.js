@@ -902,6 +902,7 @@ export default {
   "Current password": "Nuvarande lösenord",
   "New password (10+ characters)": "Nytt lösenord (minst 10 tecken)",
   "New password": "Nytt lösenord",
+  "Your other devices are signed out when you change it.": "Dina andra enheter loggas ut när du byter det.",
   "Change password": "Byt lösenord",
   "Password changed. Other devices were signed out.": "Lösenordet är bytt. Andra enheter loggades ut.",
   "Sign out": "Logga ut",

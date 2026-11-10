@@ -7110,8 +7110,13 @@ function accountSection() {
     // Through Cloudflare Access its own sign-in has to end too, or the next visit walks straight back in.
     location.assign(state.me?.via === 'proxy' ? '/cdn-cgi/access/logout' : '/signin');
   });
-  return h('div', {}, settingsRow(T('Sign out'), T('Signs this browser out of Marquee.'), out),
-    h('details', { class: 'set-details' }, h('summary', {}, T('Change password')), form));
+  return h('div', { class: 'set-account' }, settingsRow(T('Sign out'), T('Signs this browser out of Marquee.'), out),
+    h('details', { class: 'set-details' },
+      h('summary', {},
+        h('span', { class: 'set-text' }, h('span', { class: 'set-label' }, T('Change password')),
+          h('span', { class: 'set-hint' }, T('Your other devices are signed out when you change it.'))),
+        h('span', { class: 'set-details-chev', 'aria-hidden': 'true' })),
+      form));
 }
 
 function ownerSettings() {

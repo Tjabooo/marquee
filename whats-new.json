@@ -8,6 +8,10 @@
         "title": "Names and details fit again",
         "audience": "owner",
         "text": "In Settings → People, each person's name, email and storage sit on one line again, with their switches and library choice underneath, instead of being squeezed into a narrow column."
+      },
+      {
+        "title": "Change password looks the part",
+        "text": "In Settings → You, Change password is now a proper row: tap it to open the form, tap again to close it."
       }
     ]
   },
