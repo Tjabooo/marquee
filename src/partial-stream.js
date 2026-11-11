@@ -135,8 +135,8 @@ const failure = (status, message) => Object.assign(new Error(message), { status 
 export class PartialStreams {
   // qbit(path) = parsed JSON; post(path, fields) = a command; filePath(torrent, file) = where it is on disk;
   // isVideo(name); start(hash) = start a stopped torrent; probe = probeInput (tests replace it).
-  constructor({ qbit, post, filePath, isVideo, start, probe = probeInput, log = console }) {
-    Object.assign(this, { qbit, post, filePath, isVideo, start, probe, log });
+  constructor({ qbit, post, filePath, finalPath = filePath, isVideo, start, probe = probeInput, log = console }) {
+    Object.assign(this, { qbit, post, filePath, finalPath, isVideo, start, probe, log });
     this.entries = new Map();
     this.torrents = new Map(); // hash -> what Marquee changed, restored when the last viewer leaves
     this.token = crypto.randomBytes(24).toString('hex');
@@ -178,7 +178,7 @@ export class PartialStreams {
     if (!layout || !(layout.size > 0)) throw failure(404, 'This download has no playable video file.');
     const raced = this.entries.get(id);
     if (raced) return raced;
-    const entry = { id, hash: parsed.hash, index: parsed.index, file: this.filePath(t, file), name: file.name, priority: file.priority, multiFile: files.length > 1,
+    const entry = { id, hash: parsed.hash, index: parsed.index, file: this.filePath(t, file), finalFile: this.finalPath(t, file), name: file.name, priority: file.priority, multiFile: files.length > 1,
       size: layout.size, layout, pieceSize, states: null, statesAt: 0, torrent: t, last: Date.now(), info: null, probing: null, probeFailures: 0, probeError: null,
       gone: false, boosted: false, started: false, enoughSince: null, holds: 0, heldMs: 0, restorePriorities: [] };
     this.entries.set(id, entry);
@@ -194,6 +194,8 @@ export class PartialStreams {
         const [t, states] = await Promise.all([this.torrent(e.hash), this.qbit(`/api/v2/torrents/pieceStates?hash=${e.hash}`)]);
         if (!t) { e.gone = true; return; }
         e.torrent = t;
+        // Finished downloads move from the scratch drive to their save path (scratch.js).
+        try { e.file = this.filePath(t, { name: e.name }) || e.file; } catch { /* keep the last known path */ }
         if (Array.isArray(states) && states.length) e.states = states;
       } catch (error) { this.log.warn?.(`[play now] ${error.message}`); } finally { e.statesAt = Date.now(); e.refreshing = null; }
     })();
@@ -251,7 +253,7 @@ export class PartialStreams {
       let at = start;
       while (at <= end) {
         const ready = await this.waitReadable(e, at, stop.signal);
-        handle ||= await this.openWhenWritten(e.file, stop.signal);
+        handle ||= await this.openWhenWritten([e.file, e.finalFile], stop.signal);
         const buffer = Buffer.allocUnsafe(Math.min(ready, READ_BYTES, end - at + 1));
         const { bytesRead } = await this.readFully(handle, buffer, at, stop.signal);
         at += bytesRead;
@@ -270,13 +272,17 @@ export class PartialStreams {
     } catch { res.destroy(); } finally { await handle?.close().catch(() => {}); }
   }
 
-  async openWhenWritten(file, signal) {
+  // files: where it is now first, then where it's moving to (a download leaving the scratch drive).
+  async openWhenWritten(files, signal) {
+    const list = [...new Set((Array.isArray(files) ? files : [files]).filter(Boolean))];
     const until = Date.now() + SHORT_READ_MS;
     for (;;) {
-      try { return await fs.promises.open(file, 'r'); } catch (error) {
-        if (signal?.aborted || Date.now() > until) throw error;
-        await sleep(250, signal);
+      let failure = null;
+      for (const file of list) {
+        try { return await fs.promises.open(file, 'r'); } catch (error) { failure ||= error; }
       }
+      if (signal?.aborted || Date.now() > until) throw failure;
+      await sleep(250, signal);
     }
   }
 

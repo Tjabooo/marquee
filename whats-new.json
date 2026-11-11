@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-11-scratch-drive",
+    "date": "2026-11-11",
+    "title": "Smoother playback during downloads",
+    "items": [
+      {
+        "title": "Fewer pauses while things download",
+        "text": "Downloads in progress and video conversions now happen on a faster drive and only move to the library once they're done. Videos you're watching should stop pausing to load while other things are downloading."
+      }
+    ]
+  },
+  {
     "id": "2026-11-11-room-audio",
     "date": "2026-11-11",
     "title": "Audio language in Watch Together",

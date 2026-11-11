@@ -1,4 +1,13 @@
 {
+  "2026-11-11-scratch-drive": {
+    "title": "Jämnare uppspelning under nedladdningar",
+    "items": {
+      "Fewer pauses while things download": {
+        "title": "Färre pauser medan saker laddas ner",
+        "text": "Pågående nedladdningar och videokonverteringar sker nu på en snabbare disk och flyttas till biblioteket först när de är klara. Det du tittar på ska inte längre stanna för att ladda medan annat laddas ner."
+      }
+    }
+  },
   "2026-11-11-room-audio": {
     "title": "Ljudspråk i Titta tillsammans",
     "items": {

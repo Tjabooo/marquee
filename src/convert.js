@@ -54,6 +54,19 @@ const SYNC_TOLERANCE = 0.04; // seconds; below one video frame
 let onConvertedHook = null;
 let onSidecarHook = null;
 let fixDir = null;     // cache directory for audio-fixed copies
+// Conversions write their temporary MP4 on a faster scratch drive when it has room (SCRATCH_DIR), then
+// copy the finished file next to the original in one sequential write. scratchRoomFn() = free bytes.
+let scratchDir = null, scratchRoomFn = null;
+const scratchJobs = new Map(); // temporary file on the scratch drive -> bytes promised to it
+export function scratchReserved() {
+  let n = 0;
+  for (const [file, bytes] of scratchJobs) {
+    let have = 0;
+    try { have = fs.statSync(file).size; } catch { /* not started yet */ }
+    n += Math.max(0, bytes - have);
+  }
+  return n;
+}
 let audioTrackDir = null;
 let audioTrackBusy = false;
 const audioTrackJobs = new Map();
@@ -634,18 +647,33 @@ async function convert(job, slot) {
   const output = job.h264 ? h264Path(file) : job.fix ? fixPath(file) : twinPath(file);
   if (!output) throw new Error('No place to save the fixed copy.');
   if (job.fix) fs.mkdirSync(path.dirname(output), { recursive: true });
-  const tmp = job.fix
+  const localTmp = job.fix
     ? output.replace(/\.mp4$/, `${TMP_TAG}.mp4`)
     : path.join(path.dirname(file), `${path.basename(file, path.extname(file))}${TMP_TAG}.mp4`);
+  let tmp = localTmp;
+  if (scratchDir && !job.fix) {
+    try {
+      const need = Math.ceil(fs.statSync(file).size * 1.1) + 256 * 1024 ** 2;
+      if ((await scratchRoomFn()) >= need) {
+        fs.mkdirSync(scratchDir, { recursive: true });
+        const id = crypto.createHash('sha1').update(path.resolve(file).toLowerCase()).digest('hex').slice(0, 10);
+        tmp = path.join(scratchDir, `${path.basename(file, path.extname(file))}-${id}${TMP_TAG}.mp4`);
+        scratchJobs.set(tmp, need);
+      }
+    } catch { tmp = localTmp; }
+  }
+  const releaseScratch = () => { scratchJobs.delete(tmp); };
   try {
     fs.rmSync(tmp, { force: true });
   } catch (e) {
     // Still open: an ffmpeg left running by a previous server process. Try again on a later scan.
     if (/EBUSY|EPERM|EACCES/.test(e.code || '')) { e.retryLater = true; e.message = 'an earlier conversion is still finishing'; }
+    releaseScratch();
     throw e;
   }
 
-  const info = await probe(file);
+  let info;
+  try { info = await probe(file); } catch (e) { releaseScratch(); throw e; }
   const key = failureKey(file);
   const shift = syncShift[key] || 0;
   let safeAudio = false;
@@ -716,6 +744,7 @@ async function convert(job, slot) {
     }
   } catch (e) {
     fs.rmSync(tmp, { force: true });
+    releaseScratch();
     dropSidecarTemps();
     throw e;
   }
@@ -726,6 +755,13 @@ async function convert(job, slot) {
     } catch { fs.rmSync(sc.tmp, { force: true }); }
   }
   try {
+    if (tmp !== localTmp) {
+      // Made on the scratch drive: one sequential copy next to the original, then the usual rename.
+      try {
+        await fs.promises.copyFile(tmp, localTmp);
+      } finally { fs.rmSync(tmp, { force: true }); releaseScratch(); }
+      tmp = localTmp;
+    }
     fs.renameSync(tmp, output); // overwrites the previous copy on redo
   } catch (e) {
     fs.rmSync(tmp, { force: true });
@@ -813,12 +849,14 @@ function removeOriginal(file) {
 function cleanTemps(candidates) {
   const dirs = new Set(candidates.map((c) => path.dirname(c.file)));
   if (fixDir) dirs.add(fixDir);
+  if (scratchDir) dirs.add(scratchDir);
   for (const dir of dirs) {
     let entries = [];
     try { entries = fs.readdirSync(dir); } catch { continue; }
     for (const e of entries) {
       if (!isTempFile(e)) continue;
       const full = path.join(dir, e);
+      if (scratchJobs.has(full)) continue;
       const running = activeJobs().some(({ file }) => { // conversions running now
         const stem = path.join(path.dirname(file), path.basename(file, path.extname(file)));
         return full.startsWith(`${stem}.`)
@@ -1079,8 +1117,10 @@ export function convertSoon() {
 
 // listCandidates(): Promise<[{ file, deleteOriginal }] | null>
 // null means the inventory is temporarily unavailable; skip the whole scan, including destructive cache cleanup.
-export async function startConverter({ dataDir, cacheDir = path.join(dataDir, 'cache'), listCandidates, onConverted, onSidecar }) {
+export async function startConverter({ dataDir, cacheDir = path.join(dataDir, 'cache'), listCandidates, onConverted, onSidecar, scratchDir: scratch = null, scratchRoom = null }) {
   onSidecarHook = onSidecar || null;
+  scratchDir = scratch && scratchRoom ? path.resolve(scratch) : null;
+  scratchRoomFn = scratchRoom;
   const audioRoot = process.env.AUDIO_FIX_DIR ? path.resolve(process.env.AUDIO_FIX_DIR) : path.join(cacheDir, 'audio');
   audioTrackDir = path.join(audioRoot, 'tracks');
   if ((process.env.CONVERT || 'on').toLowerCase() === 'off') {

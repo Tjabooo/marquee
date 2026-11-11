@@ -38,6 +38,7 @@ import * as smart from './smart-download.js';
 import * as svt from './svtplay.js';
 import { createSvtQueue, expectedSize } from './svt-queue.js';
 import { createDocumentaries } from './documentaries.js';
+import { scratchPlan, liveRoot, usesScratch } from './scratch.js';
 import * as versions from './versions.js';
 import { planEpisodeOrder } from './episode-order.js';
 import { PROFILES, isDualAudio } from './recommend.js';
@@ -85,6 +86,9 @@ const TMDB_TOKEN = process.env.TMDB_TOKEN || '';
 const TMDB_KEY = process.env.TMDB_API_KEY || '';
 const TMDB_LANG = process.env.TMDB_LANG || 'en-US';
 const QBIT_URL = (process.env.QBIT_URL || '').replace(/\/+$/, '');
+// Unfinished downloads that fit are kept on this (faster) drive, see scratch.js; empty = off.
+const SCRATCH_DIR = process.env.SCRATCH_DIR ? path.resolve(process.env.SCRATCH_DIR) : null;
+const SCRATCH_RESERVE = Math.max(1, Number(process.env.SCRATCH_RESERVE_GB) || 40) * 1024 ** 3;
 // TVs live on the home network, so they're only offered to visitors who are at home.
 const CAST_WHEN_AWAY = (process.env.CAST_WHEN_AWAY || 'off').toLowerCase() === 'on';
 const castAllowed = async (req) => CAST_WHEN_AWAY || (await isHomeRequest(req)) !== false;
@@ -1112,8 +1116,18 @@ function torrentFileMetadata(t, { fresh = false } = {}) {
   if (torrentFilesCache.size > 500) torrentFilesCache.delete(torrentFilesCache.keys().next().value);
   return entry.promise;
 }
+// Where the file will be once the download is complete (its save path). Library identity, claims
+// and conversions all use this path, so a download kept on the scratch drive only becomes part of
+// the library after qBittorrent has moved it there.
 function torrentFilePath(t, f) {
   const full = downloadFilePath(t.save_path, f.name);
+  if (!full) throw new HttpError(502, 'qBittorrent returned an unsafe file path.');
+  return full;
+}
+// Where the file is right now: on the scratch drive while it's still downloading there.
+function torrentLivePath(t, f) {
+  const root = liveRoot(t);
+  const full = root && downloadFilePath(root, f.name);
   if (!full) throw new HttpError(502, 'qBittorrent returned an unsafe file path.');
   return full;
 }
@@ -1240,6 +1254,7 @@ async function addDownloadNow({ link, file, user = null, name = '', film = null,
   if (film && hash) shows.rememberFilmDownload(hash, film);
   if (show && hash) shows.rememberShowDownload(hash, show, torrentIdentity(name));
   setTimeout(() => contentGuardRound(), 1000);
+  if (SCRATCH_DIR) setTimeout(() => scratchRound(), 4000);
   return { existing: false, hash };
 }
 
@@ -1594,7 +1609,7 @@ async function reopenPack(link, seasonNo, owned, { timeout = 45000, ctx = null, 
     if (f.priority !== 0) return;
     on.push(f.index ?? i);
     // Fully downloaded once and since deleted: qBittorrent still counts those pieces as done.
-    try { if (f.progress >= 0.99 && !fileExists(torrentFilePath(t, f))) deleted = true; } catch { deleted = true; }
+    try { if (f.progress >= 0.99 && !fileExists(torrentFilePath(t, f)) && !fileExists(torrentLivePath(t, f))) deleted = true; } catch { deleted = true; }
   });
   if (!on.length) return { covered, skipped: 0 };
   await qbitRequest('/api/v2/torrents/filePrio', { method: 'POST', body: new URLSearchParams({ hash, id: on.join('|'), priority: '1' }) });
@@ -2048,7 +2063,8 @@ async function downloadSource(hash) {
     .sort((a, b) => b.size - a.size)[0];
   if (!video) throw new HttpError(404, 'This download has no playable video file.');
   if (!(video.progress >= 1) || BUSY_STATES.test(info.state || '')) throw new HttpError(409, 'This video hasn’t finished downloading yet.');
-  const full = torrentFilePath(info, video);
+  let full = torrentFilePath(info, video);
+  if (!fileExists(full)) full = torrentLivePath(info, video); // finished, not yet moved off the scratch drive
   if (!fileExists(full)) throw new HttpError(409, 'The downloaded video is missing. Retry the download to check its files.');
   return full;
 }
@@ -2109,7 +2125,8 @@ const PARTIAL_ENABLED = !/^(0|off|false|no)$/i.test(process.env.PARTIAL_STREAMS 
 const partialStreams = new PartialStreams({
   qbit,
   post: (endpoint, body) => qbitRequest(endpoint, { method: 'POST', body }).then(() => torrentFilesCache.clear()),
-  filePath: (t, f) => torrentFilePath(t, f),
+  filePath: (t, f) => torrentLivePath(t, f),
+  finalPath: (t, f) => torrentFilePath(t, f),
   isVideo: (name) => isVideo(name),
   start: async (hash) => {
     const held = episodeOrder.get(hash);
@@ -4369,7 +4386,8 @@ function removeFile(file) {
 
 // Removes empty parent folders up to (not including) MEDIA_DIR.
 function removeEmptyFolders(dir) {
-  while (MEDIA_DIR && isInside(dir, MEDIA_DIR) && !samePath(dir, MEDIA_DIR)) {
+  const root = [MEDIA_DIR, SCRATCH_DIR].find((r) => r && isInside(dir, r));
+  while (root && isInside(dir, root) && !samePath(dir, root)) {
     try { fs.rmdirSync(dir); } catch { return; } // not empty
     dir = path.dirname(dir);
   }
@@ -4635,6 +4653,7 @@ async function stopSeeding() {
       if (t.progress < 1 || !SEEDING.test(t.state || '')) continue;
       if ((t.tags || '').split(',').some((tag) => tag.trim().toLowerCase() === 'seed')) continue;
       const content = t.content_path || path.join(t.save_path || '', t.name);
+      if (SCRATCH_DIR && isInside(content, SCRATCH_DIR)) continue; // still being moved off the scratch drive
       const inLibrary = Boolean(MEDIA_DIR) && isInside(content, MEDIA_DIR);
       // Not in anyone's library yet (claimFiles below does that first): keep it until it is.
       if (inLibrary && !accounts.torrentRow(t.hash)?.claimed_at) continue;
@@ -4788,9 +4807,56 @@ async function libraryRound() {
 setTimeout(libraryRound, 15_000);
 setInterval(libraryRound, 60 * 1000);
 
+// ---- scratch drive for unfinished downloads (scratch.js) ----
+async function scratchFree() {
+  const st = await fs.promises.statfs(SCRATCH_DIR);
+  return Number(st.bavail) * Number(st.bsize);
+}
+// Free room on the scratch drive for a conversion's temporary copy: free space minus what downloads
+// there still have to write, other conversions' copies and the reserve.
+async function scratchRoom() {
+  if (!SCRATCH_DIR) return 0;
+  let pending = 0;
+  try {
+    for (const t of await qbit('/api/v2/torrents/info')) {
+      if (usesScratch(t, SCRATCH_DIR) && Number(t.progress) < 1) pending += Number(t.amount_left) || 0;
+    }
+  } catch { return 0; } // unknown: keep conversions on the media drive
+  return (await scratchFree()) - pending - converter.scratchReserved() - SCRATCH_RESERVE;
+}
+let scratchBusy = false, scratchWarned = false;
+async function scratchRound() {
+  if (!SCRATCH_DIR || !QBIT_URL || scratchBusy) return;
+  scratchBusy = true;
+  try {
+    await fs.promises.mkdir(SCRATCH_DIR, { recursive: true });
+    const plan = scratchPlan({
+      torrents: await qbit('/api/v2/torrents/info'), scratchDir: SCRATCH_DIR, freeBytes: await scratchFree(),
+      reserveBytes: SCRATCH_RESERVE, otherReserved: converter.scratchReserved(),
+    });
+    const move = async (hash, to) => {
+      await qbitRequest('/api/v2/torrents/setDownloadPath', { method: 'POST', body: new URLSearchParams({ id: hash, path: to }) });
+      console.log(`[scratch] ${hash.slice(0, 8)}: unfinished data ${to ? `kept on ${to}` : 'moved back to the media drive (scratch drive low on space)'}`);
+    };
+    for (const hash of plan.toScratch) await move(hash, SCRATCH_DIR);
+    for (const hash of plan.toMedia) await move(hash, '');
+    if (plan.toScratch.length || plan.toMedia.length) torrentInventory.at = 0;
+    scratchWarned = false;
+  } catch (e) {
+    if (!scratchWarned) console.warn(`[scratch] ${e.message}`);
+    scratchWarned = true;
+  } finally { scratchBusy = false; }
+}
+if (SCRATCH_DIR) {
+  setInterval(scratchRound, 15000).unref();
+  setTimeout(scratchRound, 5000).unref();
+}
+
 converter.startConverter({
   dataDir: DATA_DIR,
   cacheDir: CACHE_DIR,
+  scratchDir: SCRATCH_DIR ? path.join(SCRATCH_DIR, 'convert') : null,
+  scratchRoom,
   onSidecar: (srt) => subsync.markTrusted(srt), // extracted from the video: already in sync
   listCandidates: conversionCandidates,
   onConverted: () => { invalidateLibrary(); },

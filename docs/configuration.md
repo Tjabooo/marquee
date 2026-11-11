@@ -60,6 +60,8 @@ See [remote-access.md](remote-access.md) for how accounts work and how to publis
 | `QBIT_USER` | | Web UI user. |
 | `QBIT_PASS` 🔒 | | Web UI password. |
 | `QBIT_REMOVE_FINISHED` | `on` | Remove finished torrents from qBittorrent (files are kept) so nothing seeds. Tag a torrent `seed` to keep it. |
+| `SCRATCH_DIR` | | Folder on a faster drive (an SSD) for unfinished downloads and conversions' temporary copies, when the library is on a hard disk. Torrents write pieces in random order, which stalls playback from the same disk. A download goes there only if it fits; qBittorrent moves it to the library when it completes, in one sequential copy. Play now keeps working during the move. |
+| `SCRATCH_RESERVE_GB` | `40` | Space on the `SCRATCH_DIR` drive that downloads and conversions never use. If the drive runs low anyway, the largest unfinished download is moved back to the library drive. |
 
 ## Torrent search
 
