@@ -89,6 +89,13 @@ const QBIT_URL = (process.env.QBIT_URL || '').replace(/\/+$/, '');
 // Unfinished downloads that fit are kept on this (faster) drive, see scratch.js; empty = off.
 const SCRATCH_DIR = process.env.SCRATCH_DIR ? path.resolve(process.env.SCRATCH_DIR) : null;
 const SCRATCH_RESERVE = Math.max(1, Number(process.env.SCRATCH_RESERVE_GB) || 40) * 1024 ** 3;
+// Conversions' temporary copies: SCRATCH_DIR\convert unless another (fast) drive is given, so
+// downloads and conversions don't share one SSD.
+const CONVERT_SCRATCH_DIR = process.env.CONVERT_SCRATCH_DIR ? path.resolve(process.env.CONVERT_SCRATCH_DIR)
+  : SCRATCH_DIR ? path.join(SCRATCH_DIR, 'convert') : null;
+const CONVERT_SCRATCH_RESERVE = Math.max(1, Number(process.env.CONVERT_SCRATCH_RESERVE_GB) || 40) * 1024 ** 3;
+const sameDriveAs = (a, b) => Boolean(a && b) && path.parse(path.resolve(a)).root.toLowerCase() === path.parse(path.resolve(b)).root.toLowerCase();
+const CONVERT_SHARES_SCRATCH = sameDriveAs(CONVERT_SCRATCH_DIR, SCRATCH_DIR);
 // TVs live on the home network, so they're only offered to visitors who are at home.
 const CAST_WHEN_AWAY = (process.env.CAST_WHEN_AWAY || 'off').toLowerCase() === 'on';
 const castAllowed = async (req) => CAST_WHEN_AWAY || (await isHomeRequest(req)) !== false;
@@ -4808,14 +4815,16 @@ setTimeout(libraryRound, 15_000);
 setInterval(libraryRound, 60 * 1000);
 
 // ---- scratch drive for unfinished downloads (scratch.js) ----
-async function scratchFree() {
-  const st = await fs.promises.statfs(SCRATCH_DIR);
+async function scratchFree(dir = SCRATCH_DIR) {
+  await fs.promises.mkdir(dir, { recursive: true });
+  const st = await fs.promises.statfs(dir);
   return Number(st.bavail) * Number(st.bsize);
 }
-// Free room on the scratch drive for a conversion's temporary copy: free space minus what downloads
-// there still have to write, other conversions' copies and the reserve.
+// Free room for a conversion's temporary copy: free space minus other conversions' copies and the
+// reserve, and minus what downloads still have to write when they share the drive.
 async function scratchRoom() {
-  if (!SCRATCH_DIR) return 0;
+  if (!CONVERT_SCRATCH_DIR) return 0;
+  if (!CONVERT_SHARES_SCRATCH) return (await scratchFree(CONVERT_SCRATCH_DIR)) - converter.scratchReserved() - CONVERT_SCRATCH_RESERVE;
   let pending = 0;
   try {
     for (const t of await qbit('/api/v2/torrents/info')) {
@@ -4832,7 +4841,7 @@ async function scratchRound() {
     await fs.promises.mkdir(SCRATCH_DIR, { recursive: true });
     const plan = scratchPlan({
       torrents: await qbit('/api/v2/torrents/info'), scratchDir: SCRATCH_DIR, freeBytes: await scratchFree(),
-      reserveBytes: SCRATCH_RESERVE, otherReserved: converter.scratchReserved(),
+      reserveBytes: SCRATCH_RESERVE, otherReserved: CONVERT_SHARES_SCRATCH ? converter.scratchReserved() : 0,
     });
     const move = async (hash, to) => {
       await qbitRequest('/api/v2/torrents/setDownloadPath', { method: 'POST', body: new URLSearchParams({ id: hash, path: to }) });
@@ -4855,7 +4864,7 @@ if (SCRATCH_DIR) {
 converter.startConverter({
   dataDir: DATA_DIR,
   cacheDir: CACHE_DIR,
-  scratchDir: SCRATCH_DIR ? path.join(SCRATCH_DIR, 'convert') : null,
+  scratchDir: CONVERT_SCRATCH_DIR,
   scratchRoom,
   onSidecar: (srt) => subsync.markTrusted(srt), // extracted from the video: already in sync
   listCandidates: conversionCandidates,

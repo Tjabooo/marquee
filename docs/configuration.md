@@ -62,6 +62,8 @@ See [remote-access.md](remote-access.md) for how accounts work and how to publis
 | `QBIT_REMOVE_FINISHED` | `on` | Remove finished torrents from qBittorrent (files are kept) so nothing seeds. Tag a torrent `seed` to keep it. |
 | `SCRATCH_DIR` | | Folder on a faster drive (an SSD) for unfinished downloads and conversions' temporary copies, when the library is on a hard disk. Torrents write pieces in random order, which stalls playback from the same disk. A download goes there only if it fits; qBittorrent moves it to the library when it completes, in one sequential copy. Play now keeps working during the move. |
 | `SCRATCH_RESERVE_GB` | `40` | Space on the `SCRATCH_DIR` drive that downloads and conversions never use. If the drive runs low anyway, the largest unfinished download is moved back to the library drive. |
+| `CONVERT_SCRATCH_DIR` | `SCRATCH_DIR\convert` | Where conversions write their temporary MP4 before it's copied next to the original. Point it at a second SSD so downloads and conversions don't share one drive. Used only when the copy fits. |
+| `CONVERT_SCRATCH_RESERVE_GB` | `40` | Space on the `CONVERT_SCRATCH_DIR` drive that conversions never use, when it's not the `SCRATCH_DIR` drive. |
 
 ## Torrent search
 
