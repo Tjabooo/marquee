@@ -357,11 +357,10 @@ impl Player {
         }
         self.show_osd(cx, pause);
     }
-    fn skip_intro(&mut self, cx: &mut Cx, auto: bool) {
+    fn skip_intro(&mut self, cx: &mut Cx) {
         let Some((_, end)) = self.intro else { return };
         self.intro_done = true;
         self.seek_to(cx, end);
-        cx.toast(if auto { t!("Intro skipped") } else { t!("Skipped the intro") });
     }
     fn intro_on(&self) -> bool {
         !self.ended && logic::intro_showing(self.time, self.intro)
@@ -372,7 +371,7 @@ impl Player {
     /// Starts or stops the Up next countdown to match what's on screen; auto-skips intros when asked to.
     fn settle(&mut self, cx: &mut Cx) {
         if self.intro_on() && !self.intro_done && self.playing && cx.state.setting("skipIntro") == "auto" {
-            self.skip_intro(cx, true);
+            self.skip_intro(cx);
         }
         let on = self.up_next_on();
         let counting = on && !self.busy && !self.held && cx.auto_chain < logic::AUTOPLAY_CHAIN;
@@ -823,7 +822,7 @@ impl Screen for Player {
             }
         }
         match k.code {
-            key::ENTER if self.intro_on() => self.skip_intro(cx, false),
+            key::ENTER if self.intro_on() => self.skip_intro(cx),
             key::ENTER | key::PLAYPAUSE => self.toggle(cx, None),
             key::PLAY => self.toggle(cx, Some(false)),
             key::PAUSE => self.toggle(cx, Some(true)),

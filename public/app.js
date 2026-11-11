@@ -3825,7 +3825,6 @@ function openRemote(session, { replace = false } = {}) {
     cue.introDone = true; // once per cast: seeking back to watch it is left alone
     st.position = cue.intro.end;
     send('seek', cue.intro.end);
-    toast(auto ? T('Intro skipped') : T('Skipped the intro'));
   }
 
   // Real seconds while the credits play on the TV (or after it finished); paused on the TV = paused here.
@@ -6564,7 +6563,7 @@ function updateSkipIntro() {
   const session = current;
   const show = introShowing(session);
   if (show && prefs().skipIntro === 'auto' && !party && !session.introDone && !video.paused && !video.seeking) {
-    skipIntro(true);
+    skipIntro();
     return;
   }
   if (skipIntroEl.hidden === !show) return;
@@ -6572,13 +6571,12 @@ function updateSkipIntro() {
   playerEl.classList.toggle('has-skip-intro', show);
   layoutSubs();
 }
-function skipIntro(auto = false) {
+function skipIntro() {
   const session = current;
   if (!introShowing(session)) return;
   session.introDone = true;
   if (party) party.control('seek', session.intro.end);
   else { video.currentTime = session.intro.end; updateTime(); }
-  osd(auto ? T('Intro skipped') : T('Skipped the intro'));
   updateSkipIntro();
 }
 skipIntroEl.addEventListener('click', (e) => { e.stopPropagation(); skipIntro(); });

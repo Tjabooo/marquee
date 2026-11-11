@@ -1588,7 +1588,7 @@
       }
       if (s.cues) { var text = L.cueText(s.cues, s.time); if (subsEl.textContent !== text) subsEl.textContent = text; }
       var intro = !s.ended && L.introShowing(s.time, s.intro);
-      if (intro && !s.introDone && s.playing && state.me && state.me.settings && state.me.settings.skipIntro === 'auto') { skipIntro(true); return; }
+      if (intro && !s.introDone && s.playing && state.me && state.me.settings && state.me.settings.skipIntro === 'auto') { skipIntro(); return; }
       if (skipBtn.classList.contains('show') !== intro) skipBtn.classList.toggle('show', intro);
       var skipFocus = intro && !menu.classList.contains('show');
       if (skipBtn.classList.contains('focus') !== skipFocus) skipBtn.classList.toggle('focus', skipFocus);
@@ -1635,11 +1635,10 @@
     }
     function stopCountdown() { clearInterval(autoTimer); autoTimer = null; s.autoLeft = null; }
 
-    function skipIntro(auto) {
+    function skipIntro() {
       if (!s.intro) return;
       s.introDone = true;
       seekTo(s.intro.end);
-      toast(auto ? T('Intro skipped') : T('Skipped the intro'));
     }
     function seekTo(sec) {
       sec = Math.max(0, Math.min(s.duration ? s.duration - 2 : sec, sec));
@@ -1866,7 +1865,7 @@
         if (code === KEY.ENTER) { if (cardFocus === 0) playNext(); else { s.dismissed = true; if (s.ended) leavePlayer(); else paint(); } return true; }
         if (code === KEY.BACK) { s.dismissed = true; if (s.ended) leavePlayer(); else paint(); return true; }
       }
-      if (code === KEY.ENTER && skipBtn.classList.contains('show')) { skipIntro(false); return true; }
+      if (code === KEY.ENTER && skipBtn.classList.contains('show')) { skipIntro(); return true; }
       if (code === KEY.ENTER || code === KEY.PLAYPAUSE) { togglePause(); return true; }
       if (code === KEY.PLAY) { togglePause(false); return true; }
       if (code === KEY.PAUSE) { togglePause(true); return true; }

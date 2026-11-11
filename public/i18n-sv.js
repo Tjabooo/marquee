@@ -493,8 +493,6 @@ export default {
   "Next episode in {0}": "Nästa avsnitt om {0}",
   "Dismiss": "Stäng",
   "Up next: {0}.": "Nästa: {0}.",
-  "Intro skipped": "Hoppade över introt",
-  "Skipped the intro": "Hoppade över introt",
   "{0} Try Next episode again.": "{0} Prova Nästa avsnitt igen.",
   "Apple TV can’t show separate subtitle files over AirPlay. Play it on the phone for subtitles, or use a smart TV.": "Apple TV kan inte visa separata undertextfiler via AirPlay. Spela på telefonen för undertexter, eller använd en smart-TV.",
   "No subtitles found for this.": "Inga undertexter hittades för det här.",
