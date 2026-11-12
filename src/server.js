@@ -4648,6 +4648,8 @@ async function checkSubtitleWants() {
   await subtitles.processWants(async (hash) => {
     const [t] = await qbit(`/api/v2/torrents/info?hashes=${hash}`);
     if (!t || t.progress < 1) return null;
+    // Still on the scratch drive or being moved off it: subtitles saved now would stay behind there.
+    if (BUSY_STATES.test(t.state || '') || (liveRoot(t) && t.save_path && !samePath(liveRoot(t), t.save_path))) return null;
     const file = await downloadSource(hash);
     return { file, info: infoFor(file) };
   }).catch((e) => console.warn(`[subtitles] ${e.message}`));
