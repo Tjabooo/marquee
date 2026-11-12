@@ -7,9 +7,9 @@ const TPB_CATS = {
   movie: new Set(['201', '202', '207', '209', '211']),
   tv: new Set(['205', '208', '212']),
 };
-const X_PATH = /^\\/torrent\\/\\d+\\/[^/?#"<>\\s]+\\/?$/;
+const X_PATH = /^\/torrent\/\d+\/[^/?#"<>\s]+\/?$/;
 export const torrentsEnabled = () => false;
-export const torrentQueryAllowed = (q) => String(q || '').length >= 2 || /^\\d$/.test(String(q || ''));
+export const torrentQueryAllowed = (q) => String(q || '').length >= 2 || /^\d$/.test(String(q || ''));
 class TorrentError extends Error { constructor(status, message) { super(message); this.status = status; } }
 
 const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', '#39': "'" };
@@ -162,7 +162,7 @@ export function parseKnaben(json) {
     });
 }
 
-export const plainQuery = (q) => String(q).normalize('NFD').replace(/[\\u0300-\\u036f]/g, '');
+export const plainQuery = (q) => String(q).normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 export async function searchTorrents() {
   throw new TorrentError(503, 'Built-in torrent discovery is not available. Import media you own or use an authorized torrent link.');
 }
