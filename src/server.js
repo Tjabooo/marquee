@@ -3656,7 +3656,6 @@ async function handleApi(req, res, url) {
   }
   // ---- Download: one command for a film, a season or some episodes (see smart-download.js) ----
   if (p === '/api/downloads/smart' && req.method === 'POST') {
-    throw new HttpError(410, 'Automatic release search is unavailable. Import authorized media instead.');
     const body = await readJson(req);
     const { id, title, type, season: seasonNo, episodes, upgrade } = await startSmartFor(user, body);
     activity.record(req, upgrade ? 'upgrade' : 'download', type === 'tv'
@@ -4889,7 +4888,7 @@ server.listen(PORT, HOST, () => {
   if (PREVIEW_DIR) console.log(`  Preview:   ${PREVIEW_DIR} (open /preview to try it, /preview/off to leave)`);
   else if (preview.previewProblem()) console.log(`  ! ${preview.previewProblem()}`);
   console.log(`  Downloads: ${QBIT_URL ? `${QBIT_URL}${REMOVE_FINISHED ? ', finished downloads removed (no seeding)' : ''}` : 'off (add QBIT_URL to .env)'}`);
-  console.log(`  Discovery: authorized manual media imports; third-party torrent index lookup unavailable`);
+  console.log(`  Torrents:  ${torrents.torrentsEnabled() ? 'search on (1337x + The Pirate Bay)' : 'off (TORRENTS=off)'}`);
   console.log(`  Subtitles: ${subtitles.subtitlesConfigured() ? 'OpenSubtitles on' : 'off (add OPENSUBTITLES_API_KEY to .env)'}${subsync.autoSyncEnabled() ? ', timing auto-fix on' : ''}`);
   console.log(`  TVs will stream from: http://${LAN_IP}:${PORT} (set SERVER_IP in .env if this is wrong)`);
   for (const w of checkConfig(process.env).filter((c) => c.level !== 'info')) console.warn(`  ! ${w.message}. ${w.fix}`);

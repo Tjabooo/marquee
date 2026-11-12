@@ -3477,11 +3477,11 @@ function torrentBrowser({ query = '', type = 'all', movieId = null, tvId = null,
   const added = new Set();
 
   const input = h('input', { type: 'search', enterkeyhint: 'search', autocomplete: 'off', autocorrect: 'off', spellcheck: 'false',
-    'aria-label': T('Torrent search'), placeholder: T('Paste an authorized magnet or .torrent URL') });
+    'aria-label': T('Torrent search'), placeholder: T('Title, or paste a magnet link') });
   input.value = query;
   const form = h('form', { class: 'search tor-search', role: 'search' },
     h('span', { class: 'search-icon', 'aria-hidden': 'true' }, icon('search')), input,
-    h('button', { type: 'submit', class: 'tor-go' }, T('Add')));
+    h('button', { type: 'submit', class: 'tor-go' }, T('Search')));
   const chips = h('div', { class: 'tor-filters quality-rail', role: 'group', 'aria-label': T('Quality') },
     QUALITY_FILTERS.map(([key, text]) => h('button', {
       type: 'button', class: 'chip', 'aria-pressed': String(key === filter),
@@ -3500,9 +3500,7 @@ function torrentBrowser({ query = '', type = 'all', movieId = null, tvId = null,
     h('label', { for: subId }, T('Subtitles')), subSelect,
     h('span', { class: 'muted tor-subs-note' }));
   subSelect.addEventListener('change', () => { try { localStorage.setItem('subs:dlLang', subSelect.value); } catch { /* blocked */ } });
-  const el = h('div', { class: 'tor-browser' },
-    h('p', { class: 'muted' }, T('Import an authorized magnet or .torrent URL, or add files to your media folder.')),
-    form, info, list);
+  const el = h('div', { class: 'tor-browser' }, form, subRow, chips, info, list);
 
   async function loadSubLangs(q) {
     if (!state.status.subtitles) return;
@@ -3529,12 +3527,27 @@ function torrentBrowser({ query = '', type = 'all', movieId = null, tvId = null,
   form.addEventListener('submit', (e) => { e.preventDefault(); input.blur(); run(); });
 
   async function run() {
-    const link = input.value.trim();
-    if (!/^magnet:\\?/i.test(link) && !/^https?:\\/\\//i.test(link)) {
-      info.textContent = T('Paste an authorized magnet or .torrent URL');
-      return;
+    const q = input.value.trim();
+    ctrl?.abort();
+    if (/^magnet:\?/i.test(q)) return addPastedMagnet(q);
+    if (q.length < 2) { results = []; list.replaceChildren(); info.textContent = T('Type a title to search 1337x, The Pirate Bay and Nyaa (anime).'); return; }
+    ctrl = new AbortController();
+    const { signal } = ctrl;
+    info.textContent = T('Searching 1337x, The Pirate Bay and Nyaa…');
+    list.replaceChildren(...Array.from({ length: 5 }, () => h('li', { class: 'row tor skeleton-row', 'aria-hidden': 'true' })));
+    try {
+      // The title's TMDB id lets the server search anime by its romanised name too (Nyaa).
+      const title = tvId ? `&tv=${tvId}` : movieId ? `&movie=${movieId}` : '';
+      const data = await api(`/api/torrents/search?q=${encodeURIComponent(q)}&type=${type}${strict && q === query ? '&strict=1' : ''}${title}`, { signal });
+      results = data.results;
+      renderList(data.problems);
+      loadSubLangs(q);
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+      results = [];
+      info.textContent = '';
+      list.replaceChildren(h('li', {}, notice(T('Search didn’t work'), err.message, run)));
     }
-    await addPastedMagnet(link);
   }
 
   async function addPastedMagnet(link) {
@@ -3643,14 +3656,14 @@ function torrentBrowser({ query = '', type = 'all', movieId = null, tvId = null,
   return {
     el,
     abort: () => ctrl?.abort(),
-    start: () => { input.value = ''; info.textContent = T('Only add media you have permission to download.'); input.focus(); },
+    start: () => { if (query) run(); else { info.textContent = T('Type a title to search 1337x, The Pirate Bay and Nyaa (anime).'); input.focus(); } },
   };
 }
 
 // Find torrents (Discover search): the release list on its own, for anything you search by name.
 function openTorrents({ query = '', opener } = {}) {
   const browser = torrentBrowser({ query });
-  $('#picker-body').replaceChildren(h('h2', { id: 'picker-title' }, T('Add authorized download')), browser.el);
+  $('#picker-body').replaceChildren(h('h2', { id: 'picker-title' }, T('Find torrents')), browser.el);
   pushOverlay(showSheet($('#picker'), $('#picker-backdrop'), () => { browser.abort(); opener?.focus({ preventScroll: true }); }));
   browser.start();
 }
@@ -8962,8 +8975,7 @@ navigator.serviceWorker?.addEventListener('message', async (event) => {
   if (state.me?.needsPassword) { showPasswordGate(); return; }
   state.rules = state.status.rules;
   applyTheme(prefs().theme);
-  $('#find-torrents').hidden = !state.status.downloads || !canDownload();
-  $('#find-torrents').textContent = T('Add authorized download');
+  $('#find-torrents').hidden = !state.status.torrents || !canDownload();
   $('#manage-downloads').hidden = !state.me?.isOwner;
   if (state.status.admin) { enableActivityTab(); enableHouseTab(); enableNotesTab(); }
   if (state.status.clips) enableClipsTab();

@@ -78,7 +78,7 @@ test('clip renames persist without moving files or breaking public links; downlo
     child.kill(); await exited; await start();
     assert.equal((await request('/api/me')).me.settings.downloadProfile, 'save');
     // The single Download command: never available without qBittorrent; the old parallel routes are gone.
-    assert.match((await request('/api/downloads/smart', { type: 'movie', tmdbId: 603 }, undefined, 410)).error, /Automatic release search is unavailable/);
+    assert.match((await request('/api/downloads/smart', { type: 'movie', tmdbId: 603 }, undefined, 503)).error, /Downloads aren’t connected/);
     await request('/api/torrents/recommend?title=The+Matrix&year=1999&type=movie', undefined, undefined, 404);
   } finally {
     if (child?.exitCode === null) child.kill(); if (exited) await exited;

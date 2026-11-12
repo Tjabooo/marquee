@@ -1,9 +1,5 @@
 // Swedish for the web app, keyed by the English line in the code (T('…')). See public/i18n.js.
 export default {
-  "Paste an authorized magnet or .torrent URL": "Klistra in en tillåten magnetlänk eller .torrent-adress",
-  "Add authorized download": "Lägg till tillåten nedladdning",
-  "Import an authorized magnet or .torrent URL, or add files to your media folder.": "Importera en tillåten magnet- eller .torrent-länk, eller lägg filer i din mediemapp.",
-  "Only add media you have permission to download.": "Lägg bara till media som du har tillåtelse att ladda ner.",
   "Cast:": "Medverkande:",
   "Waiting for the download": "Väntar på nedladdningen",
   "Waiting for the download · starts in about {0}": "Väntar på nedladdningen · börjar om ungefär {0}",

@@ -87,7 +87,7 @@ test('adult names, .torrent files and TMDB titles are refused before qBittorrent
   const b = (s) => `${Buffer.byteLength(s)}:${s}`;
   const file = Buffer.from(`d4:infod5:filesld6:lengthi1e4:pathl${b('Scene.XXX.1080p.mp4')}eee4:name${b('Pack')}12:piece lengthi1e6:pieces0:ee`);
   await request('/api/downloads/add', file, undefined, 403, 'application/x-bittorrent');
-  await request('/api/downloads/smart', { type: 'movie', tmdbId: 7 }, undefined, 410);
+  await request('/api/downloads/smart', { type: 'movie', tmdbId: 7 }, undefined, 403);
   assert.equal(state.adds, 0, 'nothing reached qBittorrent');
   assert.match(logs(), /\[content-filter\] blocked member@test\.local/);
   const feed = await request('/api/activity', undefined, 'owner@test.local');
