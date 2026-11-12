@@ -3656,6 +3656,7 @@ async function handleApi(req, res, url) {
   }
   // ---- Download: one command for a film, a season or some episodes (see smart-download.js) ----
   if (p === '/api/downloads/smart' && req.method === 'POST') {
+    throw new HttpError(410, 'Automatic third-party release search is unavailable. Import authorized media using Add authorized download or your media folder.');
     const body = await readJson(req);
     const { id, title, type, season: seasonNo, episodes, upgrade } = await startSmartFor(user, body);
     activity.record(req, upgrade ? 'upgrade' : 'download', type === 'tv'
