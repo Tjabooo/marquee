@@ -3501,7 +3501,7 @@ function torrentBrowser({ query = '', type = 'all', movieId = null, tvId = null,
     h('span', { class: 'muted tor-subs-note' }));
   subSelect.addEventListener('change', () => { try { localStorage.setItem('subs:dlLang', subSelect.value); } catch { /* blocked */ } });
   const el = h('div', { class: 'tor-browser' },
-    h('p', { class: 'muted' }, 'Import an authorized magnet link or .torrent URL. You can also place media you already have in your configured media folder.'),
+    h('p', { class: 'muted' }, T('Import an authorized magnet or .torrent URL, or add files to your media folder.')),
     form, info, list);
 
   async function loadSubLangs(q) {
@@ -3531,7 +3531,7 @@ function torrentBrowser({ query = '', type = 'all', movieId = null, tvId = null,
   async function run() {
     const link = input.value.trim();
     if (!/^magnet:\\?/i.test(link) && !/^https?:\\/\\//i.test(link)) {
-      info.textContent = 'Paste an authorized magnet link or a URL to a .torrent file.';
+      info.textContent = T('Paste an authorized magnet or .torrent URL');
       return;
     }
     await addPastedMagnet(link);
@@ -3643,7 +3643,7 @@ function torrentBrowser({ query = '', type = 'all', movieId = null, tvId = null,
   return {
     el,
     abort: () => ctrl?.abort(),
-    start: () => { input.value = ''; info.textContent = 'Only add media you have permission to download.'; input.focus(); },
+    start: () => { input.value = ''; info.textContent = T('Only add media you have permission to download.'); input.focus(); },
   };
 }
 
@@ -8963,7 +8963,7 @@ navigator.serviceWorker?.addEventListener('message', async (event) => {
   state.rules = state.status.rules;
   applyTheme(prefs().theme);
   $('#find-torrents').hidden = !state.status.downloads || !canDownload();
-  $('#find-torrents').textContent = 'Add authorized download';
+  $('#find-torrents').textContent = T('Add authorized download');
   $('#manage-downloads').hidden = !state.me?.isOwner;
   if (state.status.admin) { enableActivityTab(); enableHouseTab(); enableNotesTab(); }
   if (state.status.clips) enableClipsTab();
