@@ -1,4 +1,13 @@
 {
+  "2026-11-12-fake-downloads": {
+    "title": "Falska nedladdningar byts ut",
+    "items": {
+      "No more stuck seasons from fake files": {
+        "title": "Inga fler säsonger som fastnar på falska filer",
+        "text": "Ibland är en nedladdning som ser ut som ett nytt avsnitt egentligen ett program som låtsas vara ett. Lilin öppnar det aldrig. Nu tar Lilin bort nedladdningen själv och hämtar en riktig kopia av avsnittet i stället, och resten av säsongen fortsätter laddas ner under tiden."
+      }
+    }
+  },
   "2026-11-12-age-rating-language": {
     "title": "Åldersgränser på ditt språk",
     "items": {

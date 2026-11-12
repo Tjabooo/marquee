@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-12-fake-downloads",
+    "date": "2026-11-12",
+    "title": "Fake downloads are swapped out",
+    "items": [
+      {
+        "title": "No more stuck seasons from fake files",
+        "text": "Sometimes a download that looks like a new episode is really a program pretending to be one. Lilin never opens it. It now removes the download on its own and gets a real copy of that episode instead, and the rest of the season keeps downloading in the meantime."
+      }
+    ]
+  },
+  {
     "id": "2026-11-12-age-rating-language",
     "date": "2026-11-12",
     "title": "Age ratings in your language",
