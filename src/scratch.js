@@ -49,8 +49,10 @@ export function scratchPlan({ torrents = [], scratchDir, freeBytes, reserveBytes
     candidates.push(t);
   }
   const pending = on.reduce((n, t) => n + (Number(t.amount_left) || 0), 0) + queued;
-  // Running low anyway (something else filled the drive): send the largest one back, one per round.
-  if (on.length && freeBytes - otherReserved - pending < reserveBytes / 2) {
+  // Really running low (the free space measured now, not a projection: a torrent moved here mid-download
+  // can already take its full size on disk, so subtracting what it still has to download would count it
+  // twice): send the largest one back, one at a time.
+  if (on.length && !leaving.size && freeBytes - otherReserved < reserveBytes) {
     const biggest = [...on].sort((a, b) => (Number(b.amount_left) || 0) - (Number(a.amount_left) || 0))[0];
     toMedia.push(biggest.hash);
     return { toScratch, toMedia, room: 0 };

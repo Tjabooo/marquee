@@ -66,10 +66,19 @@ test('a torrent whose move is still queued is not planned twice, and its full si
   assert.deepEqual(plan.toScratch, ['small']); // 100 - 50 queued - 40 reserve = 10
 });
 
-test('a torrent already sent back to the media drive is not sent back again', () => {
+test('while one download is being sent back, no other one follows it', () => {
   const plan = scratchPlan({ scratchDir: S, freeBytes: 30 * GiB, reserveBytes: 40 * GiB, leaving: new Set(['y']), torrents: [
     t({ hash: 'x', download_path: S, content_path: path.join(S, 'x'), amount_left: 2 * GiB }),
     t({ hash: 'y', download_path: S, content_path: path.join(S, 'y'), amount_left: 9 * GiB }),
   ] });
-  assert.deepEqual(plan.toMedia, []); // 30 - 2 left on the drive >= 20: fine once y has gone
+  assert.deepEqual(plan.toMedia, []);
+});
+
+test('space already taken by downloads on the drive does not count twice as running low', () => {
+  // 48 GB free after the files took their space; 46 GB still to download into that space.
+  const plan = scratchPlan({ scratchDir: S, freeBytes: 48 * GiB, reserveBytes: 10 * GiB, torrents: [
+    t({ hash: 'bb', download_path: S, content_path: path.join(S, 'bb'), size: 40 * GiB, amount_left: 38 * GiB }),
+    t({ hash: 'om', download_path: S, content_path: path.join(S, 'om'), size: 17 * GiB, amount_left: 8 * GiB }),
+  ] });
+  assert.deepEqual(plan.toMedia, []);
 });
