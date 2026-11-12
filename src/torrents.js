@@ -11,7 +11,9 @@ const NYAA_URL = /^(off|no|false|0)$/i.test(process.env.NYAA_URL || '') ? '' : (
 // Knaben: an index over The Pirate Bay, 1337x, YTS and others, with live seeder counts. KNABEN_URL=off leaves it out.
 const KNABEN_URL = /^(off|no|false|0)$/i.test(process.env.KNABEN_URL || '') ? '' : (process.env.KNABEN_URL || 'https://api.knaben.org/v1').replace(/\/+$/, '');
 const FLARESOLVERR_URL = (process.env.FLARESOLVERR_URL || '').replace(/\/+$/, '');
-const ENABLED = (process.env.TORRENTS || 'on').toLowerCase() !== 'off';
+// No third-party torrent indexes are queried in the standard distribution.
+// The legacy parsers remain temporarily for migration/tests; search is unavailable.
+const ENABLED = false;
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36';
 const CACHE_MS = 5 * 60 * 1000;
 
@@ -235,6 +237,7 @@ export function parseMagnet(html) {
 }
 
 export async function magnetFor1337x(ref) {
+  throw new TorrentError(503, 'Third-party torrent index lookup is unavailable.');
   if (!X_PATH.test(String(ref || ''))) throw new TorrentError(400, 'Invalid torrent link.');
   if (magnetCache.has(ref)) return magnetCache.get(ref);
   let html;
@@ -355,7 +358,7 @@ export async function searchTorrents(rawQuery, rawType, { adult = false, documen
 }
 
 async function searchAll(rawQuery, rawType, documentary = false) {
-  if (!ENABLED) throw new TorrentError(503, 'Torrent search is turned off (TORRENTS=off in .env).');
+  if (!ENABLED) throw new TorrentError(503, 'Built-in torrent discovery is not available. Import media you own or use an authorized torrent link.');
   const q = String(rawQuery || '').replace(/\s+/g, ' ').trim().slice(0, 100);
   const type = ['movie', 'tv'].includes(rawType) ? rawType : 'all';
   if (!torrentQueryAllowed(q)) return { results: [], problems: [] };
