@@ -44,7 +44,7 @@ not from phones or TVs on your network, and TV discovery doesn't work. Two optio
 Inside WSL:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Tjabooo/lilin/v2.0.1/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/Tjabooo/lilin/v2.0.2/install.sh -o install.sh
 less install.sh
 sh install.sh
 ```

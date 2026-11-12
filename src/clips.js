@@ -667,7 +667,7 @@ export async function handlePublic(req, res, url, { sendVideo, previews }) {
     const base = baseUrl(req);
     return send(200, 'text/html; charset=utf-8', page({
       title: 'Lilin',
-      desc: 'Films and shows from the home server: browse, download, and play on your phone, in a browser or on the TV.',
+      desc: 'Your own cinema: films and shows on your phone, your TV, anywhere.',
       url: `${base}/c/`, image: `${base}/c/lilin.png`,
       body: `<h1>Lilin</h1><p>Opening…</p><script>location.replace('/')</script>`,
     }));

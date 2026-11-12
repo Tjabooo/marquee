@@ -128,7 +128,7 @@ export async function handlePublic(req, res, url, { auth = null } = {}) {
   };
   const base = baseUrl(req);
   const view = (title, inner, extra) => send(200, page({
-    title, desc: 'You’ve been invited to Lilin: films and shows from the home server.',
+    title, desc: 'You’ve been invited to Lilin, your own cinema: films and shows on your phone, your TV, anywhere.',
     url: `${base}${url.pathname}`, image: `${base}/c/lilin.png`, body: `<div class="card">${inner}</div>`,
   }), extra);
 
@@ -142,7 +142,7 @@ export async function handlePublic(req, res, url, { auth = null } = {}) {
   const title = bound ? 'Pick your Lilin password' : 'You’re invited to Lilin';
   const form = (email = '', error = '') => (auth ? `
     <h1>${bound ? 'Pick a password' : 'You’re invited to Lilin'}</h1>
-    <p>${bound ? 'From now on you sign in to Lilin with your email and this password.' : 'Films and shows from the home server, on your phone, in a browser or on the TV.'}</p>
+    <p>${bound ? 'From now on you sign in to Lilin with your email and this password.' : 'Your own cinema: films and shows on your phone, your TV, anywhere.'}</p>
     <form method="post">
       <label for="email">Your email</label>
       <input id="email" name="email" type="email" required autocomplete="username" ${bound ? 'readonly' : 'autofocus'} value="${esc(bound || email)}" placeholder="you@example.com">
@@ -155,7 +155,7 @@ export async function handlePublic(req, res, url, { auth = null } = {}) {
     </form>
     <p class="foot">On a new phone or computer, open Lilin and sign in with this email and password.</p>` : `
     <h1>You’re invited to Lilin</h1>
-    <p>Films and shows from the home server, on your phone, in a browser or on the TV.</p>
+    <p>Your own cinema: films and shows on your phone, your TV, anywhere.</p>
     <form method="post">
       <label for="email">The email you’ll sign in with</label>
       <input id="email" name="email" type="email" required autocomplete="email" autofocus value="${esc(email)}" placeholder="you@example.com">

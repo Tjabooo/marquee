@@ -4,6 +4,14 @@ All notable changes to Lilin. Versions follow [Semantic Versioning](https://semv
 
 ## [Unreleased]
 
+## [2.0.2] - 2026-11-12
+
+### Changed
+
+- **New look and slogan.** The icon is a rounded letter L in a gold-to-coral gradient with a play button in its
+  corner; the link-preview card and the Android TV banner pair it with the "lilin" wordmark and the slogan
+  "Your own cinema" (tools/app-icon.py, tools/og-banner.py). Invite pages and link previews say it too.
+
 ## [2.0.1] - 2026-11-12
 
 ### Fixed
@@ -14,8 +22,7 @@ All notable changes to Lilin. Versions follow [Semantic Versioning](https://semv
 
 ### Changed
 
-- **New name: Lilin.** New name, candle icon, link-preview card, Android TV banner and Samsung TV app ID.
-  Lilin is Malay for candle; the wordmark's i's carry flames.
+- **New name: Lilin.** New name, icon, link-preview card, Android TV banner and Samsung TV app ID.
 - **Breaking for existing installs:** data files now start with `.lilin-` (`.lilin.db`, `.lilin-secret`, …), settings
   with `LILIN_`, the Windows tasks are called Lilin, the Android TV package is `app.lilin.tv` and the Samsung app
   `LilTvApp01.Lilin`. When upgrading from 1.x, rename your data files and settings to match before starting, and

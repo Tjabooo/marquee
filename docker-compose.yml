@@ -14,7 +14,7 @@ x-media: &media ${MEDIA_PATH:-./media}:/media
 
 services:
   lilin:
-    image: ghcr.io/tjabooo/lilin:${LILIN_VERSION:-2.0.1}
+    image: ghcr.io/tjabooo/lilin:${LILIN_VERSION:-2.0.2}
     restart: unless-stopped
     # Runs as this user and group; the data and media folders must be writable by them.
     user: "${PUID:-1000}:${PGID:-1000}"

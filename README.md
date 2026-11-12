@@ -60,7 +60,7 @@ Anything you don't set up is simply off, so you can start small.
 ## Quick start
 
 ```sh
-git clone --branch v2.0.1 https://github.com/Tjabooo/lilin.git
+git clone --branch v2.0.2 https://github.com/Tjabooo/lilin.git
 cd lilin
 node setup.js
 ```
@@ -77,18 +77,18 @@ Prefer an installer script? It downloads a release, verifies its checksum, and k
 your settings and data (read it first: [install.sh](install.sh), [install.ps1](install.ps1)):
 
 ```sh
-curl -fsSLO https://raw.githubusercontent.com/Tjabooo/lilin/v2.0.1/install.sh && sh install.sh
+curl -fsSLO https://raw.githubusercontent.com/Tjabooo/lilin/v2.0.2/install.sh && sh install.sh
 ```
 
 ```powershell
-irm https://raw.githubusercontent.com/Tjabooo/lilin/v2.0.1/install.ps1 -OutFile install.ps1; powershell -ExecutionPolicy Bypass -File install.ps1
+irm https://raw.githubusercontent.com/Tjabooo/lilin/v2.0.2/install.ps1 -OutFile install.ps1; powershell -ExecutionPolicy Bypass -File install.ps1
 ```
 
 ## Docker
 
 ```sh
-curl -fsSLO https://raw.githubusercontent.com/Tjabooo/lilin/v2.0.1/docker-compose.yml
-curl -fsSL https://raw.githubusercontent.com/Tjabooo/lilin/v2.0.1/.env.example -o lilin.env   # add your tokens
+curl -fsSLO https://raw.githubusercontent.com/Tjabooo/lilin/v2.0.2/docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/Tjabooo/lilin/v2.0.2/.env.example -o lilin.env   # add your tokens
 MEDIA_PATH=/srv/media docker compose up -d
 ```
 

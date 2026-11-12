@@ -1,66 +1,76 @@
 #!/usr/bin/env python3
-"""Draws public/og-lilin.png (python3 tools/og-banner.py public/og-lilin.png; needs Pillow + Noto Sans): the 1200x630
-card Discord and iMessage show for a Lilin link (/c/). The wordmark is lit like a candle (lilin is Malay for candle):
-both i's carry a flame instead of a dot, on Lilin's velvet with the warm light the flames throw."""
+"""Draws public/og-lilin.png, the 1200x630 card Discord and iMessage show for a Lilin link (/c/): the play-corner
+mark from the app icon beside the "lilin" wordmark and the slogan "Your own cinema", on Lilin's velvet.
+
+  python3 tools/og-banner.py [out.png]     # needs Chromium (or Chrome); uses the app's own font
+  python3 tools/og-banner.py --tv          # writes tv/android/art/banner.html (same design at 1280x720)
+"""
+import base64
+import importlib.util
+import os
+import shutil
+import subprocess
 import sys
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+import tempfile
 
-W, H = 1200, 630
-VELVET, PAPER, DUST, BULB = "#1F1019", "#F6EADF", "#BA9DAD", "#F4C152"
-F = "/usr/share/fonts/noto/NotoSans-{}.ttf"
-out = sys.argv[1] if len(sys.argv) > 1 else "og-lilin.png"
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_spec = importlib.util.spec_from_file_location("app_icon", os.path.join(ROOT, "tools", "app-icon.py"))
+icon = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(icon)
 
-
-def flame(cx, cy, s, n=40):
-    """Teardrop polygon (same shape as tools/app-icon.py): tip up, round belly down; s = half width."""
-    def bez(p0, p1, p2, p3, t):
-        u = 1 - t
-        return tuple(u**3 * a + 3 * u * u * t * b + 3 * u * t * t * c + t**3 * d for a, b, c, d in zip(p0, p1, p2, p3))
-    import math
-    tip, right, left = (cx, cy - 2.9 * s), (cx + s, cy + 0.35 * s), (cx - s, cy + 0.35 * s)
-    pts = [bez(tip, (cx + 0.12 * s, cy - 1.9 * s), (cx + s, cy - 0.85 * s), right, i / n) for i in range(n)]
-    pts += [(cx + s * math.cos(a), cy + 0.35 * s + s * math.sin(a)) for a in (math.pi * i / n for i in range(n + 1))]
-    pts += [bez(left, (cx - s, cy - 0.85 * s), (cx - 0.12 * s, cy - 1.9 * s), tip, i / n) for i in range(1, n + 1)]
-    return pts
+TAGLINE = "YOUR OWN CINEMA"
+SUBLINE = "Films and shows on your phone, your TV, anywhere."
+FONT = "public/fonts/bricolage-grotesque-latin.woff2"
 
 
-img = Image.new("RGB", (W, H), VELVET)
-word, font = "Lılın", ImageFont.truetype(F.format("Black"), 196)
-cx, cy = W // 2, 300
-x0 = cx - font.getlength(word) / 2
-# flame centres: above each dotless i, where the dot would sit
-asc = font.getbbox("ı", anchor="ls")[1]
-base = cy + 70
-flames = []
-for i, ch in enumerate(word):
-    if ch == "ı":
-        left = x0 + font.getlength(word[:i])
-        gx0, _, gx1, _ = font.getbbox(ch, anchor="ls")
-        flames.append((left + (gx0 + gx1) / 2, base + asc - 52))
+def page(w, h, *, scale, mark_x, mark_y, word_x, word_y, word_size, sub, font_url):
+    sub_line = (f'<text x="{w / 2}" y="{h - 42}" font-family="B" font-weight="500" font-size="28" fill="#BA9DAD" '
+                f'text-anchor="middle">{SUBLINE}</text>') if sub else ""
+    return f'''<!doctype html><meta charset="utf-8"><style>
+@font-face {{ font-family: B; font-weight: 200 800; font-stretch: 75% 100%; src: url({font_url}) format("woff2"); }}
+html, body {{ margin: 0; width: {w}px; height: {h}px; overflow: hidden; background: #1F1019; }} svg {{ display: block; }}
+</style><svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}">
+<defs>{icon.GRADIENT}<radialGradient id="bg" cx="35%" cy="45%" r="80%"><stop offset="0" stop-color="#3A1C2E"/>
+<stop offset=".6" stop-color="#1F1019"/><stop offset="1" stop-color="#140A10"/></radialGradient>
+<filter id="soft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="30"/></filter></defs>
+<rect width="{w}" height="{h}" fill="url(#bg)"/>
+<g transform="translate({mark_x} {mark_y}) scale({scale})">{icon.mark()}</g>
+<text x="{word_x}" y="{word_y}" font-family="B" font-weight="800" font-size="{word_size}" fill="#F6EADF" letter-spacing="-5"
+      style="font-stretch: 80%">lilin</text>
+<text x="{word_x + 6}" y="{word_y + 66}" font-family="B" font-weight="700" font-size="26" fill="#F4C152" letter-spacing="4">{TAGLINE}</text>
+{sub_line}
+</svg>'''
 
-# room light from the flames
-glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-g = ImageDraw.Draw(glow)
-for fx, fy in flames:
-    g.ellipse((fx - 330, fy - 260, fx + 330, fy + 300), fill=(244, 193, 82, 34))
-glow = glow.filter(ImageFilter.GaussianBlur(110))
-img.paste(glow, (0, 0), glow)
 
-d = ImageDraw.Draw(img)
-d.text((x0, base), word, font=font, fill=PAPER, anchor="ls")
+def og_page(font_url):
+    return page(1200, 630, scale=0.92, mark_x=142, mark_y=60, word_x=592, word_y=335, word_size=190, sub=True, font_url=font_url)
 
-halo = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-h = ImageDraw.Draw(halo)
-for fx, fy in flames:
-    h.polygon(flame(fx, fy, 30), fill=(255, 200, 97, 230))
-halo = halo.filter(ImageFilter.GaussianBlur(9))
-img.paste(halo, (0, 0), halo)
-for fx, fy in flames:
-    d.polygon(flame(fx, fy, 24), fill="#FFD978")
-    d.polygon(flame(fx, fy + 11, 11), fill="#FFFBEF")
 
-d.text((cx, 428), "FROM THE HOME SERVER", font=ImageFont.truetype(F.format("Bold"), 26), fill=BULB, anchor="mm")
-d.text((cx, 545), "Films and shows on your phone, in the browser or on the TV",
-       font=ImageFont.truetype(F.format("Medium"), 28), fill=DUST, anchor="mm")
-img.save(out, optimize=True)
-print(out)
+def tv_page(font_url):
+    return page(1280, 720, scale=1.0, mark_x=138, mark_y=104, word_x=600, word_y=400, word_size=210, sub=False, font_url=font_url)
+
+
+def shoot(html, w, h, out):
+    browser = shutil.which("chromium") or shutil.which("google-chrome-stable") or shutil.which("google-chrome")
+    if not browser:
+        sys.exit("Needs Chromium or Chrome.")
+    with tempfile.TemporaryDirectory() as tmp:
+        src = os.path.join(tmp, "card.html")
+        open(src, "w").write(html)
+        subprocess.run([browser, "--headless=new", "--disable-gpu", "--hide-scrollbars", "--force-device-scale-factor=1",
+                        "--virtual-time-budget=3000", f"--window-size={w},{h}", f"--screenshot={os.path.abspath(out)}",
+                        f"file://{src}"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+if __name__ == "__main__":
+    if "--tv" in sys.argv:
+        html = tv_page(f'"../../../{FONT}"').replace("<!doctype html>", "<!doctype html>\n<!-- The Android TV home-screen banner "
+            "(320×180 dp), drawn at 4×: the play-corner mark, the lilin wordmark and \"Your own cinema\". Written by "
+            "tools/og-banner.py --tv, rendered by render.sh. -->", 1)
+        open(os.path.join(ROOT, "tv", "android", "art", "banner.html"), "w").write(html)
+        print("tv/android/art/banner.html")
+    else:
+        font = "data:font/woff2;base64," + base64.b64encode(open(os.path.join(ROOT, FONT), "rb").read()).decode()
+        out = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "public", "og-lilin.png")
+        shoot(og_page(font), 1200, 630, out)
+        print(out)

@@ -20,7 +20,7 @@ sudo pacman -S python-pipx && pipx install pyatv   # Apple TV
 ## 2. Install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Tjabooo/lilin/v2.0.1/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/Tjabooo/lilin/v2.0.2/install.sh -o install.sh
 less install.sh
 sh install.sh
 ```

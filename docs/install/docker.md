@@ -1,7 +1,7 @@
 # Docker
 
 The image `ghcr.io/tjabooo/lilin` is published for `linux/amd64` and `linux/arm64` with the tags
-`2.0.1`, `2.0`, `2` and `latest`. It contains Node.js, ffmpeg and Tesseract, runs as an unprivileged
+`2.0.2`, `2.0`, `2` and `latest`. It contains Node.js, ffmpeg and Tesseract, runs as an unprivileged
 user, and has a health check. Common background is in [README.md](README.md); the NAS guides
 ([Unraid](unraid.md), [Synology](synology.md), [TrueNAS](truenas.md)) build on this page.
 
@@ -16,8 +16,8 @@ user, and has a health check. Common background is in [README.md](README.md); th
 
 ```sh
 mkdir -p ~/lilin && cd ~/lilin
-curl -fsSLO https://raw.githubusercontent.com/Tjabooo/lilin/v2.0.1/docker-compose.yml
-curl -fsSL https://raw.githubusercontent.com/Tjabooo/lilin/v2.0.1/.env.example -o lilin.env
+curl -fsSLO https://raw.githubusercontent.com/Tjabooo/lilin/v2.0.2/docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/Tjabooo/lilin/v2.0.2/.env.example -o lilin.env
 mkdir -p data
 sudo chown 1000:1000 data        # your PUID:PGID
 ```
@@ -41,7 +41,7 @@ TZ=Europe/London
 | `MEDIA_PATH` | `./media` | Host folder mounted at `/media` |
 | `LILIN_DATA` | `./data` | Host folder mounted at `/data` (database, state, cache) |
 | `LILIN_PORT` | `8080` | Host port |
-| `LILIN_VERSION` | `2.0.1` | Image tag |
+| `LILIN_VERSION` | `2.0.2` | Image tag |
 | `PUID`, `PGID` | `1000` | User and group Lilin (and qBittorrent) run as |
 | `TZ` | `UTC` | Time zone |
 | `TRUSTED_PROXIES` | `127.0.0.1,::1` | See [../remote-access.md](../remote-access.md) |
@@ -93,7 +93,7 @@ namespace, so its traffic can only leave through the tunnel: if the VPN is down,
 connectivity rather than falling back to your normal connection.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Tjabooo/lilin/v2.0.1/docker/vpn.env.example -o vpn.env
+curl -fsSL https://raw.githubusercontent.com/Tjabooo/lilin/v2.0.2/docker/vpn.env.example -o vpn.env
 # fill in vpn.env (provider options: https://github.com/qdm12/gluetun-wiki)
 docker compose --profile vpn up -d
 ```
@@ -112,7 +112,7 @@ host, then:
 
 ```sh
 mkdir -p docker
-curl -fsSL https://raw.githubusercontent.com/Tjabooo/lilin/v2.0.1/docker/compose.nvidia.yml -o docker/compose.nvidia.yml
+curl -fsSL https://raw.githubusercontent.com/Tjabooo/lilin/v2.0.2/docker/compose.nvidia.yml -o docker/compose.nvidia.yml
 docker compose -f docker-compose.yml -f docker/compose.nvidia.yml up -d
 docker compose exec lilin node setup.js doctor --offline
 ```
@@ -129,7 +129,7 @@ address:
 ```yaml
 services:
   lilin:
-    image: ghcr.io/tjabooo/lilin:2.0.1
+    image: ghcr.io/tjabooo/lilin:2.0.2
     restart: unless-stopped
     user: "1000:1000"
     ports:
@@ -157,11 +157,11 @@ Add other settings under `environment`, or put them in `.env` in the data folder
 
 ## 6. Update
 
-`docker-compose.yml` pins the image to `2.0.1`, so set the new version first:
+`docker-compose.yml` pins the image to `2.0.2`, so set the new version first:
 
 ```sh
 docker compose exec lilin node setup.js backup     # lands in data/backups/
-# set LILIN_VERSION=2.0.1 in Compose's .env (or download the new docker-compose.yml)
+# set LILIN_VERSION=2.0.2 in Compose's .env (or download the new docker-compose.yml)
 docker compose pull && docker compose up -d
 ```
 
