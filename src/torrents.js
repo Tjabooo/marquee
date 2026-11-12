@@ -1,71 +1,17 @@
-// Torrent search across The Pirate Bay (apibay JSON API), 1337x (HTML), Knaben (a JSON index over many
-// sites, the best at Swedish and documentary releases) and Nyaa (anime, HTML).
-// Sources are queried in parallel; results from a working source are returned even if the others fail.
+// Compatibility-only release metadata parsers used by existing tests and import logic.
+// This module never contacts public torrent indexes or resolves their links.
+import { X1337_ADULT_SUBS, tpbAdultCategory } from './content-filter.js';
 
-const TPB_API = (process.env.TPB_API || 'https://apibay.org').replace(/\/+$/, '');
-// 1337x mirrors, tried in order.
-const X1337_MIRRORS = (process.env.X1337_URL || 'https://1337x.to,https://1337x.st,https://x1337x.ws,https://x1337x.eu,https://x1337x.se')
-  .split(',').map((u) => u.trim().replace(/\/+$/, '')).filter((u) => /^https?:\/\//i.test(u));
-// Nyaa: where anime is released (fansub groups, batches). NYAA_URL=off leaves it out.
-const NYAA_URL = /^(off|no|false|0)$/i.test(process.env.NYAA_URL || '') ? '' : (process.env.NYAA_URL || 'https://nyaa.si').replace(/\/+$/, '');
-// Knaben: an index over The Pirate Bay, 1337x, YTS and others, with live seeder counts. KNABEN_URL=off leaves it out.
-const KNABEN_URL = /^(off|no|false|0)$/i.test(process.env.KNABEN_URL || '') ? '' : (process.env.KNABEN_URL || 'https://api.knaben.org/v1').replace(/\/+$/, '');
-const FLARESOLVERR_URL = (process.env.FLARESOLVERR_URL || '').replace(/\/+$/, '');
-// No third-party torrent indexes are queried in the standard distribution.
-// The legacy parsers remain temporarily for migration/tests; search is unavailable.
-const ENABLED = false;
-const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36';
-const CACHE_MS = 5 * 60 * 1000;
-
-// apibay returns only the info hash; these are the trackers TPB adds to its magnets.
-const TPB_TRACKERS = [
-  'udp://tracker.opentrackr.org:1337/announce',
-  'udp://open.stealth.si:80/announce',
-  'udp://tracker.torrent.eu.org:451/announce',
-  'udp://tracker.bittor.pw:1337/announce',
-  'udp://public.popcorn-tracker.org:6969/announce',
-  'udp://tracker.dler.org:6969/announce',
-  'udp://exodus.desync.com:6969',
-  'udp://open.demonii.com:1337/announce',
-];
-// apibay categories: 201 Movies, 202 DVDR, 207 HD Movies, 209 3D, 211 UHD Movies / 205 TV, 208 HD TV, 212 UHD TV
+const TPB_TRACKERS = [];
 const TPB_CATS = {
   movie: new Set(['201', '202', '207', '209', '211']),
   tv: new Set(['205', '208', '212']),
 };
+const X_PATH = /^\\/torrent\\/\\d+\\/[^/?#"<>\\s]+\\/?$/;
+export const torrentsEnabled = () => false;
+export const torrentQueryAllowed = (q) => String(q || '').length >= 2 || /^\\d$/.test(String(q || ''));
+class TorrentError extends Error { constructor(status, message) { super(message); this.status = status; } }
 
-import { adultReason, X1337_ADULT_SUBS, tpbAdultCategory } from './content-filter.js';
-
-const searchCache = new Map(); // key -> { at, data }
-const magnetCache = new Map(); // 1337x path -> magnet
-
-export const torrentsEnabled = () => ENABLED;
-export const torrentQueryAllowed = (q) => String(q || '').length >= 2 || /^\d$/.test(String(q || ''));
-
-class TorrentError extends Error {
-  constructor(status, message) { super(message); this.status = status; }
-}
-
-async function get(url, what, extraHeaders = {}) {
-  let r;
-  try {
-    r = await fetch(url, {
-      headers: { 'user-agent': UA, accept: 'text/html,application/json;q=0.9,*/*;q=0.8', 'accept-language': 'en-US,en;q=0.8', ...extraHeaders },
-      signal: AbortSignal.timeout(12000),
-      redirect: 'follow',
-    });
-  } catch (e) {
-    throw new Error(e.name === 'TimeoutError' ? `${what} took too long to answer.` : `Couldn’t reach ${what}. It may be down or blocked by your internet provider.`);
-  }
-  const text = await r.text();
-  if ((r.status === 403 || r.status === 503 || r.status === 429) && /cloudflare|just a moment|cf-chl|challenge-platform/i.test(text)) {
-    throw Object.assign(new Error(`${what} is showing a Cloudflare check.`), { cloudflare: true });
-  }
-  if (!r.ok) throw new Error(`${what} responded with ${r.status}.`);
-  return text;
-}
-
-// ---------- helpers ----------
 const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', '#39': "'" };
 const decode = (s) => s.replace(/&(#x[0-9a-f]+|#\d+|\w+);/gi, (m, e) => {
   if (e[0] === '#') return String.fromCodePoint(e[1].toLowerCase() === 'x' ? parseInt(e.slice(2), 16) : Number(e.slice(1)));
@@ -120,75 +66,6 @@ export function parseTpb(json, type) {
       ...describe(t.name),
     }));
 }
-
-async function searchTpb(q, type) {
-  const text = await get(`${TPB_API}/q.php?q=${encodeURIComponent(q)}`, 'The Pirate Bay');
-  let json;
-  try { json = JSON.parse(text); } catch { throw new Error('The Pirate Bay sent back something unexpected.'); }
-  return parseTpb(json, type);
-}
-
-// ---------- 1337x ----------
-const X_PATH = /^\/torrent\/\d+\/[^/?#"<>\s]+\/?$/;
-
-// Cloudflare handling: try each mirror, then FlareSolverr if configured.
-let goodMirror = null;   // last mirror that answered, tried first
-let clearance = null;    // { host, cookie, ua } from FlareSolverr, reused until rejected
-
-async function viaFlareSolverr(url) {
-  let r;
-  try {
-    r = await fetch(`${FLARESOLVERR_URL}/v1`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ cmd: 'request.get', url, maxTimeout: 50000 }),
-      signal: AbortSignal.timeout(60000),
-    });
-  } catch {
-    throw new Error(`FlareSolverr isn’t answering at ${FLARESOLVERR_URL}. Is it running?`);
-  }
-  const data = await r.json().catch(() => ({}));
-  if (data.status !== 'ok' || !data.solution) throw new Error(`FlareSolverr couldn’t get past the check (${data.message || r.status}).`);
-  const sol = data.solution;
-  if (sol.status >= 400 && !/<table/i.test(sol.response || '')) throw new Error(`1337x responded with ${sol.status} even through FlareSolverr.`);
-  // Reuse the clearance cookie and user agent for direct requests.
-  const cookie = (sol.cookies || []).map((c) => `${c.name}=${c.value}`).join('; ');
-  if (cookie) clearance = { host: new URL(url).host, cookie, ua: sol.userAgent || UA };
-  return sol.response || '';
-}
-
-async function get1337x(pathAndQuery) {
-  const order = goodMirror ? [goodMirror, ...X1337_MIRRORS.filter((m) => m !== goodMirror)] : X1337_MIRRORS;
-  let sawCloudflare = null;
-  const problems = [];
-  for (const base of order) {
-    const url = base + pathAndQuery;
-    const host = new URL(base).host;
-    const pass = clearance?.host === host ? { cookie: clearance.cookie, 'user-agent': clearance.ua } : {};
-    try {
-      const html = await get(url, '1337x', pass);
-      goodMirror = base;
-      return html;
-    } catch (e) {
-      if (e.cloudflare) {
-        if (clearance?.host === host) clearance = null; // pass expired
-        sawCloudflare ??= url;
-      } else {
-        problems.push(`${host}: ${e.message}`);
-      }
-    }
-  }
-  if (sawCloudflare && FLARESOLVERR_URL) {
-    const html = await viaFlareSolverr(sawCloudflare);
-    goodMirror = new URL(sawCloudflare).origin;
-    return html;
-  }
-  if (sawCloudflare) {
-    throw new Error('Every 1337x mirror is showing a Cloudflare check right now. Install FlareSolverr and set FLARESOLVERR_URL in .env to get past it.');
-  }
-  throw new Error(`No 1337x mirror answered (${problems[0] || 'unknown error'}).`);
-}
-
 export function parse1337x(html) {
   const out = [];
   for (const row of html.split(/<tr[\s>]/i).slice(1)) {
@@ -216,42 +93,13 @@ export function parse1337x(html) {
   }
   return out;
 }
-
-// type 'documentary' is 1337x's own category, which its Movies and TV searches don't cover.
-async function search1337x(q, type) {
-  const query = encodeURIComponent(q.replace(/[/\\?#]/g, ' ').trim());
-  const route = type === 'movie' ? `/sort-category-search/${query}/Movies/seeders/desc/1/`
-    : type === 'tv' ? `/sort-category-search/${query}/TV/seeders/desc/1/`
-    : type === 'documentary' ? `/sort-category-search/${query}/Documentaries/seeders/desc/1/`
-    : `/sort-search/${query}/seeders/desc/1/`;
-  const html = await get1337x(route);
-  if (!/<table/i.test(html) && !/No results were returned/i.test(html)) {
-    throw new Error('1337x sent back a page it doesn’t normally show. Try again in a bit.');
-  }
-  return parse1337x(html);
-}
-
 export function parseMagnet(html) {
   const m = /href="(magnet:\?xt=urn:btih:[^"]+)"/i.exec(html);
   return m ? decode(m[1]) : null;
 }
-
-export async function magnetFor1337x(ref) {
+export async function magnetFor1337x() {
   throw new TorrentError(503, 'Third-party torrent index lookup is unavailable.');
-  if (!X_PATH.test(String(ref || ''))) throw new TorrentError(400, 'Invalid torrent link.');
-  if (magnetCache.has(ref)) return magnetCache.get(ref);
-  let html;
-  try { html = await get1337x(ref); } catch (e) { throw new TorrentError(502, e.message); }
-  const magnet = parseMagnet(html);
-  if (!magnet) throw new TorrentError(502, 'That 1337x page didn’t have a magnet link.');
-  magnetCache.set(ref, magnet);
-  return magnet;
 }
-
-// ---------- Nyaa ----------
-// The search page (sorted by seeders; its RSS feed ignores sorting). Rows: category, name, links
-// (torrent + magnet), size, date, seeders, leechers, downloads. Row class "success" = trusted
-// uploader, "danger" = a remake (re-upload of someone else's release).
 export function parseNyaa(html) {
   const out = [];
   for (const row of String(html).split(/<tr\b/i).slice(1)) {
@@ -285,18 +133,6 @@ export function parseNyaa(html) {
   }
   return out;
 }
-
-async function searchNyaa(q) {
-  // 1_2: anime, English-translated (subtitled, dual audio and dubs).
-  const html = await get(`${NYAA_URL}/?f=0&c=1_2&q=${encodeURIComponent(q)}&s=seeders&o=desc`, 'Nyaa');
-  if (!/torrent-list|No results found/i.test(html)) throw new Error('Nyaa sent back a page it doesn’t normally show.');
-  return parseNyaa(html);
-}
-
-// ---------- Knaben ----------
-// Video only. Film or show doesn't filter here: documentaries are filed under either, and the release's
-// name decides later whether it's the right one. Seeders: the higher of what the site listed and Knaben's
-// own scrape, which misses many (S15E02 of a live Swedish show: listed 12, scraped 0 with 5 peers).
 export function parseKnaben(json) {
   const hits = Array.isArray(json?.hits) ? json.hits : [];
   return hits
@@ -326,78 +162,7 @@ export function parseKnaben(json) {
     });
 }
 
-async function searchKnaben(q) {
-  let r;
-  try {
-    r = await fetch(KNABEN_URL, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'user-agent': UA, accept: 'application/json' },
-      body: JSON.stringify({ search_type: '100%', search_field: 'title', query: q, order_by: 'seeders', order_direction: 'desc',
-        from: 0, size: 100, hide_unsafe: true, hide_xxx: true }),
-      signal: AbortSignal.timeout(12000),
-    });
-  } catch (e) {
-    throw new Error(e.name === 'TimeoutError' ? 'Knaben took too long to answer.' : 'Couldn’t reach Knaben.');
-  }
-  if (!r.ok) throw new Error(`Knaben responded with ${r.status}.`);
-  try { return parseKnaben(await r.json()); } catch { throw new Error('Knaben sent back something unexpected.'); }
-}
-
-// ---------- combined search ----------
-// Adult releases (by category or by name, see content-filter.js) are left out unless `adult` is true.
-const withoutAdult = (data) => ({ ...data, results: data.results.filter((r) => !r.adult && !adultReason(r.name)) });
-
-// Release names are written without å, ä, ö ("Mordet.Pa.Olof.Palme"): the spelling sites actually have.
-export const plainQuery = (q) => String(q).normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-
-// `documentary`: also search 1337x's Documentaries category (one more request through its mirrors, so
-// only for titles known to be documentaries).
-export async function searchTorrents(rawQuery, rawType, { adult = false, documentary = false } = {}) {
-  const data = await searchAll(rawQuery, rawType, documentary);
-  return adult ? data : withoutAdult(data);
-}
-
-async function searchAll(rawQuery, rawType, documentary = false) {
-  if (!ENABLED) throw new TorrentError(503, 'Built-in torrent discovery is not available. Import media you own or use an authorized torrent link.');
-  const q = String(rawQuery || '').replace(/\s+/g, ' ').trim().slice(0, 100);
-  const type = ['movie', 'tv'].includes(rawType) ? rawType : 'all';
-  if (!torrentQueryAllowed(q)) return { results: [], problems: [] };
-
-  const key = `${type}|${documentary ? 'doc|' : ''}${q.toLowerCase()}`;
-  const hit = searchCache.get(key);
-  if (hit && Date.now() - hit.at < CACHE_MS) return hit.data;
-
-  const sources = [['The Pirate Bay', searchTpb(q, type)], ['1337x', search1337x(q, type)]];
-  if (KNABEN_URL) sources.push(['Knaben', searchKnaben(q)]);
-  if (documentary && type !== 'all') sources.push(['1337x documentaries', search1337x(q, 'documentary')]);
-  const plain = plainQuery(q);
-  if (plain !== q) {
-    sources.push(['The Pirate Bay', searchTpb(plain, type)]);
-    if (KNABEN_URL) sources.push(['Knaben', searchKnaben(plain)]);
-  }
-  if (NYAA_URL) sources.push(['Nyaa', searchNyaa(q)]);
-  const settled = await Promise.allSettled(sources.map((s) => s[1]));
-  const results = [];
-  const problems = [];
-  settled.forEach((s, i) => {
-    if (s.status === 'fulfilled') results.push(...s.value);
-    else problems.push(`${sources[i][0]}: ${s.reason?.message || 'failed'}`);
-  });
-  if (!results.length && problems.length === sources.length) {
-    throw new TorrentError(502, `None of the torrent sites answered. ${problems.join(' ')}`);
-  }
-
-  // Deduplicate by name, keeping the entry with more seeders.
-  const byName = new Map();
-  for (const r of results) {
-    const k = r.name.toLowerCase().replace(/[^a-z0-9]+/g, '');
-    const prev = byName.get(k);
-    if (!prev || r.seeders > prev.seeders) byName.set(k, r);
-  }
-  const merged = [...byName.values()].sort((a, b) => (a.cam - b.cam) || b.seeders - a.seeders).slice(0, 80);
-
-  const data = { results: merged, problems };
-  if (!problems.length) searchCache.set(key, { at: Date.now(), data }); // cache complete results only
-  if (searchCache.size > 200) searchCache.delete(searchCache.keys().next().value);
-  return data;
+export const plainQuery = (q) => String(q).normalize('NFD').replace(/[\\u0300-\\u036f]/g, '');
+export async function searchTorrents() {
+  throw new TorrentError(503, 'Built-in torrent discovery is not available. Import media you own or use an authorized torrent link.');
 }
