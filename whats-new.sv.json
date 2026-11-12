@@ -1,4 +1,13 @@
 {
+  "2026-11-12-age-rating-language": {
+    "title": "Åldersgränser på ditt språk",
+    "items": {
+      "Ratings that match your language": {
+        "title": "Åldersgränser som passar ditt språk",
+        "text": "Titelsidorna visade ibland den svenska åldersgränsen (som Btl eller 15) även när Lilin var på engelska. På engelska ser du nu den amerikanska åldersgränsen, eller den brittiska när den amerikanska saknas. På svenska ser du fortfarande den svenska."
+      }
+    }
+  },
   "2026-11-12-iphone-fullscreen": {
     "title": "Helskärm på iPhone behåller Lilins spelare",
     "items": {

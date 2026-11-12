@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-12-age-rating-language",
+    "date": "2026-11-12",
+    "title": "Age ratings in your language",
+    "items": [
+      {
+        "title": "Ratings that match your language",
+        "text": "Title pages sometimes showed the Swedish age rating (like Btl or 15) even with Lilin in English. In English you now see the American rating, or the British one when there's no American rating. In Swedish you still see the Swedish rating."
+      }
+    ]
+  },
+  {
     "id": "2026-11-12-iphone-fullscreen",
     "date": "2026-11-12",
     "title": "Fullscreen on iPhone keeps Lilin's player",

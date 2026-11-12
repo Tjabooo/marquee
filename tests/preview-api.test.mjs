@@ -151,13 +151,15 @@ test('PREVIEW_DIR serves a second web app to browsers that opt in, and title pag
   assert.equal(r.status, 303);
   assert.match(r.headers.get('set-cookie'), /^lilin_preview=; Path=\/; Max-Age=0;/);
 
-  // Title page extras: the English PNG logo, faces, the Swedish age rating first, posters only.
+  // Title page extras: the English PNG logo, faces, the age rating of the reader's language, posters only.
   const page = (await (await get('/api/title/movie/42/page', owner)).json()).page;
   assert.deepEqual(page.logo, { url: 'https://image.tmdb.org/t/p/w500/en.png', aspect: 2.5 });
   assert.equal(page.runtime, 128);
   assert.equal(page.tagline, 'Think.');
   assert.deepEqual(page.genres, ['Drama']);
-  assert.equal(page.certification, '11');
+  assert.equal(page.certification, 'PG-13');
+  const pageSv = (await (await get('/api/title/movie/42/page', { ...owner, 'x-lilin-lang': 'sv' })).json()).page;
+  assert.equal(pageSv.certification, '11');
   assert.deepEqual(page.cast[0], { id: 7, name: 'Ada', character: 'Herself', photo: 'https://image.tmdb.org/t/p/w185/ada.jpg' });
   assert.equal(page.cast[1].photo, null);
   assert.deepEqual(page.similar.map((x) => [x.id, x.type]), [[43, 'movie']]);

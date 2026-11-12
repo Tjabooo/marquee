@@ -542,8 +542,9 @@ function pickLogo(logos, original) {
   if (!best) return null;
   return { url: `${TMDB_IMG}${/\.svg$/i.test(best.file_path) ? 'original' : 'w500'}${best.file_path}`, aspect: Number(best.aspect_ratio) || null };
 }
+// The age rating in the reader's language: Swedish ratings (Btl, 15) for Swedish, American then British for English.
 function certification(type, d) {
-  const order = ['SE', 'US', 'GB'];
+  const order = currentLanguage() === 'sv' ? ['SE', 'US', 'GB'] : ['US', 'GB', 'SE'];
   if (type === 'tv') {
     const list = d.content_ratings?.results || [];
     for (const c of order) { const r = list.find((x) => x.iso_3166_1 === c && x.rating); if (r) return r.rating; }
