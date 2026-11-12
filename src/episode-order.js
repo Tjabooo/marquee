@@ -7,7 +7,8 @@
 // Stalled episodes (no peers) don't hold up the season: up to three of them keep trying, and the first
 // healthy one runs alongside them. A torrent Lilin stopped after seeing it stall (wasStalled) still
 // counts as stalled, so dead torrents can't take turns starving a healthy one. At the same episode a
-// pack's file goes before a separate torrent. Torrents the person paused and failed ones are left alone.
+// pack's file goes before a separate torrent. Torrents the person paused and failed ones are left alone,
+// and so are torrents with nothing playable in them (they'd never finish an episode).
 import path from 'node:path';
 import { episodesIn } from './season.js';
 
@@ -28,6 +29,9 @@ export function planEpisodeOrder(group, held = new Set()) {
     if (FAILED.test(t.state || '')) continue;
     if (PAUSED.test(t.state || '') && !held.has(t.hash)) continue; // paused by the person: theirs
     const stalled = STALLED.test(t.state || '') || (PAUSED.test(t.state || '') && Boolean(t.wasStalled));
+    // File list known but nothing in it will play (a fake's lone .exe, every file switched off): it
+    // can never finish an episode, so it mustn't hold the rest of the season.
+    if ((t.files || []).length && !t.files.some((f) => f.priority !== 0 && VIDEO.test(f.name))) continue;
     const videos = (t.files || []).filter((f) => f.priority !== 0 && VIDEO.test(f.name) && !/\bsample\b/i.test(f.name))
       .map((f) => ({ f, eps: episodesIn(path.basename(String(f.name).replace(/\\/g, '/')), group.season, group.ctx) }))
       .filter((v) => v.eps.length);

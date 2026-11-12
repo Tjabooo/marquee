@@ -85,7 +85,7 @@ export function startSmartJob(spec, deps) {
 // "dual" finds every spelling on the torrent sites ("Dual-Audio", "Dual Audio", "DUAL"); "DualAudio" as a
 // search word finds next to nothing. The names are then checked, because sites match loosely.
 function dubbedOnly(deps) {
-  return { ...deps, searchTorrents: async (query, type) => {
+  return { ...deps, undubbed: deps, searchTorrents: async (query, type) => {
     const found = await deps.searchTorrents(`${query} dual`, type);
     return { ...found, results: (found.results || []).filter((r) => isDualAudio(r.name)) };
   } };
@@ -95,7 +95,37 @@ const hashOf = (r) => /btih:([a-z0-9]+)/i.exec(r.magnet || '')?.[1]?.toLowerCase
 // A pack whose file list arrived but no file in it could be read (no episode numbers Lilin knows):
 // its name already matched the season, so it's kept whole instead of being thrown away.
 const unreadable = (trim) => Boolean(trim?.covered && !trim.covered.size && !trim.allOwned);
-const usable = (r) => !rejected.has(r.magnet || r.ref) || Date.now() - rejected.get(r.magnet || r.ref) > REJECTED_TTL;
+const usable = (r) => !isFake(r) && (!rejected.has(r.magnet || r.ref) || Date.now() - rejected.get(r.magnet || r.ref) > REJECTED_TTL);
+
+// ---- fake releases (fake-release.js) ----
+// A torrent found to hold a program instead of a video is never picked again (by info hash, or by
+// its 1337x page when the search result had no magnet). Fakes copy real release names, so a name
+// alone never counts. origins: which job added each torrent, so a removed fake can be replaced.
+const fakes = new Set();
+const origins = new Map();       // info hash -> { spec, deps, ref, at }
+const ORIGIN_TTL = 24 * 60 * 60 * 1000;
+const hashOfLink = (link) => /btih:([a-z0-9]+)/i.exec(String(link || ''))?.[1]?.toLowerCase() || null;
+function isFake(r) {
+  const hash = hashOf(r);
+  return Boolean((hash && fakes.has(hash)) || (r.ref && fakes.has(`ref:${r.ref}`)));
+}
+// Remembered fakes from earlier runs (server.js keeps them in a file).
+export function loadFakes(list) {
+  for (const f of list || []) { if (f.hash) fakes.add(String(f.hash).toLowerCase()); if (f.ref) fakes.add(`ref:${f.ref}`); }
+}
+// The server removed this torrent as a fake: block it, and run the job that added it again. The new
+// job sees every other episode already on its way, so it looks for just what the fake was meant to be.
+// Returns { ref, retried } (ref: to remember with the hash), or null when Lilin's search didn't add it.
+export function fakeFound(hash) {
+  hash = String(hash || '').toLowerCase();
+  fakes.add(hash);
+  const origin = origins.get(hash);
+  origins.delete(hash);
+  if (origin?.ref) fakes.add(`ref:${origin.ref}`);
+  if (!origin || Date.now() - origin.at > ORIGIN_TTL) return origin ? { ref: origin.ref || null, retried: null } : null;
+  const { only, ...spec } = origin.spec;
+  return { ref: origin.ref || null, retried: startSmartJob(spec, origin.deps) };
+}
 
 // Search sites sort by popularity and cut the list short, so a quiet remux may never show up in a plain
 // search. Best Quality also asks for the good stuff by name (under the main title, to keep it quick).
@@ -119,6 +149,11 @@ async function add(r, mediaType, spec, deps) {
   if (!link) throw new Error('No download link was available.');
   try {
     const result = await deps.addDownload({ link, name: r.name, mediaType });
+    const hash = hashOfLink(link);
+    if (hash && !result?.existing) {
+      origins.set(hash, { spec, deps: deps.undubbed || deps, ref: r.magnet ? null : r.ref || null, at: Date.now() });
+      for (const [h, o] of origins) if (Date.now() - o.at > ORIGIN_TTL) origins.delete(h);
+    }
     if (spec.subs?.length) deps.wantSubtitles?.(link, spec.subs, r.name);
     return { link, ...(result || {}) };
   } catch (e) {

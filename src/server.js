@@ -41,6 +41,7 @@ import { createDocumentaries } from './documentaries.js';
 import { scratchPlan, liveRoot, usesScratch } from './scratch.js';
 import * as versions from './versions.js';
 import { planEpisodeOrder } from './episode-order.js';
+import { fakeRelease } from './fake-release.js';
 import { PROFILES, isDualAudio } from './recommend.js';
 import * as accounts from './accounts.js';
 import * as live from './live.js';
@@ -1902,6 +1903,10 @@ async function contentGuardRound() {
   finally { contentGuardBusy = false; }
 }
 async function removeBlockedDownload(t, user, found) {
+  await removeDownloadWithFiles(t);
+  contentBlocked(user, t.name, found);
+}
+async function removeDownloadWithFiles(t) {
   const hash = t.hash.toLowerCase();
   deletingDownloads.add(hash);
   try {
@@ -1915,9 +1920,53 @@ async function removeBlockedDownload(t, user, found) {
   torrentInventory.at = 0;
   invalidateLibrary();
   if (t.content_path) setTimeout(() => { removeEmptyFolders(path.dirname(t.content_path)); invalidateLibrary(); }, 4000);
-  contentBlocked(user, t.name, found);
 }
 setInterval(() => contentGuardRound(), 3000).unref();
+
+// ---- fake releases (fake-release.js) ----
+// A download Lilin added that turns out to hold a program instead of a video is removed with its
+// files, never picked again (remembered in a file across restarts), and the Download that picked it
+// runs again for what's still missing. Downloads that finished before this server started are left
+// alone: what's already here is the owner's business.
+const FAKES_FILE = path.join(DATA_DIR, '.lilin-fakes.json');
+const knownFakes = (() => { try { return JSON.parse(fs.readFileSync(FAKES_FILE, 'utf8')); } catch { return []; } })();
+smart.loadFakes(knownFakes);
+const fakeChecked = new Set();
+const fakeGuardSince = Math.floor(Date.now() / 1000);
+let fakeGuardBusy = false;
+async function fakeGuardRound() {
+  if (!QBIT_URL || fakeGuardBusy) return;
+  fakeGuardBusy = true;
+  try {
+    const list = await qbit('/api/v2/torrents/info');
+    const present = new Set();
+    for (const t of list) {
+      const hash = t.hash.toLowerCase();
+      present.add(hash);
+      if (fakeChecked.has(hash) || deletingDownloads.has(hash)) continue;
+      const ownerId = accounts.torrentRow(hash)?.user_id ?? accounts.userFromTags(t.tags);
+      if (ownerId == null || (Number(t.added_on) < fakeGuardSince && t.progress >= 1)) { fakeChecked.add(hash); continue; }
+      const files = await torrentFileMetadata(t, { fresh: true }).catch(() => null);
+      if (!files?.length) continue; // no metadata yet: next round
+      fakeChecked.add(hash);
+      const why = fakeRelease(files);
+      if (!why) continue;
+      try { await removeDownloadWithFiles(t); } catch (e) {
+        fakeChecked.delete(hash);
+        console.warn(`[fake] couldn’t remove ${t.name}: ${e.message}`);
+        continue;
+      }
+      const found = smart.fakeFound(hash);
+      knownFakes.push({ hash, ref: found?.ref || undefined, name: t.name, at: Date.now() });
+      try { fs.writeFileSync(FAKES_FILE, JSON.stringify(knownFakes.slice(-1000))); } catch (e) { console.warn(`[fake] ${e.message}`); }
+      console.warn(`[fake] removed ${t.name}: it ${why}${found?.retried ? '; looking for another release' : ''}`);
+      activity.record(SYSTEM, 'blocked', `${String(t.name).slice(0, 200)} (fake: ${why})`, { user: accounts.userById(ownerId)?.email || 'Lilin' });
+    }
+    for (const hash of fakeChecked) if (!present.has(hash)) fakeChecked.delete(hash);
+  } catch { /* qBittorrent down: next round */ }
+  finally { fakeGuardBusy = false; }
+}
+setInterval(() => fakeGuardRound(), 3000).unref();
 
 async function readRaw(req, limit, tooLarge = 'That file is too large for a .torrent.') {
   const chunks = [];
