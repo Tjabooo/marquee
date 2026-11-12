@@ -56,3 +56,20 @@ test('liveRoot follows the files: download path while there, save path after the
   assert.equal(liveRoot({ ...on, content_path: path.join(M, 'Show.S01') }), M); // moved, setting still there
   assert.equal(liveRoot(t({ hash: 'w' })), M);
 });
+
+test('a torrent whose move is still queued is not planned twice, and its full size is promised', () => {
+  const plan = scratchPlan({ scratchDir: S, freeBytes: 100 * GiB, reserveBytes: 40 * GiB, arriving: new Set(['q']), torrents: [
+    t({ hash: 'q', size: 50 * GiB, amount_left: 49 * GiB }), // queued: download_path not reported yet
+    t({ hash: 'small', size: 9 * GiB }),
+    t({ hash: 'big', size: 11 * GiB }),
+  ] });
+  assert.deepEqual(plan.toScratch, ['small']); // 100 - 50 queued - 40 reserve = 10
+});
+
+test('a torrent already sent back to the media drive is not sent back again', () => {
+  const plan = scratchPlan({ scratchDir: S, freeBytes: 30 * GiB, reserveBytes: 40 * GiB, leaving: new Set(['y']), torrents: [
+    t({ hash: 'x', download_path: S, content_path: path.join(S, 'x'), amount_left: 2 * GiB }),
+    t({ hash: 'y', download_path: S, content_path: path.join(S, 'y'), amount_left: 9 * GiB }),
+  ] });
+  assert.deepEqual(plan.toMedia, []); // 30 - 2 left on the drive >= 20: fine once y has gone
+});

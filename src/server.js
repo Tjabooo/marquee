@@ -4847,17 +4847,27 @@ async function scratchRoom() {
   return (await scratchFree()) - pending - converter.scratchReserved() - SCRATCH_RESERVE;
 }
 let scratchBusy = false, scratchWarned = false;
+// Moves asked of qBittorrent that it hasn't finished yet: hash -> { toScratch, at } (see scratchPlan).
+const scratchMoves = new Map();
 async function scratchRound() {
   if (!SCRATCH_DIR || !QBIT_URL || scratchBusy) return;
   scratchBusy = true;
   try {
     await fs.promises.mkdir(SCRATCH_DIR, { recursive: true });
+    const torrents = await qbit('/api/v2/torrents/info');
+    const byHash = new Map(torrents.map((t) => [t.hash, t]));
+    for (const [hash, m] of scratchMoves) {
+      const t = byHash.get(hash);
+      if (!t || usesScratch(t, SCRATCH_DIR) === m.toScratch || Date.now() - m.at > 30 * 60 * 1000) scratchMoves.delete(hash);
+    }
+    const queuedTo = (toScratch) => new Set([...scratchMoves].filter(([, m]) => m.toScratch === toScratch).map(([h]) => h));
     const plan = scratchPlan({
-      torrents: await qbit('/api/v2/torrents/info'), scratchDir: SCRATCH_DIR, freeBytes: await scratchFree(),
+      torrents, arriving: queuedTo(true), leaving: queuedTo(false), scratchDir: SCRATCH_DIR, freeBytes: await scratchFree(),
       reserveBytes: SCRATCH_RESERVE, otherReserved: CONVERT_SHARES_SCRATCH ? converter.scratchReserved() : 0,
     });
     const move = async (hash, to) => {
       await qbitRequest('/api/v2/torrents/setDownloadPath', { method: 'POST', body: new URLSearchParams({ id: hash, path: to }) });
+      scratchMoves.set(hash, { toScratch: Boolean(to), at: Date.now() });
       console.log(`[scratch] ${hash.slice(0, 8)}: unfinished data ${to ? `kept on ${to}` : 'moved back to the media drive (scratch drive low on space)'}`);
     };
     for (const hash of plan.toScratch) await move(hash, SCRATCH_DIR);

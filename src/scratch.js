@@ -29,19 +29,26 @@ export function liveRoot(t) {
 // and everything else on that drive healthy); otherReserved: space promised to other writers
 // (conversions in progress); maxCopyBytes: a torrent that has already written more than this
 // stays where it is, since moving it means copying that data.
-export function scratchPlan({ torrents = [], scratchDir, freeBytes, reserveBytes = 40 * GiB, otherReserved = 0, maxCopyBytes = 2 * GiB }) {
+// arriving / leaving: hashes whose move onto / off the scratch drive was asked for but hasn't finished.
+// qBittorrent moves one torrent at a time and reports the new download path only once its move is
+// done, so without these a queued torrent would be planned again and its space promised twice.
+export function scratchPlan({ torrents = [], scratchDir, freeBytes, reserveBytes = 40 * GiB, otherReserved = 0, maxCopyBytes = 2 * GiB,
+  arriving = new Set(), leaving = new Set() }) {
   const toScratch = [], toMedia = [];
   if (!scratchDir || !Number.isFinite(freeBytes)) return { toScratch, toMedia, room: 0 };
   const on = [], candidates = [];
+  let queued = 0; // on its way to the scratch drive: all of it will be there, written or not
   for (const t of torrents) {
     if (!t?.hash || t.auto_tmm) continue; // automatic management decides its own paths
     const unfinished = Number(t.progress) < 1 && Number(t.amount_left) > 0;
+    if (leaving.has(t.hash)) continue;
+    if (arriving.has(t.hash) && !usesScratch(t, scratchDir)) { if (unfinished) queued += Number(t.size) || 0; continue; }
     if (usesScratch(t, scratchDir)) { if (unfinished) on.push(t); continue; }
     if (!unfinished || t.download_path || !(Number(t.size) > 0) || STOPPED.test(t.state || '')) continue;
     if ((Number(t.completed) || 0) > maxCopyBytes) continue;
     candidates.push(t);
   }
-  const pending = on.reduce((n, t) => n + (Number(t.amount_left) || 0), 0);
+  const pending = on.reduce((n, t) => n + (Number(t.amount_left) || 0), 0) + queued;
   // Running low anyway (something else filled the drive): send the largest one back, one per round.
   if (on.length && freeBytes - otherReserved - pending < reserveBytes / 2) {
     const biggest = [...on].sort((a, b) => (Number(b.amount_left) || 0) - (Number(a.amount_left) || 0))[0];
