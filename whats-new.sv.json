@@ -1,4 +1,13 @@
 {
+  "2026-11-12-clip-camera": {
+    "title": "Lägg in kameran i dina klipp",
+    "items": {
+      "Camera in the clip editor": {
+        "title": "Kamera i klippredigeraren",
+        "text": "Klipp som spelas in medan OBS virtuella kamera är på har nu med din kamera. I klippredigeraren syns den som en ruta på bilden: dra den vart du vill, dra i hörnet för att göra den större eller mindre, och slå på eller av den under Överlägg, precis som ljudspåren. Sparar du med kameran på läggs den in i kopian i full kvalitet, vilket tar några minuter; du får ett meddelande när den finns i mappen Trimmed Clips."
+      }
+    }
+  },
   "2026-11-12-fake-downloads": {
     "title": "Falska nedladdningar byts ut",
     "items": {

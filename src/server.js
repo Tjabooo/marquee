@@ -3386,16 +3386,24 @@ async function handleApi(req, res, url) {
     if ((m = p.match(/^\/api\/clips\/([\w-]{16})\/video$/))) return sendVideo(req, res, await clips.clipFile(m[1]));
     if ((m = p.match(/^\/api\/clips\/([\w-]{16})\/preview(?:\/(\d{1,4})\.jpg)?$/))) return sendPreview(res, await clips.clipFile(m[1]), m[2]);
     if ((m = p.match(/^\/api\/clips\/([\w-]{16})\/keyframes$/))) return sendJson(res, 200, await clips.trimInfo(m[1]));
+    if ((m = p.match(/^\/api\/clips\/([\w-]{16})\/cam$/))) return sendVideo(req, res, await clips.camFile(m[1]));
+    if ((m = p.match(/^\/api\/clips\/renders\/([0-9a-f]{16})$/))) return sendJson(res, 200, clips.renderState(m[1]));
     if ((m = p.match(/^\/api\/clips\/([\w-]{16})\/rename$/)) && req.method === 'POST') {
       const body = await readJson(req);
       if (!body || typeof body !== 'object') throw new HttpError(400, 'Send a clip name.');
       return sendJson(res, 200, await clips.renameClip(m[1], body.title, body.previousTitle));
     }
     if ((m = p.match(/^\/api\/clips\/([\w-]{16})\/trim$/)) && req.method === 'POST') {
-      const { start, end, segments, deleteOriginal, removeTracks } = await readJson(req);
+      const { start, end, segments, deleteOriginal, removeTracks, overlay } = await readJson(req);
       // segments: the parts to keep, in order. A single start/end is one part (older pages).
       // removeTracks: audio tracks to leave out (the mix is rebuilt from the rest).
-      const r = await clips.trim(m[1], segments ?? [{ start, end }], { deleteOriginal: Boolean(deleteOriginal), removeTracks: removeTracks ?? [] });
+      // overlay: { x, y, w } burns the clip's camera in there (a re-encode: runs in the background).
+      const options = { deleteOriginal: Boolean(deleteOriginal), removeTracks: removeTracks ?? [], overlay: overlay ?? null };
+      if (options.overlay) {
+        activity.record(req, 'trim', await clips.checkTrim(m[1], segments ?? [{ start, end }], options));
+        return sendJson(res, 202, clips.startTrim(m[1], segments ?? [{ start, end }], options));
+      }
+      const r = await clips.trim(m[1], segments ?? [{ start, end }], options);
       activity.record(req, 'trim', r.original);
       return sendJson(res, 200, r);
     }

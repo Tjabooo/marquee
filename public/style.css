@@ -2106,7 +2106,23 @@ body.has-nowbar .preview-pill { bottom: calc(var(--tabs-h) + var(--safe-bottom) 
 /* clip trimmer (in the bottom sheet) */
 /* Clip editor: a timeline of kept (gold) and removed (hatched) parts under the video */
 .edit h2 { padding-right: 52px; overflow-wrap: anywhere; }
-.edit-stage { margin: 4px 0 10px; border-radius: 12px; overflow: hidden; background: #000; }
+.edit-stage { position: relative; margin: 4px 0 10px; border-radius: 12px; overflow: hidden; background: #000; }
+/* camera overlay: a box over the picture you drag (move) or pull by its corner (resize) */
+.edit-cam-frame { position: absolute; pointer-events: none; }
+.edit-cam {
+  position: absolute; pointer-events: auto; cursor: grab; touch-action: none;
+  outline: 1.5px solid color-mix(in srgb, var(--bulb) 75%, transparent); outline-offset: 0;
+  background: color-mix(in srgb, var(--velvet) 55%, transparent);
+}
+.edit-cam.is-dragging { cursor: grabbing; outline-color: var(--bulb); }
+.edit-cam.is-empty { outline-style: dashed; }
+.edit-cam.is-empty .edit-cam-video { visibility: hidden; }
+.edit-cam-video { display: block; width: 100%; height: 100%; object-fit: fill; pointer-events: none; }
+.edit-cam-size {
+  position: absolute; right: -7px; bottom: -7px; width: 14px; height: 14px; cursor: nwse-resize;
+  background: var(--bulb); border: 2px solid var(--velvet); border-radius: 50%;
+}
+@media (pointer: coarse) { .edit-cam-size { width: 22px; height: 22px; right: -11px; bottom: -11px; } }
 .edit-video { display: block; width: 100%; aspect-ratio: 16 / 9; max-height: 42dvh; object-fit: contain; background: #000; cursor: pointer; }
 .edit-transport { display: flex; align-items: center; gap: 12px; }
 .edit-play {

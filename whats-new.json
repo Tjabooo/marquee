@@ -1,5 +1,17 @@
 [
   {
+    "id": "2026-11-12-clip-camera",
+    "date": "2026-11-12",
+    "title": "Put your camera in your clips",
+    "items": [
+      {
+        "title": "Camera in the clip editor",
+        "audience": "owner",
+        "text": "Clips recorded while the OBS virtual camera is on now come with your camera. In the clip editor it shows as a box on the picture: drag it anywhere, pull its corner to make it bigger or smaller, and switch it on or off under Overlay, like the audio tracks. Saving with the camera on puts it in the copy in full quality, which takes a few minutes; you get a message when it's in Trimmed Clips."
+      }
+    ]
+  },
+  {
     "id": "2026-11-12-fake-downloads",
     "date": "2026-11-12",
     "title": "Fake downloads are swapped out",

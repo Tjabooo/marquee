@@ -81,15 +81,23 @@ function gameOf(rel) {
 const titleOf = (rel) => path.basename(rel, path.extname(rel)).replace(/[_]+/g, ' ').trim();
 const displayTitle = (rel) => typeof titles[idOf(rel)] === 'string' && titles[idOf(rel)] ? titles[idOf(rel)] : titleOf(rel);
 
+// A camera recorded alongside a clip (the OBS virtual camera; see the recorder's ember-clip) sits
+// next to it as "<clip name>.cam.mp4": not a clip of its own, it's offered as an overlay in the editor.
+const CAM_SUFFIX = '.cam.mp4';
+const isCam = (rel) => rel.toLowerCase().endsWith(CAM_SUFFIX);
+export const camRelOf = (rel) => `${rel.slice(0, rel.length - path.extname(rel).length)}${CAM_SUFFIX}`;
+
 export async function scan(force = false) {
   if (!CLIPS_DIR) return [];
   purgeTrash();
   if (!force && Date.now() - scanned.at < SCAN_MS) return scanned.list;
   const files = await walk(CLIPS_DIR);
+  const cams = new Set(files.filter((f) => isCam(f.rel)).map((f) => f.rel.toLowerCase()));
   scanned = {
     at: Date.now(),
-    list: files.sort((a, b) => b.mtime - a.mtime).map((f) => ({
+    list: files.filter((f) => !isCam(f.rel)).sort((a, b) => b.mtime - a.mtime).map((f) => ({
       id: idOf(f.rel), rel: f.rel, title: displayTitle(f.rel), game: gameOf(f.rel), size: f.size, mtime: f.mtime,
+      cam: cams.has(camRelOf(f.rel).toLowerCase()),
     })),
   };
   return scanned.list;
@@ -132,7 +140,7 @@ async function probe(file) {
   const info = JSON.parse(await run(FFPROBE, ['-v', 'error', '-print_format', 'json', '-show_streams', '-show_format', file]));
   const v = (info.streams || []).find((s) => s.codec_type === 'video');
   const audio = (info.streams || []).filter((s) => s.codec_type === 'audio');
-  return { v, audio, duration: Number(info.format?.duration) || null, start: Number(info.format?.start_time) || 0 };
+  return { v, audio, duration: Number(info.format?.duration) || null, start: Number(info.format?.start_time) || 0, tags: info.format?.tags || {} };
 }
 
 export async function thumbnail(id) {
@@ -202,6 +210,24 @@ export async function listClips() {
   return { configured: clipsConfigured(), clips: (await scan()).map((c) => ({ ...c, rel: undefined, share: shareState(c) })) };
 }
 export const clipFile = async (id) => fullPath((await byId(id)).rel);
+export async function camFile(id) {
+  const c = await byId(id);
+  if (!c.cam) throw Object.assign(new Error('This clip has no camera.'), { status: 404 });
+  return fullPath(camRelOf(c.rel));
+}
+// The camera's size, length and where it starts in the clip (seconds; negative = it started before
+// the clip). The recorder stores the start as "lilin_cam_offset=S" in the file's comment; without
+// it both are taken to end together (replay buffers saved at the same moment).
+async function camInfo(c, clipDuration) {
+  if (!c.cam) return null;
+  try {
+    const { v, duration, tags } = await probe(fullPath(camRelOf(c.rel)));
+    if (!v?.width || !v?.height || !(duration > 0)) return null;
+    const tagged = /lilin_cam_offset=(-?\d+(?:\.\d+)?)/.exec(String(tags?.comment || ''));
+    const offset = tagged ? Number(tagged[1]) : (clipDuration || duration) - duration;
+    return { offset: Math.round(offset * 1000) / 1000, duration, width: v.width, height: v.height };
+  } catch { return null; }
+}
 
 export async function renameClip(id, title, previousTitle) {
   if (typeof title !== 'string' || !title.trim() || title.trim().length > 120 || /[\u0000-\u001f\u007f]/.test(title)) {
@@ -318,8 +344,8 @@ async function cutInfo(file) {
 }
 export async function trimInfo(id) {
   const c = await byId(id);
-  const { duration, keyframes, tracks, exact, frame } = await cutInfo(fullPath(c.rel));
-  return { duration, keyframes, tracks, exact, frame };
+  const { duration, keyframes, tracks, exact, frame, v } = await cutInfo(fullPath(c.rel));
+  return { duration, keyframes, tracks, exact, frame, width: v?.width || 0, height: v?.height || 0, cam: await camInfo(c, duration) };
 }
 // Editing: one or more parts of the clip are kept, in order, and joined into a new file.
 // Exact clips (see above): a part starts on the frame showing at its start time and ends just
@@ -502,23 +528,99 @@ export function planTracks(layout, remove = []) {
   // A rebuilt mix comes first (players only play track 1). One track left is its own mix.
   return { keep, mix: hasMix && keep.length > 1, removed: layout.filter((t) => drop.has(t.index)) };
 }
-export async function trim(id, segments, { deleteOriginal = false, removeTracks = [] } = {}) {
+// ---------- camera overlay ----------
+// The editor places the camera as fractions of the picture: x, y (top-left corner) and w (width);
+// the height follows from the camera's own shape. In pixels, even (4:2:0), kept inside the frame.
+export function planOverlay(overlay, frame, cam) {
+  if (overlay == null) return null;
+  if (!cam) throw bad('This clip has no camera to overlay.');
+  const x = Number(overlay.x), y = Number(overlay.y), w = Number(overlay.w);
+  if (![x, y, w].every(Number.isFinite) || w < 0.05 || w > 1) throw bad('Place the camera inside the picture.');
+  const W = frame.width, H = frame.height;
+  if (!(W > 0 && H > 0)) throw bad('Couldn’t read the clip’s picture size.');
+  const even = (n) => Math.max(2, 2 * Math.round(n / 2));
+  let cw = even(w * W), ch = even((cw * cam.height) / cam.width);
+  if (ch > H) { ch = even(H); cw = even((ch * cam.width) / cam.height); }
+  const px = Math.min(Math.max(0, Math.round(x * W)), W - cw), py = Math.min(Math.max(0, Math.round(y * H)), H - ch);
+  return { x: px, y: py, w: cw, h: ch };
+}
+// Where the camera goes in the edited copy: for each kept part (original time from..end, joined in
+// order), the stretch of the camera that covers it ({ ss, t } in camera time) and when it starts
+// in the copy (at). Stretches without camera are simply left without it.
+export function camTimeline(parts, cam) {
+  const out = [];
+  let at = 0;
+  for (const p of parts) {
+    const from = p.from ?? p.start, len = p.end - from;
+    const a = Math.max(0, from - cam.offset), b = Math.min(cam.duration, p.end - cam.offset);
+    if (b - a > 0.05) out.push({ ss: a, t: b - a, at: at + Math.max(0, cam.offset - from) });
+    at += len;
+  }
+  return out;
+}
+async function burnCam(stage, camSrc, box, spans, v, out) {
+  const args = ['-hide_banner', '-nostdin', '-y', '-i', stage];
+  for (const s of spans) args.push('-ss', secs(s.ss), '-t', secs(s.t), '-i', camSrc);
+  const graph = [];
+  let last = '0:v';
+  spans.forEach((s, i) => {
+    graph.push(`[${i + 1}:v]setpts=PTS-STARTPTS+${secs(s.at)}/TB,scale=${box.w}:${box.h}:flags=lanczos[c${i}]`);
+    graph.push(`[${last}][c${i}]overlay=${box.x}:${box.y}:eof_action=pass:repeatlast=0[o${i}]`);
+    last = `o${i}`;
+  });
+  args.push('-filter_complex', graph.join(';'), '-map', `[${last}]`, '-map', '0:a?', '-map_metadata', '0', ...SHARE_X264);
+  if (v.color_range === 'pc') args.push('-color_range', 'pc');
+  args.push('-c:a', 'copy', '-movflags', '+faststart', out);
+  await run(FFMPEG, args);
+}
+
+// Burning the camera in re-encodes the whole picture (minutes), longer than a request may take
+// behind Cloudflare, so those edits run in the background and the editor asks how they're doing.
+const renders = new Map(); // job id -> { state: 'working' | 'done' | 'failed', title, error, at }
+export function startTrim(id, segments, options) {
+  const job = crypto.randomBytes(8).toString('hex');
+  const state = { state: 'working', title: null, error: null, at: Date.now() };
+  renders.set(job, state);
+  for (const [k, r] of renders) if (r.state !== 'working' && Date.now() - r.at > 3600 * 1000) renders.delete(k);
+  trim(id, segments, options).then((r) => Object.assign(state, { state: 'done', title: r.title, at: Date.now() }))
+    .catch((e) => Object.assign(state, { state: 'failed', error: e.message, at: Date.now() }));
+  return { job };
+}
+export function renderState(job) {
+  const r = renders.get(job);
+  if (!r) throw Object.assign(new Error('That edit isn’t running any more.'), { status: 404 });
+  return r;
+}
+// Checked before a background edit starts, so mistakes still come back with the request.
+export async function checkTrim(id, segments, { removeTracks = [], overlay = null } = {}) {
+  const c = await byId(id);
+  const info = await cutInfo(fullPath(c.rel));
+  planSegments(segments, info);
+  planTracks(info.tracks, removeTracks);
+  planOverlay(overlay, info.v || {}, await camInfo(c, info.duration));
+  return c.title;
+}
+
+export async function trim(id, segments, { deleteOriginal = false, removeTracks = [], overlay = null } = {}) {
   const c = await byId(id);
   const src = fullPath(c.rel);
   const info = await cutInfo(src);
   const parts = planSegments(segments, info);
   const tracks = planTracks(info.tracks, removeTracks);
+  const cam = overlay ? await camInfo(c, info.duration) : null;
+  const box = planOverlay(overlay, info.v || {}, cam);
   const dir = path.join(CLIPS_DIR, 'Trimmed Clips', c.game === 'Trimmed' ? '' : c.game);
   await fs.promises.mkdir(dir, { recursive: true });
   const stem = c.title.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '-').replace(/[ .]+$/, '').slice(0, 100) || 'Clip';
-  const base = `${stem} (${parts.length > 1 || tracks ? 'edit' : 'trim'})`;
+  const base = `${stem} (${parts.length > 1 || tracks || box ? 'edit' : 'trim'})`;
   let name = `${base}.mp4`;
   for (let i = 2; fs.existsSync(path.join(dir, name)); i++) name = `${base} ${i}.mp4`;
   const dest = path.join(dir, name);
   const tmp = `${dest}.lilin-tmp.mp4`;
   // a dot-folder next to the result: same drive, and the clip scan skips it
   const work = path.join(dir, `.lilin-edit-${crypto.randomBytes(6).toString('hex')}`);
-  const cutTmp = tracks ? path.join(work, 'cut.mp4') : tmp;
+  const pre = box ? path.join(work, 'stage.mp4') : tmp; // the cut, before the camera goes in
+  const cutTmp = tracks ? path.join(work, 'cut.mp4') : pre;
   const cut = (p, out, extra = []) => run(FFMPEG, ['-hide_banner', '-nostdin', '-y', '-ss', String(p.from), '-i', src, '-t', String(p.end - p.from),
     '-map', '0', '-c', 'copy', '-avoid_negative_ts', 'make_zero', ...extra, out]);
   try {
@@ -548,8 +650,13 @@ export async function trim(id, segments, { deleteOriginal = false, removeTracks 
         args.push(`-c:a:${i}`, encode ? 'aac' : 'copy', `-metadata:s:a:${i}`, `title=${title}`, `-metadata:s:a:${i}`, `handler_name=${title}`, `-disposition:a:${i}`, i ? '0' : 'default');
         if (encode) args.push(`-b:a:${i}`, '320k');
       });
-      args.push('-movflags', '+faststart', tmp);
+      args.push('-movflags', '+faststart', pre);
       await run(FFMPEG, args);
+    }
+    if (box) {
+      const spans = camTimeline(parts, cam);
+      if (!spans.length) throw bad('The camera wasn’t recording during the parts you kept.');
+      await burnCam(pre, fullPath(camRelOf(c.rel)), box, spans, info.v, tmp);
     }
     await fs.promises.rename(tmp, dest);
   } finally {
@@ -559,7 +666,7 @@ export async function trim(id, segments, { deleteOriginal = false, removeTracks 
   scanned.at = 0;
   if (deleteOriginal) await deleteClip(id);
   return { ok: true, title: path.basename(name, '.mp4'), parts: parts.map((p) => ({ start: p.from, end: p.end })),
-    removedTracks: tracks ? tracks.removed.map((t) => t.label) : [],
+    removedTracks: tracks ? tracks.removed.map((t) => t.label) : [], camera: Boolean(box),
     start: parts[0].from, end: parts.at(-1).end, original: c.title };
 }
 
@@ -574,6 +681,7 @@ export async function deleteClip(id) {
   await fs.promises.mkdir(trashDir(), { recursive: true });
   const dest = path.join(trashDir(), `${Date.now()}--${c.rel.replace(/[\\/]/g, '__')}`);
   await fs.promises.rename(fullPath(c.rel), dest);
+  if (c.cam) await fs.promises.rename(fullPath(camRelOf(c.rel)), dest.replace(/\.[^.]+$/, CAM_SUFFIX)).catch(() => {});
   scanned.at = 0; // next scan starts fresh
   return { ok: true, title: c.title };
 }

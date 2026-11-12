@@ -8395,6 +8395,12 @@ async function openTrim(c, opener) {
   let pieces = [];        // [{ start, end, keep }] covering the whole clip, in order
   let tracks = [];        // the clip's audio tracks (from the server); the mix isn't offered
   const removed = new Set();
+  // Camera overlay (clips recorded with the OBS virtual camera): a box you drag and resize on the
+  // picture, burned into the copy when it's on. Place and on/off are remembered for the next clip.
+  let cam = null;         // { offset, duration, width, height } from the server
+  let frameW = 16, frameH = 9;
+  const camPlace = (() => { try { const v = JSON.parse(localStorage.getItem('clip:cam:place')); if (v && [v.x, v.y, v.w].every(Number.isFinite)) return v; } catch { /* default */ } return { x: 0.73, y: 0.04, w: 0.24 }; })();
+  let camOn = (() => { try { return localStorage.getItem('clip:cam:on') !== '0'; } catch { return true; } })();
   const undo = [];
   let busy = false;
   const MIN_PIECE = 0.2;  // seconds; no slivers from double-clicking Split
@@ -8486,6 +8492,69 @@ async function openTrim(c, opener) {
   const undoBtn = h('button', { type: 'button', class: 'edit-tool edit-undo', title: T('Undo (Ctrl+Z)'), 'aria-label': T('Undo'), onclick: undoLast });
   undoBtn.innerHTML = EDIT_ICONS.undo;
   const info = h('p', { class: 'edit-info', role: 'status' }, T('Loading the clip…'));
+  const camVideo = h('video', { class: 'edit-cam-video', muted: true, playsinline: true, preload: 'auto', 'aria-hidden': 'true' });
+  const camHandle = h('div', { class: 'edit-cam-size', title: T('Drag to resize the camera') });
+  const camBox = h('div', { class: 'edit-cam', title: T('Drag to move the camera') }, camVideo, camHandle);
+  const camFrame = h('div', { class: 'edit-cam-frame', hidden: true }, camBox);
+  const camRow = h('div', { class: 'edit-tracks', hidden: true });
+  const camH = () => (cam ? (camPlace.w * frameW * cam.height) / cam.width / frameH : 0); // height as a fraction of the picture
+  function clampCam() {
+    camPlace.w = Math.min(Math.max(camPlace.w, 0.05), 1);
+    if (camH() > 1) camPlace.w = (frameH * cam.width) / cam.height / frameW;
+    camPlace.x = Math.min(Math.max(camPlace.x, 0), 1 - camPlace.w);
+    camPlace.y = Math.min(Math.max(camPlace.y, 0), 1 - camH());
+  }
+  // the frame matches the picture inside the letterboxed video element
+  function layoutCam() {
+    camFrame.hidden = !cam || !camOn;
+    if (camFrame.hidden) return;
+    const bw = video.clientWidth, bh = video.clientHeight;
+    const scale = Math.min(bw / frameW, bh / frameH);
+    const w = frameW * scale, hgt = frameH * scale;
+    Object.assign(camFrame.style, { left: `${video.offsetLeft + (bw - w) / 2}px`, top: `${video.offsetTop + (bh - hgt) / 2}px`, width: `${w}px`, height: `${hgt}px` });
+    clampCam();
+    Object.assign(camBox.style, { left: `${camPlace.x * 100}%`, top: `${camPlace.y * 100}%`, width: `${camPlace.w * 100}%`, height: `${camH() * 100}%` });
+  }
+  new ResizeObserver(layoutCam).observe(video);
+  const rememberCam = () => { try { localStorage.setItem('clip:cam:place', JSON.stringify(camPlace)); localStorage.setItem('clip:cam:on', camOn ? '1' : '0'); } catch { /* private mode */ } };
+  camBox.addEventListener('pointerdown', (e) => {
+    if (busy) return;
+    e.preventDefault();
+    camBox.setPointerCapture(e.pointerId);
+    const r = camFrame.getBoundingClientRect();
+    const start = { ...camPlace, px: e.clientX, py: e.clientY };
+    const resizing = e.target === camHandle;
+    camBox.classList.add('is-dragging');
+    const move = (ev) => {
+      const dx = (ev.clientX - start.px) / r.width, dy = (ev.clientY - start.py) / r.height;
+      if (resizing) camPlace.w = start.w + Math.max(dx, (dy * frameH * cam.width) / cam.height / frameW);
+      else { camPlace.x = start.x + dx; camPlace.y = start.y + dy; }
+      layoutCam();
+    };
+    const up = () => { camBox.removeEventListener('pointermove', move); camBox.classList.remove('is-dragging'); rememberCam(); };
+    camBox.addEventListener('pointermove', move);
+    camBox.addEventListener('pointerup', up, { once: true });
+    camBox.addEventListener('pointercancel', up, { once: true });
+  });
+  // the camera follows the clip: same play/pause, re-aligned when it drifts or you seek
+  function syncCam() {
+    if (!cam || !camOn || !camVideo.src) return;
+    const want = video.currentTime - cam.offset;
+    const inside = want >= 0 && want < cam.duration - 0.05;
+    camBox.classList.toggle('is-empty', !inside);
+    if (!inside) { if (!camVideo.paused) camVideo.pause(); return; }
+    if (Math.abs(camVideo.currentTime - want) > (video.paused ? 0.02 : 0.15)) camVideo.currentTime = want;
+    if (video.paused && !camVideo.paused) camVideo.pause();
+    if (!video.paused && camVideo.paused) camVideo.play().catch(() => {});
+  }
+  function renderCam() {
+    camRow.hidden = !cam;
+    if (!cam) return;
+    camRow.replaceChildren(h('span', { class: 'edit-tracks-label' }, T('Overlay')),
+      h('button', { type: 'button', class: `edit-chip${camOn ? '' : ' is-off'}`, 'aria-pressed': String(camOn),
+        title: camOn ? T('Leave the camera out of the copy') : T('Put the camera in the copy'),
+        onclick: () => { if (busy) return; camOn = !camOn; rememberCam(); renderCam(); layoutCam(); syncCam(); render(); } }, T('Camera')));
+  }
   // Audio: keep or leave out each separate track. Track 1 (the mix every player plays) is rebuilt.
   const trackRow = h('div', { class: 'edit-tracks', hidden: true });
   function renderTracks() {
@@ -8540,9 +8609,10 @@ async function openTrim(c, opener) {
     info.classList.toggle('is-error', Boolean(issue));
     const gone = tracks.filter((t) => removed.has(t.index)).map((t) => t.mic ? T('{0} (mic)', t.label) : t.label);
     const remix = gone.length && tracks.some((t) => t.mix) && tracks.filter((t) => !t.mix && !removed.has(t.index)).length > 1;
-    info.textContent = issue || T('{0} · {1} long{2}{3} · {4}', list.length === 1 ? T('Keeping 1 part') : T('Keeping {0} parts', list.length), fmtT(length), early ? T(' · striped bits are kept so each part starts on a keyframe') : '', gone.length ? T(' · without {0}', gone.join(' and ')) : '', exact && list.some((r) => offKey(r.start)) ? T('exact cuts, every frame identical to the original{0}', remix ? T(', the mix re-encoded') : '') : remix ? T('video untouched, only the mix is re-encoded') : T('no re-encoding, same quality'));
+    const withCam = Boolean(cam && camOn);
+    info.textContent = issue || (withCam ? T('{0} · {1} long{2} · camera burned in: the picture is re-encoded in full quality, which takes a few minutes', list.length === 1 ? T('Keeping 1 part') : T('Keeping {0} parts', list.length), fmtT(length), gone.length ? T(' · without {0}', gone.join(' and ')) : '') : '') || T('{0} · {1} long{2}{3} · {4}', list.length === 1 ? T('Keeping 1 part') : T('Keeping {0} parts', list.length), fmtT(length), early ? T(' · striped bits are kept so each part starts on a keyframe') : '', gone.length ? T(' · without {0}', gone.join(' and ')) : '', exact && list.some((r) => offKey(r.start)) ? T('exact cuts, every frame identical to the original{0}', remix ? T(', the mix re-encoded') : '') : remix ? T('video untouched, only the mix is re-encoded') : T('no re-encoding, same quality'));
     save.disabled = busy || Boolean(issue);
-    save.textContent = busy ? T('Saving…') : list.length > 1 || gone.length ? T('Save edited copy') : T('Save trimmed copy');
+    save.textContent = busy ? T('Saving…') : list.length > 1 || gone.length || withCam ? T('Save edited copy') : T('Save trimmed copy');
     previewBtn.disabled = !list.length;
     undoBtn.disabled = !undo.length || busy;
     updateHead();
@@ -8563,6 +8633,7 @@ async function openTrim(c, opener) {
       lastKept = true;
     } else lastKept = inKept;
     updateHead();
+    syncCam();
   }
   const loop = () => {
     if (!video.isConnected || video.paused) return;
@@ -8570,7 +8641,8 @@ async function openTrim(c, opener) {
     if (video.requestVideoFrameCallback) video.requestVideoFrameCallback(loop); else requestAnimationFrame(loop);
   };
   video.addEventListener('play', () => { lastKept = keptAt(video.currentTime, runs()); loop(); });
-  video.addEventListener('seeked', () => { lastKept = keptAt(video.currentTime, runs()); updateHead(); });
+  video.addEventListener('seeked', () => { lastKept = keptAt(video.currentTime, runs()); updateHead(); syncCam(); });
+  for (const ev of ['pause', 'timeupdate', 'ratechange']) video.addEventListener(ev, () => { camVideo.playbackRate = video.playbackRate; syncCam(); });
   video.addEventListener('timeupdate', updateHead);
   const syncPlay = () => {
     const playing = !video.paused && !video.ended;
@@ -8588,8 +8660,10 @@ async function openTrim(c, opener) {
     if (problem(list)) return;
     busy = true; render();
     try {
-      const r = await api(`/api/clips/${c.id}/trim`, jsonPost({ segments: list.map(({ start, end }) => ({ start, end })), removeTracks: [...removed], deleteOriginal: delOrig.checked }));
-      toast(T('Saved “{0}” in Trimmed Clips', r.title));
+      const overlay = cam && camOn ? { x: camPlace.x, y: camPlace.y, w: camPlace.w } : undefined;
+      const r = await api(`/api/clips/${c.id}/trim`, jsonPost({ segments: list.map(({ start, end }) => ({ start, end })), removeTracks: [...removed], deleteOriginal: delOrig.checked, overlay }));
+      if (r.job) { toast(T('Putting the camera in… “{0}” shows up in Trimmed Clips in a few minutes', c.title)); followRender(r.job); }
+      else toast(T('Saved “{0}” in Trimmed Clips', r.title));
       closeTopOverlay();
       await loadClips();
       renderClips();
@@ -8601,11 +8675,12 @@ async function openTrim(c, opener) {
 
   const content = h('div', { class: 'sheet-content edit' },
     h('h2', { id: 'sheet-title' }, T('Edit · {0}', c.title)),
-    h('div', { class: 'edit-stage' }, video),
+    h('div', { class: 'edit-stage' }, video, camFrame),
     h('div', { class: 'edit-transport' }, playBtn, h('span', { class: 'edit-clock' }, now, ' ', total)),
     timeline,
     h('div', { class: 'edit-tools' }, startBtn, splitBtn, endBtn, toggleBtn, undoBtn),
     trackRow,
+    camRow,
     info,
     h('div', { class: 'edit-actions' }, previewBtn, save),
     h('label', { class: 'trim-del', for: 'trim-del' }, delOrig, T(' Move the original to Deleted afterwards (kept 30 days)')),
@@ -8630,6 +8705,7 @@ async function openTrim(c, opener) {
     sheet.classList.remove('is-editor');
     document.removeEventListener('keydown', onKey);
     video.pause(); video.removeAttribute('src'); video.load();
+    camVideo.pause(); camVideo.removeAttribute('src'); camVideo.load();
     opener?.focus({ preventScroll: true });
   }));
   const ready = (d) => {
@@ -8647,9 +8723,30 @@ async function openTrim(c, opener) {
     if (k.frame > 0 && k.frame < 1) frameDur = k.frame;
     tracks = k.tracks || [];
     renderTracks();
+    if (k.width > 0 && k.height > 0) { frameW = k.width; frameH = k.height; }
+    if (k.cam?.width > 0 && k.cam?.height > 0 && k.cam.duration > 0) {
+      cam = k.cam;
+      camVideo.src = `/api/clips/${c.id}/cam`;
+      camVideo.addEventListener('loadeddata', syncCam, { once: true });
+      renderCam(); layoutCam();
+    }
     ready(k.duration);
     render();
   } catch (err) { info.textContent = T('Couldn’t read the clip: {0}', err.message); info.classList.add('is-error'); }
+}
+
+// A camera edit renders on the server for a few minutes; say when it's there (or why not).
+async function followRender(job) {
+  for (let i = 0; i < 900; i++) {
+    await new Promise((r) => setTimeout(r, 4000));
+    let r;
+    try { r = await api(`/api/clips/renders/${job}`); } catch (err) { if (err.status === 404) return; continue; }
+    if (r.state === 'working') continue;
+    toast(r.state === 'done' ? T('Saved “{0}” in Trimmed Clips', r.title) : T('The camera edit failed: {0}', r.error));
+    await loadClips();
+    renderClips();
+    return;
+  }
 }
 
 async function deleteClip(c) {
