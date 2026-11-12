@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-12-iphone-fullscreen",
+    "date": "2026-11-12",
+    "title": "Fullscreen on iPhone keeps Lilin's player",
+    "items": [
+      {
+        "title": "Lilin from your Home Screen",
+        "text": "On iPhone, the fullscreen button used to swap Lilin's player for Apple's, which has no Skip intro, Up next or Watch Together. In Safari it now shows three quick steps to add Lilin to your Home Screen, where the player fills the whole screen with everything still working. Apple's player is still one tap away in the same place if you prefer it."
+      }
+    ]
+  },
+  {
     "id": "2026-11-12-season-batches",
     "date": "2026-11-12",
     "title": "Whole seasons download more reliably",

@@ -1,4 +1,13 @@
 {
+  "2026-11-12-iphone-fullscreen": {
+    "title": "Helskärm på iPhone behåller Lilins spelare",
+    "items": {
+      "Lilin from your Home Screen": {
+        "title": "Lilin från hemskärmen",
+        "text": "På iPhone bytte helskärmsknappen ut Lilins spelare mot Apples, som saknar Hoppa över intro, Nästa avsnitt och Titta tillsammans. I Safari visar den nu tre snabba steg för att lägga till Lilin på hemskärmen, där spelaren fyller hela skärmen och allt fungerar som vanligt. Apples spelare finns kvar ett tryck bort på samma ställe om du föredrar den."
+      }
+    }
+  },
   "2026-11-12-season-batches": {
     "title": "Hela säsonger laddas ner säkrare",
     "items": {

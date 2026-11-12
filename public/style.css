@@ -1698,6 +1698,17 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .quality-upgrade svg { flex: none; width: 18px; height: 18px; }
 .quality-upgrade[aria-disabled="true"] { opacity: .6; cursor: default; }
 .quality-btn svg text { font-size: 7px; letter-spacing: -0.2px; }
+/* iPhone: how to watch fullscreen (the Home Screen app), in place of iOS's own player */
+.fs-guide { width: min(330px, calc(100vw - 32px)); }
+.fs-guide .audio-title { margin: 8px 12px 4px; }
+.fs-guide-lead { margin: 4px 12px 10px; font-size: 14px; line-height: 1.4; color: rgb(255 255 255 / .82); }
+.fs-guide-steps { display: grid; gap: 10px; margin: 0 12px 8px; padding: 0; list-style: none; counter-reset: fs-step; }
+.fs-guide-steps li { display: grid; grid-template-columns: 34px 1fr; align-items: center; gap: 12px; font-size: 14px; line-height: 1.35; }
+.fs-guide-icon { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; color: var(--bulb); background: rgb(255 255 255 / .08); }
+.fs-guide-icon svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.fs-guide .cc-message { margin: 4px 12px 6px; }
+.fs-guide-native { min-height: 42px; font-size: 14px; color: var(--dust); }
+.fs-guide-native::before { display: none; }
 .sleep-left { font-variant-numeric: tabular-nums; }
 /* Phones: the row has to fit 390 px in any language. The volume is the phone's own buttons; Watch together shows its faces or icon only. */
 @media (max-width: 520px) {

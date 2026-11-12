@@ -89,7 +89,7 @@ function playbackHarness({ prepare, autoplayRejected = false, clock = null } = {
     leaveWatchRoom: () => { context.party = null; }, resetCasting() {}, clearSubTracks() {}, closeCcMenu() {}, closeAudioMenu() {}, resetAudioSelection() {},
     endSeek: () => { context.seeking = null; }, setSpinner() {}, updatePlayState() {}, updateTime() {}, showPlayerUi() {}, renderParty() {}, seekPreview: { load() {}, show() {} },
     setupPlayerSubs() {}, watchAudio() {}, watchCastTargets() {}, canCastFromBrowser: false, browserVariant: () => 'browser',
-    baseVariant: () => 'browser', wantedQuality: () => 'original', renderQualityMenu() {}, closeQualityMenu() {}, qualityBtn: { hidden: true },
+    baseVariant: () => 'browser', wantedQuality: () => 'original', renderQualityMenu() {}, closeQualityMenu() {}, closeFsGuide() {}, qualityBtn: { hidden: true },
     fsElement: () => false, inPip: () => false, exitPip() {}, setTheme() {}, pageThemeColor: '#000', renderLibrary() {},
     pushOverlay: () => logs.push({ overlay: 'push' }), swapTopOverlay: () => logs.push({ overlay: 'swap' }),
     sleep: null, closeNightMenu() {}, renderNightMenu() {}, clearSleep() {}, sleepPause() {}, nightWanted: false, nightAvailable: () => false, night: { on: false, set() {} },

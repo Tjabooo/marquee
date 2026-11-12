@@ -5512,12 +5512,12 @@ const setTheme = (color) => { if (themeMeta) themeMeta.content = color; };
 const isStandalone = window.navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
 const landscapeQuery = matchMedia('(orientation: landscape) and (max-height: 600px) and (pointer: coarse)');
 landscapeQuery.addEventListener('change', (e) => {
-  if (!e.matches || isStandalone || !current || !/iPhone|iPad/.test(navigator.userAgent)) return;
+  if (!e.matches || isStandalone || !current || !/iPhone|iPod/.test(navigator.userAgent)) return;
   try {
     if (localStorage.getItem('tip:homescreen')) return;
     localStorage.setItem('tip:homescreen', '1');
   } catch { return; }
-  toast(T('Tip: open Lilin from your Home Screen for fullscreen without Safari’s bar'));
+  toast(T('Tip: add Lilin to your Home Screen to watch without Safari’s bar. The fullscreen button shows how.'));
 });
 
 // ---- night mode and sleep timer ----
@@ -5808,7 +5808,7 @@ const osdEl = $('#player-osd');
 const spinner = $('#player-spinner');
 const helpEl = $('#player-help');
 
-const menuOpen = () => !ccMenu.hidden || !audioMenu.hidden || !nightMenu.hidden || !qualityMenu.hidden || !helpEl.hidden || (watchPanelOpen && !roomDocked());
+const menuOpen = () => fsBtn.getAttribute('aria-expanded') === 'true' || !ccMenu.hidden || !audioMenu.hidden || !nightMenu.hidden || !qualityMenu.hidden || !helpEl.hidden || (watchPanelOpen && !roomDocked());
 let lastPointer = 'mouse';
 let overControls = false;
 let uiTimer = null;
@@ -6014,19 +6014,62 @@ volInput.addEventListener('input', () => setVolume(Number(volInput.value)));
 
 // ---- fullscreen and picture-in-picture ----
 // The whole player goes fullscreen, so the controls and subtitles come along. iPhones can only
-// make the video itself fullscreen, which opens iOS's own player.
+// make the video itself fullscreen, which swaps Lilin's player for iOS's own (no Skip intro,
+// Up next, Watch Together, subtitle styles). So on iPhone there's no fullscreen button: the Home
+// Screen app has no Safari bar to hide (turn sideways and the player fills the screen), and in
+// Safari the button explains how to add Lilin to the Home Screen instead.
 const fsElement = () => document.fullscreenElement || document.webkitFullscreenElement;
 let fsExitedAt = 0;
-fsBtn.hidden = !playerEl.requestFullscreen && !playerEl.webkitRequestFullscreen && !video.webkitEnterFullscreen;
+const elementFullscreen = Boolean((playerEl.requestFullscreen || playerEl.webkitRequestFullscreen)
+  && (document.fullscreenEnabled ?? document.webkitFullscreenEnabled ?? true));
+const videoOnlyFullscreen = !elementFullscreen && typeof video.webkitEnterFullscreen === 'function';
+fsBtn.hidden = !elementFullscreen && (!videoOnlyFullscreen || isStandalone);
+const fsGuide = h('div', { class: 'cc-menu fs-guide', id: 'fs-guide', role: 'dialog', 'aria-label': T('Watch fullscreen'), hidden: true });
+fsBtn.after(fsGuide);
+if (videoOnlyFullscreen) { fsBtn.setAttribute('aria-haspopup', 'dialog'); fsBtn.setAttribute('aria-controls', 'fs-guide'); fsBtn.setAttribute('aria-expanded', 'false'); }
+function guideIcon(paths) {
+  const el = h('span', { class: 'fs-guide-icon', 'aria-hidden': 'true' });
+  el.innerHTML = `<svg viewBox="0 0 24 24">${paths}</svg>`;
+  return el;
+}
+function renderFsGuide() {
+  fsGuide.replaceChildren(
+    h('p', { class: 'audio-title' }, T('Watch fullscreen')),
+    h('p', { class: 'fs-guide-lead' }, T('Safari’s bar can’t be hidden, but Lilin from your Home Screen fills the whole screen, with Skip intro, Up next and subtitles still working.')),
+    h('ol', { class: 'fs-guide-steps' },
+      h('li', {}, guideIcon('<path d="M12 3v12M7.5 7.5 12 3l4.5 4.5"/><path d="M8 11H6a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-2"/>'),
+        h('span', {}, T('Tap Share in Safari (behind ••• if you don’t see it).'))),
+      h('li', {}, guideIcon('<rect x="4" y="4" width="16" height="16" rx="4"/><path d="M12 8.5v7M8.5 12h7"/>'),
+        h('span', {}, T('Choose Add to Home Screen, keep Open as Web App on, then tap Add.'))),
+      h('li', {}, guideIcon('<rect x="2.5" y="6.5" width="19" height="11" rx="2.5"/><path d="M18 10v4"/>'),
+        h('span', {}, T('Open Lilin from the new icon and turn your phone sideways.')))),
+    h('p', { class: 'cc-message' }, T('Where you stopped is saved, so this picks up in Continue watching.')),
+    h('div', { class: 'cc-divider', role: 'separator' }),
+    h('button', { type: 'button', class: 'cc-item fs-guide-native', onclick: () => { closeFsGuide(); try { video.webkitEnterFullscreen(); } catch { /* not ready yet */ } } },
+      T('Use iPhone’s player instead')),
+  );
+}
+function closeFsGuide() { if (fsGuide.hidden) return; fsGuide.hidden = true; fsBtn.setAttribute('aria-expanded', 'false'); }
+function openFsGuide() {
+  closeCcMenu(); closeAudioMenu(); closeQualityMenu(); closeNightMenu();
+  renderFsGuide();
+  fsGuide.hidden = false;
+  fsBtn.setAttribute('aria-expanded', 'true');
+  fsGuide.querySelector('button')?.focus({ preventScroll: true });
+  showPlayerUi();
+}
+// Capture phase: the other menu buttons stop their clicks from bubbling.
+document.addEventListener('click', (e) => { if (!fsGuide.hidden && !fsGuide.contains(e.target) && !fsBtn.contains(e.target)) closeFsGuide(); }, true);
+fsGuide.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeFsGuide(); fsBtn.focus(); } });
 function toggleFullscreen() {
   if (fsElement()) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
+  if (videoOnlyFullscreen) { if (fsGuide.hidden) openFsGuide(); else closeFsGuide(); return; }
   if (playerEl.requestFullscreen) {
     playerEl.requestFullscreen({ navigationUI: 'hide' }).then(() => {
       // Phones: turn to landscape for widescreen films (works where the browser allows it).
       if (lastPointer !== 'mouse' && video.videoWidth > video.videoHeight) screen.orientation?.lock?.('landscape').catch(() => {});
     }, () => {});
   } else if (playerEl.webkitRequestFullscreen) playerEl.webkitRequestFullscreen();
-  else try { video.webkitEnterFullscreen(); } catch { /* not ready yet */ }
 }
 function updateFullscreen() {
   const on = Boolean(fsElement());
@@ -6336,6 +6379,7 @@ function resetPlayerMedia() {
   audioBtn.hidden = true;
   closeNightMenu();
   closeQualityMenu();
+  closeFsGuide();
   qualityBtn.hidden = true;
   helpEl.hidden = true;
   endSeek(false);
