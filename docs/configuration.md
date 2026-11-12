@@ -67,7 +67,16 @@ See [remote-access.md](remote-access.md) for how accounts work and how to publis
 
 ## Authorized media imports
 
-Built-in public torrent-index lookup is not available. To acquire media, import files you already own into `MEDIA_DIR`, or optionally connect qBittorrent and use the **Add authorized download** action with a magnet or `.torrent` URL that you are authorized to download. `TORRENTS=off` is retained as a compatibility setting; turning it on will not reactivate public-index lookups. See [authorized media workflow](authorized-media.md).
+Built-in public torrent-index lookup is not available. To acquire media, import files you already own into `MEDIA_DIR`, or optionally connect qBittorrent and use the **Add authorized download** action with a magnet or `.torrent` URL that you are authorized to download. Legacy `TORRENTS` values are ignored; they cannot reactivate public-index lookups. See [authorized media workflow](authorized-media.md).
+
+| Setting | Default | Purpose |
+|---|---|---|
+| `CONTENT_FILTER` | `on` | Adult content filter (`on`, `members`, `off`). |
+| `CONTENT_FILTER_WORDS` | | Additional disallowed words in content names. |
+| `SVT_PLAY` | | Public broadcaster documentaries when available and licensed in your region. |
+| `ANILIST_URL` | | AniList metadata API for anime title and season matching. |
+| `FLARESOLVERR_URL` | | Legacy optional integration setting. Not used by the built-in authorized media workflow. |
+
 
 ## Subtitles
 
