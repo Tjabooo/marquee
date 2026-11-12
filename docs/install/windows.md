@@ -56,18 +56,18 @@ Use an **elevated PowerShell** (Run as administrator) if you want setup to regis
 the same run.
 
 ```powershell
-Invoke-WebRequest https://raw.githubusercontent.com/Tjabooo/lilin/v2.0.0/install.ps1 -OutFile install.ps1
+Invoke-WebRequest https://raw.githubusercontent.com/Tjabooo/lilin/v2.0.1/install.ps1 -OutFile install.ps1
 notepad install.ps1
 powershell -ExecutionPolicy Bypass -File install.ps1
 ```
 
-This installs to `%USERPROFILE%\lilin`. Use `-Dir D:\Apps\Lilin` for another folder, `-Version v2.0.0`
+This installs to `%USERPROFILE%\lilin`. Use `-Dir D:\Apps\Lilin` for another folder, `-Version v2.0.1`
 to pin a release, `-DryRun` to preview. The script verifies the archive against `SHA256SUMS` and runs
 `node setup.js`.
 
-By hand: download `lilin-v2.0.0.tar.gz` and `SHA256SUMS` from the release, compare
-`(Get-FileHash lilin-v2.0.0.tar.gz).Hash` with the value in `SHA256SUMS`, then
-`tar -xzf lilin-v2.0.0.tar.gz -C D:\Apps\Lilin --strip-components=1` and run `node setup.js` there.
+By hand: download `lilin-v2.0.1.tar.gz` and `SHA256SUMS` from the release, compare
+`(Get-FileHash lilin-v2.0.1.tar.gz).Hash` with the value in `SHA256SUMS`, then
+`tar -xzf lilin-v2.0.1.tar.gz -C D:\Apps\Lilin --strip-components=1` and run `node setup.js` there.
 
 ## 3. Configure
 
