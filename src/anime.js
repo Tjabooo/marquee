@@ -66,8 +66,8 @@ export function parseAnimeName(raw, { file = false } = {}) {
   let seasons = null, episodes = null, special = false, cut = core.length;
   const at = (re) => { const m = re.exec(core); return m && m.index < cut ? m : null; };
   let m;
-  // S01E05, S01E13-E25
-  if ((m = at(/\s(?:-\s)?S(\d{1,2})\s?E(\d{1,4})(?:\s?-\s?E?(\d{1,4}))?(?:v\d)?(?=\s)/i))) {
+  // S01E05, S01E13-E25, and a file's "S01E05-Episode Title" (EMBER) with the dash straight after
+  if ((m = at(/\s(?:-\s)?S(\d{1,2})\s?E(\d{1,4})(?:\s?-\s?E?(\d{1,4})(?=\s))?(?:v\d)?(?=\s|-)/i))) {
     seasons = [Number(m[1])];
     episodes = (m[3] && span(Number(m[2]), Number(m[3]))) || [Number(m[2])];
     cut = m.index;

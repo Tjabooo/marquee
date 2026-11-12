@@ -1,5 +1,20 @@
 [
   {
+    "id": "2026-11-12-season-batches",
+    "date": "2026-11-12",
+    "title": "Whole seasons download more reliably",
+    "items": [
+      {
+        "title": "Complete seasons in one go",
+        "text": "Some complete-season downloads were thrown away because of how their files were named, so Lilin fetched the episodes one by one instead, with gaps. Those complete seasons are now kept and downloaded whole."
+      },
+      {
+        "title": "Clearer message",
+        "text": "When an episode can't be found, Lilin now says \"not found yet\" instead of \"not out yet\"."
+      }
+    ]
+  },
+  {
     "id": "2026-11-12-lilin",
     "date": "2026-11-12",
     "title": "A new name: Lilin",

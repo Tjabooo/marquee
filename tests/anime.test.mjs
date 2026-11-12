@@ -380,3 +380,26 @@ test('versions: a dual-audio copy is its own version beside a subtitled one in t
   assert.equal(sub.versionDubbed, undefined);
   assert.match(dub.versionLabel, /Dual audio/);
 });
+
+// NANA, 2026-11-12: EMBER's batch names its files "S01E01-Episode Title [CRC].mkv" (no show name, dash
+// straight after the number). Nothing in it was readable, so the batch was deleted 3 s after it was added
+// and the season fell back to 31 thin single-episode torrents with 16 episodes missing.
+const nana = ctxOf({ title: 'NANA', keys: ['NANA'], seasons: [47], entries: [[['NANA'], 47]], year: 2006 });
+test('EMBER file names (S01E05-Episode Title) are read as episodes', () => {
+  assert.equal(place('S01E01-Prologue Nana and NANA [D6BE2D15].mkv', nana), 'S1E1');
+  assert.equal(place('S01E04-Nana\'s Love, NANA\'s Dream [9D2A59D8].mkv', nana), 'S1E4');
+  assert.deepEqual(episodesIn('S01E47-Title [ABCDEF12].mkv', 1, nana), [47]);
+  assert.deepEqual(parseAnimeName('[SubsPlease] Show S01E13-E25 (1080p) [Batch]').episodes.length, 13, 'ranges still ranges');
+});
+
+test('a batch whose files can\'t be read is kept whole, never deleted', async () => {
+  const cat = [nyaa('[EMBER] Nana (2006) (Season 1) [BDRip] [1080p Dual Audio HEVC 10 bits] (Batch)', 188, 28.8 * GB)];
+  let removed = 0;
+  const { deps: d, added } = deps(cat, { title: 'NANA', aired: 47, have: [],
+    deps: { trimPack: async () => ({ covered: new Set(), skipped: 0, allOwned: false }), removePack: async () => { removed++; } } });
+  const job = await wait(startSmartJob({ type: 'tv', title: 'NANA', season: 1, anime: nana, want: { profile: 'balanced' }, requester: 'nana' }, d));
+  assert.equal(removed, 0);
+  assert.equal(added.length, 1);
+  assert.equal(job.added[0].episodes.length, 47);
+  assert.equal(job.outcome, 'started');
+});

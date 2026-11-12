@@ -363,7 +363,9 @@ function parseFile(full) {
     let d = path.dirname(full);
     for (let i = 0; i < 3 && (!MEDIA_DIR || d.length > MEDIA_DIR.length); i++, d = path.dirname(d)) {
       const t = parseName(path.basename(d), { file: false });
-      if (t.title && !/^(season|series|s)\s*\d+$/i.test(t.title)) { parsed.title = t.title; parsed.year ??= t.year; break; }
+      // A pack's folder ("NANA S01 1080p … -EMBER") names the show plus its season: the show is "NANA".
+      const title = t.title.replace(/\s+(?:S\d{1,2}|Seasons?\s?\d{1,2})(?:\s?[-–]\s?(?:S|Season\s?)?\d{1,2})?$/i, '').trim();
+      if (title && !/^(season|series|s)\s*\d+$/i.test(title)) { parsed.title = title; parsed.year ??= t.year; break; }
     }
   }
   if (!parsed.title) parsed.title = path.basename(full).replace(/\.[a-z0-9]{2,4}$/i, '').replace(/[._]+/g, ' ').trim();
@@ -1596,6 +1598,19 @@ async function packFilesOf(hash, timeout) {
 
 // The batch is already on the server, perhaps with episodes switched off (someone's range, or ones
 // deleted earlier). Switches back on the ones this request wants, so "on the way" is true.
+// Episodes of TMDB season `seasonNo` in one file of a pack already matched to the show by its name.
+// Anime files are read with the show's own numbering; a file the anime reader can't make sense of
+// ("S01E05-Episode Title [CRC].mkv": no show name, only the pack's folder has it) falls back to its
+// plain SxxEyy, so a good batch is never thrown away for its file naming.
+function packFileEpisodes(base, seasonNo, ctx) {
+  if (ctx) {
+    const eps = season.episodesIn(base, seasonNo, ctx);
+    if (eps.length || anime.parseAnimeName(base, { file: true })) return eps;
+  }
+  const fileSeason = parseName(base).season;
+  if (fileSeason != null && fileSeason !== seasonNo) return [];
+  return season.episodesIn(base, seasonNo);
+}
 async function reopenPack(link, seasonNo, owned, { timeout = 45000, ctx = null, key = null } = {}) {
   const hash = accounts.magnetHash(link);
   if (!hash) return null;
@@ -1608,9 +1623,7 @@ async function reopenPack(link, seasonNo, owned, { timeout = 45000, ctx = null, 
   files.forEach((f, i) => {
     if (!isVideo(f.name)) return;
     const base = path.basename(f.name.replace(/\\/g, '/'));
-    const fileSeason = ctx ? null : parseName(base).season;
-    if (fileSeason != null && fileSeason !== seasonNo) return;
-    const eps = season.episodesIn(base, seasonNo, ctx).filter((e) => !owned.has(e));
+    const eps = packFileEpisodes(base, seasonNo, ctx).filter((e) => !owned.has(e));
     if (!eps.length) return;
     eps.forEach((e) => covered.add(e));
     if (f.priority !== 0) return;
@@ -1639,7 +1652,7 @@ async function trimSeasonPack(link, seasonNo, owned, { timeout = 45000, ctx = nu
     if (!isVideo(f.name)) return;
     const name = f.name.replace(/\\/g, '/');
     if (ctx) {
-      const eps = season.episodesIn(path.basename(name), seasonNo, ctx);
+      const eps = packFileEpisodes(path.basename(name), seasonNo, ctx);
       if (!eps.length) { if (anime.resolve(anime.parseAnimeName(path.basename(name), { file: true }), ctx)) skip.push(f.index ?? i); return; }
       if (eps.every((e) => owned.has(e))) skip.push(f.index ?? i);
       else eps.forEach((e) => covered.add(e));

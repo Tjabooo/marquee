@@ -1,4 +1,17 @@
 {
+  "2026-11-12-season-batches": {
+    "title": "Hela säsonger laddas ner säkrare",
+    "items": {
+      "Complete seasons in one go": {
+        "title": "Hela säsonger på en gång",
+        "text": "Vissa nedladdningar av hela säsonger kastades bort på grund av hur filerna hette, så Lilin hämtade avsnitten ett och ett i stället, med luckor. De hela säsongerna behålls nu och laddas ner i sin helhet."
+      },
+      "Clearer message": {
+        "title": "Tydligare besked",
+        "text": "När ett avsnitt inte går att hitta står det nu \"hittades inte än\" i stället för \"inte ute än\"."
+      }
+    }
+  },
   "2026-11-12-lilin": {
     "title": "Nytt namn: Lilin",
     "items": {

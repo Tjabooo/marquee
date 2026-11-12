@@ -92,6 +92,9 @@ function dubbedOnly(deps) {
 }
 
 const hashOf = (r) => /btih:([a-z0-9]+)/i.exec(r.magnet || '')?.[1]?.toLowerCase() || null;
+// A pack whose file list arrived but no file in it could be read (no episode numbers Lilin knows):
+// its name already matched the season, so it's kept whole instead of being thrown away.
+const unreadable = (trim) => Boolean(trim?.covered && !trim.covered.size && !trim.allOwned);
 const usable = (r) => !rejected.has(r.magnet || r.ref) || Date.now() - rejected.get(r.magnet || r.ref) > REJECTED_TTL;
 
 // Search sites sort by popularity and cut the list short, so a quiet remux may never show up in a plain
@@ -264,7 +267,8 @@ async function runSeason(job, spec, deps) {
         deps.inOrder?.(added, season);
         const owned = new Set([...have, ...covered, ...outside]);
         const trim = added.existing ? await deps.reopenPack?.(added.link, season, owned, ctx) : await deps.trimPack?.(added.link, season, owned, ctx);
-        const packEps = (trim?.covered ? [...trim.covered] : best.pick.coveredEpisodes).filter((e) => !owned.has(e) && inRange(e));
+        if (unreadable(trim)) deps.log?.(`[smart] ${job.title} S${pad(season)}: no episode numbers readable in ${best.pick.name}, kept whole`);
+        const packEps = (trim?.covered && !unreadable(trim) ? [...trim.covered] : best.pick.coveredEpisodes).filter((e) => !owned.has(e) && inRange(e));
         if (trim?.covered && !packEps.length) {
           if (added.existing) { results = results.filter((r) => r !== best.pick && r.name !== best.pick.name); continue; } // someone else's: never removed
           await deps.removePack?.(added.link);
@@ -308,8 +312,9 @@ async function runSeason(job, spec, deps) {
         // The pack's file list: which episodes it really has. Unknown (no metadata yet) counts as all.
         const owned = new Set([...have, ...outside]);
         const trim = added.existing ? await deps.reopenPack?.(added.link, season, owned, null) : await deps.trimPack?.(added.link, season, owned);
-        const packEps = trim?.covered ? [...trim.covered].filter((e) => !owned.has(e) && inRange(e)) : (missing || []);
-        if (trim?.covered && !packEps.length) {
+        if (unreadable(trim)) deps.log?.(`[smart] ${job.title} S${pad(season)}: no episode numbers readable in ${best.pick.name}, kept whole`);
+        const packEps = trim?.covered && !unreadable(trim) ? [...trim.covered].filter((e) => !owned.has(e) && inRange(e)) : (missing || []);
+        if (trim?.covered && !unreadable(trim) && !packEps.length) {
           if (!added.existing) await deps.removePack?.(added.link); // nothing new in it: not worth keeping
           packWhy = 'The season pack had no episodes you’re missing.';
         } else {
@@ -425,7 +430,7 @@ function finish(job, deps, packWhy) {
   } else if (!n) {
     done(job, 'none', packWhy || 'Couldn’t find a good copy of this season yet.');
   } else {
-    done(job, gone.length ? 'partial' : 'started', [`${plural(n, 'episode')} on the way`, gone.length && `${gone.length} not out yet (${episodeList(gone)})`].filter(Boolean).join(' · '));
+    done(job, gone.length ? 'partial' : 'started', [`${plural(n, 'episode')} on the way`, gone.length && `${gone.length} not found yet (${episodeList(gone)})`].filter(Boolean).join(' · '));
   }
   deps.log?.(`[smart] ${job.title} S${pad(job.season)}: ${job.message}`);
 }
