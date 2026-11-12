@@ -13,6 +13,8 @@ jobs:
   test:
     name: ${{ matrix.os }} · Node ${{ matrix.node }}
     runs-on: ${{ matrix.os }}
+    # A hung test otherwise holds the run open for GitHub's 6 h default.
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -28,6 +30,7 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update -q && sudo apt-get install -y -q ffmpeg tesseract-ocr
       - run: npm test
+        timeout-minutes: 10
       - name: Setup, start, health check and clean stop
         run: node scripts/ci/smoke.mjs
       - name: Check PowerShell scripts parse
