@@ -47,14 +47,14 @@ All four end with the same folder layout and the same `node setup.js`.
 Linux and macOS (installs to `~/lilin`):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Tjabooo/lilin/v2.0.0/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/Tjabooo/lilin/v2.0.1/install.sh -o install.sh
 less install.sh
 sh install.sh
 ```
 
 | Option | Effect |
 | --- | --- |
-| `--version v2.0.0` | Install this release instead of the latest |
+| `--version v2.0.1` | Install this release instead of the latest |
 | `--dir /opt/lilin` | Install somewhere other than `~/lilin` (or set `LILIN_DIR`) |
 | `--dry-run` | Show what would happen; change nothing |
 | `--no-setup` | Don't run `node setup.js` afterwards |
@@ -71,12 +71,12 @@ Windows: see [windows.md](windows.md). `install.ps1` takes the same options as `
 ### B. Release archive by hand
 
 ```sh
-curl -fsSLO https://github.com/Tjabooo/lilin/releases/download/v2.0.0/lilin-v2.0.0.tar.gz
-curl -fsSLO https://github.com/Tjabooo/lilin/releases/download/v2.0.0/SHA256SUMS
+curl -fsSLO https://github.com/Tjabooo/lilin/releases/download/v2.0.1/lilin-v2.0.1.tar.gz
+curl -fsSLO https://github.com/Tjabooo/lilin/releases/download/v2.0.1/SHA256SUMS
 sha256sum -c SHA256SUMS            # macOS: shasum -a 256 -c SHA256SUMS
-gh attestation verify lilin-v2.0.0.tar.gz --repo Tjabooo/lilin   # optional
+gh attestation verify lilin-v2.0.1.tar.gz --repo Tjabooo/lilin   # optional
 mkdir -p ~/lilin
-tar -xzf lilin-v2.0.0.tar.gz -C ~/lilin --strip-components=1
+tar -xzf lilin-v2.0.1.tar.gz -C ~/lilin --strip-components=1
 cd ~/lilin && node setup.js
 ```
 
@@ -85,7 +85,7 @@ cd ~/lilin && node setup.js
 ```sh
 git clone https://github.com/Tjabooo/lilin.git ~/lilin
 cd ~/lilin
-git checkout v2.0.0
+git checkout v2.0.1
 node setup.js
 ```
 
@@ -94,7 +94,7 @@ checkout; update it with git (see [Updating](#updating)).
 
 ### D. Docker
 
-`ghcr.io/tjabooo/lilin:2.0.0` for `linux/amd64` and `linux/arm64`, with ffmpeg and Tesseract
+`ghcr.io/tjabooo/lilin:2.0.1` for `linux/amd64` and `linux/arm64`, with ffmpeg and Tesseract
 included. See [docker.md](docker.md).
 
 ## First run

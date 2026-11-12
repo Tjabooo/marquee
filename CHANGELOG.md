@@ -4,6 +4,12 @@ All notable changes to Lilin. Versions follow [Semantic Versioning](https://semv
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-11-12
+
+### Fixed
+
+- `node setup.js clipper` installs Clipper v0.2.1, which takes the Lilin option names (`--lilin`, `-LilinUrl`).
+
 ## [2.0.0] - 2026-11-12
 
 ### Changed

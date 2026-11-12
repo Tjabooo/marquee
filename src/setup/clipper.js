@@ -18,17 +18,17 @@ import os from 'node:os';
 import path from 'node:path';
 
 export const CLIPPER_REPO = 'Tjabooo/clipper';
-export const CLIPPER_COMMIT = '23945dfdfca16113002e47519a6e26d1549a02a7';
-export const CLIPPER_TREE_SHA256 = 'ec71d38561c09e55fa7de86bcf1cbd10a85c6d3491cd402511f1e262685adb44';
+export const CLIPPER_COMMIT = '73ec7d82bd5b4371d2ee9abf476b911f3920b140';
+export const CLIPPER_TREE_SHA256 = 'afd0e3141b591cf7716527db5425f8b5c5a9e705ef05352a68455ae9972981e5';
 export const CLIPPER_SCRIPT_SHA256 = {
-  'install.ps1': 'ba65aa8136b83ad670ff4887a20fd279779f64e14adca72ecf443fa39f475296',
-  'install.sh': '10f38dfb0d67eacb9d11c49612a2ada93a9c5aae71caaa2c831db917260e601f',
+  'install.ps1': '0dc87effee59aec112d06aaf32b22a420bceb9906cfd660745982ca38f079451',
+  'install.sh': '61683be115bdba6cf06df0de930243be14987598cec55dc65e4a9fb4844977b1',
 };
 // The release Clipper's CI built from that source, and the checksums of its downloads.
-export const CLIPPER_RELEASE = 'v0.2.0';
+export const CLIPPER_RELEASE = 'v0.2.1';
 export const CLIPPER_BINARY_SHA256 = {
-  linux: ['3f1abfa47123ebafc246e16fe17916bbde6554934fa4cf0922bb4dc2405b6c3d', '9584be5a1762ae05fe8f26cc507c9ce5af4fa8740132316638391c9b899d45aa'], // clipper-x86_64-linux.tar.gz, clipper-aarch64-linux.tar.gz
-  windows: '55b672f384fd38bcabee85d1e521fca2bd6627256e3bf8f7b94dd8c2b3dba061', // clipper-bench-x86_64-windows.exe (only for -Bench)
+  linux: ['6232ad49a6742cbaadec016462f5046a9f6a66665977f4b4e1123079982ec037', '905a179f50a708dbe1d8d2929852408f7ac242d3dcf24128f43105f74a6e6793'], // clipper-x86_64-linux.tar.gz, clipper-aarch64-linux.tar.gz
+  windows: '0b319e35cdd13cdab23bf340f2d3ba3e3f12857f689bebb2a43c87b8af421c3f', // clipper-bench-x86_64-windows.exe (only for -Bench)
 };
 // Environment for Clipper's installers: fetch exactly that release, refuse anything else.
 export const clipperEnv = () => ({
