@@ -65,20 +65,9 @@ See [remote-access.md](remote-access.md) for how accounts work and how to publis
 | `CONVERT_SCRATCH_DIR` | `SCRATCH_DIR\convert` | Where conversions write their temporary MP4 before it's copied next to the original. Point it at a second SSD so downloads and conversions don't share one drive. Used only when the copy fits. |
 | `CONVERT_SCRATCH_RESERVE_GB` | `40` | Space on the `CONVERT_SCRATCH_DIR` drive that conversions never use, when it's not the `SCRATCH_DIR` drive. |
 
-## Torrent search
+## Authorized media imports
 
-| Setting | Default | Purpose |
-| --- | --- | --- |
-| `TORRENTS` | `on` | `off` hides torrent search. |
-| `CONTENT_FILTER` | `on` | Keeps adult content off the server: porn is left out of torrent search, adult release names, `.torrent` files and TMDB titles are refused before they reach qBittorrent, and a download whose files turn out to be adult is removed with its files (logged under What happened). `members` exempts the owner, `off` turns it off. |
-| `CONTENT_FILTER_WORDS` | | Extra words or phrases the filter blocks, comma-separated. |
-| `TPB_API` | `https://apibay.org` | The Pirate Bay API base. |
-| `X1337_URL` | built-in list | 1337x mirrors, comma-separated, tried in order. |
-| `NYAA_URL` | `https://nyaa.si` | Nyaa, searched alongside the others for anime. `off` leaves it out. |
-| `KNABEN_URL` | `https://api.knaben.org/v1` | Knaben, an index over many torrent sites with live seeder counts, searched alongside the others. The best at Swedish and documentary releases. `off` leaves it out. |
-| `SVT_PLAY` | on | SVT Play in Discover → Documentaries, search and as a source when no torrent can be found. Works only from a Swedish address. `off` leaves it out. See [Integrations](integrations.md#svt-play). |
-| `ANILIST_URL` | `https://graphql.anilist.co` | AniList API: anime names and how their seasons line up with TMDB's. |
-| `FLARESOLVERR_URL` | | FlareSolverr address, e.g. `http://localhost:8191`, for when every 1337x mirror is behind a Cloudflare check. |
+Built-in public torrent-index lookup is not available. To acquire media, import files you already own into `MEDIA_DIR`, or optionally connect qBittorrent and use the **Add authorized download** action with a magnet or `.torrent` URL that you are authorized to download. `TORRENTS=off` is retained as a compatibility setting; turning it on will not reactivate public-index lookups. See [authorized media workflow](authorized-media.md).
 
 ## Subtitles
 
