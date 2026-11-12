@@ -6,8 +6,8 @@
 
 ![Lilin](public/og-lilin.png)
 
-A self-hosted media server for your home, made for phones first. Find a film or show, press
-Download, and watch it in the browser, on your phone or on the TV, with subtitles that fit.
+A self-hosted media server for your home, made for phones first. Organize films and shows you are entitled to use, import files or authorized downloads,
+and watch them in the browser, on your phone or on the TV, with subtitles that fit.
 
 Lilin is one Node.js process with no npm dependencies. It runs on Windows, Linux, macOS and in
 Docker, and installs as a web app on your phone's home screen.
@@ -17,13 +17,8 @@ Docker, and installs as a web app on your phone's home screen.
 - **Discover and search** with posters and details from TMDB; titles already on the server are marked.
 - **Documentaries**: over 30 categories, from Swedish true crime to nature and history, and SVT Play's free catalogue
   saved to your library when you're in Sweden.
-- **One-press downloads** through qBittorrent: films pick a suitable release, shows download a season
-  in episode order and skip what you already have. Torrent search covers The Pirate Bay, 1337x and
-  Nyaa.
-- **Anime that just works**: fansub names ("[SubsPlease] Sousou no Frieren S2 - 03"), numbering from
-  the first episode ("Black Clover - 176") and seasons TMDB merges or splits are matched to TMDB's
-  seasons through AniList. A season downloads as one batch instead of a torrent per episode, and the
-  English subtitles anime comes with turn on by themselves.
+- **Authorized media imports**: scan your existing media folder or add an authorized magnet link or `.torrent` URL using the **Add authorized download** control; qBittorrent tracks progress. Lilin does not discover unauthorized releases.
+- **Anime library support**: recognize anime episode names, match seasons through AniList and play supported subtitle tracks.
 - **Plays everywhere**: automatic MP4 copies for iPhone and Apple TV, browser-safe audio for Dolby/DTS,
   H.264 copies of HEVC for Firefox, timeline previews, Up next with credits detection.
 - **Subtitles** from OpenSubtitles, with their timing checked and fixed against the audio. Two
@@ -56,6 +51,15 @@ Details: [docs/features.md](docs/features.md).
   **Tesseract** (Notes image search outside Windows)
 
 Anything you don't set up is simply off, so you can start small.
+
+### Getting media into Lilin
+
+1. Set `MEDIA_DIR` to a folder containing media you own or are authorized to use. Lilin scans it and makes it playable.
+2. Optionally connect qBittorrent (`QBIT_URL`, `QBIT_USER`, `QBIT_PASS`). In Discover, choose **Add authorized download**, paste a magnet link or a URL for a `.torrent` file that you have permission to download, and submit it.
+3. Files are organized in your configured media folder and displayed in Library as they become available. Playback and conversion work as before.
+
+The standard distribution does not provide public torrent-index lookups or one-click acquisition from arbitrary movie titles. See [Authorized media workflow](docs/authorized-media.md).
+
 
 ## Quick start
 
@@ -158,6 +162,5 @@ build step.
 
 ## Disclaimer
 
-Lilin is a media management tool. Its torrent search queries third-party sites and does not host,
-index or distribute content. Downloading copyrighted material without permission is illegal in many
+Lilin is a media management tool. It does not provide built-in public torrent-index discovery, host copyrighted films, or license third-party works. Downloading copyrighted material without permission is illegal in many
 countries; you are responsible for how you use this software.
