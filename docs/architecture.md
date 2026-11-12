@@ -1,4 +1,4 @@
-# How Marquee works
+# How Lilin works
 
 ## Playback
 
@@ -18,10 +18,10 @@ Output files start with a stereo AAC track, followed by the original tracks, so 
 
 ## Subtitle timing
 
-Subtitles from OpenSubtitles are often made for a different release of the same film, so they can start a few seconds early or late, slowly drift when the release runs at a different frame rate (23.976 vs 25 fps), or be right only in parts because the other release is cut differently (a recap, a longer intro, ad breaks, an extra or missing scene). After a download, Marquee lines the file up in the background against the first of these it finds:
+Subtitles from OpenSubtitles are often made for a different release of the same film, so they can start a few seconds early or late, slowly drift when the release runs at a different frame rate (23.976 vs 25 fps), or be right only in parts because the other release is cut differently (a recap, a longer intro, ad breaks, an extra or missing scene). After a download, Lilin lines the file up in the background against the first of these it finds:
 
 1. a subtitle track inside the video (or the MKV it was converted from), including the display/clear timings of PGS/DVD bitmap captions,
-2. a subtitle file Marquee extracted from such a track,
+2. a subtitle file Lilin extracted from such a track,
 3. subtitles that came with the release (`Subs/<video name>/*.srt`, or `Subs/*.srt` next to a single film),
 4. the film's audio, by finding where people are talking.
 
@@ -51,12 +51,12 @@ The details sheet of a film or show has one Download (smart-download.js, ranking
 
 - **Films**: already in your library, on the server (it joins your library) or downloading? Nothing new is queued. Otherwise the best match for the title and year is downloaded: 5+ seeders first, remuxes, burned-in subtitles, Dolby Vision without HDR10 and dubs in another language count against, and a release larger than your limit or the free space on the media disk (minus what queued downloads still need, minus 5 GB) is never chosen. No suitable release: the sheet says why, with Try again.
 - **Seasons**: TMDB's aired episodes minus what's already in the library, on the server or in qBittorrent. With three or more missing, a pack of exactly that season (never a multi-season or complete-series bundle) is added; once its file list arrives the episodes you already have are switched off (priority 0), and episodes the pack turns out not to contain are fetched one by one. A pack with nothing new in it is removed again. Fewer missing, or no suitable pack: episode by episode (`SxxExx`, then `1x05` and known aliases like House / House MD, TV category then everywhere). A failed search is retried once; a release qBittorrent rejected isn't picked again for six hours. Episodes that can't be found are listed with **Retry unavailable**.
-- **Episodes in order** (episode-order.js): for a season Marquee downloads, the next unfinished episode in a pack gets qBittorrent's top file priority, and separate episode torrents run one at a time (the rest show as Queued). A stalled episode lets the next one run alongside it (up to three). A finished episode is converted to MP4 straight away, even while the rest of its pack downloads. Pausing, resuming or removing one yourself takes it out of the order.
+- **Episodes in order** (episode-order.js): for a season Lilin downloads, the next unfinished episode in a pack gets qBittorrent's top file priority, and separate episode torrents run one at a time (the rest show as Queued). A stalled episode lets the next one run alongside it (up to three). A finished episode is converted to MP4 straight away, even while the rest of its pack downloads. Pausing, resuming or removing one yourself takes it out of the order.
 - **Advanced options** on a title: an exact resolution (finds nothing rather than another one) and the release list to pick from yourself.
 
 ## Save for later and Follow
 
-Every title sheet has **Save** (films and shows) and **Follow** (shows) (watchlist.js on the server, public/watchlist.js on the page; tables `watchlist` and `follow_episodes` in `.marquee.db`). Saved titles are a row at the top of Discover. A background round every 10 minutes checks what's due, one title at a time, and downloads with the same Download command as the button, as that person and with their quality settings. Automatic downloads need download rights.
+Every title sheet has **Save** (films and shows) and **Follow** (shows) (watchlist.js on the server, public/watchlist.js on the page; tables `watchlist` and `follow_episodes` in `.lilin.db`). Saved titles are a row at the top of Discover. A background round every 10 minutes checks what's due, one title at a time, and downloads with the same Download command as the button, as that person and with their quality settings. Automatic downloads need download rights.
 
 - **Films**: a saved film can wait for its release (*Download it when a good copy is out*). The expected date is the earliest digital or disc release on TMDB, else the first release date. Before that it's checked once a day; afterwards the Download command runs (it never takes a cam), and when nothing suitable is out yet it tries again after 1, 2, 4, 8 and 12 hours, then daily. Once a download starts (or the film is already here) it's done.
 - **Shows**: following starts after the last episode that had aired when you followed (or switched automatic downloads on), so nothing older downloads by itself. Every 3 hours the show's newest aired episodes are added to a per-episode list and fetched with the Download command for exactly those episodes (it skips episodes in your library, on the server or already downloading). A missing episode is retried with the same pauses and reported as not found 14 days after it aired. Episodes that downloaded this way show a **New** badge on the show's Library card until you open the show.
@@ -64,15 +64,15 @@ Every title sheet has **Save** (films and shows) and **Follow** (shows) (watchli
 
 ## Download to phone
 
-**To phone** on a film, the phone button on an episode row and **Season to phone** open a sheet with three choices (src/travel.js on the server, public/travel.js on the page; table `travel` in `.marquee.db`): **Small** (480p, H.264 ~900 kbps, AAC 96k), **Standard** (720p, ~2.2 Mbps, AAC 128k) and **Full quality** (the file as it is, or its MP4 copy, downloaded straight away). Small and Standard are made on request: one ffmpeg at a time below normal priority, NVENC with hardware decoding when the GPU has it, then NVENC alone, then x264. The copy never upscales, has square pixels, carries the default audio track plus up to two other languages (no commentaries) as stereo AAC, and every subtitle saved beside the video as a `mov_text` track (rewritten as UTF-8 first), with the index at the front (`+faststart`). HDR (PQ or HLG) is tone-mapped to SDR BT.709 (zscale + Hable) when the ffmpeg build has zscale.
+**To phone** on a film, the phone button on an episode row and **Season to phone** open a sheet with three choices (src/travel.js on the server, public/travel.js on the page; table `travel` in `.lilin.db`): **Small** (480p, H.264 ~900 kbps, AAC 96k), **Standard** (720p, ~2.2 Mbps, AAC 128k) and **Full quality** (the file as it is, or its MP4 copy, downloaded straight away). Small and Standard are made on request: one ffmpeg at a time below normal priority, NVENC with hardware decoding when the GPU has it, then NVENC alone, then x264. The copy never upscales, has square pixels, carries the default audio track plus up to two other languages (no commentaries) as stereo AAC, and every subtitle saved beside the video as a `mov_text` track (rewritten as UTF-8 first), with the index at the front (`+faststart`). HDR (PQ or HLG) is tone-mapped to SDR BT.709 (zscale + Hable) when the ffmpeg build has zscale.
 
 Copies live in `cache/travel/<key>.mp4`, where the key covers the source path, size and modification time, the size choice and an encode version, so a replaced file gets a fresh copy and two people asking for the same thing share one file. Each person's list remembers what they asked for and when they last downloaded it; a request untouched for `TRAVEL_KEEP_DAYS` (7) is dropped, and a copy nobody's list points at is deleted. `TRAVEL_MAX_GB` (50) caps the folder: before a copy is made, copies everyone already downloaded go first, oldest request first; if it still doesn't fit, the copy fails with a message. Downloads are served with `Content-Disposition: attachment` and range support, only to people whose list holds that copy. Unfinished copies are queued again after a restart. Finished copies notify the people waiting for them (*Downloads ready*), and the notification opens **For your phone** in the Library.
 
 ## Shows in the library
 
-Films and shows appear as poster cards, separated into Films and Shows inside each library section. A card shows the next deletion countdown; the Leaving soon shelf collects titles with less than 48 hours left and offers a keep button directly on the card. Opening a film or show puts its countdown and keep controls above the synopsis and seasons. Titles without a countdown say that no automatic deletion is scheduled. Film posters, backdrops and descriptions come from TMDB, matched by title and year and cached in `.marquee-shows.json` (30 days for matches, one day for misses); unavailable artwork falls back to the title.
+Films and shows appear as poster cards, separated into Films and Shows inside each library section. A card shows the next deletion countdown; the Leaving soon shelf collects titles with less than 48 hours left and offers a keep button directly on the card. Opening a film or show puts its countdown and keep controls above the synopsis and seasons. Titles without a countdown say that no automatic deletion is scheduled. Film posters, backdrops and descriptions come from TMDB, matched by title and year and cached in `.lilin-shows.json` (30 days for matches, one day for misses); unavailable artwork falls back to the title.
 
-Episodes are recognised from `S01E05`, `S01E01E02`, `1x05` and `Season 1 Episode 5` in the file name. A file named only `S02E05.mkv` takes the show's name from its folder (`The Bear (2022)/Season 2/`). Episodes are grouped into one show when their names match loosely (case, punctuation and a leading "The" are ignored) or when TMDB resolves them to the same show, so episodes from different releases end up together. TMDB supplies the show's and each season's poster and the episode names; lookups are cached in `.marquee-shows.json` (found shows for 30 days, refreshed weekly for new seasons; unknown names are retried daily). Without TMDB, shows are still grouped by name.
+Episodes are recognised from `S01E05`, `S01E01E02`, `1x05` and `Season 1 Episode 5` in the file name. A file named only `S02E05.mkv` takes the show's name from its folder (`The Bear (2022)/Season 2/`). Episodes are grouped into one show when their names match loosely (case, punctuation and a leading "The" are ignored) or when TMDB resolves them to the same show, so episodes from different releases end up together. TMDB supplies the show's and each season's poster and the episode names; lookups are cached in `.lilin-shows.json` (found shows for 30 days, refreshed weekly for new seasons; unknown names are retried daily). Without TMDB, shows are still grouped by name.
 
 ## Finished downloads
 
@@ -80,15 +80,15 @@ With `QBIT_REMOVE_FINISHED=on` (the default), a finished download is removed fro
 
 ## Accounts
 
-There's no separate login. Cloudflare Access adds the signed-in email to every request (`Cf-Access-Authenticated-User-Email`) and that email is the account; one is created the first time someone opens Marquee. The header is only believed from a trusted proxy or with a verified Access token (see [remote-access.md](remote-access.md#how-accounts-work)). Visits on the home network carry no email and share a "Home network" account. Accounts live in `.marquee.db`, a SQLite database (Node's built-in `node:sqlite`, so still no dependencies): people and their settings, what's in each library, who started each download, and watch progress.
+There's no separate login. Cloudflare Access adds the signed-in email to every request (`Cf-Access-Authenticated-User-Email`) and that email is the account; one is created the first time someone opens Lilin. The header is only believed from a trusted proxy or with a verified Access token (see [remote-access.md](remote-access.md#how-accounts-work)). Visits on the home network carry no email and share a "Home network" account. Accounts live in `.lilin.db`, a SQLite database (Node's built-in `node:sqlite`, so still no dependencies): people and their settings, what's in each library, who started each download, and watch progress.
 
 - **One file, many libraries.** A video exists once on disk. "Add to my library" adds it to your list; nothing is copied or downloaded again. A video's identity is its path in `MEDIA_DIR` without the extension, so the MP4 copy and the original count as the same video.
-- **Whose download.** Torrents added through Marquee get the qBittorrent tag `marquee-u<id>` (and a magnet's infohash is recorded). When one finishes, its videos go into that person's library, before the no-seeding cleanup removes the torrent. Torrents added straight in qBittorrent count as the owner's (the first address in `ADMIN_EMAILS`). A whole-season download puts episodes that are already on the server into your library instead of downloading them again.
+- **Whose download.** Torrents added through Lilin get the qBittorrent tag `lilin-u<id>` (and a magnet's infohash is recorded). When one finishes, its videos go into that person's library, before the no-seeding cleanup removes the torrent. Torrents added straight in qBittorrent count as the owner's (the first address in `ADMIN_EMAILS`). A whole-season download puts episodes that are already on the server into your library instead of downloading them again.
 - **Already there.** On the first start with accounts, every video already on the server goes into the owner's library as **kept** (no countdown), so nothing that was there gets auto-deleted. Videos copied into `MEDIA_DIR` by hand later are treated the same way.
 - **Auto-delete.** Each video in someone's library has a date it goes: by default 7 days after the download finished (or after it was added from the server). **Keep 7 more days** pushes it back. When the date passes it leaves that person's library, and once it's in nobody's library the file is deleted (with its MP4 copy and subtitles), checked every 10 minutes. A file that's playing is retried later. The owner can change the period (or turn it off), the extension, and how many times a video can be extended, and can exempt someone (**Never auto-delete**) in Settings.
 - **Deleting** takes a video out of your library; the file is only deleted when nobody else has it. The owner can also delete it for everyone.
 - **Privacy.** People only see their own library and downloads. Search tells them a title is on the server, not whose it is. The owner's Settings tab lists everyone with how much they have.
-- **Staying signed in.** How long a sign-in lasts is Cloudflare's setting: Zero Trust → Access → Applications → your Marquee app → **Session duration** (24 hours by default; up to a month). If a sign-in runs out while Marquee is open, it says so and signs back in with one tap.
+- **Staying signed in.** How long a sign-in lasts is Cloudflare's setting: Zero Trust → Access → Applications → your Lilin app → **Session duration** (24 hours by default; up to a month). If a sign-in runs out while Lilin is open, it says so and signs back in with one tap.
 
 ## Activity
 
@@ -96,7 +96,7 @@ The name chosen in **Settings → Profile** is the default person label in Activ
 
 City and country appear beside the OS/browser for people and events, using Cloudflare's `CF-IPCity` and `CF-IPCountry` headers. In the domain's Cloudflare dashboard, go to **Rules → Settings → Managed Transforms** and enable **Add visitor location headers**. Location is approximate (VPNs and mobile carriers can change it), not GPS. No external IP lookup service is called. Old events and direct LAN visits have no inferred location; country-only headers still show the country.
 
-The **Activity** tab shows who has been using Marquee and what they did: downloads started, films watched in the browser, casts to TVs, subtitles fetched and deletions. People are identified by the email they log in to Cloudflare Access with, plus the device and browser; visits through the server's local address show up as "Home network". The tab is only shown to the emails listed in `ADMIN_EMAILS`, and only through the Cloudflare address, since local visits have no email. The last 2,000 entries are kept in `.marquee-activity.jsonl`. Logins themselves (who signed in, when, from where) are in the Cloudflare Zero Trust dashboard under **Logs → Access**.
+The **Activity** tab shows who has been using Lilin and what they did: downloads started, films watched in the browser, casts to TVs, subtitles fetched and deletions. People are identified by the email they log in to Cloudflare Access with, plus the device and browser; visits through the server's local address show up as "Home network". The tab is only shown to the emails listed in `ADMIN_EMAILS`, and only through the Cloudflare address, since local visits have no email. The last 2,000 entries are kept in `.lilin-activity.jsonl`. Logins themselves (who signed in, when, from where) are in the Cloudflare Zero Trust dashboard under **Logs → Access**.
 
 ## Deletion
 
@@ -104,7 +104,7 @@ Deleting a video that belongs to a torrent removes it through qBittorrent, so th
 
 ## What's new
 
-After an update, everyone sees a short **What's new** sheet once, the next time they open Marquee or come back to an open page. The notes are written by hand in `whats-new.json` at the app root, newest first, in plain language for the people who use Marquee (CHANGELOG.md stays the technical record for whoever runs the server):
+After an update, everyone sees a short **What's new** sheet once, the next time they open Lilin or come back to an open page. The notes are written by hand in `whats-new.json` at the app root, newest first, in plain language for the people who use Lilin (CHANGELOG.md stays the technical record for whoever runs the server):
 
 ```json
 [{ "id": "2026-11-05", "date": "2026-11-05", "title": "Fresh this week",
@@ -112,11 +112,11 @@ After an update, everyone sees a short **What's new** sheet once, the next time 
              { "title": "Server tool", "text": "Only the owner sees this one.", "audience": "owner" }] }]
 ```
 
-Each person's settings remember the newest update they've closed (`seenUpdate`). Someone who has never closed one sees only the updates dated on or after the day they joined, so newcomers aren't shown the whole history. At most the three newest unseen updates are shown. The sheet waits while a video is playing or another sheet is open. A page that was left open through an update (the web app's files changed since it loaded) offers **Reload to update**. Settings → What's new lists every update. The file is re-read when it changes, so a note can be fixed without a restart. Each new update is also sent once as a notification (*Marquee updates*, see Notifications).
+Each person's settings remember the newest update they've closed (`seenUpdate`). Someone who has never closed one sees only the updates dated on or after the day they joined, so newcomers aren't shown the whole history. At most the three newest unseen updates are shown. The sheet waits while a video is playing or another sheet is open. A page that was left open through an update (the web app's files changed since it loaded) offers **Reload to update**. Settings → What's new lists every update. The file is re-read when it changes, so a note can be fixed without a restart. Each new update is also sent once as a notification (*Lilin updates*, see Notifications).
 
 ## Notifications
 
-Marquee can notify people's phones and computers through **Web Push**, with no dependencies and no third-party account: the server signs each message with its own VAPID key (ES256, RFC 8292) and encrypts it for the device (aes128gcm, RFC 8291), all with `node:crypto`. The key pair is made on first start and kept with the devices in `.marquee-push.json` (mode 600) in `DATA_DIR`; deleting that file means everyone turns notifications on again. `public/sw.js` is a service worker that only shows notifications and opens Marquee when one is tapped (an open Marquee handles the link without reloading); it caches nothing. `manifest.webmanifest` and the icons let phones install Marquee to the Home Screen.
+Lilin can notify people's phones and computers through **Web Push**, with no dependencies and no third-party account: the server signs each message with its own VAPID key (ES256, RFC 8292) and encrypts it for the device (aes128gcm, RFC 8291), all with `node:crypto`. The key pair is made on first start and kept with the devices in `.lilin-push.json` (mode 600) in `DATA_DIR`; deleting that file means everyone turns notifications on again. `public/sw.js` is a service worker that only shows notifications and opens Lilin when one is tapped (an open Lilin handles the link without reloading); it caches nothing. `manifest.webmanifest` and the icons let phones install Lilin to the Home Screen.
 
 People turn it on per device in **Settings → Notifications** and switch each kind on or off for all their devices:
 
@@ -125,7 +125,7 @@ People turn it on per device in **Settings → Notifications** and switch each k
 | Downloads ready | `pushDownload` | Something you downloaded (or asked for) landed in your library; a season pack's episodes replace each other's notification |
 | New episodes | `pushEpisode` | A show you follow got an episode downloaded for you, or an episode of a show in your library was downloaded by someone else; once per episode. Nothing about shows or films that aren't in your library |
 | Watch Together invites | `pushWatch` | Someone in a room taps **Invite** and picks you; opens the room's join screen. Off: you aren't offered as an invitee |
-| Marquee updates | `pushUpdate` | A new update in `whats-new.json` that you haven't read yet: its title, a short summary and *Tap to read more*, which opens its notes (`/?update=<id>`). Sent once per update (`.marquee-update-pushes.json` in `DATA_DIR`), only for updates dated today or yesterday, after the file has sat unchanged for 90 s; several at once become one notification |
+| Lilin updates | `pushUpdate` | A new update in `whats-new.json` that you haven't read yet: its title, a short summary and *Tap to read more*, which opens its notes (`/?update=<id>`). Sent once per update (`.lilin-update-pushes.json` in `DATA_DIR`), only for updates dated today or yesterday, after the file has sat unchanged for 90 s; several at once become one notification |
 
 Push endpoints must belong to a known push service (Google FCM, Mozilla, Apple, Windows), so a subscription can't make the server POST to an address on your network. A device the push service reports as gone (404/410) is removed. On iPhone and iPad, Apple allows web notifications only for Home Screen apps (iOS 16.4+), which Settings explains. A server reached only over plain `http://` (not localhost) can't use notifications: browsers require https.
 
@@ -135,7 +135,7 @@ Rooms work in the browser player, including fullscreen. Invite URLs are `/?watch
 
 The server publishes a shared timeline over Server-Sent Events, with heartbeats to keep Cloudflare Tunnel from buffering or closing the connection. Each browser estimates clock offset from low-round-trip-time samples, starts at a shared future time and compensates for message arrival delay. Small drift is corrected with a bounded playback-rate adjustment; larger drift seeks to the shared position. The group pauses when a member buffers or needs an autoplay gesture and resumes when everyone is ready. This reduces skew but does not promise frame-perfect playback on every device or connection. Each viewer streams separately, so server upload bandwidth must cover all viewers.
 
-Only play/pause/seek and readiness enter room state. Caption tracks and manual offsets remain in each viewer's player; party offset buttons do not edit the shared SRT file. The host's departure pauses playback and hands control to a remaining viewer. Dropped viewers have a 20-second reconnect grace period. Rooms are in memory, expire within 24 hours and end when Marquee restarts. Active rooms protect their media against file deletion; normal retention cleanup retries later.
+Only play/pause/seek and readiness enter room state. Caption tracks and manual offsets remain in each viewer's player; party offset buttons do not edit the shared SRT file. The host's departure pauses playback and hands control to a remaining viewer. Dropped viewers have a 20-second reconnect grace period. Rooms are in memory, expire within 24 hours and end when Lilin restarts. Active rooms protect their media against file deletion; normal retention cleanup retries later.
 
 # Project layout
 
@@ -159,19 +159,19 @@ src/
   house.js, load.js, screentime.js, clips.js, invites.js, activity.js, live.js, network.js
   setup/             wizard, detection, integrations, services, packages, backups
 public/              the web app (plain JavaScript and CSS, no build step)
-agents/              marquee-house reporter for Linux machines (bash + systemd units)
+agents/              lilin-house reporter for Linux machines (bash + systemd units)
 scripts/windows/     Task Scheduler service and restart scripts; setup-wizard.ps1 (WPF setup wizard,
-                     drives setup.js through `setup.js wizard` JSON) and MarqueeSetup.cs (its .exe launcher)
-start-marquee.cmd    Windows launcher the scheduled task runs
+                     drives setup.js through `setup.js wizard` JSON) and LilinSetup.cs (its .exe launcher)
+start-lilin.cmd    Windows launcher the scheduled task runs
 tools/               optional extras: torrent-vpn (Windows), Discord notes import
 docker/, Dockerfile, docker-compose.yml
 tests/               node --test suites
 ```
 
-State lives in `DATA_DIR` (the Marquee folder unless set): `.marquee.db` (SQLite: accounts, libraries,
-progress, Notes), `.marquee-*.json` (caches and small registries; `.marquee-push.json` holds the
-notification key), `.marquee-secret`,
-`.marquee-notes-files/`, `.marquee-avatars/` (profile pictures) and `cache/` (rebuildable copies and previews).
+State lives in `DATA_DIR` (the Lilin folder unless set): `.lilin.db` (SQLite: accounts, libraries,
+progress, Notes), `.lilin-*.json` (caches and small registries; `.lilin-push.json` holds the
+notification key), `.lilin-secret`,
+`.lilin-notes-files/`, `.lilin-avatars/` (profile pictures) and `cache/` (rebuildable copies and previews).
 
 # API
 
@@ -193,7 +193,7 @@ The web client uses a JSON API that can also be scripted. `<kind>` is `lib` for 
 | `POST` | `/api/push/subscribe` | Turn notifications on for a device (`{ subscription, label?, replaces? }`, the browser's `PushSubscription.toJSON()`) |
 | `POST` | `/api/push/unsubscribe` | Turn them off (`{ endpoint }` for this device or `{ id }` from the list) |
 | `POST` | `/api/push/test` | Send a test notification to your devices |
-| `POST` | `/api/agent/notify` | An agent on the home network (`X-Marquee-Token: HOUSE_TOKEN`) sends the owner a notification `{title, body, url}`; 1 per 20 s, 30 a day |
+| `POST` | `/api/agent/notify` | An agent on the home network (`X-Lilin-Token: HOUSE_TOKEN`) sends the owner a notification `{title, body, url}`; 1 per 20 s, 30 a day |
 | `POST` | `/api/watch/<token>/chat`, `/react` | Room chat (`{ text }`, last 50 kept for late joiners) and emoji reactions (`{ emoji }`); both arrive on the room's event stream |
 | `POST` | `/api/watch/<token>/schedule` | Host only: `{ startsAt }` (ms) starts playback by itself at that time, `null` clears it |
 | `POST` | `/api/watch/plan` | Plan a party for later (`{ id, startsAt }`, up to two weeks ahead); saved in `watch_parties` so it survives a restart |
@@ -209,19 +209,19 @@ The web client uses a JSON API that can also be scripted. `<kind>` is `lib` for 
 | `GET` | `/signin` | Sign-in page (public; redirects home when already signed in) |
 | `POST` | `/api/auth/login` | `{ email, password }` as JSON, or the sign-in form; sets the session cookie. Public |
 | `POST` | `/api/auth/logout` | Ends this browser's session. Public |
-| `POST` | `/api/auth/password` | `{ current, next }`: change your Marquee password (signs out other sessions) |
+| `POST` | `/api/auth/password` | `{ current, next }`: change your Lilin password (signs out other sessions) |
 | `GET` | `/api/auth/status` | How this request is identified (`via`: proxy, session, home or null). Public |
 | `GET`, `POST` | `/api/me` | You and your settings (`{ name?, theme?, subLang?, quality?, startView?, librarySort?, seenUpdate?, skipIntro?, pushDownload?, pushEpisode?, pushWatch? }`); `skipIntro`: `button` or `auto` |
 | `GET` | `/api/media/<lib\|dl>/<id>/credits` | When the closing credits start (`{ creditsAt }`, seconds or `null`) |
 | `GET` | `/api/media/<lib\|dl>/<id>/intro` | The opening titles to skip (`{ intro: { start, end } }` in seconds, or `intro: null`) |
 | `GET` | `/api/whats-new` | Every update's notes (`updates`, newest first) and the newest one you've seen (`seen`); `/api/status` carries `whatsNew: { latest, unseen, build }` |
 | `GET`, `POST` | `/api/me/progress` | Where you stopped watching (`{ ref, time, duration }`; `time: null` = finished). The player adds `{ watched, about: { titleKey, title, season, episode }, room }`: seconds really played since the last save, logged per day in `watch_log` (capped at ~2x the time that passed) |
-| `GET` | `/api/me/wrapped?year=` | Marquee Wrapped: your year from `watch_log`, `watch_company` and `ratings` |
+| `GET` | `/api/me/wrapped?year=` | Lilin Wrapped: your year from `watch_log`, `watch_company` and `ratings` |
 | `POST` | `/api/social/rate` | Thumbs `{ key: "movie:<tmdb id>" \| "tv:<tmdb id>", value: 1 \| -1 \| 0, title }` |
 | `GET` | `/api/social/title?key=`, `/api/social/ratings?keys=` | Your thumb and who else liked a title (dislikes are never shown to others); bulk `{ mine, likes }` |
-| `GET` | `/api/social/popular?type=` | Popular on Marquee: last 60 days of likes, viewers and hours, as TMDB cards |
+| `GET` | `/api/social/popular?type=` | Popular on Lilin: last 60 days of likes, viewers and hours, as TMDB cards |
 | `GET`, `POST` | `/api/admin/settings` | Auto-delete rules and defaults (`ADMIN_EMAILS` only) |
-| `GET` | `/api/admin/users` | Everyone who has used Marquee, with their library size (`ADMIN_EMAILS` only) |
+| `GET` | `/api/admin/users` | Everyone who has used Lilin, with their library size (`ADMIN_EMAILS` only) |
 | `POST` | `/api/admin/users/<id>` | `{ canDownload?, keep? }` (`ADMIN_EMAILS` only) |
 | `GET` | `/api/downloads` | Your qBittorrent downloads (`?all=1`: everyone's, owner only) |
 | `POST` | `/api/downloads/add` | Add a magnet or `.torrent` URL (`{ link, subs?, movieId? }`); `movieId` carries the selected TMDB film identity |
@@ -250,9 +250,9 @@ The web client uses a JSON API that can also be scripted. `<kind>` is `lib` for 
 | `GET` | `/api/network` | Whether the request is from the home network, for troubleshooting |
 | `POST` | `/api/cast/play` | Start playback on a TV |
 | `GET` | `/api/house` | Server health and home machines (`ADMIN_EMAILS` only) |
-| `POST` | `/api/house/report` | A machine's report (`X-Marquee-Token`, home network only) |
-| `GET` | `/api/house/summary` | Issues, machines at home and the server's uptime, free space and services, for status bars and the MAGI panel (`X-Marquee-Token`, home network only) |
-| `POST` | `/api/house/boot` | A dual-boot machine's boot menu and network card; the reply says whether to restart, and into what (`X-Marquee-Token`, home network only) |
+| `POST` | `/api/house/report` | A machine's report (`X-Lilin-Token`, home network only) |
+| `GET` | `/api/house/summary` | Issues, machines at home and the server's uptime, free space and services, for status bars and the MAGI panel (`X-Lilin-Token`, home network only) |
+| `POST` | `/api/house/boot` | A dual-boot machine's boot menu and network card; the reply says whether to restart, and into what (`X-Lilin-Token`, home network only) |
 | `POST` | `/api/house/power` | `{ host, action: "wake" \| "restart", entry? }`: wake a machine into a boot entry, or restart it (`ADMIN_EMAILS` only) |
 | `GET` | `/api/clips` | Clips and their share state (`ADMIN_EMAILS` only) |
 | `POST` | `/api/clips/<id>/rename` | Set a display name (`{ title, previousTitle? }`); keeps files and share links unchanged (`ADMIN_EMAILS` only) |

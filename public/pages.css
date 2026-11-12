@@ -1,7 +1,7 @@
 /* Pages the server draws itself: /signin and the share pages under /c/ (clips.js page(), invites, notes,
-   Watch Together links). Loaded after their own small styles and overrides them with Marquee's look:
-   the velvet room, a lit wordmark, a row of marquee bulbs, one glowing primary button.
-   These pages are public and carry no theme, so they use Marquee's own colours. */
+   Watch Together links). Loaded after their own small styles and overrides them with Lilin's look:
+   the velvet room, a lit wordmark, a row of lilin bulbs, one glowing primary button.
+   These pages are public and carry no theme, so they use Lilin's own colours. */
 @font-face {
   font-family: "Bricolage Grotesque"; font-style: normal; font-weight: 200 800; font-display: swap;
   src: url("fonts/bricolage-grotesque-latin.woff2") format("woff2"); /* relative: /c/fonts/ for share pages, /fonts/ for the preview */
@@ -28,7 +28,7 @@ body {
 h1 { font-family: var(--display); letter-spacing: -.025em; text-wrap: balance; }
 a { color: var(--bulb); text-underline-offset: 3px; }
 
-/* A row of marquee bulbs over the card, a few of them lit */
+/* A row of lilin bulbs over the card, a few of them lit */
 .card::before, body > main:has(form[action$="/login"])::before {
   content: ""; display: block; height: 10px; margin: 0 auto 22px; width: 154px;
   background:

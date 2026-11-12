@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Playback stress test for Marquee: plays a few streams the way players do (range requests, a
+// Playback stress test for Lilin: plays a few streams the way players do (range requests, a
 // small buffer) while background work runs, and reports whether any stream would have stalled.
 //
 //   node tools/playback-stress/stress.mjs <config.json> [--label before] [--seconds 180] [--out dir]
@@ -63,7 +63,7 @@ async function writerRole({ file, sizeGB, rateMBps, pieceKiB = 4096, inFlight = 
   await fsp.rm(file, { force: true }).catch(() => {});
 }
 
-// Repackages an MKV the way Marquee's converter does (copy video, stereo AAC + E-AC-3 surround, moov
+// Repackages an MKV the way Lilin's converter does (copy video, stereo AAC + E-AC-3 surround, moov
 // reserved at the front), again and again until time is up. Optional `apply` = a module path whose
 // default export(child) applies a scheduling policy to the ffmpeg process (the one under test).
 async function convertRole({ input, outDir, seconds, ffmpeg = 'ffmpeg', apply = null }) {
@@ -105,7 +105,7 @@ async function main() {
   const only = opt('only', null)?.split(',');
   const want = (k) => !noLoad && (!only || only.includes(k));
   await fsp.mkdir(outDir, { recursive: true });
-  const base = cfg.marquee.replace(/\/$/, '');
+  const base = cfg.lilin.replace(/\/$/, '');
   const headers = cfg.email ? { 'cf-access-authenticated-user-email': cfg.email } : {};
   const api = async (p, init = {}) => { const r = await fetch(base + p, { ...init, headers: { ...headers, ...init.headers } }); if (!r.ok) throw new Error(`${p}: ${r.status}`); return r.json(); };
   const idOf = (rel) => Buffer.from(rel).toString('base64url');
@@ -114,7 +114,7 @@ async function main() {
   if (cfg.purgeStandby && process.platform === 'win32') {
     await new Promise((r) => execFile('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(HERE, 'purge-standby.ps1')], { windowsHide: true }, (e, o, er) => { console.error(e ? `standby purge failed: ${er || e.message}` : String(o).trim()); r(); }));
   }
-  // Reset the real Marquee jobs so they run again (storyboard, browser copy).
+  // Reset the real Lilin jobs so they run again (storyboard, browser copy).
   const prep = {};
   if (want('storyboard') && cfg.load?.storyboard) {
     const id = idOf(cfg.load.storyboard);

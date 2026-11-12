@@ -1,5 +1,24 @@
 [
   {
+    "id": "2026-11-12-lilin",
+    "date": "2026-11-12",
+    "title": "A new name: Lilin",
+    "items": [
+      {
+        "title": "Same library, new name",
+        "text": "The app is now called Lilin, with a new address and a new candle icon. Your library, watch progress, lists, notes and rooms are all still here. Old links, bookmarks and invites still work: they take you to the new address."
+      },
+      {
+        "title": "Sign in once more",
+        "text": "Because the address changed, you'll be asked to sign in one more time on each device. After that everything works as before."
+      },
+      {
+        "title": "New icon on your home screen",
+        "text": "If you added the app to your phone's home screen, remove it and add it again from the new address to get the new name and icon. The TV apps get them with their next update."
+      }
+    ]
+  },
+  {
     "id": "2026-11-11-scratch-drive",
     "date": "2026-11-11",
     "title": "Smoother playback during downloads",
@@ -28,7 +47,7 @@
     "items": [
       {
         "title": "Your language starts in a second or two",
-        "text": "Picking another audio language used to mean waiting minutes while Marquee made a copy of the whole video. Now the language you pick plays right away, at up to 1080p, from the same spot. When the full-quality copy is ready, the player moves back to it by itself."
+        "text": "Picking another audio language used to mean waiting minutes while Lilin made a copy of the whole video. Now the language you pick plays right away, at up to 1080p, from the same spot. When the full-quality copy is ready, the player moves back to it by itself."
       },
       {
         "title": "New Audio button",
@@ -69,7 +88,7 @@
       },
       {
         "title": "The Android TV app keeps itself up to date",
-        "text": "On Android 12 and later, the Marquee app now updates by itself: a new version downloads in the background and installs when you’re not using the app. Update it once more when it asks (version 1.2.0), and allow Marquee to install apps if the TV asks; after that there’s nothing to press."
+        "text": "On Android 12 and later, the Lilin app now updates by itself: a new version downloads in the background and installs when you’re not using the app. Update it once more when it asks (version 1.2.0), and allow Lilin to install apps if the TV asks; after that there’s nothing to press."
       }
     ]
   },
@@ -115,7 +134,7 @@
     "items": [
       {
         "title": "The Android TV app works away from home",
-        "text": "The Marquee app for Android TV and Google TV now works on any TV with internet, not just at home, so friends and family elsewhere can use it too. Get it from Settings → Android TV, sign the TV in with the code from your phone, and it carries on as before. It speaks English, or Swedish when the TV is set to Swedish. A TV that already has the app offers the update when it starts."
+        "text": "The Lilin app for Android TV and Google TV now works on any TV with internet, not just at home, so friends and family elsewhere can use it too. Get it from Settings → Android TV, sign the TV in with the code from your phone, and it carries on as before. It speaks English, or Swedish when the TV is set to Swedish. A TV that already has the app offers the update when it starts."
       }
     ]
   },
@@ -134,11 +153,11 @@
   {
     "id": "2026-11-10-android-tv",
     "date": "2026-11-10",
-    "title": "Marquee on Android TV",
+    "title": "Lilin on Android TV",
     "items": [
       {
-        "title": "A Marquee app for Android TV",
-        "text": "Marquee now has an app for Android TV and Google TV: Chromecast with Google TV, Nvidia Shield and TVs with Google TV built in. It looks and works just like the Samsung app. To put it on a TV, open Settings → Android TV on your phone at home and follow the steps. It takes a few minutes, and the app keeps itself up to date after that."
+        "title": "A Lilin app for Android TV",
+        "text": "Lilin now has an app for Android TV and Google TV: Chromecast with Google TV, Nvidia Shield and TVs with Google TV built in. It looks and works just like the Samsung app. To put it on a TV, open Settings → Android TV on your phone at home and follow the steps. It takes a few minutes, and the app keeps itself up to date after that."
       }
     ]
   },
@@ -165,7 +184,7 @@
     "items": [
       {
         "title": "Updates come as a notification",
-        "text": "When Marquee gets something new, your phone or computer gets a notification with a quick summary. Tap it to read the whole note. Don't want them? Turn off Marquee updates in Settings → Notifications."
+        "text": "When Lilin gets something new, your phone or computer gets a notification with a quick summary. Tap it to read the whole note. Don't want them? Turn off Lilin updates in Settings → Notifications."
       }
     ]
   },
@@ -201,17 +220,17 @@
     ]
   },
   {
-    "id": "2026-11-10-marquee-passwords",
+    "id": "2026-11-10-lilin-passwords",
     "date": "2026-11-10",
     "title": "Sign in with your own password",
     "items": [
       {
         "title": "No more codes by email",
-        "text": "Marquee now signs you in with your email and your own password instead of a code sent to your inbox. If you haven't picked a password yet, Marquee asks for one the next time you open it. On a new phone or computer, sign in with that email and password."
+        "text": "Lilin now signs you in with your email and your own password instead of a code sent to your inbox. If you haven't picked a password yet, Lilin asks for one the next time you open it. On a new phone or computer, sign in with that email and password."
       },
       {
         "title": "Invites sign people straight in",
-        "text": "Someone you invite picks a password on the invite page and goes straight into Marquee, with no Cloudflare login to explain."
+        "text": "Someone you invite picks a password on the invite page and goes straight into Lilin, with no Cloudflare login to explain."
       },
       {
         "title": "Password links",
@@ -246,7 +265,7 @@
     "items": [
       {
         "title": "No more stutter at the start of a trimmed clip",
-        "text": "Clips you trimmed in Marquee used to freeze and buffer for a second or two at the start, then suddenly play normally. New trims now play smoothly from the first frame, and they still start on exactly the frame you picked, at full quality."
+        "text": "Clips you trimmed in Lilin used to freeze and buffer for a second or two at the start, then suddenly play normally. New trims now play smoothly from the first frame, and they still start on exactly the frame you picked, at full quality."
       }
     ]
   },
@@ -257,7 +276,7 @@
     "items": [
       {
         "title": "Skip intro works on more episodes",
-        "text": "Some episodes play for a long time before their opening titles, like one in Better Call Saul that runs over nine minutes. Marquee now finds those titles too, so the Skip intro button shows up."
+        "text": "Some episodes play for a long time before their opening titles, like one in Better Call Saul that runs over nine minutes. Lilin now finds those titles too, so the Skip intro button shows up."
       }
     ]
   },
@@ -473,11 +492,11 @@
   {
     "id": "2026-11-08-languages",
     "date": "2026-11-08",
-    "title": "Marquee in Swedish",
+    "title": "Lilin in Swedish",
     "items": [
       {
         "title": "Choose your language",
-        "text": "Marquee now speaks English and Swedish. Pick under Settings → Language and it applies everywhere: menus, the player, messages and notifications, on every device you sign in on. Descriptions and genres follow too, while titles keep their names."
+        "text": "Lilin now speaks English and Swedish. Pick under Settings → Language and it applies everywhere: menus, the player, messages and notifications, on every device you sign in on. Descriptions and genres follow too, while titles keep their names."
       },
       {
         "title": "One TV app, in Swedish",
@@ -492,7 +511,7 @@
     "items": [
       {
         "title": "Subtitles written by people come first",
-        "text": "Marquee now always picks subtitles written by people when they exist. When only a machine translation exists, the language says “auto-translated” so you know what you’re getting, and it’s replaced automatically once people’s subtitles turn up."
+        "text": "Lilin now always picks subtitles written by people when they exist. When only a machine translation exists, the language says “auto-translated” so you know what you’re getting, and it’s replaced automatically once people’s subtitles turn up."
       }
     ]
   },
@@ -503,7 +522,7 @@
     "items": [
       {
         "title": "Ready before you press play",
-        "text": "When new episodes arrive or a season is upgraded, Marquee now finds their intros and credits in the background, so Skip intro and Up next are less likely to turn up late the first time you watch. Upgraded episodes also keep what was already found."
+        "text": "When new episodes arrive or a season is upgraded, Lilin now finds their intros and credits in the background, so Skip intro and Up next are less likely to turn up late the first time you watch. Upgraded episodes also keep what was already found."
       }
     ]
   },
@@ -559,11 +578,11 @@
     "items": [
       {
         "title": "Best Quality means best picture",
-        "text": "With Download quality set to Best Quality, Marquee used to pick the most popular release, and that is often a tiny re-encode that looks soft on a big screen. It now looks at how much picture a release really has (its size for the resolution, where it came from and who made it), so you get a proper BluRay or web release when one is out there. Balanced also skips releases that are far too small for their resolution."
+        "text": "With Download quality set to Best Quality, Lilin used to pick the most popular release, and that is often a tiny re-encode that looks soft on a big screen. It now looks at how much picture a release really has (its size for the resolution, where it came from and who made it), so you get a proper BluRay or web release when one is out there. Balanced also skips releases that are far too small for their resolution."
       },
       {
         "title": "Upgrade quality",
-        "text": "Got a season that looks bad? Open Download on the show, pick the season and press Upgrade quality. Marquee looks for a clearly better release, downloads it, and swaps each episode for the new one as soon as it has finished. Your place in each episode carries over. If nothing better is out there, it tells you."
+        "text": "Got a season that looks bad? Open Download on the show, pick the season and press Upgrade quality. Lilin looks for a clearly better release, downloads it, and swaps each episode for the new one as soon as it has finished. Your place in each episode carries over. If nothing better is out there, it tells you."
       }
     ]
   },
@@ -574,7 +593,7 @@
     "items": [
       {
         "title": "Names and I/l mix-ups fixed",
-        "text": "Some releases come with subtitles that were read off the disc by a computer, so names and abbreviations show up in lowercase (\"cuddy\", \"nicu\") and I and l get swapped (\"ls there\", \"l'm\"). Marquee now fixes these in English subtitles as you watch, on the website, TVs and casting. It learns how names are spelled from the other subtitles in the library, so it gets better as the library grows."
+        "text": "Some releases come with subtitles that were read off the disc by a computer, so names and abbreviations show up in lowercase (\"cuddy\", \"nicu\") and I and l get swapped (\"ls there\", \"l'm\"). Lilin now fixes these in English subtitles as you watch, on the website, TVs and casting. It learns how names are spelled from the other subtitles in the library, so it gets better as the library grows."
       }
     ]
   },
@@ -611,11 +630,11 @@
     "items": [
       {
         "title": "Anime downloads from Nyaa",
-        "text": "Marquee now also searches Nyaa, where anime is released. Download Season on an anime picks a whole batch (one download for a season, even 170 episodes) instead of one torrent per episode, and finds single episodes whichever way they're numbered: \"Black Clover - 176\", \"Black Clover 2nd Season - 06\" and \"S02E06\" are all the same episode now."
+        "text": "Lilin now also searches Nyaa, where anime is released. Download Season on an anime picks a whole batch (one download for a season, even 170 episodes) instead of one torrent per episode, and finds single episodes whichever way they're numbered: \"Black Clover - 176\", \"Black Clover 2nd Season - 06\" and \"S02E06\" are all the same episode now."
       },
       {
         "title": "Anime seasons line up",
-        "text": "Anime that TMDB counts differently (Frieren's two seasons are one on TMDB, Jujutsu Kaisen's three seasons too) lands on the right season and episode in your library, under its proper name, and Marquee knows which episodes you already have so nothing downloads twice."
+        "text": "Anime that TMDB counts differently (Frieren's two seasons are one on TMDB, Jujutsu Kaisen's three seasons too) lands on the right season and episode in your library, under its proper name, and Lilin knows which episodes you already have so nothing downloads twice."
       },
       {
         "title": "Subtitles on by default",
@@ -626,11 +645,11 @@
   {
     "id": "2026-11-07-jellyfin",
     "date": "2026-11-07",
-    "title": "Marquee in Jellyfin",
+    "title": "Lilin in Jellyfin",
     "items": [
       {
         "title": "Watch your library in Jellyfin",
-        "text": "Got your own Jellyfin? Install the Marquee plugin there, open its settings and enter the code it shows under Settings → Jellyfin here. Your films and shows then appear in every Jellyfin app, and what you watch there shows up in Continue watching here too."
+        "text": "Got your own Jellyfin? Install the Lilin plugin there, open its settings and enter the code it shows under Settings → Jellyfin here. Your films and shows then appear in every Jellyfin app, and what you watch there shows up in Continue watching here too."
       }
     ]
   },
@@ -641,7 +660,7 @@
     "items": [
       {
         "title": "A lighter stream for big files on your phone",
-        "text": "4K films and other very large files used to stutter on phones. Now, on a phone, Marquee plays them as a lighter 1080p stream made on the fly, so they start fast and play smoothly, also on mobile data. The original file on the server stays exactly as it is."
+        "text": "4K films and other very large files used to stutter on phones. Now, on a phone, Lilin plays them as a lighter 1080p stream made on the fly, so they start fast and play smoothly, also on mobile data. The original file on the server stays exactly as it is."
       },
       {
         "title": "Pick the quality yourself",
@@ -656,13 +675,13 @@
     "items": [
       {
         "audience": "owner",
-        "title": "A bigger Discover in Marquee Preview",
-        "text": "In the Marquee Preview TV app, Discover rows now keep loading as you move along them, end in See all (a full grid), and are followed by a row of genres and one row per genre. Films / Shows tabs at the top narrow it down, and the title you're on fills the top of the screen with its description. Genre pages can be sorted by Popular, Top rated or Newest."
+        "title": "A bigger Discover in Lilin Preview",
+        "text": "In the Lilin Preview TV app, Discover rows now keep loading as you move along them, end in See all (a full grid), and are followed by a row of genres and one row per genre. Films / Shows tabs at the top narrow it down, and the title you're on fills the top of the screen with its description. Genre pages can be sorted by Popular, Top rated or Newest."
       },
       {
         "audience": "owner",
         "title": "Search and genres on the TV",
-        "text": "Marquee Preview has a Search screen with an on-screen keyboard (a real keyboard works too): your own titles show up at once, everything else from TMDB a moment later. Your library on the TV now also has a row for each genre you own something in."
+        "text": "Lilin Preview has a Search screen with an on-screen keyboard (a real keyboard works too): your own titles show up at once, everything else from TMDB a moment later. Your library on the TV now also has a row for each genre you own something in."
       }
     ]
   },
@@ -708,7 +727,7 @@
       {
         "audience": "owner",
         "title": "Cache on any drive",
-        "text": "The new CACHE_DIR setting in .env puts browser copies, timeline previews and share copies on a bigger drive than Marquee's own folder."
+        "text": "The new CACHE_DIR setting in .env puts browser copies, timeline previews and share copies on a bigger drive than Lilin's own folder."
       },
       {
         "audience": "owner",
@@ -751,7 +770,7 @@
     "items": [
       {
         "title": "Two conversions at once",
-        "text": "Marquee now makes the quick copy for iPhone and Apple TV and the slower copy for older browsers at the same time, instead of one after the other. A new film no longer waits behind another film's long conversion."
+        "text": "Lilin now makes the quick copy for iPhone and Apple TV and the slower copy for older browsers at the same time, instead of one after the other. A new film no longer waits behind another film's long conversion."
       },
       {
         "title": "Full quality in more browsers",
@@ -799,7 +818,7 @@
     "items": [
       {
         "title": "Adult content is blocked",
-        "text": "Marquee no longer downloads porn. It's left out of torrent search, and links or .torrent files for it are refused. If a download turns out to contain it once it starts, it's removed straight away."
+        "text": "Lilin no longer downloads porn. It's left out of torrent search, and links or .torrent files for it are refused. If a download turns out to contain it once it starts, it's removed straight away."
       }
     ]
   },
@@ -847,7 +866,7 @@
     "items": [
       {
         "title": "Add your picture",
-        "text": "Settings: tap the circle next to your name to add a profile picture. Drag it into place, zoom, save. It shows wherever your name does: Liked by, Popular on Marquee, watch parties, room chat and Wrapped."
+        "text": "Settings: tap the circle next to your name to add a profile picture. Drag it into place, zoom, save. It shows wherever your name does: Liked by, Popular on Lilin, watch parties, room chat and Wrapped."
       },
       {
         "title": "Watch Together, redone",
@@ -878,8 +897,8 @@
     "title": "Setup in a window",
     "items": [
       {
-        "title": "Marquee Setup for Windows",
-        "text": "Setting Marquee up on Windows no longer needs a terminal. Marquee Setup (in the Start menu, or MarqueeSetup.exe from the release page) walks you through your library, network, sign-in, services and start at boot, and checks your keys and ports as you go.",
+        "title": "Lilin Setup for Windows",
+        "text": "Setting Lilin up on Windows no longer needs a terminal. Lilin Setup (in the Start menu, or LilinSetup.exe from the release page) walks you through your library, network, sign-in, services and start at boot, and checks your keys and ports as you go.",
         "audience": "owner"
       },
       {
@@ -895,8 +914,8 @@
     "title": "A new home-screen icon",
     "items": [
       {
-        "title": "Marquee in lights",
-        "text": "Marquee has a new icon when you add it to your phone's home screen: a lit-up marquee M. On Android it now fills the icon shape properly instead of sitting in a white circle. Already added Marquee? Remove it from your home screen and add it again to get the new icon (iPhones keep the old one until you do)."
+        "title": "Lilin in lights",
+        "text": "Lilin has a new icon when you add it to your phone's home screen: a lit-up lilin M. On Android it now fills the icon shape properly instead of sitting in a white circle. Already added Lilin? Remove it from your home screen and add it again to get the new icon (iPhones keep the old one until you do)."
       }
     ]
   },
@@ -907,7 +926,7 @@
     "items": [
       {
         "title": "Take it with you",
-        "text": "Going somewhere without Wi-Fi? Open a film or episode and press To phone (the phone button on episode rows). Marquee makes a small copy (Small 480p, about 450 MB an hour, or Standard 720p) that plays in your phone's own video player with subtitles built in. Or download the file at full quality."
+        "text": "Going somewhere without Wi-Fi? Open a film or episode and press To phone (the phone button on episode rows). Lilin makes a small copy (Small 480p, about 450 MB an hour, or Standard 720p) that plays in your phone's own video player with subtitles built in. Or download the file at full quality."
       },
       {
         "title": "A whole season",
@@ -927,7 +946,7 @@
     "items": [
       {
         "title": "Scrubbing looks the part",
-        "text": "The picture you see while hovering or dragging along the timeline now sits in a small velvet card with the time in marquee gold, and a little pointer shows exactly where you'll land. While a preview is still loading, the card keeps its size instead of jumping."
+        "text": "The picture you see while hovering or dragging along the timeline now sits in a small velvet card with the time in lilin gold, and a little pointer shows exactly where you'll land. While a preview is still loading, the card keeps its size instead of jumping."
       }
     ]
   },
@@ -941,7 +960,7 @@
         "text": "Rate any film or show from its page. Everyone sees who liked something (\"Liked by Anna and Ben\"); a thumbs down stays private."
       },
       {
-        "title": "Popular on Marquee",
+        "title": "Popular on Lilin",
         "text": "A new row near the top of Discover shows what people here liked and watched lately."
       },
       {
@@ -953,23 +972,23 @@
         "text": "Pick a time from a film's or episode's page (the people icon) and send the invite. Everyone gets a countdown, and playback starts by itself for whoever's in the room. Your parties wait in Library. The host can also start a running room with a short countdown."
       },
       {
-        "title": "Marquee Wrapped",
-        "text": "Settings → Marquee Wrapped tells the story of your year: hours watched, top titles, your show of the year, your busiest days and who you watched with. It counts from today on."
+        "title": "Lilin Wrapped",
+        "text": "Settings → Lilin Wrapped tells the story of your year: hours watched, top titles, your show of the year, your busiest days and who you watched with. It counts from today on."
       }
     ]
   },
   {
     "id": "2026-11-05-signin",
     "date": "2026-11-05",
-    "title": "Sign in to Marquee",
+    "title": "Sign in to Lilin",
     "items": [
       {
         "title": "Your own password",
-        "text": "Marquee can now sign you in by itself. If the owner made you an account, you'll see a sign-in page when you're away from home, and Settings lets you change your password or sign out."
+        "text": "Lilin can now sign you in by itself. If the owner made you an account, you'll see a sign-in page when you're away from home, and Settings lets you change your password or sign out."
       },
       {
         "title": "Safer from other websites",
-        "text": "Marquee now ignores requests that other websites try to send through your browser, so a page you visit can't start downloads or delete anything."
+        "text": "Lilin now ignores requests that other websites try to send through your browser, so a page you visit can't start downloads or delete anything."
       },
       {
         "title": "Server security",
@@ -985,11 +1004,11 @@
     "items": [
       {
         "title": "Hear when it's ready",
-        "text": "Turn on notifications in Settings and your phone or computer tells you when a download is ready to watch, even with Marquee closed."
+        "text": "Turn on notifications in Settings and your phone or computer tells you when a download is ready to watch, even with Lilin closed."
       },
       {
         "title": "New episodes",
-        "text": "When a new episode of a show you follow or have in your library arrives on Marquee, you'll get a heads-up. Each kind of notification can be switched off on its own."
+        "text": "When a new episode of a show you follow or have in your library arrives on Lilin, you'll get a heads-up. Each kind of notification can be switched off on its own."
       },
       {
         "title": "Invite people to watch",
@@ -1031,7 +1050,7 @@
     "items": [
       {
         "title": "Skip the opening titles",
-        "text": "A Skip intro button now appears while a show's opening titles play (or press S). Marquee finds the theme song by comparing an episode with its neighbours, so it works even after a long cold open."
+        "text": "A Skip intro button now appears while a show's opening titles play (or press S). Lilin finds the theme song by comparing an episode with its neighbours, so it works even after a long cold open."
       },
       {
         "title": "Or skip them automatically",
@@ -1069,7 +1088,7 @@
     "items": [
       {
         "title": "What's new, right here",
-        "text": "From now on, Marquee shows you what changed after each update, just like this. You can read past updates any time in Settings → What's new."
+        "text": "From now on, Lilin shows you what changed after each update, just like this. You can read past updates any time in Settings → What's new."
       },
       {
         "title": "Next episode starts with the credits",
@@ -1140,7 +1159,7 @@
       },
       {
         "title": "Notes and clips in Discord",
-        "text": "A shared note shows as a preview card in Discord with its images or video. Shared clips open in Marquee's own player, at full quality.",
+        "text": "A shared note shows as a preview card in Discord with its images or video. Shared clips open in Lilin's own player, at full quality.",
         "audience": "owner"
       },
       {
@@ -1179,11 +1198,11 @@
       },
       {
         "title": "A library that keeps itself current",
-        "text": "New downloads and changes appear in the library on their own, and when an episode ends, Marquee offers the next one."
+        "text": "New downloads and changes appear in the library on their own, and when an episode ends, Lilin offers the next one."
       },
       {
         "title": "Notes",
-        "text": "A shared Notes tab for messages, links, photos and videos. Photos and videos uploaded from a phone stay private to Marquee.",
+        "text": "A shared Notes tab for messages, links, photos and videos. Photos and videos uploaded from a phone stay private to Lilin.",
         "audience": "owner"
       },
       {
@@ -1196,16 +1215,16 @@
   {
     "id": "2026-11-02",
     "date": "2026-11-02",
-    "title": "Your own Marquee",
+    "title": "Your own Lilin",
     "announce": false,
     "items": [
       {
         "title": "Your own account",
-        "text": "Everyone signs in to their own Marquee: your library, where you stopped and your settings are yours. If someone else already has a title on the server, add it to your library instead of downloading it again."
+        "text": "Everyone signs in to their own Lilin: your library, where you stopped and your settings are yours. If someone else already has a title on the server, add it to your library instead of downloading it again."
       },
       {
         "title": "Settings",
-        "text": "A Settings tab for colour themes, default subtitles, preferred quality, the page Marquee opens on and how your library is sorted."
+        "text": "A Settings tab for colour themes, default subtitles, preferred quality, the page Lilin opens on and how your library is sorted."
       },
       {
         "title": "Watch Together",
@@ -1213,7 +1232,7 @@
       },
       {
         "title": "Shows by season",
-        "text": "Shows appear once in your library with their seasons and episode names. When there's no good season download, Marquee gets it episode by episode."
+        "text": "Shows appear once in your library with their seasons and episode names. When there's no good season download, Lilin gets it episode by episode."
       },
       {
         "title": "Library clean-up",
@@ -1324,11 +1343,11 @@
   {
     "id": "2026-09-30",
     "date": "2026-09-30",
-    "title": "Marquee opens",
+    "title": "Lilin opens",
     "announce": false,
     "items": [
       {
-        "title": "Welcome to Marquee",
+        "title": "Welcome to Lilin",
         "text": "Find films and shows, download them to the server and stream them in your browser, on any device."
       }
     ]

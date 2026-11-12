@@ -1,4 +1,4 @@
-// Scheduling priority for Marquee's own processes. Playback comes first: the server process runs a
+// Scheduling priority for Lilin's own processes. Playback comes first: the server process runs a
 // step above normal for the CPU, and on Windows at normal I/O and memory priority even when it was
 // started as a scheduled task (Task Scheduler's default gives it low I/O priority, and its stream
 // reads then lose to every download: measured on a busy hard drive, 4 MB reads took 3.9 s instead
@@ -7,7 +7,7 @@
 // the CPU. Their I/O priority stays normal by default: with streams reading in large pieces that was
 // enough for smooth playback, and low I/O priority made a conversion 3-4x slower while anyone watched.
 //
-//   MARQUEE_PRIORITY      above_normal (default) | normal | high — the server process itself
+//   LILIN_PRIORITY      above_normal (default) | normal | high — the server process itself
 //   BACKGROUND_PRIORITY   below_normal (default) | idle | normal — CPU priority of background jobs
 //   BACKGROUND_IO         normal (default) | low | very_low — I/O + memory priority of background jobs (Windows)
 import os from 'node:os';
@@ -27,7 +27,7 @@ const PAGE = { very_low: 1, low: 2, normal: 5 };         // Windows memory (page
 // behind every other program's, downloads included.
 export function raiseServer() {
   if (process.platform === 'win32') ioHelper()?.set(process.pid, IO.normal, PAGE.normal);
-  const level = pick(process.env.MARQUEE_PRIORITY, 'above_normal');
+  const level = pick(process.env.LILIN_PRIORITY, 'above_normal');
   if (!(level in CPU) || level === 'normal') return null;
   try { os.setPriority(0, CPU[level]); return level; } catch { return null; }
 }
@@ -39,7 +39,7 @@ export function background(child) {
   const level = pick(process.env.BACKGROUND_PRIORITY, 'below_normal');
   if (level in CPU && level !== 'normal') { try { os.setPriority(child.pid, CPU[level]); } catch { /* exited or not allowed */ } }
   const io = pick(process.env.BACKGROUND_IO, 'normal');
-  // Set even when normal, so a job never inherits a low I/O priority from how Marquee was started.
+  // Set even when normal, so a job never inherits a low I/O priority from how Lilin was started.
   if (process.platform === 'win32' && io in IO) ioHelper()?.set(child.pid, IO[io], PAGE[io]);
 }
 
@@ -49,7 +49,7 @@ const HELPER = `
 $ErrorActionPreference = 'Stop'
 Add-Type -TypeDefinition @'
 using System; using System.Runtime.InteropServices;
-public static class MarqueePrio {
+public static class LilinPrio {
   [DllImport("kernel32.dll", SetLastError=true)] static extern IntPtr OpenProcess(int access, bool inherit, int pid);
   [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
   [DllImport("ntdll.dll")] static extern int NtSetInformationProcess(IntPtr h, int cls, ref int info, int len);
@@ -66,7 +66,7 @@ public static class MarqueePrio {
 [Console]::Out.WriteLine('ready'); [Console]::Out.Flush()
 while ($null -ne ($line = [Console]::In.ReadLine())) {
   $p = $line.Trim() -split '\\s+'
-  if ($p.Count -ge 3) { try { [Console]::Out.WriteLine([MarqueePrio]::Set([int]$p[0], [int]$p[1], [int]$p[2])) } catch { [Console]::Out.WriteLine("err $($p[0]) $_") }; [Console]::Out.Flush() }
+  if ($p.Count -ge 3) { try { [Console]::Out.WriteLine([LilinPrio]::Set([int]$p[0], [int]$p[1], [int]$p[2])) } catch { [Console]::Out.WriteLine("err $($p[0]) $_") }; [Console]::Out.Flush() }
 }`;
 
 let helper = null;

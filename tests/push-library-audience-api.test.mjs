@@ -12,7 +12,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 // an endpoint named after them, so the inbox shows exactly who was notified about what.
 test('download notifications only reach people who have the show or film in their library', { timeout: 30000 }, async (t) => {
   const root = fileURLToPath(new URL('../', import.meta.url));
-  const app = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-push-audience-'));
+  const app = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-push-audience-'));
   const media = path.join(app, 'media'); await fs.mkdir(media);
   const torrents = new Map(); // hash -> qBittorrent's view of the torrent
   const incoming = []; // torrents the next add call starts
@@ -68,7 +68,7 @@ test('download notifications only reach people who have the show or film in thei
   });
   await new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(Error(logs)), 8000);
-    child.stdout.on('data', (c) => { logs += c; const ready = /Marquee is running: http:\/\/localhost:(\d+)/.exec(logs); if (ready) { port = Number(ready[1]); clearTimeout(timer); resolve(); } });
+    child.stdout.on('data', (c) => { logs += c; const ready = /Lilin is running: http:\/\/localhost:(\d+)/.exec(logs); if (ready) { port = Number(ready[1]); clearTimeout(timer); resolve(); } });
     child.once('error', reject); child.once('exit', () => { clearTimeout(timer); reject(Error(logs)); });
   });
   const request = async (route, email, body) => {

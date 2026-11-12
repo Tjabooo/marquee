@@ -1,4 +1,4 @@
-// Social: thumbs up/down on titles, the watch-time log behind "Popular on Marquee" and Marquee
+// Social: thumbs up/down on titles, the watch-time log behind "Popular on Lilin" and Lilin
 // Wrapped, and the planned watch parties that have to outlive a restart. Tables live in the accounts
 // database (created in initAccounts); this module only reads and writes them.
 //
@@ -101,7 +101,7 @@ export function logWatch(userId, { ref, about = {}, watched, finished = false, c
   return credit;
 }
 
-// ---------- Popular on Marquee ----------
+// ---------- Popular on Lilin ----------
 // Titles ranked by the household over the last `days`: likes count most, then how many people
 // watched, then (a little) hours watched; dislikes pull a title down. Only titles with a TMDB id
 // can be shown as cards. Returns [{ key, likes, viewers, hours, likedBy: [userId], watchedBy: [userId] }].
@@ -132,7 +132,7 @@ export function popular({ days = 60, limit = 20, now = Date.now(), type = 'all' 
     .map(({ key, likes, viewers, hours, likedBy, watchedBy }) => ({ key, likes, viewers, hours, likedBy, watchedBy }));
 }
 
-// ---------- Marquee Wrapped ----------
+// ---------- Lilin Wrapped ----------
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -141,7 +141,7 @@ export function wrappedYears(userId) {
     .all(userId).map((r) => Number(r.y));
 }
 
-// One person's year on Marquee. nameOf(userId) -> display name.
+// One person's year on Lilin. nameOf(userId) -> display name.
 export function wrapped(userId, year, nameOf, avatarOf = () => null) {
   year = Number(year);
   if (!Number.isSafeInteger(year) || year < 2000 || year > 3000) throw fail(400, 'Which year?');

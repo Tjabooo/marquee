@@ -18,7 +18,7 @@ Mount the media drive at a fixed path through `/etc/fstab` (by `UUID=`, with `no
 ## 2. Install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Tjabooo/marquee/v1.3.0/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/Tjabooo/lilin/v2.0.0/install.sh -o install.sh
 less install.sh
 sh install.sh
 ```
@@ -28,7 +28,7 @@ sh install.sh
 Set `MEDIA_DIR` to the mounted drive, for example `/srv/media`. Then consider the encoding settings
 below.
 
-**Encoding is slow on a Pi.** Marquee uses NVIDIA NVENC or libx264 on the CPU; it doesn't use the
+**Encoding is slow on a Pi.** Lilin uses NVIDIA NVENC or libx264 on the CPU; it doesn't use the
 Pi's video hardware. Converting an MKV whose video is already H.264 or HEVC only copies the streams
 and is cheap, but a full re-encode takes far longer than on a desktop CPU and keeps the Pi busy.
 The settings that cause re-encodes in the background:
@@ -43,14 +43,14 @@ See [../configuration.md](../configuration.md#conversion).
 
 ## 4. Start
 
-`npm start` in `~/marquee`, or let the service start it.
+`npm start` in `~/lilin`, or let the service start it.
 
 ## 5. Autostart
 
-systemd. Use a system unit so Marquee waits for the USB drive:
+systemd. Use a system unit so Lilin waits for the USB drive:
 
 ```sh
-node ~/marquee/setup.js service install --scope system
+node ~/lilin/setup.js service install --scope system
 ```
 
 It contains `RequiresMountsFor=` for the media and data folders. See

@@ -24,8 +24,8 @@ export function handleWatchPage(req, res, url, { rooms, artwork }) {
   };
   if (!preview) {
     return send(404, page({
-      title: 'This watch room has ended', desc: 'Ask whoever sent the link to start a new one.', url: link, image: `${base}/c/marquee.png`,
-      body: '<div class="card"><h1>This watch room has ended</h1><p>Ask whoever sent the link to start a new one.</p><p><a class="brand" href="/">Open Marquee</a></p></div>',
+      title: 'This watch room has ended', desc: 'Ask whoever sent the link to start a new one.', url: link, image: `${base}/c/lilin.png`,
+      body: '<div class="card"><h1>This watch room has ended</h1><p>Ask whoever sent the link to start a new one.</p><p><a class="brand" href="/">Open Lilin</a></p></div>',
     }));
   }
 
@@ -36,13 +36,13 @@ export function handleWatchPage(req, res, url, { rooms, artwork }) {
   const starts = preview.startsAt ? new Date(preview.startsAt) : null;
   const when = starts && `${starts.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })} at ${pad2(starts.getHours())}:${pad2(starts.getMinutes())}`;
   const desc = when
-    ? `${host} planned a watch party on Marquee: it starts ${when}. Open the link and sign in to join; there's a countdown until then.`
-    : `${host} is hosting a Watch Together room on Marquee${viewers > 1 ? ` · ${viewers} watching` : ''}. Open the link and sign in to join; playback stays in sync for everyone.`;
+    ? `${host} planned a watch party on Lilin: it starts ${when}. Open the link and sign in to join; there's a countdown until then.`
+    : `${host} is hosting a Watch Together room on Lilin${viewers > 1 ? ` · ${viewers} watching` : ''}. Open the link and sign in to join; playback stays in sync for everyone.`;
   return send(200, page({
-    title: `Watch ${what} together`, desc, url: link, image: art.image || `${base}/c/marquee.png`,
+    title: `Watch ${what} together`, desc, url: link, image: art.image || `${base}/c/lilin.png`,
     body: `<div class="card"><h1>Watch ${esc(what)} together</h1><p>${esc(host)} invited you${when ? ` (starts ${esc(when)})` : ''}. Taking you to the room…</p>
       <form method="get" action="/"><input type="hidden" name="watch" value="${esc(token)}"><button type="submit">Join the room</button></form>
-      <p class="foot">You'll sign in to Marquee as usual first.</p></div>
+      <p class="foot">You'll sign in to Lilin as usual first.</p></div>
       <script>location.replace(${JSON.stringify(join)})</script>`,
   }));
 }

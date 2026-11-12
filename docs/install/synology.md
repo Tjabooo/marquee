@@ -1,6 +1,6 @@
 # Synology DSM
 
-Marquee runs from the Docker image in Container Manager. Read [docker.md](docker.md) for settings,
+Lilin runs from the Docker image in Container Manager. Read [docker.md](docker.md) for settings,
 optional services and limitations; this page covers the Synology specifics.
 
 ## 1. Prerequisites
@@ -11,21 +11,21 @@ optional services and limitations; this page covers the Synology specifics.
 - Your user and group IDs: enable SSH (Control Panel → Terminal & SNMP), sign in and run `id`, for
   example `uid=1026(you) gid=100(users)`. That user needs read/write permission on the media folder.
 
-In File Station, create `/volume1/docker/marquee/data`.
+In File Station, create `/volume1/docker/lilin/data`.
 
 ## 2. Install
 
 Container Manager → **Project** → **Create**:
 
-- Project name: `marquee`
-- Path: `/volume1/docker/marquee`
+- Project name: `lilin`
+- Path: `/volume1/docker/lilin`
 - Source: Create docker-compose.yml, and paste the
   [one-file Compose](docker.md#one-file-compose-for-nas-interfaces) with these changes:
 
 ```yaml
     user: "1026:100"
     volumes:
-      - /volume1/docker/marquee/data:/data
+      - /volume1/docker/lilin/data:/data
       - /volume1/video:/media
 ```
 
@@ -35,7 +35,7 @@ project.
 ## 3. Configure
 
 Add settings under `environment` in the project's Compose file, or put a `.env` file (from
-`.env.example`) in `/volume1/docker/marquee/data`; the image reads `/data/.env`. See
+`.env.example`) in `/volume1/docker/lilin/data`; the image reads `/data/.env`. See
 [../configuration.md](../configuration.md).
 
 ## 4. Start
@@ -52,8 +52,8 @@ allow TCP 8080 from your LAN.
 Change the image tag in the project's Compose file, then over SSH:
 
 ```sh
-cd /volume1/docker/marquee
-sudo docker compose exec marquee node setup.js backup     # lands in data/backups/
+cd /volume1/docker/lilin
+sudo docker compose exec lilin node setup.js backup     # lands in data/backups/
 sudo docker compose pull && sudo docker compose up -d
 ```
 
@@ -62,10 +62,10 @@ sudo docker compose pull && sudo docker compose up -d
 - **Permission errors on `/data` or `/media`**: the user in `user:` needs read/write on both shared
   folders (Control Panel → Shared Folder → Edit → Permissions).
 - **The project fails to parse `env_file`** when using the full `docker-compose.yml`: the Compose
-  version is older than 2.24. Use the one-file Compose, or the short form `env_file: [marquee.env]`.
+  version is older than 2.24. Use the one-file Compose, or the short form `env_file: [lilin.env]`.
 - **The `vpn` profile can't start Gluetun**: it needs `/dev/net/tun`, which DSM may not provide by
   default; see the [Gluetun wiki](https://github.com/qdm12/gluetun-wiki).
-- Health check, from `/volume1/docker/marquee`: `sudo docker compose exec marquee node setup.js doctor --offline`.
+- Health check, from `/volume1/docker/lilin`: `sudo docker compose exec lilin node setup.js doctor --offline`.
 
 See also [docker.md](docker.md#7-troubleshooting).
 

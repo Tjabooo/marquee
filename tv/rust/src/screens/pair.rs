@@ -34,8 +34,8 @@ fn splash(cx: &mut Cx, note: &str, a: f32) {
     cx.g.push_alpha(a);
     ui::bulbs(cx, 960.0, 420.0, 11, 1.0);
     let f = display(120.0, 800).glow();
-    let w = cx.tx.width(f, "Marquee");
-    cx.tx.draw(&mut cx.g, f, "Marquee", 960.0 - w / 2.0, 450.0, ui::BULB);
+    let w = cx.tx.width(f, "Lilin");
+    cx.tx.draw(&mut cx.g, f, "Lilin", 960.0 - w / 2.0, 450.0, ui::BULB);
     if !note.is_empty() {
         let lines = cx.tx.wrap(body(32.0, 400), note, 1100.0, 3);
         for (n, l) in lines.iter().enumerate() {
@@ -66,7 +66,7 @@ impl Screen for Boot {
                     return;
                 }
                 if !res.ok() {
-                    self.note = t!("Can’t reach Marquee right now ({0}). Trying again…", res.error());
+                    self.note = t!("Can’t reach Lilin right now ({0}). Trying again…", res.error());
                     cx.timer(5000.0, self.sid, RETRY);
                     cx.redraw();
                     return;
@@ -192,9 +192,9 @@ impl Screen for Pair {
         let step = body(38.0, 400);
         let bold = body(38.0, 700);
         let num = display(38.0, 800);
-        rich(cx, ui::EDGE, 330.0, &[("1  ", num, ui::BULB), (t!("On your phone, open Marquee and go to "), step, ui::DUST), (t!("Settings"), bold, ui::PAPER), (".", step, ui::DUST)]);
+        rich(cx, ui::EDGE, 330.0, &[("1  ", num, ui::BULB), (t!("On your phone, open Lilin and go to "), step, ui::DUST), (t!("Settings"), bold, ui::PAPER), (".", step, ui::DUST)]);
         rich(cx, ui::EDGE, 388.0, &[("2  ", num, ui::BULB), (t!("Under "), step, ui::DUST), (t!("Sign in a TV"), bold, ui::PAPER), (t!(", enter this code:"), step, ui::DUST)]);
-        // The code: lit letters in little marquee boxes.
+        // The code: lit letters in little lilin boxes.
         let mut x = ui::EDGE;
         let y = 480.0;
         let chars: Vec<char> = self.code.chars().collect();

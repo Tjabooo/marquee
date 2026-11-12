@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { previewDir, previewProblem, staticFile, previewRoute, staticRoots } from '../src/preview.js';
 
 test('preview helpers', async () => {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-preview-unit-'));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-preview-unit-'));
   assert.equal(previewDir(''), '');
   assert.equal(previewDir('relative/public'), '');
   assert.match(previewProblem('relative/public'), /absolute/);
@@ -24,15 +24,15 @@ test('preview helpers', async () => {
   assert.equal(staticFile(dir, '/..%2f..%2fetc%2fpasswd'), null);
   // No preview folder: /preview is just another unknown path, and the cookie changes nothing.
   assert.equal(previewRoute({ headers: {} }, {}, '/preview', ''), false);
-  assert.deepEqual(staticRoots({ headers: { cookie: 'marquee_preview=1' } }, '/pub', ''), ['/pub']);
-  assert.deepEqual(staticRoots({ headers: { cookie: 'a=b; marquee_preview=1' } }, '/pub', '/pre'), ['/pre', '/pub']);
-  assert.deepEqual(staticRoots({ headers: { cookie: 'marquee_preview=10' } }, '/pub', '/pre'), ['/pub']);
+  assert.deepEqual(staticRoots({ headers: { cookie: 'lilin_preview=1' } }, '/pub', ''), ['/pub']);
+  assert.deepEqual(staticRoots({ headers: { cookie: 'a=b; lilin_preview=1' } }, '/pub', '/pre'), ['/pre', '/pub']);
+  assert.deepEqual(staticRoots({ headers: { cookie: 'lilin_preview=10' } }, '/pub', '/pre'), ['/pub']);
   await fs.rm(dir, { recursive: true, force: true });
 });
 
 test('PREVIEW_DIR serves a second web app to browsers that opt in, and title pages get their extras', { timeout: 20000 }, async (t) => {
   const root = fileURLToPath(new URL('../', import.meta.url));
-  const app = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-preview-api-'));
+  const app = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-preview-api-'));
   const media = path.join(app, 'media'); await fs.mkdir(media);
   const pre = path.join(app, 'preview-public'); await fs.mkdir(pre);
   await fs.writeFile(path.join(pre, 'index.html'), '<!doctype html><title>Preview build</title>');
@@ -88,7 +88,7 @@ test('PREVIEW_DIR serves a second web app to browsers that opt in, and title pag
   });
   await new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(Error('Startup timeout: ' + logs)), 9000);
-    child.stdout.on('data', (c) => { const ready = /Marquee is running: http:\/\/localhost:(\d+)/.exec(String(c)); if (ready) { port = Number(ready[1]); clearTimeout(timer); resolve(); } });
+    child.stdout.on('data', (c) => { const ready = /Lilin is running: http:\/\/localhost:(\d+)/.exec(String(c)); if (ready) { port = Number(ready[1]); clearTimeout(timer); resolve(); } });
     child.once('error', reject);
     child.once('exit', () => { clearTimeout(timer); reject(Error(logs)); });
   });
@@ -96,12 +96,12 @@ test('PREVIEW_DIR serves a second web app to browsers that opt in, and title pag
   const base = `http://127.0.0.1:${port}`;
   const owner = { 'cf-access-authenticated-user-email': 'owner@test.local' };
   const get = (p, headers = {}) => fetch(base + p, { headers, redirect: 'manual' });
-  const withCookie = { ...owner, cookie: 'marquee_preview=1' };
+  const withCookie = { ...owner, cookie: 'lilin_preview=1' };
 
   // Off by default: the live web app.
   let r = await get('/', owner);
   assert.equal(r.status, 200);
-  assert.match(await r.text(), /<title>Marquee<\/title>/);
+  assert.match(await r.text(), /<title>Lilin<\/title>/);
 
   // Signed out, /preview goes through sign-in first (no extra access).
   r = await get('/preview');
@@ -111,7 +111,7 @@ test('PREVIEW_DIR serves a second web app to browsers that opt in, and title pag
   r = await get('/preview', owner);
   assert.equal(r.status, 303);
   assert.equal(r.headers.get('location'), '/');
-  assert.match(r.headers.get('set-cookie'), /^marquee_preview=1; Path=\/; Max-Age=2592000; SameSite=Lax; HttpOnly$/);
+  assert.match(r.headers.get('set-cookie'), /^lilin_preview=1; Path=\/; Max-Age=2592000; SameSite=Lax; HttpOnly$/);
 
   r = await get('/', withCookie);
   assert.equal(await r.text(), '<!doctype html><title>Preview build</title>');
@@ -138,18 +138,18 @@ test('PREVIEW_DIR serves a second web app to browsers that opt in, and title pag
   assert.equal(prev.preview, true);
   assert.notEqual(prev.whatsNew.build, live.whatsNew.build);
   assert.equal(prev.me.email, live.me.email);
-  r = await get('/api/status', { cookie: 'marquee_preview=1' });
+  r = await get('/api/status', { cookie: 'lilin_preview=1' });
   assert.equal(r.status, 401);
 
   // Server-drawn pages get the preview's pages.css, only with the cookie.
-  r = await get('/signin', { cookie: 'marquee_preview=1' });
+  r = await get('/signin', { cookie: 'lilin_preview=1' });
   assert.match(await r.text(), /<link rel="stylesheet" href="\/pages.css"><\/head>/);
   r = await get('/signin');
   assert.doesNotMatch(await r.text(), /href="\/pages\.css"/);
 
   r = await get('/preview/off', withCookie);
   assert.equal(r.status, 303);
-  assert.match(r.headers.get('set-cookie'), /^marquee_preview=; Path=\/; Max-Age=0;/);
+  assert.match(r.headers.get('set-cookie'), /^lilin_preview=; Path=\/; Max-Age=0;/);
 
   // Title page extras: the English PNG logo, faces, the Swedish age rating first, posters only.
   const page = (await (await get('/api/title/movie/42/page', owner)).json()).page;

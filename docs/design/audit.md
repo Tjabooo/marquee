@@ -1,4 +1,4 @@
-# Marquee web UI audit (before the revamp)
+# Lilin web UI audit (before the revamp)
 
 November 2026, master `6c28d20`. Screenshots: `tools/ui-shots` at 390×844, 768×1024, 1440×900 and
 1920×1080, English and Swedish. The real library came over the LAN with every non-GET request blocked;
@@ -10,7 +10,7 @@ came from a throwaway server with its own `DATA_DIR`. The Samsung TV app (`publi
 | Area | Screens and states |
 | --- | --- |
 | Shell | header (wordmark, What's new, search), bottom tabs (+ owner tabs: Notes, Activity, House, Clips), toast, signed-out banner, "can't reach the server" |
-| Discover | home (Trending carousel, Saved, Popular on Marquee, TMDB rows), type filter (All / Films / Shows / Documentaries), genre chips → genre grid + sort, See all grid + Load more, Documentaries (SVT Play rows, true crime), search results, no results, loading skeleton, error + retry, TMDB not set up |
+| Discover | home (Trending carousel, Saved, Popular on Lilin, TMDB rows), type filter (All / Films / Shows / Documentaries), genre chips → genre grid + sort, See all grid + Load more, Documentaries (SVT Play rows, true crime), search results, no results, loading skeleton, error + retry, TMDB not set up |
 | Title sheet | film (Add to library / Play / versions / Advanced options), show (season picker, quality, Add season, Dubbed), already on the server (Add / Add & play), trailer in the backdrop, thumbs, Save / Follow, cast line, transfer summary (On its way, Play now) |
 | Library | toolbar (All / Films / Shows, availability), shared-library note, downloading summary, To phone summary, watch parties, Continue watching, Coming up, Leaving soon, Films / Shows / Unidentified grids, transfer cards (progress, paused, needs attention), convert banner, empty, no matches |
 | Film / show pages | backdrop, facts, keep bar (auto-delete countdown), actions (Play/Resume, Play on TV, Watch party, To phone, Delete, Identify film), seasons grid, episode rows (still, Keep, Delete, To phone, TV, party, play), missing / pending episodes, season pack, version pickers, Upgrade |
@@ -71,7 +71,7 @@ came from a throwaway server with its own `DATA_DIR`. The Samsung TV app (`publi
   between groups. Segmented controls, selects and code inputs all look different.
 
 **Server pages**
-- `/signin` uses its own grey/orange palette and no Marquee identity; share pages each have their own
+- `/signin` uses its own grey/orange palette and no Lilin identity; share pages each have their own
   look.
 
 **Swedish**

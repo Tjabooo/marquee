@@ -1,0 +1,9 @@
+[Unit]
+Description=Ask Lilin whether to restart into another system (House tab: wake / restart into)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+Environment=LILIN_HOUSE_CONF=/etc/lilin-house.env
+ExecStart=/usr/local/bin/lilin-house boot

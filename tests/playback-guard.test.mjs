@@ -1,4 +1,4 @@
-// While someone watches, qBittorrent runs on its alternative limits; Marquee only undoes what it did.
+// While someone watches, qBittorrent runs on its alternative limits; Lilin only undoes what it did.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

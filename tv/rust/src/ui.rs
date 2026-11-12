@@ -1,4 +1,4 @@
-//! Marquee's look on the TV (docs/design/revamp.md): a velvet room lit from above, Bricolage Grotesque for
+//! Lilin's look on the TV (docs/design/revamp.md): a velvet room lit from above, Bricolage Grotesque for
 //! titles, the gold bulb for focus and progress only. Shared pieces every screen draws with.
 use crate::gfx::{hex, hexa, rect, Rect, Rgba, SCREEN};
 use crate::img;
@@ -120,7 +120,7 @@ pub fn room(cx: &mut Cx) {
     g.light(rect(960.0 - 1500.0, -160.0 - 700.0, 3000.0, 1400.0), hexa(0x3D2234, 1.0));
 }
 
-/// A row of marquee bulbs, centred on cx.
+/// A row of lilin bulbs, centred on cx.
 pub fn bulbs(cx: &mut Cx, mid: f32, y: f32, n: usize, lit: f32) {
     let step = 33.0;
     let x0 = mid - step * (n as f32 - 1.0) / 2.0;
@@ -134,7 +134,7 @@ pub fn bulbs(cx: &mut Cx, mid: f32, y: f32, n: usize, lit: f32) {
 
 pub fn wordmark(cx: &mut Cx, x: f32, y: f32, size: f32) -> f32 {
     let f = display(size, 800).glow();
-    cx.tx.draw(&mut cx.g, f, "Marquee", x, y, BULB)
+    cx.tx.draw(&mut cx.g, f, "Lilin", x, y, BULB)
 }
 
 /// The gold focus: a ring just outside `r` and a warm glow.

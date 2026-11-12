@@ -1,15 +1,15 @@
-# Marquee
+# Lilin
 
-[![CI](https://github.com/Tjabooo/marquee/actions/workflows/ci.yml/badge.svg)](https://github.com/Tjabooo/marquee/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/Tjabooo/marquee)](https://github.com/Tjabooo/marquee/releases)
-[![Image](https://img.shields.io/badge/ghcr.io-tjabooo%2Fmarquee-blue)](https://github.com/Tjabooo/marquee/pkgs/container/marquee)
+[![CI](https://github.com/Tjabooo/lilin/actions/workflows/ci.yml/badge.svg)](https://github.com/Tjabooo/lilin/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Tjabooo/lilin)](https://github.com/Tjabooo/lilin/releases)
+[![Image](https://img.shields.io/badge/ghcr.io-tjabooo%2Flilin-blue)](https://github.com/Tjabooo/lilin/pkgs/container/lilin)
 
-![Marquee](public/og-marquee.png)
+![Lilin](public/og-lilin.png)
 
 A self-hosted media server for your home, made for phones first. Find a film or show, press
 Download, and watch it in the browser, on your phone or on the TV, with subtitles that fit.
 
-Marquee is one Node.js process with no npm dependencies. It runs on Windows, Linux, macOS and in
+Lilin is one Node.js process with no npm dependencies. It runs on Windows, Linux, macOS and in
 Docker, and installs as a web app on your phone's home screen.
 
 ## Features
@@ -34,7 +34,7 @@ Docker, and installs as a web app on your phone's home screen.
   time or at the end of the episode.
 - **Casting** to DLNA smart TVs and Apple TV, with a full-screen remote.
 - **TV apps** for Samsung (Tizen) and Android TV / Google TV: browse, download and play from the sofa, with Skip intro and Up next.
-- **Jellyfin**: the [Marquee plugin](https://github.com/Tjabooo/jellyfin-plugin-marquee) shows your
+- **Jellyfin**: the [Lilin plugin](https://github.com/Tjabooo/jellyfin-plugin-lilin) shows your
   library in your own Jellyfin, in every Jellyfin app, with progress kept in sync.
 - **Watch Together** rooms with synced playback.
 - **Notifications** on phones and computers (Web Push, nothing to sign up for): downloads ready, new
@@ -60,39 +60,39 @@ Anything you don't set up is simply off, so you can start small.
 ## Quick start
 
 ```sh
-git clone --branch v1.3.0 https://github.com/Tjabooo/marquee.git
-cd marquee
+git clone --branch v2.0.0 https://github.com/Tjabooo/lilin.git
+cd lilin
 node setup.js
 ```
 
 `setup.js` detects your system, asks only what it can't work out, writes `.env`, checks your
-integrations and can register Marquee to start at boot. Open the address it prints. It's safe to
+integrations and can register Lilin to start at boot. Open the address it prints. It's safe to
 run again at any time; `node setup.js doctor` checks an installation without changing anything.
 
-On Windows, download **MarqueeSetup.exe** from the [latest release](https://github.com/Tjabooo/marquee/releases/latest)
-instead: a setup wizard in a normal window that installs Node.js and Marquee, asks the same questions,
+On Windows, download **LilinSetup.exe** from the [latest release](https://github.com/Tjabooo/lilin/releases/latest)
+instead: a setup wizard in a normal window that installs Node.js and Lilin, asks the same questions,
 can add Clipper for game clips and sets up start at boot ([docs/install/windows.md](docs/install/windows.md)).
 
 Prefer an installer script? It downloads a release, verifies its checksum, and keeps updates separate from
 your settings and data (read it first: [install.sh](install.sh), [install.ps1](install.ps1)):
 
 ```sh
-curl -fsSLO https://raw.githubusercontent.com/Tjabooo/marquee/v1.3.0/install.sh && sh install.sh
+curl -fsSLO https://raw.githubusercontent.com/Tjabooo/lilin/v2.0.0/install.sh && sh install.sh
 ```
 
 ```powershell
-irm https://raw.githubusercontent.com/Tjabooo/marquee/v1.3.0/install.ps1 -OutFile install.ps1; powershell -ExecutionPolicy Bypass -File install.ps1
+irm https://raw.githubusercontent.com/Tjabooo/lilin/v2.0.0/install.ps1 -OutFile install.ps1; powershell -ExecutionPolicy Bypass -File install.ps1
 ```
 
 ## Docker
 
 ```sh
-curl -fsSLO https://raw.githubusercontent.com/Tjabooo/marquee/v1.3.0/docker-compose.yml
-curl -fsSL https://raw.githubusercontent.com/Tjabooo/marquee/v1.3.0/.env.example -o marquee.env   # add your tokens
+curl -fsSLO https://raw.githubusercontent.com/Tjabooo/lilin/v2.0.0/docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/Tjabooo/lilin/v2.0.0/.env.example -o lilin.env   # add your tokens
 MEDIA_PATH=/srv/media docker compose up -d
 ```
 
-Images for `linux/amd64` and `linux/arm64` are published as `ghcr.io/tjabooo/marquee`. Optional
+Images for `linux/amd64` and `linux/arm64` are published as `ghcr.io/tjabooo/lilin`. Optional
 Compose profiles add qBittorrent, qBittorrent behind a VPN (Gluetun) and FlareSolverr. See
 [docs/install/docker.md](docs/install/docker.md).
 
@@ -122,13 +122,13 @@ platforms' standard procedures and haven't been verified on that hardware.
 
 ## Security model
 
-Marquee has its own sign-in (`node setup.js user add you@example.com --owner`; passwords hashed
+Lilin has its own sign-in (`node setup.js user add you@example.com --owner`; passwords hashed
 with scrypt, server-side sessions, rate-limited) and also accepts identity from Cloudflare Access
 or an authenticating proxy. On your home network everyone may share one account without signing in
 (`HOME_NETWORK_ACCESS=signin` turns that off); visitors from the internet always have to sign in.
 Requests from other websites (CSRF) and unknown host names (DNS rebinding) are refused.
 
-**Don't forward Marquee's port to the internet anyway.** It's plain HTTP: use Tailscale, Cloudflare
+**Don't forward Lilin's port to the internet anyway.** It's plain HTTP: use Tailscale, Cloudflare
 Tunnel with Access, or a reverse proxy with HTTPS: [docs/remote-access.md](docs/remote-access.md).
 To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
@@ -158,6 +158,6 @@ build step.
 
 ## Disclaimer
 
-Marquee is a media management tool. Its torrent search queries third-party sites and does not host,
+Lilin is a media management tool. Its torrent search queries third-party sites and does not host,
 index or distribute content. Downloading copyrighted material without permission is illegal in many
 countries; you are responsible for how you use this software.

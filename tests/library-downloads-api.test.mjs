@@ -8,7 +8,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 test('download polling adds complete episodes to their owner library before the maintenance round', { timeout: 15000 }, async (t) => {
-  const app = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-library-'));
+  const app = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-library-'));
   const root = fileURLToPath(new URL('../', import.meta.url));
   const media = path.join(app, 'media'); await fs.mkdir(media);
   let complete = false, fileReady = false, removed = false, added = false;
@@ -46,7 +46,7 @@ test('download polling adds complete episodes to their owner library before the 
   });
   await new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('Startup timeout: ' + logs)), 7000);
-    child.stdout.on('data', (c) => { const ready = /Marquee is running: http:\/\/localhost:(\d+)/.exec(String(c)); if (ready) { port = Number(ready[1]); clearTimeout(timer); resolve(); } });
+    child.stdout.on('data', (c) => { const ready = /Lilin is running: http:\/\/localhost:(\d+)/.exec(String(c)); if (ready) { port = Number(ready[1]); clearTimeout(timer); resolve(); } });
     child.once('error', reject); child.once('exit', () => { clearTimeout(timer); reject(new Error(logs)); });
   });
   const request = async (endpoint, body, email = 'member@test.local', expected = 200) => {

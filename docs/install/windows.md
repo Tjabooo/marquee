@@ -1,35 +1,35 @@
 # Windows
 
-Windows 10 (1803 or later) and Windows 11. Windows 11 is Marquee's main production host. Common
+Windows 10 (1803 or later) and Windows 11. Windows 11 is Lilin's main production host. Common
 steps are in [README.md](README.md).
 
 ## Easiest: the setup wizard
 
-Download **MarqueeSetup.exe** from the [latest release](https://github.com/Tjabooo/marquee/releases/latest)
+Download **LilinSetup.exe** from the [latest release](https://github.com/Tjabooo/lilin/releases/latest)
 and double-click it. It's a normal Windows window, no terminal:
 
 1. **Install:** installs Node.js LTS with winget if it's missing, then downloads the release, checks it
-   against `SHA256SUMS` and unpacks it (`%USERPROFILE%\marquee` unless you pick another folder; an
+   against `SHA256SUMS` and unpacks it (`%USERPROFILE%\lilin` unless you pick another folder; an
    existing installation is updated and keeps its settings and data). It also adds the release's
-   Android TV app, which Marquee offers at `/android`.
+   Android TV app, which Lilin offers at `/android`.
 2. **Library, Network, Sign-in, Services:** the same questions as `node setup.js`, with folder
    pickers, a live port check, **Test connections** for TMDB, OpenSubtitles and qBittorrent, and your
    owner password. FFmpeg can be installed from the Library page, and a new installation can keep its
    cache (browser copies and previews, which can grow to hundreds of GB) on another drive. Services
    also asks whether to hide adult content. With **Cloudflare Tunnel and Access** and a team domain,
-   *People sign in to Access with their Marquee password* sets Marquee up as Access's login, and the
+   *People sign in to Access with their Lilin password* sets Lilin up as Access's login, and the
    last page shows what to enter in Cloudflare (with a Copy button).
 3. **Game clips (add-on):** turn on Clipper to set up the Clips tab. *On this PC* downloads the pinned,
    hash-checked Clipper and installs it; *another Windows or Linux PC* gives you one command to paste
    there and can share the clips folder on the network for you.
-4. **Startup:** registers the `Marquee` task (start at boot, as you, no admin rights at run time).
+4. **Startup:** registers the `Lilin` task (start at boot, as you, no admin rights at run time).
    Your Windows password goes straight to Task Scheduler; Windows asks for admin permission once.
-5. **Finish:** the address to open, a Start-menu entry (**Marquee Setup**, to change settings later)
+5. **Finish:** the address to open, a Start-menu entry (**Lilin Setup**, to change settings later)
    and anything left to do.
 
 The wizard only drives the documented commands (`install.ps1`, `node setup.js --config`,
 `setup.js user add`, `setup.js clipper`, `install-service.ps1`), so the rest of this page still applies.
-Already installed? Open **Marquee Setup** from the Start menu, run `MarqueeSetup.exe` in the Marquee
+Already installed? Open **Lilin Setup** from the Start menu, run `LilinSetup.exe` in the Lilin
 folder, or `node setup.js gui`. Windows SmartScreen may warn about the unsigned exe: **More info → Run
 anyway**, or check it against `SHA256SUMS` first.
 
@@ -45,7 +45,7 @@ winget install --id qBittorrent.qBittorrent -e     # optional: downloads
 
 Open a new PowerShell afterwards so `node` is on PATH, and check `node --version` (22.16 or later).
 
-- **qBittorrent:** enable Tools → Options → Web UI, set its port to `8081` (8080 is Marquee's), and
+- **qBittorrent:** enable Tools → Options → Web UI, set its port to `8081` (8080 is Lilin's), and
   set a username and password.
 - **Apple TV:** install Python and pipx, then `pipx install pyatv` and pair once with `atvremote wizard`.
 - **Notes OCR** uses the OCR built into Windows; nothing to install.
@@ -56,33 +56,33 @@ Use an **elevated PowerShell** (Run as administrator) if you want setup to regis
 the same run.
 
 ```powershell
-Invoke-WebRequest https://raw.githubusercontent.com/Tjabooo/marquee/v1.3.0/install.ps1 -OutFile install.ps1
+Invoke-WebRequest https://raw.githubusercontent.com/Tjabooo/lilin/v2.0.0/install.ps1 -OutFile install.ps1
 notepad install.ps1
 powershell -ExecutionPolicy Bypass -File install.ps1
 ```
 
-This installs to `%USERPROFILE%\marquee`. Use `-Dir D:\Apps\Marquee` for another folder, `-Version v1.3.0`
+This installs to `%USERPROFILE%\lilin`. Use `-Dir D:\Apps\Lilin` for another folder, `-Version v2.0.0`
 to pin a release, `-DryRun` to preview. The script verifies the archive against `SHA256SUMS` and runs
 `node setup.js`.
 
-By hand: download `marquee-v1.3.0.tar.gz` and `SHA256SUMS` from the release, compare
-`(Get-FileHash marquee-v1.3.0.tar.gz).Hash` with the value in `SHA256SUMS`, then
-`tar -xzf marquee-v1.3.0.tar.gz -C D:\Apps\Marquee --strip-components=1` and run `node setup.js` there.
+By hand: download `lilin-v2.0.0.tar.gz` and `SHA256SUMS` from the release, compare
+`(Get-FileHash lilin-v2.0.0.tar.gz).Hash` with the value in `SHA256SUMS`, then
+`tar -xzf lilin-v2.0.0.tar.gz -C D:\Apps\Lilin --strip-components=1` and run `node setup.js` there.
 
 ## 3. Configure
 
-Setup suggests `%USERPROFILE%\Videos\Marquee` as the media folder; a folder such as `D:\Media` on a
-large drive is more typical. Settings are in `.env` in the Marquee folder (`notepad .env`); see
+Setup suggests `%USERPROFILE%\Videos\Lilin` as the media folder; a folder such as `D:\Media` on a
+large drive is more typical. Settings are in `.env` in the Lilin folder (`notepad .env`); see
 [../configuration.md](../configuration.md).
 
 ## 4. Start
 
-From the Marquee folder: `npm start`. `start-marquee.cmd` does the same in a loop that restarts
-Marquee if it exits, appending output to `logs\marquee.log`; the scheduled task runs it.
+From the Lilin folder: `npm start`. `start-lilin.cmd` does the same in a loop that restarts
+Lilin if it exits, appending output to `logs\lilin.log`; the scheduled task runs it.
 
 ## 5. Autostart
 
-From an elevated PowerShell in the Marquee folder:
+From an elevated PowerShell in the Lilin folder:
 
 ```powershell
 node setup.js service install
@@ -93,23 +93,23 @@ Microsoft account, the account password, not the PIN) and registers one task:
 
 | Task | Runs as | What it does |
 | --- | --- | --- |
-| `Marquee` | Your account, not elevated | At boot (after 30 seconds, before anyone signs in) runs `start-marquee.cmd`; every 2 minutes starts it again if it isn't running, since Windows occasionally skips a boot trigger |
+| `Lilin` | Your account, not elevated | At boot (after 30 seconds, before anyone signs in) runs `start-lilin.cmd`; every 2 minutes starts it again if it isn't running, since Windows occasionally skips a boot trigger |
 
-Nothing runs as SYSTEM or with admin rights. If every user of the PC can change files in the Marquee
+Nothing runs as SYSTEM or with admin rights. If every user of the PC can change files in the Lilin
 folder (the default for new folders directly under `C:\`), the installer limits write access to
 you, SYSTEM and administrators, so no other account can change what your task runs
-(`-KeepFolderAcl` skips this). Versions before 1.2 also registered a `Marquee Watchdog` task that
-ran a script from the Marquee folder as SYSTEM: re-running the installer removes it, and
+(`-KeepFolderAcl` skips this). Versions before 1.2 also registered a `Lilin Watchdog` task that
+ran a script from the Lilin folder as SYSTEM: re-running the installer removes it, and
 `node setup.js doctor` reports it while it's there.
 
 ```powershell
 node setup.js service status
-node setup.js service restart      # stops Marquee and the ffmpeg helpers it started, then starts it
+node setup.js service restart      # stops Lilin and the ffmpeg helpers it started, then starts it
 node setup.js service uninstall    # elevated
 ```
 
-To keep Marquee stopped on purpose, create an empty file named `.marquee-stopped` in the Marquee
-folder (the 2-minute trigger then leaves it alone) and run `Stop-ScheduledTask -TaskName Marquee`; if
+To keep Lilin stopped on purpose, create an empty file named `.lilin-stopped` in the Lilin
+folder (the 2-minute trigger then leaves it alone) and run `Stop-ScheduledTask -TaskName Lilin`; if
 `node.exe` keeps running, end it in Task Manager. Delete the file to let it start again.
 
 Run `node setup.js service install` again after changing your Windows password or moving Node.js.
@@ -118,7 +118,7 @@ Run `node setup.js service install` again after changing your Windows password o
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File install.ps1
-node "$env:USERPROFILE\marquee\setup.js" service restart
+node "$env:USERPROFILE\lilin\setup.js" service restart
 ```
 
 The previous version is kept in `.backup-<version>\`. See [README.md](README.md#updating).
@@ -126,7 +126,7 @@ The previous version is kept in `.backup-<version>\`. See [README.md](README.md#
 ## 7. Troubleshooting
 
 - **Other devices can't connect.** Make sure the network profile is Private, then allow the port:
-  `New-NetFirewallRule -DisplayName "Marquee" -Direction Inbound -Protocol TCP -LocalPort 8080 -Action Allow -Profile Private`
+  `New-NetFirewallRule -DisplayName "Lilin" -Direction Inbound -Protocol TCP -LocalPort 8080 -Action Allow -Profile Private`
   (elevated).
 - **Tools work in a terminal but not under the task.** `install-service.ps1` prints whether it can
   find `ffmpeg`, `ffprobe` and `atvscript`. Set `FFMPEG`, `FFPROBE` or `ATVSCRIPT` in `.env` to full
@@ -134,7 +134,7 @@ The previous version is kept in `.backup-<version>\`. See [README.md](README.md#
 - **"Run this from an elevated PowerShell".** Installing or removing the tasks needs administrator
   rights; status and restart don't.
 - **The task doesn't start after a password change.** Run `node setup.js service install` again.
-- Logs: `logs\marquee.log`. Run `node setup.js doctor`.
+- Logs: `logs\lilin.log`. Run `node setup.js doctor`.
 
 More in [../troubleshooting.md](../troubleshooting.md).
 

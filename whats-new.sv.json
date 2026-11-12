@@ -1,4 +1,21 @@
 {
+  "2026-11-12-lilin": {
+    "title": "Nytt namn: Lilin",
+    "items": {
+      "Same library, new name": {
+        "title": "Samma bibliotek, nytt namn",
+        "text": "Appen heter nu Lilin, med en ny adress och en ny ljus-ikon. Ditt bibliotek, var du är i det du tittar på, listor, anteckningar och rum finns kvar. Gamla länkar, bokmärken och inbjudningar fungerar fortfarande: de tar dig till den nya adressen."
+      },
+      "Sign in once more": {
+        "title": "Logga in en gång till",
+        "text": "Eftersom adressen har ändrats får du logga in en gång till på varje enhet. Sedan fungerar allt som vanligt."
+      },
+      "New icon on your home screen": {
+        "title": "Ny ikon på hemskärmen",
+        "text": "Om du har lagt till appen på telefonens hemskärm: ta bort den och lägg till den igen från den nya adressen för att få det nya namnet och ikonen. TV-apparna får dem med nästa uppdatering."
+      }
+    }
+  },
   "2026-11-11-scratch-drive": {
     "title": "Jämnare uppspelning under nedladdningar",
     "items": {
@@ -22,7 +39,7 @@
     "items": {
       "Your language starts in a second or two": {
         "title": "Ditt språk börjar på en sekund eller två",
-        "text": "Att välja ett annat ljudspråk betydde förut att vänta i flera minuter medan Marquee gjorde en kopia av hela videon. Nu spelas språket du väljer direkt, i upp till 1080p, från samma ställe. När kopian i full kvalitet är klar går spelaren tillbaka till den av sig själv."
+        "text": "Att välja ett annat ljudspråk betydde förut att vänta i flera minuter medan Lilin gjorde en kopia av hela videon. Nu spelas språket du väljer direkt, i upp till 1080p, från samma ställe. När kopian i full kvalitet är klar går spelaren tillbaka till den av sig själv."
       },
       "New Audio button": {
         "title": "Ny Ljud-knapp",
@@ -57,7 +74,7 @@
       },
       "The Android TV app keeps itself up to date": {
         "title": "Android TV-appen håller sig uppdaterad",
-        "text": "På Android 12 och senare uppdaterar Marquee-appen sig nu själv: en ny version hämtas i bakgrunden och installeras när du inte använder appen. Uppdatera en sista gång när den frågar (version 1.2.0), och tillåt Marquee att installera appar om TV:n frågar; sedan finns det inget att trycka på."
+        "text": "På Android 12 och senare uppdaterar Lilin-appen sig nu själv: en ny version hämtas i bakgrunden och installeras när du inte använder appen. Uppdatera en sista gång när den frågar (version 1.2.0), och tillåt Lilin att installera appar om TV:n frågar; sedan finns det inget att trycka på."
       }
     }
   },
@@ -93,7 +110,7 @@
     "items": {
       "The Android TV app works away from home": {
         "title": "Android TV-appen fungerar borta hemifrån",
-        "text": "Marquee-appen för Android TV och Google TV fungerar nu på alla TV-apparater med internet, inte bara hemma, så att vänner och familj på andra ställen också kan använda den. Hämta den under Inställningar → Android TV, logga in TV:n med koden från telefonen, så fungerar allt som förut. Den pratar engelska, eller svenska när TV:n är inställd på svenska. En TV som redan har appen erbjuder uppdateringen när den startar."
+        "text": "Lilin-appen för Android TV och Google TV fungerar nu på alla TV-apparater med internet, inte bara hemma, så att vänner och familj på andra ställen också kan använda den. Hämta den under Inställningar → Android TV, logga in TV:n med koden från telefonen, så fungerar allt som förut. Den pratar engelska, eller svenska när TV:n är inställd på svenska. En TV som redan har appen erbjuder uppdateringen när den startar."
       }
     }
   },
@@ -107,11 +124,11 @@
     }
   },
   "2026-11-10-android-tv": {
-    "title": "Marquee på Android TV",
+    "title": "Lilin på Android TV",
     "items": {
-      "A Marquee app for Android TV": {
-        "title": "En Marquee-app för Android TV",
-        "text": "Marquee har nu en app för Android TV och Google TV: Chromecast med Google TV, Nvidia Shield och TV-apparater med Google TV inbyggt. Den ser ut och fungerar precis som Samsung-appen. Öppna Inställningar → Android TV på telefonen hemma och följ stegen för att installera den på en TV. Det tar några minuter, och sedan håller appen sig uppdaterad själv."
+      "A Lilin app for Android TV": {
+        "title": "En Lilin-app för Android TV",
+        "text": "Lilin har nu en app för Android TV och Google TV: Chromecast med Google TV, Nvidia Shield och TV-apparater med Google TV inbyggt. Den ser ut och fungerar precis som Samsung-appen. Öppna Inställningar → Android TV på telefonen hemma och följ stegen för att installera den på en TV. Det tar några minuter, och sedan håller appen sig uppdaterad själv."
       }
     }
   },
@@ -133,7 +150,7 @@
     "items": {
       "Updates come as a notification": {
         "title": "Uppdateringar kommer som en avisering",
-        "text": "När Marquee får något nytt får din telefon eller dator en avisering med en kort sammanfattning. Tryck på den för att läsa hela anteckningen. Vill du inte ha dem? Stäng av Uppdateringar av Marquee under Inställningar → Aviseringar."
+        "text": "När Lilin får något nytt får din telefon eller dator en avisering med en kort sammanfattning. Tryck på den för att läsa hela anteckningen. Vill du inte ha dem? Stäng av Uppdateringar av Lilin under Inställningar → Aviseringar."
       }
     }
   },
@@ -166,16 +183,16 @@
       }
     }
   },
-  "2026-11-10-marquee-passwords": {
+  "2026-11-10-lilin-passwords": {
     "title": "Logga in med ett eget lösenord",
     "items": {
       "No more codes by email": {
         "title": "Inga fler koder via mejl",
-        "text": "Marquee loggar nu in dig med din mejladress och ett eget lösenord i stället för en kod som skickas till din inkorg. Har du inte valt något lösenord än ber Marquee om ett nästa gång du öppnar den. På en ny telefon eller dator loggar du in med mejladressen och lösenordet."
+        "text": "Lilin loggar nu in dig med din mejladress och ett eget lösenord i stället för en kod som skickas till din inkorg. Har du inte valt något lösenord än ber Lilin om ett nästa gång du öppnar den. På en ny telefon eller dator loggar du in med mejladressen och lösenordet."
       },
       "Invites sign people straight in": {
         "title": "Inbjudna loggas in direkt",
-        "text": "Den du bjuder in väljer ett lösenord på inbjudningssidan och kommer direkt in i Marquee, utan någon Cloudflare-inloggning att förklara."
+        "text": "Den du bjuder in väljer ett lösenord på inbjudningssidan och kommer direkt in i Lilin, utan någon Cloudflare-inloggning att förklara."
       },
       "Password links": {
         "title": "Lösenordslänkar",
@@ -205,7 +222,7 @@
     "items": {
       "No more stutter at the start of a trimmed clip": {
         "title": "Inget mer hack i början av klippta klipp",
-        "text": "Klipp du klippt i Marquee brukade frysa och ladda en eller två sekunder i början och sedan plötsligt spela som vanligt. Nya klipp spelar nu mjukt från första bilden, börjar fortfarande på exakt den bild du valde och har full kvalitet."
+        "text": "Klipp du klippt i Lilin brukade frysa och ladda en eller två sekunder i början och sedan plötsligt spela som vanligt. Nya klipp spelar nu mjukt från första bilden, börjar fortfarande på exakt den bild du valde och har full kvalitet."
       }
     }
   },
@@ -214,7 +231,7 @@
     "items": {
       "Skip intro works on more episodes": {
         "title": "Hoppa över intro fungerar på fler avsnitt",
-        "text": "Vissa avsnitt spelar länge innan förtexterna kommer, som ett i Better Call Saul där det tar över nio minuter. Marquee hittar nu de förtexterna också, så knappen Hoppa över intro dyker upp."
+        "text": "Vissa avsnitt spelar länge innan förtexterna kommer, som ett i Better Call Saul där det tar över nio minuter. Lilin hittar nu de förtexterna också, så knappen Hoppa över intro dyker upp."
       }
     }
   },
@@ -398,11 +415,11 @@
     }
   },
   "2026-11-08-languages": {
-    "title": "Marquee på svenska",
+    "title": "Lilin på svenska",
     "items": {
       "Choose your language": {
         "title": "Välj ditt språk",
-        "text": "Marquee finns nu på engelska och svenska. Välj under Inställningar → Språk så gäller det överallt: menyer, spelaren, meddelanden och aviseringar, på alla enheter du loggar in på. Beskrivningar och genrer följer också språket, medan titlar behåller sina namn."
+        "text": "Lilin finns nu på engelska och svenska. Välj under Inställningar → Språk så gäller det överallt: menyer, spelaren, meddelanden och aviseringar, på alla enheter du loggar in på. Beskrivningar och genrer följer också språket, medan titlar behåller sina namn."
       },
       "One TV app, in Swedish": {
         "title": "En TV-app, på svenska",
@@ -415,7 +432,7 @@
     "items": {
       "Subtitles written by people come first": {
         "title": "Undertexter skrivna av människor kommer först",
-        "text": "Marquee väljer nu alltid undertexter skrivna av människor när de finns. När det bara finns en maskinöversättning står det ”maskinöversatt” vid språket så att du vet vad du får, och den byts ut automatiskt när det dyker upp undertexter skrivna av människor."
+        "text": "Lilin väljer nu alltid undertexter skrivna av människor när de finns. När det bara finns en maskinöversättning står det ”maskinöversatt” vid språket så att du vet vad du får, och den byts ut automatiskt när det dyker upp undertexter skrivna av människor."
       }
     }
   },
@@ -424,7 +441,7 @@
     "items": {
       "Ready before you press play": {
         "title": "Klart innan du trycker på spela",
-        "text": "När nya avsnitt kommer eller en säsong uppgraderas hittar Marquee nu intron och eftertexter i bakgrunden, så Hoppa över intro och Nästa kommer mer sällan för sent första gången du tittar. Uppgraderade avsnitt behåller också det som redan hittats."
+        "text": "När nya avsnitt kommer eller en säsong uppgraderas hittar Lilin nu intron och eftertexter i bakgrunden, så Hoppa över intro och Nästa kommer mer sällan för sent första gången du tittar. Uppgraderade avsnitt behåller också det som redan hittats."
       }
     }
   },
@@ -472,11 +489,11 @@
     "items": {
       "Best Quality means best picture": {
         "title": "Bästa kvalitet betyder bästa bild",
-        "text": "Med Nedladdningskvalitet på Bästa kvalitet valde Marquee förut den populäraste utgåvan, och det är ofta en pytteliten omkodning som ser suddig ut på en stor skärm. Nu ser den på hur mycket bild en utgåva verkligen har (storleken för upplösningen, var den kommer ifrån och vem som gjort den), så du får en riktig BluRay- eller webbutgåva när en finns. Balanserad hoppar också över utgåvor som är alldeles för små för sin upplösning."
+        "text": "Med Nedladdningskvalitet på Bästa kvalitet valde Lilin förut den populäraste utgåvan, och det är ofta en pytteliten omkodning som ser suddig ut på en stor skärm. Nu ser den på hur mycket bild en utgåva verkligen har (storleken för upplösningen, var den kommer ifrån och vem som gjort den), så du får en riktig BluRay- eller webbutgåva när en finns. Balanserad hoppar också över utgåvor som är alldeles för små för sin upplösning."
       },
       "Upgrade quality": {
         "title": "Uppgradera kvalitet",
-        "text": "Har du en säsong som ser dålig ut? Öppna Ladda ner på serien, välj säsongen och tryck på Uppgradera kvalitet. Marquee letar efter en klart bättre utgåva, laddar ner den och byter ut varje avsnitt så snart det nya är klart. Du behåller din plats i varje avsnitt. Finns inget bättre får du veta det."
+        "text": "Har du en säsong som ser dålig ut? Öppna Ladda ner på serien, välj säsongen och tryck på Uppgradera kvalitet. Lilin letar efter en klart bättre utgåva, laddar ner den och byter ut varje avsnitt så snart det nya är klart. Du behåller din plats i varje avsnitt. Finns inget bättre får du veta det."
       }
     }
   },
@@ -485,7 +502,7 @@
     "items": {
       "Names and I/l mix-ups fixed": {
         "title": "Namn och I/l-förväxlingar fixade",
-        "text": "Vissa utgåvor har undertexter som lästs av från skivan av en dator, så namn och förkortningar får små bokstäver (”cuddy”, ”nicu”) och I och l byter plats (”ls there”, ”l'm”). Marquee fixar nu det här i engelska undertexter medan du tittar, på webbplatsen, TV-apparater och vid casting. Den lär sig hur namn stavas från andra undertexter i biblioteket, så den blir bättre när biblioteket växer."
+        "text": "Vissa utgåvor har undertexter som lästs av från skivan av en dator, så namn och förkortningar får små bokstäver (”cuddy”, ”nicu”) och I och l byter plats (”ls there”, ”l'm”). Lilin fixar nu det här i engelska undertexter medan du tittar, på webbplatsen, TV-apparater och vid casting. Den lär sig hur namn stavas från andra undertexter i biblioteket, så den blir bättre när biblioteket växer."
       }
     }
   },
@@ -516,11 +533,11 @@
     "items": {
       "Anime downloads from Nyaa": {
         "title": "Animenedladdningar från Nyaa",
-        "text": "Marquee söker nu också på Nyaa, där anime släpps. Ladda ner säsong på en anime väljer ett helt paket (en nedladdning för en säsong, även 170 avsnitt) i stället för en torrent per avsnitt, och hittar enskilda avsnitt hur de än är numrerade: ”Black Clover - 176”, ”Black Clover 2nd Season - 06” och ”S02E06” är nu samma avsnitt."
+        "text": "Lilin söker nu också på Nyaa, där anime släpps. Ladda ner säsong på en anime väljer ett helt paket (en nedladdning för en säsong, även 170 avsnitt) i stället för en torrent per avsnitt, och hittar enskilda avsnitt hur de än är numrerade: ”Black Clover - 176”, ”Black Clover 2nd Season - 06” och ”S02E06” är nu samma avsnitt."
       },
       "Anime seasons line up": {
         "title": "Animesäsonger stämmer",
-        "text": "Anime som TMDB räknar annorlunda (Frierens två säsonger är en på TMDB, Jujutsu Kaisens tre säsonger också) hamnar på rätt säsong och avsnitt i ditt bibliotek, under sitt rätta namn, och Marquee vet vilka avsnitt du redan har så att inget laddas ner två gånger."
+        "text": "Anime som TMDB räknar annorlunda (Frierens två säsonger är en på TMDB, Jujutsu Kaisens tre säsonger också) hamnar på rätt säsong och avsnitt i ditt bibliotek, under sitt rätta namn, och Lilin vet vilka avsnitt du redan har så att inget laddas ner två gånger."
       },
       "Subtitles on by default": {
         "title": "Undertexter på som standard",
@@ -529,11 +546,11 @@
     }
   },
   "2026-11-07-jellyfin": {
-    "title": "Marquee i Jellyfin",
+    "title": "Lilin i Jellyfin",
     "items": {
       "Watch your library in Jellyfin": {
         "title": "Titta på ditt bibliotek i Jellyfin",
-        "text": "Har du en egen Jellyfin? Installera Marquee-tillägget där, öppna dess inställningar och ange koden det visar under Inställningar → Jellyfin här. Dina filmer och serier syns då i alla Jellyfin-appar, och det du ser där dyker också upp i Fortsätt titta här."
+        "text": "Har du en egen Jellyfin? Installera Lilin-tillägget där, öppna dess inställningar och ange koden det visar under Inställningar → Jellyfin här. Dina filmer och serier syns då i alla Jellyfin-appar, och det du ser där dyker också upp i Fortsätt titta här."
       }
     }
   },
@@ -542,7 +559,7 @@
     "items": {
       "A lighter stream for big files on your phone": {
         "title": "En lättare ström för stora filer på telefonen",
-        "text": "4K-filmer och andra väldigt stora filer brukade hacka på telefoner. Nu spelar Marquee dem på en telefon som en lättare 1080p-ström som skapas direkt, så de startar snabbt och flyter på, även på mobildata. Originalfilen på servern förblir precis som den är."
+        "text": "4K-filmer och andra väldigt stora filer brukade hacka på telefoner. Nu spelar Lilin dem på en telefon som en lättare 1080p-ström som skapas direkt, så de startar snabbt och flyter på, även på mobildata. Originalfilen på servern förblir precis som den är."
       },
       "Pick the quality yourself": {
         "title": "Välj kvaliteten själv",
@@ -553,13 +570,13 @@
   "2026-11-07-tv-preview-browse": {
     "title": "Bläddra och sök på TV:n (Preview)",
     "items": {
-      "A bigger Discover in Marquee Preview": {
-        "title": "Ett större Upptäck i Marquee Preview",
-        "text": "I TV-appen Marquee Preview fortsätter raderna i Upptäck nu att laddas medan du rör dig längs dem, slutar i Visa alla (ett helt rutnät) och följs av en rad med genrer och en rad per genre. Flikarna Filmer / Serier högst upp begränsar urvalet, och titeln du står på fyller skärmens övre del med sin beskrivning. Genresidor kan sorteras efter Populärt, Högst betyg eller Nyast."
+      "A bigger Discover in Lilin Preview": {
+        "title": "Ett större Upptäck i Lilin Preview",
+        "text": "I TV-appen Lilin Preview fortsätter raderna i Upptäck nu att laddas medan du rör dig längs dem, slutar i Visa alla (ett helt rutnät) och följs av en rad med genrer och en rad per genre. Flikarna Filmer / Serier högst upp begränsar urvalet, och titeln du står på fyller skärmens övre del med sin beskrivning. Genresidor kan sorteras efter Populärt, Högst betyg eller Nyast."
       },
       "Search and genres on the TV": {
         "title": "Sök och genrer på TV:n",
-        "text": "Marquee Preview har en söksida med skärmtangentbord (ett riktigt tangentbord fungerar också): dina egna titlar visas direkt, allt annat från TMDB en stund senare. Ditt bibliotek på TV:n har nu också en rad för varje genre du har något i."
+        "text": "Lilin Preview har en söksida med skärmtangentbord (ett riktigt tangentbord fungerar också): dina egna titlar visas direkt, allt annat från TMDB en stund senare. Ditt bibliotek på TV:n har nu också en rad för varje genre du har något i."
       }
     }
   },
@@ -595,7 +612,7 @@
     "items": {
       "Cache on any drive": {
         "title": "Cache på valfri enhet",
-        "text": "Den nya inställningen CACHE_DIR i .env lägger webbläsarkopior, förhandsvisningar på tidslinjen och delningskopior på en större enhet än Marquees egen mapp."
+        "text": "Den nya inställningen CACHE_DIR i .env lägger webbläsarkopior, förhandsvisningar på tidslinjen och delningskopior på en större enhet än Lilins egen mapp."
       },
       "A cap and a safety margin": {
         "title": "En gräns och en säkerhetsmarginal",
@@ -630,7 +647,7 @@
     "items": {
       "Two conversions at once": {
         "title": "Två konverteringar samtidigt",
-        "text": "Marquee gör nu den snabba kopian för iPhone och Apple TV och den långsammare kopian för äldre webbläsare samtidigt, i stället för en i taget. En ny film väntar inte längre bakom en annan films långa konvertering."
+        "text": "Lilin gör nu den snabba kopian för iPhone och Apple TV och den långsammare kopian för äldre webbläsare samtidigt, i stället för en i taget. En ny film väntar inte längre bakom en annan films långa konvertering."
       },
       "Full quality in more browsers": {
         "title": "Full kvalitet i fler webbläsare",
@@ -670,7 +687,7 @@
     "items": {
       "Adult content is blocked": {
         "title": "Vuxeninnehåll blockeras",
-        "text": "Marquee laddar inte längre ner porr. Det utelämnas från torrentsökningen, och länkar eller .torrent-filer för det nekas. Visar det sig att en nedladdning innehåller det när den startat tas den bort direkt."
+        "text": "Lilin laddar inte längre ner porr. Det utelämnas från torrentsökningen, och länkar eller .torrent-filer för det nekas. Visar det sig att en nedladdning innehåller det när den startat tas den bort direkt."
       }
     }
   },
@@ -710,7 +727,7 @@
     "items": {
       "Add your picture": {
         "title": "Lägg till din bild",
-        "text": "Inställningar: tryck på cirkeln bredvid ditt namn för att lägga till en profilbild. Dra den på plats, zooma, spara. Den visas där ditt namn syns: Gillad av, Populärt på Marquee, tittarkvällar, rumschatt och Wrapped."
+        "text": "Inställningar: tryck på cirkeln bredvid ditt namn för att lägga till en profilbild. Dra den på plats, zooma, spara. Den visas där ditt namn syns: Gillad av, Populärt på Lilin, tittarkvällar, rumschatt och Wrapped."
       },
       "Watch Together, redone": {
         "title": "Titta tillsammans, omgjort",
@@ -734,9 +751,9 @@
   "2026-11-05-setup-wizard": {
     "title": "Installation i ett fönster",
     "items": {
-      "Marquee Setup for Windows": {
-        "title": "Marquee Setup för Windows",
-        "text": "Att installera Marquee på Windows kräver inte längre en terminal. Marquee Setup (i Start-menyn, eller MarqueeSetup.exe från utgivningssidan) tar dig genom bibliotek, nätverk, inloggning, tjänster och automatisk start, och kontrollerar dina nycklar och portar längs vägen."
+      "Lilin Setup for Windows": {
+        "title": "Lilin Setup för Windows",
+        "text": "Att installera Lilin på Windows kräver inte längre en terminal. Lilin Setup (i Start-menyn, eller LilinSetup.exe från utgivningssidan) tar dig genom bibliotek, nätverk, inloggning, tjänster och automatisk start, och kontrollerar dina nycklar och portar längs vägen."
       },
       "Game clips as an add-on": {
         "title": "Spelklipp som tillägg",
@@ -747,9 +764,9 @@
   "2026-11-05-app-icon": {
     "title": "En ny hemskärmsikon",
     "items": {
-      "Marquee in lights": {
-        "title": "Marquee i neonljus",
-        "text": "Marquee har en ny ikon när du lägger till den på telefonens hemskärm: ett upplyst M. På Android fyller den nu ikonens form ordentligt i stället för att sitta i en vit cirkel. Har du redan lagt till Marquee? Ta bort den från hemskärmen och lägg till den igen för att få den nya ikonen (iPhone behåller den gamla tills du gör det)."
+      "Lilin in lights": {
+        "title": "Lilin i neonljus",
+        "text": "Lilin har en ny ikon när du lägger till den på telefonens hemskärm: ett upplyst M. På Android fyller den nu ikonens form ordentligt i stället för att sitta i en vit cirkel. Har du redan lagt till Lilin? Ta bort den från hemskärmen och lägg till den igen för att få den nya ikonen (iPhone behåller den gamla tills du gör det)."
       }
     }
   },
@@ -758,7 +775,7 @@
     "items": {
       "Take it with you": {
         "title": "Ta med dig den",
-        "text": "Ska du någonstans utan wifi? Öppna en film eller ett avsnitt och tryck på Till telefonen (telefonknappen på avsnittsraderna). Marquee gör en liten kopia (Liten 480p, cirka 450 MB per timme, eller Standard 720p) som spelas i telefonens egen videospelare med inbyggda undertexter. Eller ladda ner filen i full kvalitet."
+        "text": "Ska du någonstans utan wifi? Öppna en film eller ett avsnitt och tryck på Till telefonen (telefonknappen på avsnittsraderna). Lilin gör en liten kopia (Liten 480p, cirka 450 MB per timme, eller Standard 720p) som spelas i telefonens egen videospelare med inbyggda undertexter. Eller ladda ner filen i full kvalitet."
       },
       "A whole season": {
         "title": "En hel säsong",
@@ -786,8 +803,8 @@
         "title": "Tummen upp, tummen ner",
         "text": "Betygsätt valfri film eller serie från dess sida. Alla ser vilka som gillat något (”Gillad av Anna och Ben”), medan en tumme ner förblir privat."
       },
-      "Popular on Marquee": {
-        "title": "Populärt på Marquee",
+      "Popular on Lilin": {
+        "title": "Populärt på Lilin",
         "text": "En ny rad högt upp i Upptäck visar vad folk här gillat och sett på senaste tiden."
       },
       "Chat and reactions in Watch Together": {
@@ -798,22 +815,22 @@
         "title": "Planera en tittarkväll",
         "text": "Välj en tid från en films eller ett avsnitts sida (personikonen) och skicka inbjudan. Alla får en nedräkning, och uppspelningen startar av sig själv för dem som är i rummet. Dina tittarkvällar väntar i biblioteket. Värden kan också starta ett pågående rum med en kort nedräkning."
       },
-      "Marquee Wrapped": {
-        "title": "Marquee Wrapped",
-        "text": "Inställningar → Marquee Wrapped berättar om ditt år: timmar du tittat, topptitlar, årets serie, dina mest aktiva dagar och vilka du tittat med. Den räknar från idag."
+      "Lilin Wrapped": {
+        "title": "Lilin Wrapped",
+        "text": "Inställningar → Lilin Wrapped berättar om ditt år: timmar du tittat, topptitlar, årets serie, dina mest aktiva dagar och vilka du tittat med. Den räknar från idag."
       }
     }
   },
   "2026-11-05-signin": {
-    "title": "Logga in på Marquee",
+    "title": "Logga in på Lilin",
     "items": {
       "Your own password": {
         "title": "Ditt eget lösenord",
-        "text": "Marquee kan nu sköta inloggningen själv. Om ägaren skapat ett konto åt dig ser du en inloggningssida när du inte är hemma, och i Inställningar kan du byta lösenord eller logga ut."
+        "text": "Lilin kan nu sköta inloggningen själv. Om ägaren skapat ett konto åt dig ser du en inloggningssida när du inte är hemma, och i Inställningar kan du byta lösenord eller logga ut."
       },
       "Safer from other websites": {
         "title": "Säkrare mot andra webbplatser",
-        "text": "Marquee ignorerar nu begäranden som andra webbplatser försöker skicka via din webbläsare, så en sida du besöker kan inte starta nedladdningar eller radera något."
+        "text": "Lilin ignorerar nu begäranden som andra webbplatser försöker skicka via din webbläsare, så en sida du besöker kan inte starta nedladdningar eller radera något."
       },
       "Server security": {
         "title": "Serversäkerhet",
@@ -826,11 +843,11 @@
     "items": {
       "Hear when it's ready": {
         "title": "Få veta när den är klar",
-        "text": "Slå på aviseringar i Inställningar så säger telefonen eller datorn till när en nedladdning går att titta på, även när Marquee är stängd."
+        "text": "Slå på aviseringar i Inställningar så säger telefonen eller datorn till när en nedladdning går att titta på, även när Lilin är stängd."
       },
       "New episodes": {
         "title": "Nya avsnitt",
-        "text": "När ett nytt avsnitt av en serie du följer eller har i biblioteket kommer till Marquee får du en avisering. Varje typ av avisering kan stängas av för sig."
+        "text": "När ett nytt avsnitt av en serie du följer eller har i biblioteket kommer till Lilin får du en avisering. Varje typ av avisering kan stängas av för sig."
       },
       "Invite people to watch": {
         "title": "Bjud in folk att titta",
@@ -868,7 +885,7 @@
     "items": {
       "Skip the opening titles": {
         "title": "Hoppa över förtexterna",
-        "text": "En Hoppa över intro-knapp visas nu medan en series förtexter spelas (eller tryck på S). Marquee hittar signaturmelodin genom att jämföra ett avsnitt med avsnitten runt omkring, så det fungerar även efter en lång inledning."
+        "text": "En Hoppa över intro-knapp visas nu medan en series förtexter spelas (eller tryck på S). Lilin hittar signaturmelodin genom att jämföra ett avsnitt med avsnitten runt omkring, så det fungerar även efter en lång inledning."
       },
       "Or skip them automatically": {
         "title": "Eller hoppa över dem automatiskt",
@@ -902,7 +919,7 @@
     "items": {
       "What's new, right here": {
         "title": "Nyheter, här",
-        "text": "Från och med nu visar Marquee vad som ändrats efter varje uppdatering, precis så här. Du kan läsa tidigare uppdateringar när som helst i Inställningar → Nyheter."
+        "text": "Från och med nu visar Lilin vad som ändrats efter varje uppdatering, precis så här. Du kan läsa tidigare uppdateringar när som helst i Inställningar → Nyheter."
       },
       "Next episode starts with the credits": {
         "title": "Nästa avsnitt börjar med eftertexterna",
@@ -967,7 +984,7 @@
       },
       "Notes and clips in Discord": {
         "title": "Anteckningar och klipp i Discord",
-        "text": "En delad anteckning visas som ett förhandsvisningskort i Discord med sina bilder eller sin video. Delade klipp öppnas i Marquees egen spelare, i full kvalitet."
+        "text": "En delad anteckning visas som ett förhandsvisningskort i Discord med sina bilder eller sin video. Delade klipp öppnas i Lilins egen spelare, i full kvalitet."
       },
       "Better clip editing": {
         "title": "Bättre klippredigering",
@@ -1000,11 +1017,11 @@
       },
       "A library that keeps itself current": {
         "title": "Ett bibliotek som håller sig självt uppdaterat",
-        "text": "Nya nedladdningar och ändringar dyker upp i biblioteket av sig själva, och när ett avsnitt tar slut erbjuder Marquee nästa."
+        "text": "Nya nedladdningar och ändringar dyker upp i biblioteket av sig själva, och när ett avsnitt tar slut erbjuder Lilin nästa."
       },
       "Notes": {
         "title": "Anteckningar",
-        "text": "En delad flik för meddelanden, länkar, foton och videor. Foton och videor som laddas upp från en telefon förblir privata i Marquee."
+        "text": "En delad flik för meddelanden, länkar, foton och videor. Foton och videor som laddas upp från en telefon förblir privata i Lilin."
       },
       "Rename clips": {
         "title": "Byt namn på klipp",
@@ -1013,15 +1030,15 @@
     }
   },
   "2026-11-02": {
-    "title": "Ditt eget Marquee",
+    "title": "Ditt eget Lilin",
     "items": {
       "Your own account": {
         "title": "Ditt eget konto",
-        "text": "Alla loggar in på sitt eget Marquee: ditt bibliotek, var du slutade och dina inställningar är dina. Om någon annan redan har en titel på servern lägger du till den i ditt bibliotek i stället för att ladda ner den igen."
+        "text": "Alla loggar in på sitt eget Lilin: ditt bibliotek, var du slutade och dina inställningar är dina. Om någon annan redan har en titel på servern lägger du till den i ditt bibliotek i stället för att ladda ner den igen."
       },
       "Settings": {
         "title": "Inställningar",
-        "text": "En flik för färgteman, standardundertexter, föredragen kvalitet, sidan Marquee öppnas på och hur biblioteket sorteras."
+        "text": "En flik för färgteman, standardundertexter, föredragen kvalitet, sidan Lilin öppnas på och hur biblioteket sorteras."
       },
       "Watch Together": {
         "title": "Titta tillsammans",
@@ -1029,7 +1046,7 @@
       },
       "Shows by season": {
         "title": "Serier per säsong",
-        "text": "Serier visas en gång i biblioteket med sina säsonger och avsnittsnamn. När det inte finns någon bra säsongsnedladdning hämtar Marquee den avsnitt för avsnitt."
+        "text": "Serier visas en gång i biblioteket med sina säsonger och avsnittsnamn. När det inte finns någon bra säsongsnedladdning hämtar Lilin den avsnitt för avsnitt."
       },
       "Library clean-up": {
         "title": "Biblioteksstädning",
@@ -1125,10 +1142,10 @@
     }
   },
   "2026-09-30": {
-    "title": "Marquee öppnar",
+    "title": "Lilin öppnar",
     "items": {
-      "Welcome to Marquee": {
-        "title": "Välkommen till Marquee",
+      "Welcome to Lilin": {
+        "title": "Välkommen till Lilin",
         "text": "Hitta filmer och serier, ladda ner dem till servern och strömma dem i webbläsaren, på vilken enhet som helst."
       }
     }

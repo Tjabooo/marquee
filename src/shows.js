@@ -9,7 +9,7 @@
 // don't count), and each distinct name is looked up on TMDB once, so spellings that TMDB resolves
 // to the same show end up together too. Without TMDB (no key, offline) the loose name alone groups.
 //
-// Lookups are cached in .marquee-shows.json: a found show for 30 days (its seasons and posters are
+// Lookups are cached in .lilin-shows.json: a found show for 30 days (its seasons and posters are
 // refreshed weekly, so new seasons appear), a name TMDB didn't know for a day.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -26,7 +26,7 @@ const pending = new Map();             // in-flight lookups, so a name is never 
 let saveTimer = null;
 
 export function initShows({ dataDir }) {
-  file = path.join(dataDir, '.marquee-shows.json');
+  file = path.join(dataDir, '.lilin-shows.json');
   try {
     const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
     cache = { localArt: saved.localArt || {}, overviews: saved.overviews || {}, names: saved.names || {}, shows: saved.shows || {}, films: saved.films || {}, filmFiles: saved.filmFiles || {}, filmDownloads: saved.filmDownloads || {}, showDownloads: saved.showDownloads || {}, genres: saved.genres || {} };

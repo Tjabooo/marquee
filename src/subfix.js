@@ -144,7 +144,7 @@ function listSubtitles(dir, out, depth = 0) {
     if (e.name.startsWith('.')) continue;
     const p = path.join(dir, e.name);
     if (e.isDirectory()) listSubtitles(p, out, depth + 1);
-    else if ((isEnglishName(e.name) || untagged(e.name)) && !e.name.includes('marquee-tmp')) out.push(p);
+    else if ((isEnglishName(e.name) || untagged(e.name)) && !e.name.includes('lilin-tmp')) out.push(p);
     if (out.length >= MAX_FILES) return;
   }
 }

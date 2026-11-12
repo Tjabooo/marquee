@@ -7,23 +7,23 @@ every configured integration, and says how to fix what it finds:
 node setup.js doctor             # add --offline to skip network checks
 ```
 
-Marquee also prints warnings for broken settings when it starts. Where the log is:
+Lilin also prints warnings for broken settings when it starts. Where the log is:
 
 | Running as | Log |
 | --- | --- |
 | Terminal (`npm start`) | the terminal |
-| Windows scheduled task | `logs\marquee.log` in the Marquee folder |
-| systemd | `journalctl -u marquee` (user service: `journalctl --user -u marquee`) |
-| launchd | `logs/marquee.log` in the Marquee folder |
-| Docker | `docker compose logs marquee` |
+| Windows scheduled task | `logs\lilin.log` in the Lilin folder |
+| systemd | `journalctl -u lilin` (user service: `journalctl --user -u lilin`) |
+| launchd | `logs/lilin.log` in the Lilin folder |
+| Docker | `docker compose logs lilin` |
 
 ## Starting
 
 | Problem | Fix |
 | --- | --- |
-| `Marquee needs Node.js 22.16 or later` / `no such module: fts5` | Install the current Node.js LTS. Distribution packages are often older; see your [platform guide](install/README.md). |
+| `Lilin needs Node.js 22.16 or later` / `no such module: fts5` | Install the current Node.js LTS. Distribution packages are often older; see your [platform guide](install/README.md). |
 | `Port 8080 is already in use` | Another program has the port. Set `PORT` in `.env`, or stop the other program. |
-| `DATA_DIR is ..., but the existing database is still in ...` | You set `DATA_DIR` without moving the data. Stop Marquee and run `node setup.js migrate-data`, or remove `DATA_DIR`. |
+| `DATA_DIR is ..., but the existing database is still in ...` | You set `DATA_DIR` without moving the data. Stop Lilin and run `node setup.js migrate-data`, or remove `DATA_DIR`. |
 | Starts, but a feature shows `off` | Its settings are blank or wrong. The startup lines and `GET /api/status` show what's enabled. |
 | Library empty after a reboot (Linux) | The media drive wasn't mounted yet. The systemd unit waits for `MEDIA_DIR`'s mount; re-run `node setup.js service install` after changing `MEDIA_DIR`. |
 | Docker container restarts with permission errors | `./data` and the media folder must be writable by `PUID:PGID` (`sudo chown -R 1000:1000 data`). |
@@ -32,7 +32,7 @@ Marquee also prints warnings for broken settings when it starts. Where the log i
 
 | Problem | Fix |
 | --- | --- |
-| Everyone shows as "Home network" through Cloudflare | Marquee doesn't trust the proxy's headers. If cloudflared runs on another machine or container, set `CF_ACCESS_TEAM_DOMAIN` + `CF_ACCESS_AUD`, or add its address to `TRUSTED_PROXIES`. See [remote-access.md](remote-access.md#how-accounts-work). |
+| Everyone shows as "Home network" through Cloudflare | Lilin doesn't trust the proxy's headers. If cloudflared runs on another machine or container, set `CF_ACCESS_TEAM_DOMAIN` + `CF_ACCESS_AUD`, or add its address to `TRUSTED_PROXIES`. See [remote-access.md](remote-access.md#how-accounts-work). |
 | Owner tabs missing | Your Access email must be in `ADMIN_EMAILS` (same spelling, any case). The Home network account is never an owner. |
 | Shared clip links ask for a sign-in | Add the Access **Bypass** application for `/c` ([remote-access.md](remote-access.md#cloudflare-tunnel-and-access)). |
 
@@ -43,7 +43,7 @@ Marquee also prints warnings for broken settings when it starts. Where the log i
 | No sound in the browser | The file has Dolby or DTS audio. Keep the player open; it switches to a fixed copy once ready. Needs ffmpeg. |
 | A video won't play on iPhone / Apple TV | It's waiting for its MP4 copy. Check the Library's state, and that ffmpeg is found (`doctor`). |
 | Conversions are slow | They run on the CPU unless NVENC works; see [hardware-acceleration.md](hardware-acceleration.md). |
-| Firefox plays HEVC files late | Firefox can't play HEVC; Marquee makes an H.264 copy. Recent downloads get one right away (`BROWSER_H264_DAYS`). |
+| Firefox plays HEVC files late | Firefox can't play HEVC; Lilin makes an H.264 copy. Recent downloads get one right away (`BROWSER_H264_DAYS`). |
 
 ## Casting
 
@@ -66,5 +66,5 @@ Marquee also prints warnings for broken settings when it starts. Where the log i
 
 ## Still stuck
 
-Open an issue at <https://github.com/Tjabooo/marquee/issues> with the output of
+Open an issue at <https://github.com/Tjabooo/lilin/issues> with the output of
 `node setup.js doctor --offline` (it prints no secrets) and the relevant log lines.

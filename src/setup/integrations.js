@@ -65,7 +65,7 @@ export async function checkOpenSubtitles(env, fetchImpl = fetch) {
   if (!env.OPENSUBTITLES_API_KEY) return null;
   try {
     const r = await get(fetchImpl, 'https://api.opensubtitles.com/api/v1/infos/formats', {
-      headers: { 'Api-Key': env.OPENSUBTITLES_API_KEY, 'User-Agent': 'Marquee v1.1', Accept: 'application/json' },
+      headers: { 'Api-Key': env.OPENSUBTITLES_API_KEY, 'User-Agent': 'Lilin v1.1', Accept: 'application/json' },
     });
     if (r.status === 401 || r.status === 403) return result('OpenSubtitles', false, 'API key rejected (opensubtitles.com → Profile → API consumers)');
     return result('OpenSubtitles', r.ok, r.ok ? 'API key accepted' : `HTTP ${r.status}`);
@@ -96,7 +96,7 @@ export async function checkAdGuard(env, fetchImpl = fetch) {
   } catch (e) { return result('AdGuard Home', false, `no answer at ${base} (${reason(e)})`); }
 }
 
-// Invites need a token that can read the Zero Trust list Marquee manages. Reading the list proves
+// Invites need a token that can read the Zero Trust list Lilin manages. Reading the list proves
 // token, account and list ID together without changing anything.
 export async function checkCloudflare(env, fetchImpl = fetch) {
   if (!env.CF_API_TOKEN) return null;

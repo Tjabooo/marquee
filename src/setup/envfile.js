@@ -1,5 +1,5 @@
 // Reads and edits .env without losing anything: comments, blank lines, key order and keys this
-// version of Marquee doesn't know about all survive. Only the keys being set change, in place;
+// version of Lilin doesn't know about all survive. Only the keys being set change, in place;
 // new keys are appended at the end.
 import crypto from 'node:crypto';
 import fs from 'node:fs';

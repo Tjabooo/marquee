@@ -9,7 +9,7 @@ import { NotesStore } from '../src/notes.js';
 import { NotesOcr, windowsOcr, tesseractOcr, tesseractAvailable } from '../src/notes-ocr.js';
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite');
 
-const temp = () => fs.mkdtemp(path.join(os.tmpdir(), 'marquee-notes-ocr-'));
+const temp = () => fs.mkdtemp(path.join(os.tmpdir(), 'lilin-notes-ocr-'));
 const quiet = { warn() {} };
 async function addFile(store, id, mime, body = 'x') {
   await fs.mkdir(store.fileDir, { recursive: true });
@@ -60,7 +60,7 @@ test('a failed OCR run leaves images pending and retries later', async () => {
 });
 
 test('older databases gain keyword search without losing notes', async () => {
-  const root = await temp(), db = new DatabaseSync(path.join(root, '.marquee.db'));
+  const root = await temp(), db = new DatabaseSync(path.join(root, '.lilin.db'));
   db.exec(`CREATE TABLE note_files(id TEXT PRIMARY KEY, name TEXT NOT NULL, mime TEXT NOT NULL, size INTEGER NOT NULL);
     CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT NOT NULL, attachments TEXT NOT NULL DEFAULT '[]', author TEXT NOT NULL,
       created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, version INTEGER NOT NULL DEFAULT 1, pinned INTEGER NOT NULL DEFAULT 0,
@@ -85,19 +85,19 @@ test('Windows OCR reads text from a real image', { skip: process.platform !== 'w
   const dir = await temp(), file = path.join(dir, 'sign.png'), bad = path.join(dir, 'bad.png');
   try {
     const draw = `Add-Type -AssemblyName System.Drawing; $b = New-Object Drawing.Bitmap 900,200; $g = [Drawing.Graphics]::FromImage($b);
-      $g.Clear([Drawing.Color]::White); $g.DrawString('MARQUEE GATE 4711', (New-Object Drawing.Font 'Arial',48), [Drawing.Brushes]::Black, 20, 50);
+      $g.Clear([Drawing.Color]::White); $g.DrawString('LILIN GATE 4711', (New-Object Drawing.Font 'Arial',48), [Drawing.Brushes]::Black, 20, 50);
       $b.Save('${file.replace(/'/g, "''")}', [Drawing.Imaging.ImageFormat]::Png)`;
     assert.equal(spawnSync('powershell.exe', ['-NoProfile', '-Command', draw]).status, 0);
     await fs.writeFile(bad, 'not an image');
     const [good, broken] = await windowsOcr([file, bad]);
-    assert.match(good.text, /MARQUEE GATE 4711/i);
+    assert.match(good.text, /LILIN GATE 4711/i);
     assert.ok(broken.error);
   } finally { await fs.rm(dir, { recursive: true, force: true }); }
 });
 
 test('Tesseract reads text from an image when it is installed', async (t) => {
   if (!tesseractAvailable()) return t.skip('tesseract not installed');
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-tess-'));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-tess-'));
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
   const img = path.join(dir, 'text.png');
   const made = spawnSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', "color=white:s=640x160,drawtext=text='INVOICE 4721':fontsize=64:fontcolor=black:x=20:y=40", '-frames:v', '1', img]);

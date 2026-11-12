@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-  <style name="Marquee" parent="@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen">
+  <style name="Lilin" parent="@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen">
     <item name="android:windowBackground">@color/plum</item>
     <item name="android:colorBackground">@color/plum</item>
     <item name="android:windowSplashScreenBackground">@color/velvet_deep</item>

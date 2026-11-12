@@ -1,0 +1,10 @@
+[Unit]
+Description=Check every 30 s and report to Lilin's House tab when failed services change, else every 5 min (home network only)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=30s
+AccuracySec=2s
+
+[Install]
+WantedBy=timers.target

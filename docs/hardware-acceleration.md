@@ -1,15 +1,15 @@
 # Hardware acceleration
 
-Marquee re-encodes video only when it has to: an MP4 copy whose video can't simply be copied
+Lilin re-encodes video only when it has to: an MP4 copy whose video can't simply be copied
 (stream copy is used whenever possible), an H.264 copy of HEVC for browsers that can't play HEVC,
 and shared clip copies. Everything else (audio fixes, remuxing, previews from keyframes) runs
 without a video encoder.
 
-## What Marquee uses
+## What Lilin uses
 
 | Encoder | Used for | When |
 | --- | --- | --- |
-| NVIDIA NVENC (`h264_nvenc`) | Conversions, browser copies, clip shares | ffmpeg lists `h264_nvenc`. If an NVENC encode fails, Marquee switches to libx264 for the rest of the run. |
+| NVIDIA NVENC (`h264_nvenc`) | Conversions, browser copies, clip shares | ffmpeg lists `h264_nvenc`. If an NVENC encode fails, Lilin switches to libx264 for the rest of the run. |
 | libx264 (CPU) | Everything else | Always available in standard ffmpeg builds. |
 
 Other hardware encoders (Intel Quick Sync, VAAPI, AMD AMF, Apple VideoToolbox) are **not used yet**,
@@ -22,9 +22,9 @@ encoder ffmpeg lists and reports which work, so you can see what a future versio
 node setup.js doctor --offline
 ```
 
-The **Media tools** section shows the ffmpeg version, the encoder Marquee will use, and whether a
+The **Media tools** section shows the ffmpeg version, the encoder Lilin will use, and whether a
 listed NVENC actually works (a driver, a missing `libcuda`, or a session limit makes it fail even
-when the GPU is present). House → Sharing (Windows) shows GPU encoder sessions while Marquee runs;
+when the GPU is present). House → Sharing (Windows) shows GPU encoder sessions while Lilin runs;
 `NVENC_SESSION_LIMIT` (default 8) is how many it assumes the card allows.
 
 ## NVIDIA
@@ -37,7 +37,7 @@ when the GPU is present). House → Sharing (Windows) shows GPU encoder sessions
 
   ```sh
   docker compose -f docker-compose.yml -f docker/compose.nvidia.yml up -d
-  docker compose exec marquee node setup.js doctor --offline
+  docker compose exec lilin node setup.js doctor --offline
   ```
 
   The image's Debian ffmpeg includes NVENC; the toolkit provides the driver libraries at runtime.

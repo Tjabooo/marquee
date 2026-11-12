@@ -1,9 +1,9 @@
-// Notifications: Web Push straight from Marquee, still with no dependencies. The browser gives us a
+// Notifications: Web Push straight from Lilin, still with no dependencies. The browser gives us a
 // push subscription (an endpoint at its vendor's push service plus two keys); to notify someone we
 // encrypt a small JSON message for that browser (RFC 8291, aes128gcm) and POST it to the endpoint,
 // signed with the server's VAPID key (RFC 8292, ES256 JWT). Everything is node:crypto.
 //
-// Kept in DATA_DIR/.marquee-push.json (mode 600, it holds the private key):
+// Kept in DATA_DIR/.lilin-push.json (mode 600, it holds the private key):
 //   vapid  the server's P-256 key pair, made on first start; browsers subscribe to its public half
 //   subs   one entry per device that turned notifications on: who it belongs to and its keys
 //
@@ -114,18 +114,18 @@ export function cleanSubscription(sub) {
 // Message text shown on the notification. url is a path on this server opened when it's tapped.
 function cleanMessage({ title, body, url, tag }) {
   const text = (v, max) => String(v || '').replace(/\s+/g, ' ').trim().slice(0, max);
-  return { title: text(title, 120) || 'Marquee', body: text(body, 300), url: /^\/(?!\/)/.test(String(url || '')) ? String(url).slice(0, 300) : '/', tag: text(tag, 64) };
+  return { title: text(title, 120) || 'Lilin', body: text(body, 300), url: /^\/(?!\/)/.test(String(url || '')) ? String(url).slice(0, 300) : '/', tag: text(tag, 64) };
 }
 
 export class PushStore {
-  constructor(dataDir, { subject = 'https://github.com/Tjabooo/marquee', fetch = globalThis.fetch, now = Date.now, log = console } = {}) {
-    this.file = path.join(dataDir, '.marquee-push.json');
+  constructor(dataDir, { subject = 'https://github.com/Tjabooo/lilin', fetch = globalThis.fetch, now = Date.now, log = console } = {}) {
+    this.file = path.join(dataDir, '.lilin-push.json');
     this.subject = subject;
     this.fetch = fetch;
     this.now = now;
     this.log = log;
     let data = {};
-    try { data = JSON.parse(fs.readFileSync(this.file, 'utf8')); } catch (err) { if (err.code !== 'ENOENT') log.warn?.(`.marquee-push.json: ${err.message}`); }
+    try { data = JSON.parse(fs.readFileSync(this.file, 'utf8')); } catch (err) { if (err.code !== 'ENOENT') log.warn?.(`.lilin-push.json: ${err.message}`); }
     this.vapid = data.vapid?.publicKey && data.vapid?.privateKey ? data.vapid : makeVapidKeys();
     this.subs = Array.isArray(data.subs) ? data.subs.filter((s) => s && s.id && s.userId != null && s.endpoint) : [];
     if (!data.vapid) this.save();

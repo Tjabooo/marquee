@@ -1,4 +1,4 @@
-// Marquee web client. Plain ES modules, no build step.
+// Lilin web client. Plain ES modules, no build step.
 import { T, lang, langTag, locale, LANGUAGES, saveLanguage, translatePage } from './i18n.js';
 import { WatchSession, offsetCues } from './watch-sync.js';
 import { createNotesView } from './notes-view.js';
@@ -78,8 +78,8 @@ const icon = (name) => { const s = h('span'); s.innerHTML = ICONS[name]; return 
 const CLIENT_ID = (() => {
   const make = () => Array.from({ length: 4 }, () => Math.random().toString(36).slice(2, 10)).join('');
   try {
-    let id = localStorage.getItem('marquee:client');
-    if (!id) { id = make(); localStorage.setItem('marquee:client', id); }
+    let id = localStorage.getItem('lilin:client');
+    if (!id) { id = make(); localStorage.setItem('lilin:client', id); }
     return id;
   } catch { return make(); }
 })();
@@ -89,7 +89,7 @@ const TAB_ID = Math.random().toString(36).slice(2, 12);
 async function api(path, opts = {}) {
   let r;
   try {
-    r = await fetch(path, { ...opts, headers: { ...opts.headers, 'X-Marquee-Client': CLIENT_ID, 'X-Marquee-Tab': TAB_ID, 'X-Marquee-Lang': lang } });
+    r = await fetch(path, { ...opts, headers: { ...opts.headers, 'X-Lilin-Client': CLIENT_ID, 'X-Lilin-Tab': TAB_ID, 'X-Lilin-Lang': lang } });
   } catch (err) {
     if (err.name !== 'AbortError' && await signedOut()) throw new Error(T('You’ve been signed out. Sign in again to carry on.'));
     throw err;
@@ -101,7 +101,7 @@ async function api(path, opts = {}) {
   return data;
 }
 
-// Marquee's own sign-in (auth.js): a 401 with `signin` means this browser needs to sign in.
+// Lilin's own sign-in (auth.js): a 401 with `signin` means this browser needs to sign in.
 function toSignIn() {
   location.assign(`/signin?next=${encodeURIComponent(location.pathname + location.search + location.hash)}`);
 }
@@ -186,7 +186,7 @@ const prefs = () => state.me?.settings || {};
 // `versions`, best first. Which one plays here: the one you picked for the title, else the one you
 // picked for its season (matched by quality and source, so one choice covers a season pack), else
 // the best one, or on a phone the lightest 720p/1080p one. Picks are kept per device.
-const VERSION_PICKS = 'marquee:versions';
+const VERSION_PICKS = 'lilin:versions';
 let versionPicks = {};
 try { versionPicks = JSON.parse(localStorage.getItem(VERSION_PICKS)) || {}; } catch { /* blocked */ }
 const versionSeasonKey = (f) => (/^ep:/.test(f?.versionKey || '') ? f.versionKey.replace(/^ep:/, 'season:').replace(/:\d+$/, '') : null);
@@ -305,7 +305,7 @@ function serverMatchesFor(t) {
 // rest are mixed from them. The result is cached in localStorage so index.html can paint the right
 // colours before this script loads (no flash of the default theme).
 const THEMES = {
-  marquee: { name: 'Marquee', bg: '#1F1019', surface: '#2B1724', raised: '#3A2031', line: '#4B2C3F', text: '#F6EADF', muted: '#BA9DAD', accent: '#F4C152', alert: '#FF9B85' },
+  lilin: { name: 'Lilin', bg: '#1F1019', surface: '#2B1724', raised: '#3A2031', line: '#4B2C3F', text: '#F6EADF', muted: '#BA9DAD', accent: '#F4C152', alert: '#FF9B85' },
   midnight: { name: T('Midnight'), bg: '#0E1320', surface: '#161D2E', raised: '#1F2840', line: '#2A3552', text: '#E8EEF8', muted: '#96A3BD', accent: '#5CC8FF', alert: '#FF8A8A' },
   forest: { name: T('Forest'), bg: '#0F1A14', surface: '#16241C', raised: '#1E3127', line: '#2A4134', text: '#E9F2EA', muted: '#9DB5A4', accent: '#9BE07A', alert: '#FF9B85' },
   ember: { name: T('Ember'), bg: '#161312', surface: '#221D1B', raised: '#2E2724', line: '#3D3430', text: '#F5EDE8', muted: '#B3A49C', accent: '#FF7A3D', alert: '#FF8A8A' },
@@ -327,7 +327,7 @@ const luminance = (hex) => {
 
 // A saved theme ({ preset } or { preset: 'custom', colors }) -> the full set of colours.
 function themeColors(theme) {
-  const preset = THEMES[theme?.preset] || THEMES[state.rules?.defaultTheme] || THEMES.marquee;
+  const preset = THEMES[theme?.preset] || THEMES[state.rules?.defaultTheme] || THEMES.lilin;
   if (theme?.preset !== 'custom' || !theme.colors) return preset;
   const { bg, surface, text, accent } = theme.colors;
   const light = luminance(bg) > 0.5;
@@ -353,7 +353,7 @@ function applyTheme(theme) {
   root.dataset.scheme = light ? 'light' : 'dark';
   pageThemeColor = c.bg;
   if (!current) setTheme(c.bg);
-  try { localStorage.setItem('marquee:theme', JSON.stringify({ vars, scheme: light ? 'light' : 'dark' })); } catch { /* blocked */ }
+  try { localStorage.setItem('lilin:theme', JSON.stringify({ vars, scheme: light ? 'light' : 'dark' })); } catch { /* blocked */ }
 }
 
 // ---------- shared UI bits ----------
@@ -364,13 +364,13 @@ function notice(title, text, retry) {
     retry && h('button', { class: 'retry', onclick: retry }, T('Try again')));
 }
 
-// An empty state with personality: a marquee sign with a few bulbs lit, a line, and one way forward.
+// An empty state with personality: a lilin sign with a few bulbs lit, a line, and one way forward.
 function emptyState(title, text, action) {
   return h('div', { class: 'notice empty-state' },
-    h('div', { class: 'marquee-sign', 'aria-hidden': 'true' },
-      h('div', { class: 'marquee-sign-bulbs' }, Array.from({ length: 9 }, () => h('i'))),
-      h('div', { class: 'marquee-sign-word' }, 'Marquee'),
-      h('div', { class: 'marquee-sign-bulbs' }, Array.from({ length: 9 }, () => h('i')))),
+    h('div', { class: 'lilin-sign', 'aria-hidden': 'true' },
+      h('div', { class: 'lilin-sign-bulbs' }, Array.from({ length: 9 }, () => h('i'))),
+      h('div', { class: 'lilin-sign-word' }, 'Lilin'),
+      h('div', { class: 'lilin-sign-bulbs' }, Array.from({ length: 9 }, () => h('i')))),
     h('h3', {}, title),
     h('p', {}, text),
     action && h('button', { type: 'button', class: 'play-btn', onclick: action.run }, action.icon && icon(action.icon), action.label));
@@ -1133,7 +1133,7 @@ async function renderDiscover() {
   content.replaceChildren(homeSkeleton());
   try {
     const data = await cachedApi(`/api/discover/home?type=${disc.type}`, signal);
-    // Popular on Marquee arrives separately (it's quick, but shouldn't hold up TMDB's rows).
+    // Popular on Lilin arrives separately (it's quick, but shouldn't hold up TMDB's rows).
     const popularSlot = h('div', { class: 'popular-slot' });
     // Your own rows sit between TMDB's: what you're watching first, then picks from what you watched.
     const seeds = watchedSeeds();
@@ -2849,7 +2849,7 @@ function filmActions(t) {
       play.replaceChildren(icon('play'), h('span', {}, converting ? T('Preparing playback…') : partlyWatched(saved) ? T('Resume at {0}', fmtTime(saved.time)) : T('Play')));
       play.setAttribute('aria-disabled', String(Boolean(converting || playing)));
     }
-    // "Add to library" either way: someone else's copy here is added at once, otherwise Marquee fetches one.
+    // "Add to library" either way: someone else's copy here is added at once, otherwise Lilin fetches one.
     // Shown only when there's nothing to play and nothing on its way; while it runs it says what it's doing.
     // Dubbed: only a dual-audio copy counts as having it, so a subtitled one doesn't hide the button.
     const wantDub = dub.dubbing() && !s.ready.some(isDubbedCopy);
@@ -3046,7 +3046,7 @@ function showDownload(t, { season = null, onAdded = null } = {}) {
     submit.setAttribute('aria-disabled', String(locked || adding || !n || Boolean(useRange && !picked.length)));
     note.textContent = submit._add ? T('Someone already has this season here. Adding it makes no copy, so it’s ready to watch right away.')
       : useRange ? T('{0} of {1}–{2}. A season batch still serves a range: episodes outside it are skipped.', plural(picked.length, 'episode'), bounds().first, bounds().last)
-      : T('Marquee picks a good copy of the season and skips episodes you already have.');
+      : T('Lilin picks a good copy of the season and skips episodes you already have.');
     // The show's button: "Add to library" until some of it is yours, then "More episodes" for the rest.
     const addsAll = !dubbing && serverOnlyEpisodes(full).length > 0;
     dubBtn.hidden = !(addsAll && dub.anime && !addingAll);
@@ -3212,7 +3212,7 @@ function openPicker(file, opener) {
           notes.replaceChildren(h('p', { class: 'muted' }, T('You’re away from home, so the TVs there aren’t listed.')));
         } else {
           list.replaceChildren(h('li', {}, notice(T('You’re away from home'),
-            T('The TVs at home aren’t available from here, and this browser can’t cast to TVs near you. Open Marquee in Safari (AirPlay) or Chrome (Chromecast) to use one, or press Play to watch here.'))));
+            T('The TVs at home aren’t available from here, and this browser can’t cast to TVs near you. Open Lilin in Safari (AirPlay) or Chrome (Chromecast) to use one, or press Play to watch here.'))));
         }
         return;
       }
@@ -3698,7 +3698,7 @@ function openRemote(session, { replace = false } = {}) {
   let st = { state: 'loading', position: null, duration: null, volume: null };
   let dragging = false;
   let lastAction = 0;
-  // Skip intro / Up next on the phone, from the TV's reported position (the TV can't show Marquee's buttons).
+  // Skip intro / Up next on the phone, from the TV's reported position (the TV can't show Lilin's buttons).
   const cue = { intro: null, creditsAt: null, duration: null, lastPosition: null, introDone: false,
     dismissed: false, busy: false, error: '', autoLeft: null, autoTimer: null, announced: null };
 
@@ -4330,7 +4330,7 @@ function updatePartyCountdown() {
   countdownTimer ||= setInterval(() => { if (!party?.startsIn || party.startsIn <= 0) { party?.pulse(); } updatePartyCountdown(); }, 1000);
 }
 
-// ---- Marquee Wrapped: a story of slides over everything; tap or arrow keys to move ----
+// ---- Lilin Wrapped: a story of slides over everything; tap or arrow keys to move ----
 async function openWrapped(year, opener) {
   let data;
   try { data = await api(`/api/me/wrapped?year=${year}`); } catch (err) { toast(err.message); return; }
@@ -4342,7 +4342,7 @@ async function openWrapped(year, opener) {
   const close = h('button', { type: 'button', class: 'icon-btn wr-close', 'aria-label': T('Close Wrapped'), onclick: closeTopOverlay }, icon('back'));
   const prev = h('button', { type: 'button', class: 'wr-tap wr-prev', 'aria-label': T('Previous') });
   const next = h('button', { type: 'button', class: 'wr-tap wr-next', 'aria-label': T('Next') });
-  const el = h('div', { class: 'wrapped', role: 'dialog', 'aria-modal': 'true', 'aria-label': T('Marquee Wrapped {0}', year), tabindex: '-1' },
+  const el = h('div', { class: 'wrapped', role: 'dialog', 'aria-modal': 'true', 'aria-label': T('Lilin Wrapped {0}', year), tabindex: '-1' },
     bars, close, stage, prev, next,
     years.length > 0 && h('div', { class: 'wr-years' }, years.map((y) => h('button', { type: 'button', class: 'chip', onclick: async () => {
       await dismissTopOverlay(); openWrapped(y, opener);
@@ -4389,7 +4389,7 @@ async function loadParties() {
   const shelf = social.partiesShelf(parties, {
     label: partyTitle,
     join: (p) => offerWatchRoom(p.token),
-    copy: (p) => copyWithToast(partyLink(p.token), T('Invite copied. Everyone uses their usual Marquee sign-in.')),
+    copy: (p) => copyWithToast(partyLink(p.token), T('Invite copied. Everyone uses their usual Lilin sign-in.')),
     cancel: async (p, btn) => {
       if (!confirm(T('Cancel the watch party for {0}? The invite stops working.', partyTitle(p.media)))) return;
       btn.disabled = true;
@@ -4408,7 +4408,7 @@ document.addEventListener('click', (event) => {
 });
 $('#watch-copy').addEventListener('click', () => {
   // /c/w/ shows a preview in Discord and other chats, then forwards to /?watch=
-  if (party) copyWithToast(`${location.origin}/c/w/${party.state.token}`, T('Room link copied. Everyone uses their usual Marquee sign-in.'));
+  if (party) copyWithToast(`${location.origin}/c/w/${party.state.token}`, T('Room link copied. Everyone uses their usual Lilin sign-in.'));
 });
 $('#watch-leave').addEventListener('click', () => { leaveWatchRoom(); video.pause(); toast(T('You left the room')); });
 // Invite: people with Watch Together invites on get a notification that opens the room.
@@ -4475,7 +4475,7 @@ function saveProgress(force = false) {
 }
 let lastPush = 0;
 
-// Watch time for Wrapped and Popular on Marquee: seconds the video really played (not seeking,
+// Watch time for Wrapped and Popular on Lilin: seconds the video really played (not seeking,
 // not paused, not a tab asleep in the background), sent with each progress save.
 let playedSince = 0, playTick = null;
 function countPlayed() {
@@ -5468,7 +5468,7 @@ async function watchAudio(f, session) {
       $('#player-error').hidden = true;
       note.textContent = a.fixable
         ? T('This video is {0}, which this browser can’t play. Making a version that plays here…{1} It starts by itself when ready.', a.videoCodec, progress)
-        : T('This video is {0}, which this browser can’t play. {1}', a.videoCodec, a.error ? T('Marquee couldn’t convert it: {0}', a.error) : T('It should still play on a TV.'));
+        : T('This video is {0}, which this browser can’t play. {1}', a.videoCodec, a.error ? T('Lilin couldn’t convert it: {0}', a.error) : T('It should still play on a TV.'));
       note.hidden = false;
       if (!a.fixable) return;
       changed = session.compatibilityPending = true;
@@ -5478,11 +5478,11 @@ async function watchAudio(f, session) {
     if (!a.browserSafe && !a.fixable) {
       const name = CODEC_NAMES[a.codec] || String(a.codec).toUpperCase();
       note.textContent = T('No sound? This file’s audio is {0}, which this browser can’t play. ', name)
-        + (a.error ? T('Marquee couldn’t fix it: {0}', a.error) : T('It should play with sound on a TV.'));
+        + (a.error ? T('Lilin couldn’t fix it: {0}', a.error) : T('It should play with sound on a TV.'));
       note.hidden = false;
       return;
     }
-    if (!a.fixable) return; // nothing Marquee can do
+    if (!a.fixable) return; // nothing Lilin can do
     if (!a.browserSafe) note.textContent = T('No sound? This file’s audio is {0}, which this browser can’t play. Adding normal stereo sound…{1} It switches over by itself.', CODEC_NAMES[a.codec] || a.codec, progress);
     else note.textContent = T('Correcting this file’s audio timing…{0} It switches over by itself.', progress);
     note.hidden = false;
@@ -5517,7 +5517,7 @@ landscapeQuery.addEventListener('change', (e) => {
     if (localStorage.getItem('tip:homescreen')) return;
     localStorage.setItem('tip:homescreen', '1');
   } catch { return; }
-  toast(T('Tip: open Marquee from your Home Screen for fullscreen without Safari’s bar'));
+  toast(T('Tip: open Lilin from your Home Screen for fullscreen without Safari’s bar'));
 });
 
 // ---- night mode and sleep timer ----
@@ -5785,7 +5785,7 @@ qualityMenu._update = renderQualityMenu;
 commandViews.add(qualityMenu);
 
 // ---- controls ----
-// Marquee's own controls instead of the browser's, so they look the same everywhere, work from
+// Lilin's own controls instead of the browser's, so they look the same everywhere, work from
 // the keyboard, and the subtitles know where they are. They show on mouse movement or a tap and
 // fade out 3 s into playback; they stay up while paused, while a menu is open or under the mouse.
 const playerEl = $('#player');
@@ -6071,7 +6071,7 @@ function openInSafari() {
   }
   location.assign(`x-safari-${url.href}`);
   // Nothing opened (older iOS): say how to do it by hand.
-  setTimeout(() => { if (!document.hidden) toast(T('iPhone only pops videos out in Safari: open Marquee in Safari to use it')); }, 1500);
+  setTimeout(() => { if (!document.hidden) toast(T('iPhone only pops videos out in Safari: open Lilin in Safari to use it')); }, 1500);
 }
 function enterPip() {
   if (!video.currentSrc || inPip()) return;
@@ -6712,7 +6712,7 @@ video.addEventListener('error', () => {
     ? T('This video can’t play in this browser. Its format isn’t supported here; open the file link under the video to download it, or try another browser.')
     : current.kind === 'clip'
     ? T('This clip can’t play in this browser. Its video format (often AV1) isn’t supported here; try another browser, or share it to get a copy that plays everywhere.')
-    : T('This video can’t play in this browser yet. Marquee makes a version that plays here automatically; you can follow its progress in the Library tab.');
+    : T('This video can’t play in this browser yet. Lilin makes a version that plays here automatically; you can follow its progress in the Library tab.');
   // When the note below the video says a version is being made, that note is the explanation.
   err.hidden = !$('#player-note').hidden;
 });
@@ -6742,7 +6742,7 @@ function renderView() {
 }
 
 // ---------- settings ----------
-// Everyone: name, colours (a preset or their own four), and how Marquee behaves for them. The owner
+// Everyone: name, colours (a preset or their own four), and how Lilin behaves for them. The owner
 // also gets the server's rules (auto-delete) and the people who use it. Changes save straight away.
 let saveMeTimer = null;
 // Profile pictures: yours (person = state.me) or, for the owner, anyone's in People (person.id).
@@ -6811,7 +6811,7 @@ function renderWhatsNewButton() {
   btn.classList.toggle('has-new', unseen > 0);
   btn.querySelector('.news-count').hidden = !unseen;
   btn.querySelector('.news-count').textContent = unseen;
-  btn.setAttribute('aria-label', unseen ? T('What’s new: {0} new {1}', unseen, unseen === 1 ? T('update') : T('updates')) : T('What’s new: every update to Marquee'));
+  btn.setAttribute('aria-label', unseen ? T('What’s new: {0} new {1}', unseen, unseen === 1 ? T('update') : T('updates')) : T('What’s new: every update to Lilin'));
 }
 $('#whats-new-btn').addEventListener('click', () => {
   // unseen updates first, as the popup would show them; otherwise the full history
@@ -6826,7 +6826,7 @@ function maybeShowWhatsNew() {
   whatsNewView.build ??= wn.build;
   const stale = Boolean(wn.build && whatsNewView.build !== wn.build);
   if (!wn.unseen?.length) {
-    if (stale && !whatsNewView.staleNoted) { whatsNewView.staleNoted = true; toast(T('Marquee was updated. Reload the page to get the new version.')); }
+    if (stale && !whatsNewView.staleNoted) { whatsNewView.staleNoted = true; toast(T('Lilin was updated. Reload the page to get the new version.')); }
     return;
   }
   if (whatsNewView.open) return;
@@ -6868,7 +6868,7 @@ function openWhatsNew(updates, { latest = null, stale = false, history = false, 
   const allBtn = h('button', { class: 'chip whats-new-all', type: 'button' }, T('All updates'));
   allBtn.addEventListener('click', () => { markUpdatesSeen(latest); showUpdateHistory({ replace: true }); });
   $('#picker-body').replaceChildren(h('div', { class: 'whats-new' },
-    h('p', { class: 'whats-new-eyebrow' }, history ? T('Updates') : T('New in Marquee')),
+    h('p', { class: 'whats-new-eyebrow' }, history ? T('Updates') : T('New in Lilin')),
     h('h2', { id: 'picker-title' }, history ? T('What’s new') : single ? updates[0].title || T('What’s new') : T('What’s new')),
     single && h('p', { class: 'picker-sub muted' }, updateDate(updates[0].date)),
     updates.length ? updates.map((e) => updateEntry(e, !single)) : h('p', { class: 'muted' }, T('No updates yet.')),
@@ -6925,8 +6925,8 @@ function syncLanguage() {
   if (!wanted) { api('/api/me', jsonPost({ language: lang })).catch(() => {}); return; }
   if (wanted === lang) return;
   try {
-    if (sessionStorage.getItem('marquee:lang-synced') === wanted) return;
-    sessionStorage.setItem('marquee:lang-synced', wanted);
+    if (sessionStorage.getItem('lilin:lang-synced') === wanted) return;
+    sessionStorage.setItem('lilin:lang-synced', wanted);
   } catch { return; }
   saveLanguage(wanted);
   location.reload();
@@ -6963,7 +6963,7 @@ function themeSwatch(key, t, selected, onPick) {
 
 function appearanceSection() {
   const theme = prefs().theme;
-  const active = theme?.preset || state.rules?.defaultTheme || 'marquee';
+  const active = theme?.preset || state.rules?.defaultTheme || 'lilin';
   const pick = (key) => {
     const next = key === 'custom' ? { preset: 'custom', colors: customColors() } : { preset: key };
     applyTheme(next);
@@ -7016,10 +7016,10 @@ function appearanceSection() {
   }
   return [
     h('h3', { class: 'set-head' }, T('Language')),
-    settingsRow(T('Show Marquee in'), T('Used on every device you sign in on. TMDB descriptions follow it too; titles stay as they are.'),
+    settingsRow(T('Show Lilin in'), T('Used on every device you sign in on. TMDB descriptions follow it too; titles stay as they are.'),
       segmented(LANGUAGES.map((l) => [l.code, l.name]), lang, pickLanguage, T('Language'))),
     h('h3', { class: 'set-head' }, T('Appearance')),
-    h('p', { class: 'set-hint' }, T('Only changes how Marquee looks for you, on every device you use.')),
+    h('p', { class: 'set-hint' }, T('Only changes how Lilin looks for you, on every device you use.')),
     grid,
     editor,
   ];
@@ -7060,12 +7060,12 @@ function renderSettings() {
     const unseen = state.status?.whatsNew?.unseen?.length || 0;
     const open = h('button', { class: `chip whats-new-open${unseen ? ' has-new' : ''}`, type: 'button' }, unseen ? (unseen === 1 ? T('1 new') : T('{0} new', unseen)) : T('See updates'));
     open.addEventListener('click', showUpdateHistory);
-    out.push(settingsRow(T('What’s new'), T('Everything that changed in Marquee lately.'), open));
+    out.push(settingsRow(T('What’s new'), T('Everything that changed in Lilin lately.'), open));
   }
   {
     const year = new Date().getFullYear();
     const open = h('button', { class: 'wrapped-open', type: 'button', onclick: (e) => openWrapped(year, e.currentTarget) },
-      h('span', { class: 'wrapped-open-kicker' }, T('Marquee Wrapped {0}', year)), h('span', {}, T('Your year in watching so far')));
+      h('span', { class: 'wrapped-open-kicker' }, T('Lilin Wrapped {0}', year)), h('span', {}, T('Your year in watching so far')));
     out.push(open);
   }
 
@@ -7079,11 +7079,11 @@ function renderSettings() {
     select([['', T('Off')], ...(state.status.subLangs || []).map((l) => [l.code, l.name])], p.subLang || '', (v) => saveMe({ subLang: v }), T('Default subtitles'))));
   out.push(settingsRow(T('Intros'), p.skipIntro === 'auto' ? T('Opening titles are skipped as they start (not in Watch Together).') : T('A Skip intro button shows during opening titles.'),
     segmented([['button', T('Show a button')], ['auto', T('Skip automatically')]], p.skipIntro || 'button', (v) => saveMe({ skipIntro: v }).then(renderSettings), T('Intros'))));
-  out.push(settingsRow(T('Open Marquee on'), null,
-    segmented([['discover', T('Discover')], ['library', T('Library')]], p.startView === 'downloads' ? 'library' : p.startView || 'discover', (v) => saveMe({ startView: v }).then(renderSettings), T('Open Marquee on'))));
+  out.push(settingsRow(T('Open Lilin on'), null,
+    segmented([['discover', T('Discover')], ['library', T('Library')]], p.startView === 'downloads' ? 'library' : p.startView || 'discover', (v) => saveMe({ startView: v }).then(renderSettings), T('Open Lilin on'))));
   out.push(tvSignInRow());
   // The Android TV app's install steps (/android, android-tv.js on the server): opened on a phone at home.
-  out.push(settingsRow(T('Android TV'), T('Put Marquee on an Android TV or Google TV. It takes a few minutes.'),
+  out.push(settingsRow(T('Android TV'), T('Put Lilin on an Android TV or Google TV. It takes a few minutes.'),
     h('a', { class: 'chip', href: '/android', target: '_blank', rel: 'noopener' }, T('Show the steps'))));
   out.push(jellyfinRow());
   out.push(settingsRow(T('Library order'), null,
@@ -7151,7 +7151,7 @@ function settingsLayout(nodes) {
   return [index, h('div', { class: 'set-groups' }, sections)];
 }
 
-// The Marquee app on a TV (tv/tizen) shows a code; entering it here signs that TV in as you.
+// The Lilin app on a TV (tv/tizen) shows a code; entering it here signs that TV in as you.
 function tvSignInRow() {
   const input = h('input', { type: 'text', class: 'invite-note tv-code', maxlength: '7', placeholder: T('Code on the TV'), 'aria-label': T('Code shown on the TV'),
     autocomplete: 'off', autocapitalize: 'characters', spellcheck: 'false', enterkeyhint: 'done' });
@@ -7167,11 +7167,11 @@ function tvSignInRow() {
       input.value = ''; note.textContent = T('Done. The TV is signed in as you.');
     } catch (err) { note.textContent = err.message; } finally { go.disabled = false; }
   } }, input, go);
-  return settingsRow(T('Sign in a TV'), T('Open the Marquee app on the TV and enter the code it shows. The TV then sees your library.'),
+  return settingsRow(T('Sign in a TV'), T('Open the Lilin app on the TV and enter the code it shows. The TV then sees your library.'),
     h('div', { class: 'tv-code-wrap' }, form, note));
 }
 
-// Your library in your own Jellyfin (the Marquee plugin; jellyfin.js on the server). The plugin's
+// Your library in your own Jellyfin (the Lilin plugin; jellyfin.js on the server). The plugin's
 // settings page shows a code; entering it here connects that Jellyfin server to your library.
 const jellyfinView = { links: null, loading: null };
 function loadJellyfin() {
@@ -7208,7 +7208,7 @@ function jellyfinRow() {
       catch (err) { toast(err.message); }
       renderSettings();
     } }, T('Disconnect'))));
-  return settingsRow(T('Jellyfin'), T('Watch your library in your own Jellyfin: install the Marquee plugin there, open its settings and enter the code it shows.'),
+  return settingsRow(T('Jellyfin'), T('Watch your library in your own Jellyfin: install the Lilin plugin there, open its settings and enter the code it shows.'),
     h('div', { class: 'tv-code-wrap' }, form, note, list.length > 0 && h('ul', { class: 'jf-links' }, ...list)));
 }
 
@@ -7241,10 +7241,10 @@ function notificationSettings() {
   }
   const on = Boolean(pushView.deviceId);
   const why = {
-    insecure: T('Notifications need Marquee opened through its https address, not the local one.'),
-    'ios-install': T('On iPhone and iPad, notifications work once Marquee is on your Home Screen: tap Share, then Add to Home Screen, and open Marquee from there.'),
+    insecure: T('Notifications need Lilin opened through its https address, not the local one.'),
+    'ios-install': T('On iPhone and iPad, notifications work once Lilin is on your Home Screen: tap Share, then Add to Home Screen, and open Lilin from there.'),
     unsupported: T('This browser can’t show notifications from websites.'),
-    denied: T('Notifications are blocked for Marquee in this browser. Allow them in the site settings (the icon next to the address), then reload.'),
+    denied: T('Notifications are blocked for Lilin in this browser. Allow them in the site settings (the icon next to the address), then reload.'),
   }[support];
   if (why) out.push(settingsRow(T('This device'), why, null));
   else {
@@ -7268,17 +7268,17 @@ function notificationSettings() {
       pushView.busy = false;
       renderSettings();
     }, T('Notifications on this device'));
-    out.push(settingsRow(T('This device'), on ? T('Marquee can tell you about these even when it’s closed.') : T('Get a notification when something’s ready, even with Marquee closed.'), sw));
+    out.push(settingsRow(T('This device'), on ? T('Lilin can tell you about these even when it’s closed.') : T('Get a notification when something’s ready, even with Lilin closed.'), sw));
   }
   if (pushView.devices.length) {
     out.push(settingsRow(T('Downloads ready'), T('When something you downloaded can be watched.'),
       toggle(p.pushDownload !== false, (v) => saveMe({ pushDownload: v }), T('Notify when downloads are ready'))));
-    out.push(settingsRow(T('New episodes'), T('When a new episode of a show in your library arrives on Marquee.'),
+    out.push(settingsRow(T('New episodes'), T('When a new episode of a show in your library arrives on Lilin.'),
       toggle(p.pushEpisode !== false, (v) => saveMe({ pushEpisode: v }), T('Notify about new episodes'))));
     out.push(settingsRow(T('Watch Together invites'), T('When someone asks you to join their room. Off: nobody can invite you this way.'),
       toggle(p.pushWatch !== false, (v) => saveMe({ pushWatch: v }), T('Notify about Watch Together invites'))));
-    out.push(settingsRow(T('Marquee updates'), T('When Marquee gets something new: a short summary of what changed.'),
-      toggle(p.pushUpdate !== false, (v) => saveMe({ pushUpdate: v }), T('Notify about Marquee updates'))));
+    out.push(settingsRow(T('Lilin updates'), T('When Lilin gets something new: a short summary of what changed.'),
+      toggle(p.pushUpdate !== false, (v) => saveMe({ pushUpdate: v }), T('Notify about Lilin updates'))));
     if (state.me?.isOwner) out.push(settingsRow(T('Agents'), T('When a script or AI agent on your home machines asks for your attention.'),
       toggle(p.pushAgent !== false, (v) => saveMe({ pushAgent: v }), T('Notify when an agent needs you'))));
     const test = h('button', { class: 'chip', type: 'button' }, T('Send a test'));
@@ -7311,7 +7311,7 @@ function notificationSettings() {
   return out;
 }
 
-// Signed in through Cloudflare's email codes but no Marquee password yet: a full-screen step with no
+// Signed in through Cloudflare's email codes but no Lilin password yet: a full-screen step with no
 // way past it (the API refuses everything else too) until they pick one. Then the page reloads.
 function showPasswordGate() {
   if ($('#password-gate')) return;
@@ -7331,8 +7331,8 @@ function showPasswordGate() {
   });
   const form = h('form', { class: 'password-gate-card' },
     h('div', { class: 'password-gate-bulbs', 'aria-hidden': 'true' }),
-    h('h2', { id: 'gate-title' }, T('Pick a password for Marquee')),
-    h('p', {}, T('Marquee now signs you in with your own password instead of codes sent by email. Pick one to carry on.')),
+    h('h2', { id: 'gate-title' }, T('Pick a password for Lilin')),
+    h('p', {}, T('Lilin now signs you in with your own password instead of codes sent by email. Pick one to carry on.')),
     email && h('p', { class: 'password-gate-email' }, email),
     user,
     h('div', { class: 'password-gate-field' }, h('label', { for: 'gate-password' }, T('New password (10+ characters)')), pass),
@@ -7349,7 +7349,7 @@ function showPasswordGate() {
     } catch (err) { msg.textContent = err.message; save.disabled = false; }
   });
   const gate = h('div', { id: 'password-gate', class: 'password-gate', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'gate-title' },
-    h('p', { class: 'password-gate-brand', 'aria-hidden': 'true' }, 'Marquee'), form);
+    h('p', { class: 'password-gate-brand', 'aria-hidden': 'true' }, 'Lilin'), form);
   // Nothing behind it can be reached: no Escape, no clicks, no tabbing out.
   gate.addEventListener('keydown', (e) => { if (e.key === 'Escape') e.preventDefault(); });
   document.body.append(gate);
@@ -7357,7 +7357,7 @@ function showPasswordGate() {
   pass.focus();
 }
 
-// Marquee's own sign-in: change the password, sign out of this browser.
+// Lilin's own sign-in: change the password, sign out of this browser.
 function accountSection() {
   const current = h('input', { type: 'password', class: 'invite-note', autocomplete: 'current-password', placeholder: T('Current password'), 'aria-label': T('Current password') });
   const next = h('input', { type: 'password', class: 'invite-note', autocomplete: 'new-password', minlength: '10', placeholder: T('New password (10+ characters)'), 'aria-label': T('New password') });
@@ -7380,7 +7380,7 @@ function accountSection() {
     // Through Cloudflare Access its own sign-in has to end too, or the next visit walks straight back in.
     location.assign(state.me?.via === 'proxy' ? '/cdn-cgi/access/logout' : '/signin');
   });
-  return h('div', { class: 'set-account' }, settingsRow(T('Sign out'), T('Signs this browser out of Marquee.'), out),
+  return h('div', { class: 'set-account' }, settingsRow(T('Sign out'), T('Signs this browser out of Lilin.'), out),
     h('details', { class: 'set-details' },
       h('summary', {},
         h('span', { class: 'set-text' }, h('span', { class: 'set-label' }, T('Change password')),
@@ -7401,15 +7401,15 @@ function ownerSettings() {
   out.push(settingsRow(T('New people can download'), T('Otherwise they can only add what’s already on the server, until you allow them below.'),
     toggle(r.membersCanDownload !== false, (on) => saveRules({ membersCanDownload: on }), T('New people can download'))));
   out.push(settingsRow(T('Colours for new people'), T('Until they pick their own.'),
-    select(Object.entries(THEMES).map(([k, t]) => [k, t.name]), r.defaultTheme || 'marquee', (v) => saveRules({ defaultTheme: v }), T('Colours for new people'))));
+    select(Object.entries(THEMES).map(([k, t]) => [k, t.name]), r.defaultTheme || 'lilin', (v) => saveRules({ defaultTheme: v }), T('Colours for new people'))));
   out.push(h('details', { class: 'set-card set-signin' },
     h('summary', {}, T('Staying signed in')),
-    h('p', {}, T('Marquee has no login of its own: it uses the Cloudflare Access sign-in, so how long people stay signed in is set in Cloudflare. To make it last a month:')),
+    h('p', {}, T('Lilin has no login of its own: it uses the Cloudflare Access sign-in, so how long people stay signed in is set in Cloudflare. To make it last a month:')),
     h('ol', {},
-      h('li', {}, T('Cloudflare dashboard → Zero Trust → Access → Applications → Marquee → Edit.')),
+      h('li', {}, T('Cloudflare dashboard → Zero Trust → Access → Applications → Lilin → Edit.')),
       h('li', {}, T('Set Session Duration to 1 month (it’s 24 hours now) and save.')),
       h('li', {}, T('If you’ve set a Global session timeout (Settings → Authentication), raise that too: it caps every app.'))),
-    h('p', { class: 'set-hint' }, T('If someone’s sign-in does run out while Marquee is open, it now tells them and signs them back in with one tap.'))));
+    h('p', { class: 'set-hint' }, T('If someone’s sign-in does run out while Lilin is open, it now tells them and signs them back in with one tap.'))));
 
   out.push(h('h3', { class: 'set-head' }, T('People')));
   if (state.peopleError) out.push(h('p', { class: 'muted' }, state.peopleError));
@@ -7462,7 +7462,7 @@ async function personUpdate(u, patch) {
 }
 
 // ---------- activity (server owner only) ----------
-// Who has been using Marquee and what they did, from the server's activity log.
+// Who has been using Lilin and what they did, from the server's activity log.
 const ACTIVITY_TEXT = {
   // The log keeps these lines whole, in English.
   watch: (d) => {
@@ -7485,7 +7485,7 @@ const ACTIVITY_TEXT = {
   share: (d) => T('shared the clip {0}', d),
   trim: (d) => T('trimmed the clip {0}', d),
   invite: (d) => T('made an invite link ({0})', d),
-  joined: (d) => T('joined Marquee ({0})', d),
+  joined: (d) => T('joined Lilin ({0})', d),
   revoke: (d) => T('removed {0}’s access', d),
   unshare: (d) => T('stopped sharing {0}', d),
   wake: (d) => T('woke {0}', d),
@@ -7536,7 +7536,7 @@ async function makeInvite(btn) {
   await loadActivity();
   renderActivity();
 }
-// For someone already on the list who has no Marquee password yet (they used Cloudflare's email codes).
+// For someone already on the list who has no Lilin password yet (they used Cloudflare's email codes).
 async function makePasswordLink(email, btn) {
   btn.disabled = true;
   try {
@@ -7583,7 +7583,7 @@ function peopleSection(q) {
   const a = state.access || {};
   const out = [];
   if (state.access && !a.configured) {
-    out.push(h('p', { class: 'muted' }, T('Set CF_API_TOKEN, CF_ACCOUNT_ID and CF_ACCESS_LIST_ID in .env to invite people from here (see docs/remote-access.md in the Marquee folder).')));
+    out.push(h('p', { class: 'muted' }, T('Set CF_API_TOKEN, CF_ACCOUNT_ID and CF_ACCESS_LIST_ID in .env to invite people from here (see docs/remote-access.md in the Lilin folder).')));
   } else if (state.access) {
     const noteInput = h('input', { id: 'invite-note', class: 'invite-note', type: 'text', maxlength: '60', placeholder: T('Who’s it for?'), value: state.inviteNote || '',
       oninput: (e) => { state.inviteNote = e.currentTarget.value; } });
@@ -7653,7 +7653,7 @@ function peopleSection(q) {
 }
 
 // Activity sections and days fold open/closed; the folded ones are remembered per browser.
-const ACTIVITY_FOLD_KEY = 'marquee:activityFolded';
+const ACTIVITY_FOLD_KEY = 'lilin:activityFolded';
 let activityFolded = null;
 function activityFoldSet() {
   if (!activityFolded) {
@@ -7807,7 +7807,7 @@ function sharingSection(L) {
   const upMax = lim.uploadMbps ? (lim.uploadMbps * 1e6) / 8 : null;
   rows.push(loadRow(T('Internet upload'), [[inet.streams, null], [inet.torrents, 'is-alt']], upMax,
     T('{0}{1} Mbit/s', fmtMbit(upNow, false), upMax ? T(' of {0}', lim.uploadMbps) : ''),
-    T('Marquee streams going out through Cloudflare, plus qBittorrent seeding. Set UPLOAD_MBPS in .env to the connection’s upload speed.')));
+    T('Lilin streams going out through Cloudflare, plus qBittorrent seeding. Set UPLOAD_MBPS in .env to the connection’s upload speed.')));
   rows.push(h('div', { class: 'load-legend muted' },
     h('span', {}, h('i', { class: 'load-key' }), T('streams {0}', fmtMbit(inet.streams))),
     inet.torrents != null && h('span', {}, h('i', { class: 'load-key is-alt' }), T('torrents {0}{1}', fmtMbit(inet.torrents), inet.torrentLimit ? T(' (capped at {0})', fmtMbit(inet.torrentLimit)) : '')),
@@ -7818,7 +7818,7 @@ function sharingSection(L) {
       T('↑ {0} · ↓ {1}{2} Mbit/s', fmtMbit(L.net.up, false), fmtMbit(L.net.down, false), link ? T(' of {0}', Math.round(lim.linkMbps)) : ''),
       T('Everything the server sends and receives, from every program.')));
   }
-  if (L.cpu != null) rows.push(loadRow(T('CPU'), [[L.cpu, null]], 100, T('{0} %{1}', L.cpu, L.marqueeCpu != null ? T(' · Marquee {0} %', L.marqueeCpu) : '')));
+  if (L.cpu != null) rows.push(loadRow(T('CPU'), [[L.cpu, null]], 100, T('{0} %{1}', L.cpu, L.lilinCpu != null ? T(' · Lilin {0} %', L.lilinCpu) : '')));
   const g = L.gpu;
   if (g) {
     rows.push(loadRow(T('GPU encoder'), [[g.enc, null]], 100,
@@ -7884,7 +7884,7 @@ function sharingSection(L) {
     out.push(h('div', { class: 'house-card' },
       h('div', { class: 'house-card-head' }, h('span', { class: 'row-title' }, T('Busiest programs'))),
       h('ul', { class: 'load-top' }, top.map((p) => h('li', {},
-        h('span', { class: 'house-svc-name' }, p.name), h('span', { class: 'muted' }, T('{0} % CPU{1}{2}', p.cpu, p.mem ? ` · ${fmtBytes(p.mem)}` : '', p.job ? T(' · Marquee job') : '')))))));
+        h('span', { class: 'house-svc-name' }, p.name), h('span', { class: 'muted' }, T('{0} % CPU{1}{2}', p.cpu, p.mem ? ` · ${fmtBytes(p.mem)}` : '', p.job ? T(' · Lilin job') : '')))))));
   }
 
   const recent = L.recent || [];
@@ -7969,7 +7969,7 @@ function renderHouse() {
 
   out.push(h('h3', { class: 'activity-head' }, T('Machines')));
   const machines = r.machines.filter((m) => !q || norm(`${m.host} ${m.kind} ${m.os}`).includes(q));
-  if (!r.agents) out.push(h('p', { class: 'muted' }, T('Set HOUSE_TOKEN in .env and run agents/marquee-house on each machine to see them here.')));
+  if (!r.agents) out.push(h('p', { class: 'muted' }, T('Set HOUSE_TOKEN in .env and run agents/lilin-house on each machine to see them here.')));
   else if (!machines.length) out.push(h('p', { class: 'muted' }, q ? T('Nothing matches.') : T('No machine has reported yet.')));
   for (const m of machines) {
     const meta = [m.kind, m.os, m.kernel, m.uptime != null && upFor(m.uptime),
@@ -8042,7 +8042,7 @@ function powerCard(pw) {
     ? (p.action === 'wake' ? T('Waking up{0}…', p.label ? T(' into {0}', p.label) : '') : T('Restarting{0}…', p.label ? T(' into {0}', p.label) : ''))
     : pw.on ? T('On · {0}', pw.os || 'Linux') : T('Off, or in Windows');
   const sub = !pw.on && !p && (pw.last?.entry && pw.last.at > pw.seen - 120000
-    ? T('Last started into {0} from Marquee {1}', pw.last.label, ago(pw.last.at))
+    ? T('Last started into {0} from Lilin {1}', pw.last.label, ago(pw.last.at))
     : T('Linux last answered {0}', ago(pw.seen)));
   const linuxFirst = [...pw.entries].sort((a, b) => (a.os === 'linux' ? 0 : 1) - (b.os === 'linux' ? 0 : 1));
   let buttons;
@@ -8270,7 +8270,7 @@ function screenTimeView() {
       h('h4', {}, T('No Screen Time yet')),
       h('p', { class: 'muted' }, D.configured
         ? T('Install screentime on a machine and point its push at this server: set [push] url to /api/screentime here and the token to SCREENTIME_TOKEN.')
-        : T('Set SCREENTIME_TOKEN in .env, restart Marquee, then point each machine’s screentime push at /api/screentime with that token.')),
+        : T('Set SCREENTIME_TOKEN in .env, restart Lilin, then point each machine’s screentime push at /api/screentime with that token.')),
       h('a', { href: 'https://github.com/Tjabooo/screentime', target: '_blank', rel: 'noopener' }, T('github.com/Tjabooo/screentime')))];
   }
   const today = localDate();
@@ -8946,9 +8946,9 @@ $('#manage-downloads').addEventListener('click', e => openTransferDetails(null, 
 $('#find-torrents').addEventListener('click', (e) => openTorrents({ query: state.query.trim(), opener: e.currentTarget }));
 
 // ---------- start ----------
-// A tapped notification while Marquee is open (sw.js): open what it points at without a reload.
+// A tapped notification while Lilin is open (sw.js): open what it points at without a reload.
 navigator.serviceWorker?.addEventListener('message', async (event) => {
-  if (event.data?.type !== 'marquee:open') return;
+  if (event.data?.type !== 'lilin:open') return;
   let url;
   try { url = new URL(event.data.url, location.origin); } catch { return; }
   if (url.origin !== location.origin) return;
@@ -8992,7 +8992,7 @@ navigator.serviceWorker?.addEventListener('message', async (event) => {
     const url = new URL(location.href); url.searchParams.delete('note'); history.replaceState(null, '', url.pathname + url.search + url.hash);
     if (state.status.admin && /^\d+$/.test(noteId)) { await setView('notes'); await notesView.focus(Number(noteId)); }
   }
-  // A "Ready for your phone" notification opens Marquee as ?travel=1.
+  // A "Ready for your phone" notification opens Lilin as ?travel=1.
   if (new URL(location.href).searchParams.has('travel')) {
     const url = new URL(location.href); url.searchParams.delete('travel'); history.replaceState(null, '', url.pathname + url.search + url.hash);
     await setView('library'); openTravelList();
@@ -9006,7 +9006,7 @@ navigator.serviceWorker?.addEventListener('message', async (event) => {
     if (f) { await openPlayer(libraryFile(f), { startAt }); toast(T('Press play, then the pop-out button')); }
     else toast(T('That video isn’t in your library any more'));
   }
-  // An update notification opens Marquee as ?update=<id>: show those notes.
+  // An update notification opens Lilin as ?update=<id>: show those notes.
   const updateId = new URL(location.href).searchParams.get('update');
   if (updateId) {
     const url = new URL(location.href); url.searchParams.delete('update'); history.replaceState(null, '', url.pathname + url.search + url.hash);

@@ -8,7 +8,7 @@ import * as accounts from '../src/accounts.js';
 const visit = (email) => accounts.userFor({ headers: email ? { 'cf-access-authenticated-user-email': email } : {} });
 
 test('shared libraries: one merged library for the group, removals and keep-longer act on all', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'marquee-shares-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lilin-shares-'));
   accounts.initAccounts({ dataDir: dir, adminEmails: ['owner@example.test'], mediaDir: null });
   accounts.updateServerSettings({ retentionDays: 7 });
   const owner = visit('owner@example.test');

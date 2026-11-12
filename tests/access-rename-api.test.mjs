@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 test('owners rename access-list accounts, including future visitors, without changing identity or permissions', { timeout: 20000 }, async () => {
   const root = fileURLToPath(new URL('../', import.meta.url));
-  const app = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-access-rename-'));
+  const app = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-access-rename-'));
   for (const name of await fs.readdir(root)) if (name.endsWith('.js') || name === 'package.json') await fs.copyFile(path.join(root, name), path.join(app, name));
   await fs.cp(path.join(root, 'public'), path.join(app, 'public'), { recursive: true });
   await fs.cp(path.join(root, 'src'), path.join(app, 'src'), { recursive: true });
@@ -28,7 +28,7 @@ test('owners rename access-list accounts, including future visitors, without cha
     exited = new Promise((r) => child.once('exit', r));
     await new Promise((resolve, reject) => {
       let logs = ''; const timer = setTimeout(() => reject(Error('Startup timeout: ' + logs)), 8000);
-      child.stdout.on('data', (c) => { logs += c; const ready = /Marquee is running: http:\/\/localhost:(\d+)/.exec(logs); if (ready) { port = Number(ready[1]); clearTimeout(timer); resolve(); } });
+      child.stdout.on('data', (c) => { logs += c; const ready = /Lilin is running: http:\/\/localhost:(\d+)/.exec(logs); if (ready) { port = Number(ready[1]); clearTimeout(timer); resolve(); } });
       child.stderr.on('data', (c) => { logs += c; });
       child.once('error', reject); child.once('exit', () => { clearTimeout(timer); reject(Error(logs)); });
     });

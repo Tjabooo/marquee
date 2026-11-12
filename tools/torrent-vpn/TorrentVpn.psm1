@@ -39,7 +39,7 @@ function Save-TvJson($Object, [string]$Path) {
 }
 
 # The status (no secrets: tunnel/exit addresses, problems) in a folder every local user may read,
-# because the data folder is SYSTEM + Administrators only and Marquee runs unelevated.
+# because the data folder is SYSTEM + Administrators only and Lilin runs unelevated.
 $Script:PublicDir = Join-Path $env:ProgramData 'TorrentVpn-Status'
 function Publish-TvStatus($Status) {
   if (-not (Test-Path $Script:PublicDir)) {

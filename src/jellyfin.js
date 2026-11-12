@@ -1,16 +1,16 @@
-// Marquee in someone's own Jellyfin (jellyfin/ in this repository holds the plugin).
+// Lilin in someone's own Jellyfin (jellyfin/ in this repository holds the plugin).
 //
 // The plugin runs on the other person's Jellyfin server. It signs in like the TV app: it shows a code,
-// and the person enters it in Marquee (Settings → Connect Jellyfin). The plugin then holds a key for
+// and the person enters it in Lilin (Settings → Connect Jellyfin). The plugin then holds a key for
 // that person and:
 //   * reads their library from /c/jf/v1/library (films, shows and episodes with TMDB ids),
 //   * writes one .strm file per video for Jellyfin to scan; each holds a stream URL signed for that
 //     one video, so a leaked .strm opens one file, never the account,
-//   * reports what was watched in Jellyfin to /c/jf/v1/progress, so Continue watching in Marquee
+//   * reports what was watched in Jellyfin to /c/jf/v1/progress, so Continue watching in Lilin
 //     picks up where Jellyfin stopped.
 //
 // Everything lives under /c/, the path Cloudflare Access already lets through (see
-// docs/remote-access.md), because a Jellyfin server can't sign in to Cloudflare. Marquee checks the key
+// docs/remote-access.md), because a Jellyfin server can't sign in to Cloudflare. Lilin checks the key
 // or the signature itself. Disconnecting (either side) deletes the key and every URL made with it.
 import crypto from 'node:crypto';
 import path from 'node:path';
@@ -20,14 +20,14 @@ import { createTvPairing } from './tv.js';
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite');
 
 export const API = '/c/jf/v1';
-const KEY_PREFIX = 'mqjf_';
+const KEY_PREFIX = 'liljf_';
 const MAX_LINKS_PER_USER = 10;
 const hash = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
 const fail = (status, message) => Object.assign(new Error(message), { status });
 const cleanName = (s) => String(s || '').replace(/[\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60);
 
 export function openJellyfinStore(dataDir, { now = () => Date.now() } = {}) {
-  const db = new DatabaseSync(path.join(dataDir, '.marquee.db'));
+  const db = new DatabaseSync(path.join(dataDir, '.lilin.db'));
   db.exec(`
     PRAGMA journal_mode = WAL;
     PRAGMA busy_timeout = 5000;
@@ -107,11 +107,11 @@ export function createJellyfin({ dataDir, now = () => Date.now(), ...deps }) {
 
   function linkFromRequest(req) {
     const header = String(req.headers.authorization || '');
-    const key = header.startsWith('Bearer ') ? header.slice(7).trim() : String(req.headers['x-marquee-key'] || '');
+    const key = header.startsWith('Bearer ') ? header.slice(7).trim() : String(req.headers['x-lilin-key'] || '');
     const link = store.byKey(key);
-    if (!link) throw fail(401, 'This Jellyfin server isn’t connected to Marquee any more. Connect it again from the plugin’s settings.');
+    if (!link) throw fail(401, 'This Jellyfin server isn’t connected to Lilin any more. Connect it again from the plugin’s settings.');
     const user = deps.userById(link.userId);
-    if (!user) { store.removeById(link.id); throw fail(401, 'The Marquee account behind this connection is gone.'); }
+    if (!user) { store.removeById(link.id); throw fail(401, 'The Lilin account behind this connection is gone.'); }
     return { link, user };
   }
 
@@ -153,7 +153,7 @@ export function createJellyfin({ dataDir, now = () => Date.now(), ...deps }) {
       }
     }
     return {
-      server: { name: 'Marquee', version: deps.version },
+      server: { name: 'Lilin', version: deps.version },
       account: { name: deps.displayName(user) },
       link: { id: link.id, name: link.name },
       films,
@@ -178,7 +178,7 @@ export function createJellyfin({ dataDir, now = () => Date.now(), ...deps }) {
     }
     if (p === '/me') {
       const { link, user } = linkFromRequest(req);
-      return deps.sendJson(res, 200, { account: { name: deps.displayName(user) }, link: { id: link.id, name: link.name }, server: { name: 'Marquee', version: deps.version } }), true;
+      return deps.sendJson(res, 200, { account: { name: deps.displayName(user) }, link: { id: link.id, name: link.name }, server: { name: 'Lilin', version: deps.version } }), true;
     }
     if (p === '/library') {
       const { link, user } = linkFromRequest(req);
@@ -215,7 +215,7 @@ export function createJellyfin({ dataDir, now = () => Date.now(), ...deps }) {
     throw fail(404, 'Not found.');
   }
 
-  // Signed-in Marquee: Settings → Connect Jellyfin.
+  // Signed-in Lilin: Settings → Connect Jellyfin.
   async function handleApi(req, res, p, user) {
     let m;
     if (p === '/api/jellyfin' && req.method === 'GET') return deps.sendJson(res, 200, { links: store.list(user.id) }), true;
@@ -225,7 +225,7 @@ export function createJellyfin({ dataDir, now = () => Date.now(), ...deps }) {
         const name = cleanName(body?.name) || entry.label || 'Jellyfin';
         const made = store.create(user.id, name, deps.clientAddress(req));
         return { key: made.key, name };
-      }, { notFound: 'That code isn’t showing in any Jellyfin. Check the code in the Marquee plugin’s settings and try again.' });
+      }, { notFound: 'That code isn’t showing in any Jellyfin. Check the code in the Lilin plugin’s settings and try again.' });
       return deps.sendJson(res, 200, { ok: true, links: store.list(user.id) }), true;
     }
     if ((m = p.match(/^\/api\/jellyfin\/([\w-]{8,20})\/remove$/)) && req.method === 'POST') {

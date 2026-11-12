@@ -1,6 +1,6 @@
 // The preview switch: a second copy of the web app (PREVIEW_DIR, another public/ folder) that a browser
 // can opt into on the live server, to try a redesign with real data before it goes live.
-//   GET /preview      sets the marquee_preview cookie and goes to /
+//   GET /preview      sets the lilin_preview cookie and goes to /
 //   GET /preview/off  clears it
 // With the cookie, static files come from PREVIEW_DIR first and fall back to public/. Nothing else
 // changes: the same API, sign-in and permissions. Pages the server draws itself (sign-in, share pages)
@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 
-export const PREVIEW_COOKIE = 'marquee_preview';
+export const PREVIEW_COOKIE = 'lilin_preview';
 const COOKIE_DAYS = 30;
 
 // PREVIEW_DIR as a usable folder, or '' (unset, not absolute, or missing).
@@ -27,7 +27,7 @@ export function previewProblem(value = process.env.PREVIEW_DIR) {
   return previewDir(dir) ? '' : `PREVIEW_DIR "${dir}" isn't a folder, so the preview is off.`;
 }
 
-export const previewCookieSet = (req) => /(?:^|;\s*)marquee_preview=1(?:;|$)/.test(String(req.headers?.cookie || ''));
+export const previewCookieSet = (req) => /(?:^|;\s*)lilin_preview=1(?:;|$)/.test(String(req.headers?.cookie || ''));
 export const inPreview = (req, dir) => Boolean(dir) && previewCookieSet(req);
 
 // /preview and /preview/off. True when the request was one of them.

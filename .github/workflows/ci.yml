@@ -41,15 +41,15 @@ jobs:
             if ($errors) { $errors | ForEach-Object { Write-Error "$($f.Name): $_" }; exit 1 }
           }
           Write-Host "$($files.Count) scripts parse"
-      - name: Build the Windows setup wizard (MarqueeSetup.exe)
+      - name: Build the Windows setup wizard (LilinSetup.exe)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows/build-setup-exe.ps1 -Version v0.0.0 -Out "$env:RUNNER_TEMP\MarqueeSetup.exe"
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows/build-setup-exe.ps1 -Version v0.0.0 -Out "$env:RUNNER_TEMP\LilinSetup.exe"
       - name: Check shell scripts
         if: runner.os == 'Linux'
         run: |
           sh -n install.sh
-          shellcheck -S warning install.sh agents/marquee-house
+          shellcheck -S warning install.sh agents/lilin-house
 
   docker:
     runs-on: ubuntu-latest
@@ -61,7 +61,7 @@ jobs:
         with:
           context: .
           load: true
-          tags: ghcr.io/tjabooo/marquee:ci
+          tags: ghcr.io/tjabooo/lilin:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Compose files are valid for every profile
@@ -70,21 +70,21 @@ jobs:
           docker compose -f docker-compose.yml -f docker/compose.nvidia.yml config -q
       - name: Start with Compose and wait for the healthcheck
         env:
-          MARQUEE_VERSION: ci
+          LILIN_VERSION: ci
           PUID: '1001'
           PGID: '1001'
         run: |
           mkdir -p data media && sudo chown 1001:1001 data media
-          docker compose up -d marquee
+          docker compose up -d lilin
           for i in $(seq 1 30); do
-            s=$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose ps -q marquee)")
+            s=$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose ps -q lilin)")
             [ "$s" = healthy ] && break; sleep 3
           done
-          docker compose logs marquee
+          docker compose logs lilin
           [ "$s" = healthy ] || { echo "container is $s"; exit 1; }
           curl -fsS http://127.0.0.1:8080/api/health
-          test -f data/.marquee.db
-          docker compose exec -T marquee id -u | grep -qx 1001
-          docker compose exec -T marquee node setup.js doctor --offline
-          docker compose stop -t 20 marquee
-          test "$(docker inspect -f '{{.State.ExitCode}}' "$(docker compose ps -aq marquee)")" = 0
+          test -f data/.lilin.db
+          docker compose exec -T lilin id -u | grep -qx 1001
+          docker compose exec -T lilin node setup.js doctor --offline
+          docker compose stop -t 20 lilin
+          test "$(docker inspect -f '{{.State.ExitCode}}' "$(docker compose ps -aq lilin)")" = 0

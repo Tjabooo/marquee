@@ -3,21 +3,21 @@ plugins { id 'com.android.application' }
 // version.properties holds the app's version; build.sh passes the server address and the signing key.
 def appVersion = new Properties()
 rootProject.file('version.properties').withInputStream { appVersion.load(it) }
-def server = (project.findProperty('marqueeUrl') ?: '').toString().replace('"', '').replaceAll('/+$', '')
-def keystore = System.getenv('MARQUEE_ANDROID_KEYSTORE')
+def server = (project.findProperty('lilinUrl') ?: '').toString().replace('"', '').replaceAll('/+$', '')
+def keystore = System.getenv('LILIN_ANDROID_KEYSTORE')
 
 android {
-  namespace 'app.marquee.tv'
+  namespace 'app.lilin.tv'
   compileSdk 36
 
   defaultConfig {
-    applicationId 'app.marquee.tv'
+    applicationId 'app.lilin.tv'
     minSdk 24
     targetSdk 36
     versionCode appVersion['code'] as int
     versionName appVersion['name']
     // Empty: the app asks for the address on its first start.
-    buildConfigField 'String', 'MARQUEE_URL', "\"${server}\""
+    buildConfigField 'String', 'LILIN_URL', "\"${server}\""
   }
   buildFeatures { buildConfig true }
 
@@ -25,9 +25,9 @@ android {
     release {
       if (keystore) {
         storeFile file(keystore)
-        storePassword System.getenv('MARQUEE_ANDROID_KEYSTORE_PASSWORD')
-        keyAlias System.getenv('MARQUEE_ANDROID_KEY_ALIAS') ?: 'marquee'
-        keyPassword System.getenv('MARQUEE_ANDROID_KEYSTORE_PASSWORD')
+        storePassword System.getenv('LILIN_ANDROID_KEYSTORE_PASSWORD')
+        keyAlias System.getenv('LILIN_ANDROID_KEY_ALIAS') ?: 'lilin'
+        keyPassword System.getenv('LILIN_ANDROID_KEYSTORE_PASSWORD')
       }
     }
   }
@@ -43,8 +43,8 @@ android {
     sourceCompatibility JavaVersion.VERSION_17
     targetCompatibility JavaVersion.VERSION_17
   }
-  // Marquee's font (public/fonts) is bundled as assets/fonts, so the shell can draw in it before the server answers.
-  sourceSets { main { assets.srcDirs += layout.buildDirectory.dir('generated/marquee-assets') } }
+  // Lilin's font (public/fonts) is bundled as assets/fonts, so the shell can draw in it before the server answers.
+  sourceSets { main { assets.srcDirs += layout.buildDirectory.dir('generated/lilin-assets') } }
   dependenciesInfo { includeInApk false; includeInBundle false }
   lint { checkReleaseBuilds false }
 }
@@ -54,8 +54,8 @@ dependencies {
   implementation 'androidx.media3:media3-exoplayer-hls:1.8.0' // the live 1080p stream for TVs without HEVC
 }
 
-def copyFonts = tasks.register('copyMarqueeFonts', Copy) {
+def copyFonts = tasks.register('copyLilinFonts', Copy) {
   from(rootProject.file('../../public/fonts')) { include '*.woff2', 'OFL.txt' }
-  into layout.buildDirectory.dir('generated/marquee-assets/fonts')
+  into layout.buildDirectory.dir('generated/lilin-assets/fonts')
 }
 tasks.named('preBuild') { dependsOn copyFonts }

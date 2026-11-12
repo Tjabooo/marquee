@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=1920, user-scalable=no">
-<title>Marquee</title>
+<title>Lilin</title>
 <!--
-  Marquee's Android TV shell (tv/android). The app shows this page with the Marquee server as its address,
+  Lilin's Android TV shell (tv/android). The app shows this page with the Lilin server as its address,
   then loads the TV screens (public/tv) from the server, the same files the Samsung app runs. Before that,
   it gives them what the Samsung TV has and Android doesn't: an AVPlay-shaped player (the app's native one),
   tizen.application.exit and Samsung's key codes. It also asks for the server's address when the app was
@@ -20,7 +20,7 @@
     font-family: system-ui, sans-serif; font-size: 30px; line-height: 1.3;
     background: radial-gradient(ellipse 1500px 700px at 50% -160px, #3D2234 0%, rgba(61, 34, 52, 0) 100%), linear-gradient(#1F1019, #160B12); }
   /* A video is open: the page is see-through, so the picture under it shows (Samsung cuts a hole instead). */
-  html.mq-video, html.mq-video body { background: transparent !important; }
+  html.lil-video, html.lil-video body { background: transparent !important; }
   #app { position: absolute; top: 0; right: 0; bottom: 0; left: 0; overflow: hidden; }
   .shell { position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
   .shell::before { content: ''; width: 330px; height: 16px; margin-bottom: 30px;
@@ -31,7 +31,7 @@
   .shell p:empty { display: none; }
   .shell p kbd { font: inherit; font-weight: 700; color: #F6EADF; }
 
-  /* Where is Marquee? (first start of an app built without an address) */
+  /* Where is Lilin? (first start of an app built without an address) */
   .setup { position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: flex; flex-direction: column; justify-content: center; padding: 0 0 40px 240px; }
   .setup .mark { font-family: "Bricolage Grotesque", sans-serif; font-weight: 800; font-size: 46px; letter-spacing: -0.03em; color: #F4C152; text-shadow: 0 0 26px rgba(244, 193, 82, .45); }
   .setup h1 { margin: 40px 0 0; font-family: "Bricolage Grotesque", sans-serif; font-size: 84px; font-weight: 800; letter-spacing: -.02em; line-height: 1.05; }
@@ -50,25 +50,25 @@
   .setup .note.busy { color: #BA9DAD; }
 
   /* The update offer: tv.css's own dialog (.screen.dialog, .dialog-box, .choice) over whatever is showing. */
-  .mq-update { z-index: 50; }
-  .mq-update p { margin: -12px 0 30px; color: #BA9DAD; font-size: 32px; }
-  .mq-update .bar { height: 12px; margin-top: 10px; border-radius: 6px; background: rgba(246, 234, 223, .1); overflow: hidden; }
-  .mq-update .bar i { display: block; height: 100%; width: 0; background: #F4C152; transition: width .3s linear; }
+  .lil-update { z-index: 50; }
+  .lil-update p { margin: -12px 0 30px; color: #BA9DAD; font-size: 32px; }
+  .lil-update .bar { height: 12px; margin-top: 10px; border-radius: 6px; background: rgba(246, 234, 223, .1); overflow: hidden; }
+  .lil-update .bar i { display: block; height: 100%; width: 0; background: #F4C152; transition: width .3s linear; }
 </style>
 <script>
-  window.MARQUEE_SERVER = "__MARQUEE_SERVER__";
-  window.MARQUEE_BUILT_IN = "__MARQUEE_BUILT_IN__";
+  window.LILIN_SERVER = "__LILIN_SERVER__";
+  window.LILIN_BUILT_IN = "__LILIN_BUILT_IN__";
   // Swedish on a TV set to Swedish, English on every other (MainActivity passes the TV's language).
-  window.MARQUEE_SWEDISH = "__MARQUEE_LANG__" === "sv";
-  document.documentElement.lang = window.MARQUEE_SWEDISH ? "sv" : "en";
+  window.LILIN_SWEDISH = "__LILIN_LANG__" === "sv";
+  document.documentElement.lang = window.LILIN_SWEDISH ? "sv" : "en";
 </script>
 </head>
 <body>
-<div id="app"><div class="shell"><b>Marquee</b><p id="shell-note"></p></div></div>
+<div id="app"><div class="shell"><b>Lilin</b><p id="shell-note"></p></div></div>
 <script>
 (function () {
   'use strict';
-  var N = window.MarqueeNative;
+  var N = window.LilinNative;
   if (!N) return;
 
   // ---------- the remote: Back and media keys come from the app with Samsung's codes ----------
@@ -120,8 +120,8 @@
     },
   };
   var avplay = {
-    open: function (url) { reset(); listener = {}; st.state = 'IDLE'; document.documentElement.classList.add('mq-video'); N.open(String(url)); },
-    close: function () { reset(); document.documentElement.classList.remove('mq-video'); N.close(); },
+    open: function (url) { reset(); listener = {}; st.state = 'IDLE'; document.documentElement.classList.add('lil-video'); N.open(String(url)); },
+    close: function () { reset(); document.documentElement.classList.remove('lil-video'); N.close(); },
     stop: function () { st.playing = false; st.state = 'IDLE'; N.stop(); },
     setListener: function (l) { listener = l || {}; },
     setDisplayRect: function () {},      // always the whole screen, letterboxed
@@ -152,13 +152,13 @@
     setSilentSubtitle: function () {},
   };
   window.webapis = { avplay: avplay };
-  // Which video to ask Marquee for: the Samsung app's own (HEVC) when this TV decodes it, else H.264 (Codecs.java).
-  window.MARQUEE_TV_PLAY = N.playVariant();
+  // Which video to ask Lilin for: the Samsung app's own (HEVC) when this TV decodes it, else H.264 (Codecs.java).
+  window.LILIN_TV_PLAY = N.playVariant();
 
   // ---------- loading the TV screens from the server (like tv/tizen/shell.js, but fetched side by side) ----------
-  var server = String(window.MARQUEE_SERVER || '').replace(/\/+$/, '');
+  var server = String(window.LILIN_SERVER || '').replace(/\/+$/, '');
   var added = [], waiting = false, retryTimer = null;
-  function say(en, sv) { return window.MARQUEE_SWEDISH ? sv : en; }
+  function say(en, sv) { return window.LILIN_SWEDISH ? sv : en; }
   function note(html) { var n = document.getElementById('shell-note'); if (n) n.innerHTML = html; }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function add(el) { added.push(el); document.head.appendChild(el); }
@@ -167,8 +167,8 @@
     added.forEach(function (el) { if (el.parentNode) el.parentNode.removeChild(el); });
     added = [];
     waiting = true;
-    note(say('Can’t reach Marquee at ' + esc(server) + '. Is the server on? Trying again…<br>Press <kbd>OK</kbd> to change the address.',
-      'Kan inte nå Marquee på ' + esc(server) + '. Är servern på? Försöker igen…<br>Tryck <kbd>OK</kbd> för att byta adress.'));
+    note(say('Can’t reach Lilin at ' + esc(server) + '. Is the server on? Trying again…<br>Press <kbd>OK</kbd> to change the address.',
+      'Kan inte nå Lilin på ' + esc(server) + '. Är servern på? Försöker igen…<br>Tryck <kbd>OK</kbd> för att byta adress.'));
     retryTimer = setTimeout(function () { waiting = false; load(); }, 5000);
   }
   function load() {
@@ -177,7 +177,7 @@
     css.rel = 'stylesheet';
     css.href = server + '/tv/tv.css?v=' + v;
     add(css);
-    (window.MARQUEE_SWEDISH ? ['sv.js', 'logic.js', 'tv.js'] : ['logic.js', 'tv.js']).forEach(function (name, i, all) {
+    (window.LILIN_SWEDISH ? ['sv.js', 'logic.js', 'tv.js'] : ['logic.js', 'tv.js']).forEach(function (name, i, all) {
       var s = document.createElement('script');
       s.async = false; // downloaded together, run in this order
       s.src = server + '/tv/' + name + '?v=' + v;
@@ -193,15 +193,15 @@
     else if (e.keyCode === 13) { clearTimeout(retryTimer); waiting = false; setup(server); }
   });
 
-  // ---------- where is Marquee? ----------
+  // ---------- where is Lilin? ----------
   function setup(current) {
     var app = document.getElementById('app');
-    app.innerHTML = '<div class="setup"><div class="mark">Marquee</div>' +
-      '<h1>' + say('Where is Marquee?', 'Var finns Marquee?') + '</h1>' +
-      '<p class="lead">' + say('Type the address of your Marquee server, for example <b>192.168.1.10:8080</b>. ' +
-      'You’ll find it in Marquee on your phone under <b>Settings → Android TV</b>.',
-      'Skriv adressen till din Marquee-server, till exempel <b>192.168.1.10:8080</b>. ' +
-      'Du hittar den i Marquee på telefonen under <b>Inställningar → Android TV</b>.') + '</p>' +
+    app.innerHTML = '<div class="setup"><div class="mark">Lilin</div>' +
+      '<h1>' + say('Where is Lilin?', 'Var finns Lilin?') + '</h1>' +
+      '<p class="lead">' + say('Type the address of your Lilin server, for example <b>192.168.1.10:8080</b>. ' +
+      'You’ll find it in Lilin on your phone under <b>Settings → Android TV</b>.',
+      'Skriv adressen till din Lilin-server, till exempel <b>192.168.1.10:8080</b>. ' +
+      'Du hittar den i Lilin på telefonen under <b>Inställningar → Android TV</b>.') + '</p>' +
       '<form novalidate><input type="text" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" enterkeyhint="go" placeholder="192.168.1.10:8080">' +
       '<button type="submit">' + say('Connect', 'Anslut') + '</button></form><p class="note" role="status"></p></div>';
     var input = app.querySelector('input'), button = app.querySelector('button'), msg = app.querySelector('.note'), form = app.querySelector('form');
@@ -216,7 +216,7 @@
       if (busy) return;
       if (!input.value.trim()) { msg.className = 'note'; msg.textContent = say('Type the address first.', 'Skriv in adressen först.'); on = 0; paint(); return; }
       busy = true;
-      msg.className = 'note busy'; msg.textContent = say('Looking for Marquee…', 'Letar efter Marquee…');
+      msg.className = 'note busy'; msg.textContent = say('Looking for Lilin…', 'Letar efter Lilin…');
       input.blur();
       N.setServer(input.value);
     }
@@ -225,8 +225,8 @@
       if (e.ok) return; // the app reloads this page with the new address
       msg.className = 'note';
       msg.textContent = e.problem === 'address' ? say('That doesn’t look like an address. Type, for example, 192.168.1.10:8080.', 'Det där ser inte ut som en adress. Skriv till exempel 192.168.1.10:8080.')
-        : e.problem === 'not-marquee' ? say('Something answered there, but it wasn’t Marquee. Check the address and the port.', 'Något svarade där, men det var inte Marquee. Kolla adressen och porten.')
-        : say('Found nothing at that address. Is the TV on the same network as Marquee, and is the server on?', 'Hittade inget på den adressen. Är TV:n på samma nätverk som Marquee, och är servern på?');
+        : e.problem === 'not-lilin' ? say('Something answered there, but it wasn’t Lilin. Check the address and the port.', 'Något svarade där, men det var inte Lilin. Kolla adressen och porten.')
+        : say('Found nothing at that address. Is the TV on the same network as Lilin, and is the server on?', 'Hittade inget på den adressen. Är TV:n på samma nätverk som Lilin, och är servern på?');
       on = 0; paint();
     };
     form.addEventListener('submit', function (e) { e.preventDefault(); submit(); });
@@ -250,19 +250,19 @@
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (info) {
         if (!info || !(info.versionCode > N.versionCode())) return;
-        // Android 12+ with Marquee allowed to install: it downloads by itself and installs once the app is left.
+        // Android 12+ with Lilin allowed to install: it downloads by itself and installs once the app is left.
         if (N.updatesItself && N.updatesItself(info.versionCode)) return;
         (function offer() {
-          if (document.documentElement.classList.contains('mq-video')) { setTimeout(offer, 30000); return; }
+          if (document.documentElement.classList.contains('lil-video')) { setTimeout(offer, 30000); return; }
           offerUpdate(info);
         })();
       })
       .catch(function () { /* no update info: nothing to offer */ });
   }
   function offerUpdate(info) {
-    var T = window.MarqueeTvLogic && window.MarqueeTvLogic.T ? window.MarqueeTvLogic.T : function (s) { return s; };
+    var T = window.LilinTvLogic && window.LilinTvLogic.T ? window.LilinTvLogic.T : function (s) { return s; };
     var el = document.createElement('div');
-    el.className = 'screen dialog mq-update';
+    el.className = 'screen dialog lil-update';
     el.innerHTML = '<div class="dialog-box"><h2></h2><p></p><div class="acts"></div></div>';
     var title = el.querySelector('h2'), text = el.querySelector('p'), acts = el.querySelector('.acts');
     var buttons = [], on = 0, closeOnly = false;
@@ -295,12 +295,12 @@
       else if (k === 10009 || k === 8 || k === 27) { if (buttons.length || closeOnly) close(); }
     }
     function ask() {
-      title.textContent = T('A new version of the Marquee app is here');
+      title.textContent = T('A new version of the Lilin app is here');
       text.textContent = T('Version {0}. It takes about a minute.', info.versionName || info.versionCode);
       choices([{ label: T('Update now'), act: start }, { label: T('Later'), act: close }]);
     }
     function start() {
-      title.textContent = T('Updating the Marquee app…');
+      title.textContent = T('Updating the Lilin app…');
       text.textContent = T('Getting the new version…');
       progress(0);
       N.update(info.apk || '/android.apk');
@@ -309,24 +309,24 @@
       if (e.s === 'progress') { var i = acts.querySelector('i'); if (i) i.style.width = e.pct + '%'; }
       else if (e.s === 'later') {
         title.textContent = T('The update is ready');
-        text.textContent = T('It installs by itself when you leave Marquee. From now on the app keeps itself up to date.');
+        text.textContent = T('It installs by itself when you leave Lilin. From now on the app keeps itself up to date.');
         choices([{ label: T('OK'), act: close }]);
       } else if (e.s === 'installing') { text.textContent = T('Confirm with Install on the screen that opens.'); progress(100); closeOnly = true; setTimeout(close, 1500); }
       else if (e.s === 'allow') {
-        title.textContent = T('Let Marquee install its update');
-        text.textContent = T('Turn on Marquee in the list that opened, then press Back. The update carries on by itself.');
+        title.textContent = T('Let Lilin install its update');
+        text.textContent = T('Turn on Lilin in the list that opened, then press Back. The update carries on by itself.');
         closeOnly = true;
       } else if (e.s === 'allow-manual') {
-        title.textContent = T('Let Marquee install its update');
-        text.textContent = T('In the TV’s settings, allow Marquee to install unknown apps (often under Device preferences → Security). Then update again.');
+        title.textContent = T('Let Lilin install its update');
+        text.textContent = T('In the TV’s settings, allow Lilin to install unknown apps (often under Device preferences → Security). Then update again.');
         choices([{ label: T('OK'), act: close }]);
       } else if (e.s === 'denied') {
         title.textContent = T('The update was not installed');
-        text.textContent = T('Marquee wasn’t allowed to install apps. You can update next time the app starts.');
+        text.textContent = T('Lilin wasn’t allowed to install apps. You can update next time the app starts.');
         choices([{ label: T('OK'), act: close }]);
       } else if (e.s === 'error') {
         title.textContent = T('The update didn’t download');
-        text.textContent = T('Marquee will offer it again next time the app starts.');
+        text.textContent = T('Lilin will offer it again next time the app starts.');
         choices([{ label: T('OK'), act: close }]);
       }
     };

@@ -1,4 +1,4 @@
-package app.marquee.tv;
+package app.lilin.tv;
 
 import android.media.MediaCodecInfo;
 import android.media.MediaCodecList;
@@ -7,13 +7,13 @@ import android.os.Build;
 
 import java.util.Locale;
 
-/** What this TV's hardware can decode, which picks the video Marquee sends (/api/play-link). */
+/** What this TV's hardware can decode, which picks the video Lilin sends (/api/play-link). */
 final class Codecs {
   private Codecs() {}
 
   /**
    * "browser-hevc": the same file the Samsung app plays (HEVC, often 10-bit and 4K) when a hardware
-   * decoder handles HEVC Main 10 at 4K. Otherwise "browser&quality=auto": Marquee sends an H.264 copy,
+   * decoder handles HEVC Main 10 at 4K. Otherwise "browser&quality=auto": Lilin sends an H.264 copy,
    * or a live 1080p stream when the file is too heavy for that.
    */
   static String playVariant() {

@@ -1,6 +1,6 @@
 // Invites: the owner makes a one-time link, sends it to someone, they open it and enter the email
-// they'll sign in with. Marquee adds that email to a Zero Trust email list (Reusable components →
-// Lists) that Marquee's Access policy allows ("Emails in list"), then sends them to Marquee, where
+// they'll sign in with. Lilin adds that email to a Zero Trust email list (Reusable components →
+// Lists) that Lilin's Access policy allows ("Emails in list"), then sends them to Lilin, where
 // Cloudflare's login page lets them pick any login method you've enabled (one-time email code,
 // Google, ...). From then on they just sign in.
 //
@@ -8,9 +8,9 @@
 // Invite pages live under /c/i/, so the same Cloudflare Access bypass as shared clips covers them.
 // Links are single use and expire.
 //
-// When Marquee is Cloudflare's sign-in provider (oidc.js, handlePublic gets `auth`), the invite page
-// also asks for a password, creates the Marquee account and signs the browser in, so the person lands
-// in Marquee without seeing a login page. A "password link" is an invite tied to one existing member's
+// When Lilin is Cloudflare's sign-in provider (oidc.js, handlePublic gets `auth`), the invite page
+// also asks for a password, creates the Lilin account and signs the browser in, so the person lands
+// in Lilin without seeing a login page. A "password link" is an invite tied to one existing member's
 // email: the only way to claim an email that's already on the list.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -31,7 +31,7 @@ let record = () => {};   // activity logger, from server.js
 const attempts = [];     // timestamps of invite form posts, for a simple global rate limit
 
 export function initInvites({ dataDir, onEvent }) {
-  file = path.join(dataDir, '.marquee-invites.json');
+  file = path.join(dataDir, '.lilin-invites.json');
   try { invites = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { invites = {}; }
   record = onEvent || record;
 }
@@ -63,7 +63,7 @@ export async function members() {
 // Single-item append / remove: nothing else in the list is touched.
 async function addMember(email) {
   if ((await members()).includes(email)) return;
-  await cf('PATCH', '', { append: [{ value: email, description: 'Marquee invite' }] });
+  await cf('PATCH', '', { append: [{ value: email, description: 'Lilin invite' }] });
 }
 // Ends every Cloudflare Access sign-in this person has (they must sign in again, which they can't once removed).
 export async function revokeAccess(email) {
@@ -117,7 +117,7 @@ async function readForm(req) {
 }
 
 // Returns true when it handled the request.
-// `auth`: Marquee's sign-in (auth.js), passed when Marquee is Cloudflare's sign-in provider.
+// `auth`: Lilin's sign-in (auth.js), passed when Lilin is Cloudflare's sign-in provider.
 export async function handlePublic(req, res, url, { auth = null } = {}) {
   const m = url.pathname.match(/^\/c\/i\/([A-Za-z0-9_-]{16})\/?$/);
   if (!m) return false;
@@ -128,21 +128,21 @@ export async function handlePublic(req, res, url, { auth = null } = {}) {
   };
   const base = baseUrl(req);
   const view = (title, inner, extra) => send(200, page({
-    title, desc: 'You’ve been invited to Marquee: films and shows from the home server.',
-    url: `${base}${url.pathname}`, image: `${base}/c/marquee.png`, body: `<div class="card">${inner}</div>`,
+    title, desc: 'You’ve been invited to Lilin: films and shows from the home server.',
+    url: `${base}${url.pathname}`, image: `${base}/c/lilin.png`, body: `<div class="card">${inner}</div>`,
   }), extra);
 
   const inv = Object.hasOwn(invites, m[1]) ? invites[m[1]] : null;
   if (!inv || state(inv) !== 'open') {
-    return view('Invite not valid', `<h1>This invite doesn’t work any more</h1><p>${inv?.usedAt ? 'It has already been used.' : inv ? 'It has expired.' : 'It may have been cancelled.'} Ask for a new link.</p><p><a class="brand" href="/">Already have access? Open Marquee</a></p>`);
+    return view('Invite not valid', `<h1>This invite doesn’t work any more</h1><p>${inv?.usedAt ? 'It has already been used.' : inv ? 'It has expired.' : 'It may have been cancelled.'} Ask for a new link.</p><p><a class="brand" href="/">Already have access? Open Lilin</a></p>`);
   }
-  if (!invitesConfigured()) return view('Invites aren’t set up', '<h1>Invites aren’t set up yet</h1><p>The server owner still needs to connect Marquee to Cloudflare.</p>');
+  if (!invitesConfigured()) return view('Invites aren’t set up', '<h1>Invites aren’t set up yet</h1><p>The server owner still needs to connect Lilin to Cloudflare.</p>');
 
   const bound = inv.forEmail;
-  const title = bound ? 'Pick your Marquee password' : 'You’re invited to Marquee';
+  const title = bound ? 'Pick your Lilin password' : 'You’re invited to Lilin';
   const form = (email = '', error = '') => (auth ? `
-    <h1>${bound ? 'Pick a password' : 'You’re invited to Marquee'}</h1>
-    <p>${bound ? 'From now on you sign in to Marquee with your email and this password.' : 'Films and shows from the home server, on your phone, in a browser or on the TV.'}</p>
+    <h1>${bound ? 'Pick a password' : 'You’re invited to Lilin'}</h1>
+    <p>${bound ? 'From now on you sign in to Lilin with your email and this password.' : 'Films and shows from the home server, on your phone, in a browser or on the TV.'}</p>
     <form method="post">
       <label for="email">Your email</label>
       <input id="email" name="email" type="email" required autocomplete="username" ${bound ? 'readonly' : 'autofocus'} value="${esc(bound || email)}" placeholder="you@example.com">
@@ -151,10 +151,10 @@ export async function handlePublic(req, res, url, { auth = null } = {}) {
       <label for="again">Same password again</label>
       <input id="again" name="again" type="password" required minlength="10" autocomplete="new-password">
       ${error ? `<p class="err">${esc(error)}</p>` : ''}
-      <button type="submit">${bound ? 'Save password' : 'Join Marquee'}</button>
+      <button type="submit">${bound ? 'Save password' : 'Join Lilin'}</button>
     </form>
-    <p class="foot">On a new phone or computer, open Marquee and sign in with this email and password.</p>` : `
-    <h1>You’re invited to Marquee</h1>
+    <p class="foot">On a new phone or computer, open Lilin and sign in with this email and password.</p>` : `
+    <h1>You’re invited to Lilin</h1>
     <p>Films and shows from the home server, on your phone, in a browser or on the TV.</p>
     <form method="post">
       <label for="email">The email you’ll sign in with</label>
@@ -183,7 +183,7 @@ export async function handlePublic(req, res, url, { auth = null } = {}) {
     if (password !== String(body.again || '')) return view(title, form(email, 'The two passwords aren’t the same.'));
     const problem = passwordProblem(password, email);
     if (problem) return view(title, form(email, problem));
-    if (!bound && auth.hasPassword(email)) return view(title, form(email, 'That email already has a Marquee account. Open Marquee and sign in.'));
+    if (!bound && auth.hasPassword(email)) return view(title, form(email, 'That email already has a Lilin account. Open Lilin and sign in.'));
     if (!bound) {
       let taken = false;
       try { taken = (await members()).includes(email); } catch (e) { console.error('[invites]', e.message); return view(title, form(email, 'Couldn’t add you right now. Try again in a minute, or tell whoever sent the link.')); }
@@ -199,9 +199,9 @@ export async function handlePublic(req, res, url, { auth = null } = {}) {
     inv.usedAt = now;
     inv.email = email;
     save();
-    record(req, bound ? 'signin' : 'joined', bound ? 'Set a Marquee password' : (inv.note || 'with an invite'), { user: email });
+    record(req, bound ? 'signin' : 'joined', bound ? 'Set a Lilin password' : (inv.note || 'with an invite'), { user: email });
     const { setCookie } = auth.startSession(req, email);
-    // Straight in: Cloudflare sends them to Marquee's sign-in, which sees this session and lets them through.
+    // Straight in: Cloudflare sends them to Lilin's sign-in, which sees this session and lets them through.
     res.writeHead(303, { Location: '/', 'Set-Cookie': setCookie, 'Cache-Control': 'no-store' });
     res.end();
     return true;
@@ -210,16 +210,16 @@ export async function handlePublic(req, res, url, { auth = null } = {}) {
     await addMember(email);
   } catch (e) {
     console.error('[invites]', e.message);
-    return view('You’re invited to Marquee', form(email, 'Couldn’t add you right now. Try again in a minute, or tell whoever sent the link.'));
+    return view('You’re invited to Lilin', form(email, 'Couldn’t add you right now. Try again in a minute, or tell whoever sent the link.'));
   }
   inv.usedAt = now;
   inv.email = email;
   save();
   record(req, 'joined', inv.note || 'with an invite', { user: email });
-  return view('Welcome to Marquee', `
+  return view('Welcome to Lilin', `
     <h1>You’re in</h1>
-    <p class="ok">${esc(email)} can now sign in to Marquee.</p>
-    <p>Taking you there… pick how you want to sign in (with a code sent to this email, or an account that uses it). Next time just open Marquee and sign in the same way.</p>
-    <form method="get" action="/"><button type="submit">Open Marquee</button></form>
+    <p class="ok">${esc(email)} can now sign in to Lilin.</p>
+    <p>Taking you there… pick how you want to sign in (with a code sent to this email, or an account that uses it). Next time just open Lilin and sign in the same way.</p>
+    <form method="get" action="/"><button type="submit">Open Lilin</button></form>
     <script>setTimeout(() => location.replace('/'), 2500)</script>`);
 }

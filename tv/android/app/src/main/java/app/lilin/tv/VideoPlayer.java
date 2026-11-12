@@ -1,4 +1,4 @@
-package app.marquee.tv;
+package app.lilin.tv;
 
 import android.app.Activity;
 import android.os.Handler;
@@ -103,7 +103,7 @@ final class VideoPlayer implements Player.Listener {
             .build(), true)
         .setHandleAudioBecomingNoisy(true)
         .build();
-    // Subtitles are drawn by the page (it fetches them from Marquee), never by the player.
+    // Subtitles are drawn by the page (it fetches them from Lilin), never by the player.
     exo.setTrackSelectionParameters(exo.getTrackSelectionParameters().buildUpon()
         .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
         .build());

@@ -19,7 +19,7 @@ test('preview text uses the first line as title and the rest as description', ()
 
 test('shared notes give bots a preview and send people to the protected app', { timeout: 20000 }, async () => {
   const root = fileURLToPath(new URL('../', import.meta.url));
-  const app = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-note-share-'));
+  const app = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-note-share-'));
   for (const name of await fs.readdir(root)) if (name.endsWith('.js') || name === 'package.json') await fs.copyFile(path.join(root, name), path.join(app, name));
   await fs.cp(path.join(root, 'public'), path.join(app, 'public'), { recursive: true });
   await fs.cp(path.join(root, 'src'), path.join(app, 'src'), { recursive: true });
@@ -39,7 +39,7 @@ test('shared notes give bots a preview and send people to the protected app', { 
   try {
     await new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(Error('Startup timeout: ' + logs)), 8000);
-      child.stdout.on('data', (c) => { const ready = /Marquee is running: http:\/\/localhost:(\d+)/.exec(String(c)); if (ready) { port = Number(ready[1]); base = `http://127.0.0.1:${port}`; clearTimeout(timer); resolve(); } });
+      child.stdout.on('data', (c) => { const ready = /Lilin is running: http:\/\/localhost:(\d+)/.exec(String(c)); if (ready) { port = Number(ready[1]); base = `http://127.0.0.1:${port}`; clearTimeout(timer); resolve(); } });
       child.once('error', reject); child.once('exit', () => { clearTimeout(timer); reject(Error(logs)); });
     });
     const { note } = await (await post('/api/admin/notes', { text: 'Secret plan\nmeet at <8>', attachments: [{ fileId }] })).json();
@@ -84,7 +84,7 @@ test('shared notes give bots a preview and send people to the protected app', { 
 const hasFfmpeg = spawnSync('ffmpeg', ['-version']).status === 0 && spawnSync('ffprobe', ['-version']).status === 0;
 test('a shared video gets a Discord-friendly MP4 and thumbnail anyone can load', { skip: !hasFfmpeg && 'ffmpeg not installed', timeout: 60000 }, async () => {
   const root = fileURLToPath(new URL('../', import.meta.url));
-  const app = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-note-video-'));
+  const app = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-note-video-'));
   for (const name of await fs.readdir(root)) if (name.endsWith('.js') || name === 'package.json') await fs.copyFile(path.join(root, name), path.join(app, name));
   await fs.cp(path.join(root, 'public'), path.join(app, 'public'), { recursive: true });
   await fs.cp(path.join(root, 'src'), path.join(app, 'src'), { recursive: true });
@@ -107,7 +107,7 @@ test('a shared video gets a Discord-friendly MP4 and thumbnail anyone can load',
   try {
     await new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(Error('Startup timeout: ' + logs)), 8000);
-      child.stdout.on('data', (c) => { const ready = /Marquee is running: http:\/\/localhost:(\d+)/.exec(String(c)); if (ready) { port = Number(ready[1]); base = `http://127.0.0.1:${port}`; clearTimeout(timer); resolve(); } });
+      child.stdout.on('data', (c) => { const ready = /Lilin is running: http:\/\/localhost:(\d+)/.exec(String(c)); if (ready) { port = Number(ready[1]); base = `http://127.0.0.1:${port}`; clearTimeout(timer); resolve(); } });
       child.once('error', reject); child.once('exit', () => { clearTimeout(timer); reject(Error(logs)); });
     });
     const { note } = await post('/api/admin/notes', { text: '', attachments: [{ fileId }] });

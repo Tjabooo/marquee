@@ -104,7 +104,7 @@ export function lanAddresses(interfaces = os.networkInterfaces()) {
 }
 
 const ENCODER_TESTS = {
-  // name: [ffmpeg encoder, extra input args, filter, label, used by Marquee]
+  // name: [ffmpeg encoder, extra input args, filter, label, used by Lilin]
   nvenc: { encoder: 'h264_nvenc', label: 'NVIDIA NVENC', used: true },
   qsv: { encoder: 'h264_qsv', pre: ['-init_hw_device', 'qsv=hw', '-filter_hw_device', 'hw'], vf: 'format=nv12,hwupload=extra_hw_frames=64', label: 'Intel Quick Sync' },
   vaapi: { encoder: 'h264_vaapi', pre: ['-vaapi_device', '/dev/dri/renderD128'], vf: 'format=nv12,hwupload', label: 'VAAPI (Intel/AMD on Linux)', platforms: ['linux'] },

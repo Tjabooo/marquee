@@ -1,15 +1,15 @@
-// Marquee as an OpenID Connect sign-in provider, so Cloudflare Access (or any OIDC client) can use
-// Marquee's own accounts instead of its one-time email codes.
+// Lilin as an OpenID Connect sign-in provider, so Cloudflare Access (or any OIDC client) can use
+// Lilin's own accounts instead of its one-time email codes.
 //
 // With Access set to this provider only ("instant auth"), a visitor without an Access cookie goes
-// Marquee → Cloudflare → /c/oidc/authorize. Someone with a Marquee session cookie is sent straight
-// back with a code, so they never see a login page; anyone else gets Marquee's sign-in form.
+// Lilin → Cloudflare → /c/oidc/authorize. Someone with a Lilin session cookie is sent straight
+// back with a code, so they never see a login page; anyone else gets Lilin's sign-in form.
 // Cloudflare then swaps the code for an ID token (/c/oidc/token) and checks its signature against
 // /c/oidc/jwks. Everything lives under /c/, which Access already lets through.
 //
 // .env: OIDC_CLIENT_ID, OIDC_CLIENT_SECRET (any long random strings, also entered in Cloudflare)
 // and OIDC_REDIRECT_URIS (comma-separated; for Access: https://<team>.cloudflareaccess.com/cdn-cgi/access/callback).
-// The signing key is made on first use and kept in .marquee-oidc-key.pem in the data folder.
+// The signing key is made on first use and kept in .lilin-oidc-key.pem in the data folder.
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -45,7 +45,7 @@ export function createOidc({
   let key = null;
   function signingKey() {
     if (key) return key;
-    const file = path.join(dataDir, '.marquee-oidc-key.pem');
+    const file = path.join(dataDir, '.lilin-oidc-key.pem');
     let pem = null;
     try { pem = fs.readFileSync(file, 'utf8'); } catch { /* first run */ }
     if (!pem) {
@@ -86,7 +86,7 @@ export function createOidc({
     res.end(body);
     return true;
   };
-  const problem = (res, text) => html(res, 400, `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Marquee</title><body style="font:16px system-ui;background:#0d0d10;color:#ecebf0;display:grid;place-items:center;min-height:90vh"><p>${text}</p></body>`);
+  const problem = (res, text) => html(res, 400, `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Lilin</title><body style="font:16px system-ui;background:#0d0d10;color:#ecebf0;display:grid;place-items:center;min-height:90vh"><p>${text}</p></body>`);
 
   async function readForm(req) {
     const chunks = []; let size = 0;
@@ -150,7 +150,7 @@ export function createOidc({
       const request = authorizeRequest(url.searchParams);
       if (request.error) return problem(res, request.error);
       if (request.redirect) { res.writeHead(302, { Location: request.redirect }); res.end(); return true; }
-      // Only Marquee's own session counts here: under /c/ nobody carries a Cloudflare identity.
+      // Only Lilin's own session counts here: under /c/ nobody carries a Cloudflare identity.
       if (req.auth?.via === 'session' && req.auth.email) return issueCode(res, request, req.auth.email);
       return html(res, 200, signInPage({ next: `${p}${url.search}`, hasLogins: true, remote: false, action: `${PREFIX}/login` }));
     }
@@ -159,7 +159,7 @@ export function createOidc({
       const body = await readForm(req);
       const next = safeNext(body.next);
       const target = new URL(next, 'http://x');
-      if (target.pathname !== `${PREFIX}/authorize`) return problem(res, 'Open Marquee again to sign in.');
+      if (target.pathname !== `${PREFIX}/authorize`) return problem(res, 'Open Lilin again to sign in.');
       const request = authorizeRequest(target.searchParams);
       if (request.error) return problem(res, request.error);
       try {
@@ -177,7 +177,7 @@ export function createOidc({
 
     if (p === `${PREFIX}/token` && req.method === 'POST') {
       const body = await readForm(req);
-      if (!clientAuth(req, body)) return json(res, 401, { error: 'invalid_client' }, { 'WWW-Authenticate': 'Basic realm="marquee"' });
+      if (!clientAuth(req, body)) return json(res, 401, { error: 'invalid_client' }, { 'WWW-Authenticate': 'Basic realm="lilin"' });
       if (body.grant_type !== 'authorization_code') return json(res, 400, { error: 'unsupported_grant_type' });
       prune();
       const grant = codes.get(String(body.code || ''));

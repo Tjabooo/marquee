@@ -1,13 +1,16 @@
 <!doctype html>
-<!-- The Android TV home-screen banner (320×180 dp), drawn at 4× like the TV app's boot screen:
-     the room's light from above, a row of marquee bulbs and the lit wordmark. Rendered by render.sh. -->
+<!-- The Android TV home-screen banner (320×180 dp), drawn at 4×: the lit wordmark, both i's carrying
+     a candle flame instead of a dot (lilin is Malay for candle), and the warm light they throw. Rendered by render.sh. -->
 <html><head><meta charset="utf-8"><style>
-  @font-face { font-family: "Bricolage Grotesque"; font-weight: 200 800; src: url("../../../public/fonts/bricolage-grotesque-latin.woff2") format("woff2"); }
+  @font-face { font-family: "Bricolage Grotesque"; font-weight: 200 800; src: url("../../../public/fonts/bricolage-grotesque-latin.woff2") format("woff2"); unicode-range: U+0000-00FF; }
+  @font-face { font-family: "Bricolage Grotesque"; font-weight: 200 800; src: url("../../../public/fonts/bricolage-grotesque-latin-ext.woff2") format("woff2"); unicode-range: U+0100-024F; }
   html, body { margin: 0; width: 1280px; height: 720px; overflow: hidden; }
   body { display: flex; flex-direction: column; align-items: center; justify-content: center;
-    background: radial-gradient(ellipse 1100px 560px at 50% -120px, #4A2840 0%, rgba(61, 34, 52, 0) 100%), linear-gradient(#1F1019, #160B12); }
-  .bulbs { width: 660px; height: 40px; margin-bottom: 34px;
-    background: radial-gradient(circle, #F4C152 11px, rgba(244, 193, 82, .38) 15px, rgba(244, 193, 82, 0) 22px) 0 50% / 66px 40px repeat-x; }
+    background: radial-gradient(ellipse 900px 520px at 50% 34%, rgba(244, 193, 82, .16) 0%, rgba(244, 193, 82, 0) 100%), linear-gradient(#1F1019, #160B12); }
   b { font-family: "Bricolage Grotesque"; font-weight: 800; font-size: 268px; line-height: .9; letter-spacing: -0.035em; color: #F4C152;
-    text-shadow: 0 0 60px rgba(244, 193, 82, .5), 0 0 18px rgba(244, 193, 82, .25); margin-top: -10px; }
-</style></head><body><div class="bulbs"></div><b>Marquee</b></body></html>
+    text-shadow: 0 0 60px rgba(244, 193, 82, .5), 0 0 18px rgba(244, 193, 82, .25); margin-top: 40px; }
+  .i { position: relative; }
+  .i::before { content: ""; position: absolute; left: 50%; bottom: .78em; width: 56px; height: 118px; margin-left: -28px;
+    filter: drop-shadow(0 0 18px rgba(255, 200, 97, .9));
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-31 -88 62 130'%3E%3Cpath d='M0,-87C3.7,-57 31,-25.5 31,10.5A31,31 0 0 1 -31,10.5C-31,-25.5 -3.7,-57 0,-87Z' fill='%23FFD978'/%3E%3Cpath d='M0,-30C1.6,-17 13,-6 13,8.5A13,13 0 0 1 -13,8.5C-13,-6 -1.6,-17 0,-30Z' fill='%23FFFBEF'/%3E%3C/svg%3E") center / contain no-repeat; }
+</style></head><body><b>L<span class="i">ı</span>l<span class="i">ı</span>n</b></body></html>

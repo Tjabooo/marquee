@@ -1,11 +1,11 @@
-// Loads Marquee's TV app from the server into this page, so a Marquee update reaches the TV without reinstalling
+// Loads Lilin's TV app from the server into this page, so a Lilin update reaches the TV without reinstalling
 // anything. The app is the Rust one (public/tv-rs: WebAssembly drawing with WebGL, much lighter on the TV's CPU);
 // if this TV can't run it (no WebGL or WebAssembly) or it stops, the JavaScript app (public/tv) takes over.
 // If the server can't be reached, it says so and keeps trying.
 (function () {
   'use strict';
-  var server = String(window.MARQUEE_SERVER || '').replace(/\/+$/, '');
-  var ENGINE_KEY = 'marquee:tv-engine'; // "js" forces the JavaScript app (a way back if the Rust one misbehaves)
+  var server = String(window.LILIN_SERVER || '').replace(/\/+$/, '');
+  var ENGINE_KEY = 'lilin:tv-engine'; // "js" forces the JavaScript app (a way back if the Rust one misbehaves)
   var added = [];
   var waiting = false;
   var jsStarted = false;
@@ -23,7 +23,7 @@
     added.forEach(function (el) { if (el.parentNode) el.parentNode.removeChild(el); });
     added = [];
     waiting = true;
-    note('Kan inte nå Marquee på ' + server + '. Är servern på? Försöker igen…');
+    note('Kan inte nå Lilin på ' + server + '. Är servern på? Försöker igen…');
     setTimeout(function () { waiting = false; load(); }, 5000);
   }
   function engine() { try { return localStorage.getItem(ENGINE_KEY) || ''; } catch (e) { return ''; } }
@@ -34,7 +34,7 @@
     jsStarted = true;
     var v = Date.now();
     var app = document.getElementById('app');
-    if (app && !app.firstChild) app.innerHTML = '<div class="shell"><b>Marquee</b><p id="shell-note"></p></div>';
+    if (app && !app.firstChild) app.innerHTML = '<div class="shell"><b>Lilin</b><p id="shell-note"></p></div>';
     var css = document.createElement('link');
     css.rel = 'stylesheet';
     css.href = server + '/tv/tv.css?v=' + v;
@@ -48,12 +48,12 @@
     });
   }
 
-  // The Rust app: /tv-rs/host.js starts /tv-rs/marquee_tv.wasm.
+  // The Rust app: /tv-rs/host.js starts /tv-rs/lilin_tv.wasm.
   function load() {
     if (engine() === 'js') return loadJs();
     script(server + '/tv-rs/host.js?v=' + Date.now(), function (err) {
-      if (err || !window.MarqueeTvHost) return retry();
-      window.MarqueeTvHost.start({ server: server, onFail: function () { loadJs(); } });
+      if (err || !window.LilinTvHost) return retry();
+      window.LilinTvHost.start({ server: server, onFail: function () { loadJs(); } });
     });
   }
 
@@ -62,8 +62,8 @@
       try { tizen.application.getCurrentApplication().exit(); } catch (x) { /* not on a TV */ }
     }
   });
-  if (!server) { note('Den här appen byggdes utan Marquee-adress. Bygg om den med MARQUEE_URL.'); return; }
-  // Marquee's own lettering for the splash (the same font the TV app uses), from the server.
+  if (!server) { note('Den här appen byggdes utan Lilin-adress. Bygg om den med LILIN_URL.'); return; }
+  // Lilin's own lettering for the splash (the same font the TV app uses), from the server.
   var face = document.createElement('style');
   face.textContent = '@font-face{font-family:"Bricolage Grotesque";font-weight:200 800;src:url("' + server + '/fonts/bricolage-grotesque-latin.woff2") format("woff2")}';
   document.head.appendChild(face);

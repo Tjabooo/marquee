@@ -1,5 +1,5 @@
-// The thin browser side of Marquee's Rust TV app (tv/rust). Everything you see, every screen, the remote-control
-// navigation, the API calls and the player logic live in Rust (marquee_tv.wasm) and are drawn with WebGL in one
+// The thin browser side of Lilin's Rust TV app (tv/rust). Everything you see, every screen, the remote-control
+// navigation, the API calls and the player logic live in Rust (lilin_tv.wasm) and are drawn with WebGL in one
 // canvas: no DOM per card, no CSS layout, no style recalculation, which is what made the old app slow on the TV.
 // This file only hands the TV's own services to Rust: WebGL, fetch, timers, localStorage, text rasterising,
 // image decoding (createImageBitmap, off the main thread) and AVPlay.
@@ -18,7 +18,7 @@
     function giveUp(why) {
       if (failed) return;
       failed = true;
-      try { console.error('Marquee (Rust) stopped: ' + why); } catch (e) { /* no console */ }
+      try { console.error('Lilin (Rust) stopped: ' + why); } catch (e) { /* no console */ }
       try { teardown(); } catch (e) { /* half built */ }
       fail(why);
     }
@@ -216,7 +216,7 @@
     }
 
     var env = {
-      log: function (p, n) { try { console.log('[marquee] ' + str(p, n)); } catch (e) { /* none */ } },
+      log: function (p, n) { try { console.log('[lilin] ' + str(p, n)); } catch (e) { /* none */ } },
       now: function () { return root.performance ? performance.now() : Date.now(); },
       wall: function () { return Date.now(); },
       request_frame: function () { if (!frameAsked) { frameAsked = true; requestAnimationFrame(onFrame); } },
@@ -420,8 +420,8 @@
 
     var v = Date.now();
     Promise.all([
-      fetch(server + '/tv-rs/marquee_tv.wasm?v=' + v, { credentials: 'omit' }).then(function (r) {
-        if (!r.ok) throw new Error('marquee_tv.wasm: HTTP ' + r.status);
+      fetch(server + '/tv-rs/lilin_tv.wasm?v=' + v, { credentials: 'omit' }).then(function (r) {
+        if (!r.ok) throw new Error('lilin_tv.wasm: HTTP ' + r.status);
         return r.arrayBuffer();
       }),
       fontsReady(),
@@ -443,5 +443,5 @@
     }).catch(function (e) { giveUp(e && e.message || String(e)); });
   }
 
-  root.MarqueeTvHost = { start: start };
+  root.LilinTvHost = { start: start };
 })(this);

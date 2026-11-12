@@ -32,7 +32,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
-if (-not $EnvFile) { $EnvFile = Join-Path (Split-Path (Split-Path $here)) '.env' }   # the Marquee checkout's .env
+if (-not $EnvFile) { $EnvFile = Join-Path (Split-Path (Split-Path $here)) '.env' }   # the Lilin checkout's .env
 Import-Module (Join-Path $here 'TorrentVpn.psm1') -Force
 Assert-TvAdmin
 if ($Name -notmatch '^[A-Za-z0-9_=+.-]{1,32}$') { throw 'Tunnel name: up to 32 letters, digits or _=+.-' }

@@ -1,15 +1,15 @@
-// Marquee's TV app, loaded by the shell in tv/tizen (Samsung) or tv/android (Android TV, which gives it the same
+// Lilin's TV app, loaded by the shell in tv/tizen (Samsung) or tv/android (Android TV, which gives it the same
 // AVPlay, tizen.* and key codes). Library, Discover, Search and smart downloads.
 // Remote-control navigation, the TV's own player (AVPlay: MKV, HEVC, surround),
 // and Skip intro / Up next on the screen itself.
 // Written for the TV's browser engine (Samsung 2020 = Chrome 69): no optional chaining, nullish coalescing, or newer built-ins.
 (function () {
   'use strict';
-  var L = window.MarqueeTvLogic;
+  var L = window.LilinTvLogic;
   var T = L.T; // Swedish when the shell loaded public/tv/sv.js (Samsung always; Android on a Swedish TV), else English
-  var SERVER = String(window.MARQUEE_SERVER || '').replace(/\/+$/, '');
-  var TOKEN_KEY = 'marquee:tv-session';    // a session token, or "home" for the shared Home network account
-  var WATCHED_KEY = 'marquee:tv-watched';  // episodes finished on this TV, to pick where a show continues
+  var SERVER = String(window.LILIN_SERVER || '').replace(/\/+$/, '');
+  var TOKEN_KEY = 'lilin:tv-session';    // a session token, or "home" for the shared Home network account
+  var WATCHED_KEY = 'lilin:tv-watched';  // episodes finished on this TV, to pick where a show continues
   var KEY = { LEFT: 37, UP: 38, RIGHT: 39, DOWN: 40, ENTER: 13, BACK: 10009, BACKSPACE: 8, ESC: 27,
     PLAYPAUSE: 10252, PLAY: 415, PAUSE: 19, STOP: 413, FF: 417, RW: 412 };
   var app = document.getElementById('app');
@@ -80,16 +80,16 @@
   }
 
   function api(path, body) {
-    var headers = { 'X-Marquee-TV': '1', 'X-Marquee-Lang': window.MarqueeTvStrings ? 'sv' : 'en' };
+    var headers = { 'X-Lilin-TV': '1', 'X-Lilin-Lang': window.LilinTvStrings ? 'sv' : 'en' };
     var t = token();
-    if (t && t !== 'home') headers['X-Marquee-Session'] = t;
+    if (t && t !== 'home') headers['X-Lilin-Session'] = t;
     if (body !== undefined) headers['Content-Type'] = 'application/json';
     return fetch(SERVER + path, { method: body !== undefined ? 'POST' : 'GET', headers: headers, credentials: 'omit',
       body: body !== undefined ? JSON.stringify(body) : undefined })
       .then(function (r) {
         return r.json().catch(function () { return {}; }).then(function (d) {
           if (r.ok) return d;
-          var e = new Error(d.error || T('Marquee answered {0}.', r.status));
+          var e = new Error(d.error || T('Lilin answered {0}.', r.status));
           e.status = r.status;
           throw e;
         });
@@ -136,7 +136,7 @@
       });
     } catch (e) { /* not on a TV */ }
     app.innerHTML = '';
-    app.appendChild(h('div', { class: 'boot' }, h('div', { class: 'wordmark', text: 'Marquee' })));
+    app.appendChild(h('div', { class: 'boot' }, h('div', { class: 'wordmark', text: 'Lilin' })));
     api('/api/status').then(function (status) {
       var me = status.me;
       var t = token();
@@ -151,8 +151,8 @@
     }).catch(function (err) {
       if (err.status === 401) { localStorage.removeItem(TOKEN_KEY); return pairScreen(false); }
       app.innerHTML = '';
-      app.appendChild(h('div', { class: 'boot' }, h('div', { class: 'wordmark', text: 'Marquee' }),
-        h('p', { class: 'boot-note', text: T('Can’t reach Marquee right now ({0}). Trying again…', err.message) })));
+      app.appendChild(h('div', { class: 'boot' }, h('div', { class: 'wordmark', text: 'Lilin' }),
+        h('p', { class: 'boot-note', text: T('Can’t reach Lilin right now ({0}). Trying again…', err.message) })));
       setTimeout(start, 5000);
     });
   }
@@ -163,10 +163,10 @@
     var homeBtn = homeAvailable ? h('div', { class: 'pair-alt' }, h('span', { class: 'pair-alt-hint', text: T('No account? Press Down for') }),
       h('button', { class: 'pair-home', text: T('Use the shared Home network account') })) : null;
     var el = h('div', { class: 'screen pair' },
-      h('div', { class: 'wordmark', text: 'Marquee' }),
+      h('div', { class: 'wordmark', text: 'Lilin' }),
       h('h1', { text: T('Sign in this TV') }),
       h('ol', { class: 'pair-steps' },
-        h('li', {}, T('On your phone, open Marquee and go to '), h('b', { text: T('Settings') }), '.'),
+        h('li', {}, T('On your phone, open Lilin and go to '), h('b', { text: T('Settings') }), '.'),
         h('li', {}, T('Under '), h('b', { text: T('Sign in a TV') }), T(', enter this code:'))),
       codeEl, noteEl, homeBtn);
     var poll = null, timer = null, alive = true;
@@ -636,7 +636,7 @@
     var tops = [h('button', { class: 'top-link', text: T('Search') }), h('button', { class: 'top-link', text: T('Discover') }),
       h('button', { class: 'top-link', text: T('Documentaries') }), h('button', { class: 'switch', text: T('Switch account') })];
     var top = h('header', { class: 'topbar' }, h('div', { class: 'brandline' },
-        h('div', { class: 'wordmark', text: 'Marquee' })),
+        h('div', { class: 'wordmark', text: 'Lilin' })),
       h('div', { class: 'top-actions' }, tops[0], tops[1], tops[2],
         h('div', { class: 'who' }, h('span', { text: state.me && state.me.name || '' }), sharedNote(), tops[3])));
     el.appendChild(top);
@@ -818,7 +818,7 @@
         if (!data.rows || !data.rows.length) {
           rowsEl.innerHTML = '';
           rowsEl.appendChild(h('div', { class: 'empty' }, h('h2', { text: data.error ? T('Discover is unavailable') : T('Nothing to discover right now') }),
-            h('p', { text: data.error ? data.error.message : T('Check that TMDB is configured on the Marquee server.') })));
+            h('p', { text: data.error ? data.error.message : T('Check that TMDB is configured on the Lilin server.') })));
           atTop = true; paint();
           return;
         }
@@ -1182,7 +1182,7 @@
   // Your library answers at once; TMDB (via the server) once you stop typing.
   var KEY_ROWS = 7;
   // A Swedish TV (sv.js loaded) gets å ä ö; every other TV a plain English keyboard. Both are 7 rows of 6.
-  var KEYBOARD = (window.MarqueeTvStrings ? 'abcdefghijklmnopqrstuvwxyzåäö1234567890-:.'
+  var KEYBOARD = (window.LilinTvStrings ? 'abcdefghijklmnopqrstuvwxyzåäö1234567890-:.'
     : 'abcdefghijklmnopqrstuvwxyz1234567890\'&-:.!').split('');
   function libraryMatches(query) {
     var q = L.searchKey(query);
@@ -1832,7 +1832,7 @@
       document.addEventListener('visibilitychange', onHidden);
       // The MP4 copy when there is one (always TV-safe audio: the TV can't decode DTS), else the original.
       // The Android app asks for H.264 instead on TVs that can't decode HEVC (tv/android, Codecs.java).
-      api('/api/play-link?kind=lib&id=' + encodeURIComponent(f.id) + '&variant=' + (window.MARQUEE_TV_PLAY || 'browser-hevc')).then(function (link) {
+      api('/api/play-link?kind=lib&id=' + encodeURIComponent(f.id) + '&variant=' + (window.LILIN_TV_PLAY || 'browser-hevc')).then(function (link) {
         if (s.closed) return;
         streamUrl = SERVER + link.url;
         openStream(startAt);

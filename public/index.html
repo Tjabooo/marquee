@@ -9,15 +9,15 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Marquee">
+  <meta name="apple-mobile-web-app-title" content="Lilin">
   <!-- use-credentials: the manifest and icons sit behind the same Cloudflare sign-in as the app -->
   <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-  <title>Marquee</title>
+  <title>Lilin</title>
   <!-- The colours picked in Settings, applied before anything is drawn (app.js keeps this copy up to date) -->
   <script>
     try {
-      const t = JSON.parse(localStorage.getItem('marquee:theme'));
+      const t = JSON.parse(localStorage.getItem('lilin:theme'));
       if (t && t.vars) {
         const root = document.documentElement;
         for (const k in t.vars) root.style.setProperty(k, t.vars[k]);
@@ -28,7 +28,7 @@
     } catch { /* first visit, or storage blocked: default colours */ }
     // The page below is written in English: keep it hidden until i18n.js has put it in Swedish (never for long).
     try {
-      const wanted = localStorage.getItem('marquee:lang') || (document.cookie.match(/(?:^|;\s*)marquee_lang=(\w+)/) || [])[1] || (/^sv\b/i.test(navigator.language) ? 'sv' : 'en');
+      const wanted = localStorage.getItem('lilin:lang') || (document.cookie.match(/(?:^|;\s*)lilin_lang=(\w+)/) || [])[1] || (/^sv\b/i.test(navigator.language) ? 'sv' : 'en');
       if (wanted === 'sv') {
         document.documentElement.classList.add('i18n-wait');
         setTimeout(() => document.documentElement.classList.remove('i18n-wait'), 4000);
@@ -44,7 +44,7 @@
 <body>
   <header class="top" id="top">
     <div class="top-inner">
-      <h1 class="wordmark"><a href="/" id="home-link" aria-label="Marquee — Discover">Marquee</a></h1>
+      <h1 class="wordmark"><a href="/" id="home-link" aria-label="Lilin — Discover">Lilin</a></h1>
       <!-- Phones and tablets: what Discover shows (type, genre) behind one button, so nothing sits on the billboard -->
       <button type="button" class="browse-btn" id="browse-btn" aria-haspopup="dialog" hidden><span id="browse-label">Browse</span><i class="chev" aria-hidden="true"></i></button>
       <!-- The sections: a tab bar at the bottom on phones and tablets, links in this header on wide screens -->

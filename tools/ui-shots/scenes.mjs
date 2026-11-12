@@ -122,9 +122,9 @@ export const SCENES = [
   { name: 'oidc-signin', path: '/c/oidc/authorize?client_id=cloudflare&redirect_uri=https%3A%2F%2Fexample.test%2Fcdn-cgi%2Faccess%2Fcallback&response_type=code&scope=openid%20email%20profile&state=s1&nonce=n1&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256', ready: 'form', signedOut: true },
   { name: 'signin', path: '/signin', ready: 'form', signedOut: true },
   { name: 'signin-error', path: '/signin?error=wrong', ready: 'form', signedOut: true },
-  { name: 'share-invite', path: `/c/i/${process.env.MQ_INVITE || 'x'}`, ready: 'body', signedOut: true },
-  { name: 'share-clip', path: `/c/${process.env.MQ_CLIP || 'x'}`, ready: 'body', signedOut: true, after: 2500 },
-  { name: 'share-watch', path: `/c/w/${process.env.MQ_ROOM || 'x'}`, ready: 'body', signedOut: true },
+  { name: 'share-invite', path: `/c/i/${process.env.LIL_INVITE || 'x'}`, ready: 'body', signedOut: true },
+  { name: 'share-clip', path: `/c/${process.env.LIL_CLIP || 'x'}`, ready: 'body', signedOut: true, after: 2500 },
+  { name: 'share-watch', path: `/c/w/${process.env.LIL_ROOM || 'x'}`, ready: 'body', signedOut: true },
 
   // ---- End to end through the preview switch: /preview → Discover → a title → play → Watch Together → Settings → back to live.
   // Run without --preview (it goes through /preview itself) and with --allow-writes-to '^/api/watch' (the room is real, briefly).
@@ -141,14 +141,14 @@ export const SCENES = [
     "await __click('.tab[data-view=\"settings\"]'); await __waitFor('#settings-body .set-group'); await __sleep(800);",
     "setTimeout(() => document.querySelector('.preview-pill').click(), 50); return 'leaving';",
     { wait: 5000 },
-    "await __waitFor('#discover-body', 20000); await __sleep(2000); if (document.querySelector('.preview-pill') || document.querySelector('script[src=\"/billboard.js\"]') || document.querySelector('.billboard')) throw new Error('still in the preview'); if (document.cookie.includes('marquee_preview')) throw new Error('cookie still readable');",
+    "await __waitFor('#discover-body', 20000); await __sleep(2000); if (document.querySelector('.preview-pill') || document.querySelector('script[src=\"/billboard.js\"]') || document.querySelector('.billboard')) throw new Error('still in the preview'); if (document.cookie.includes('lilin_preview')) throw new Error('cookie still readable');",
   ], probe: "return 'back on live: ' + (document.querySelector('link[rel=icon]')?.getAttribute('href') || '').slice(0, 24);" },
 
   // ---- The Samsung TV app (public/tv) in a copy of its shell: --overlay a folder with tv-shell.html (see README) ----
-  { name: 'tvapp-home', path: '/tv-shell.html', ready: '.row .card', sizes: ['tvapp'], storage: { 'marquee:tv-session': 'home' }, after: 2500 },
-  { name: 'tvapp-home-down', path: '/tv-shell.html', ready: '.row .card', sizes: ['tvapp'], storage: { 'marquee:tv-session': 'home' }, steps: [{ keys: [40, 39, 39] }], after: 1500 },
-  { name: 'tvapp-discover', path: '/tv-shell.html', ready: '.row .card', sizes: ['tvapp'], storage: { 'marquee:tv-session': 'home' }, steps: [{ keys: [38, 13], gap: 600 }, { wait: 4000 }, { keys: [40, 39], gap: 500 }], after: 2500 },
-  { name: 'tvapp-title', path: '/tv-shell.html', ready: '.row .card', sizes: ['tvapp'], storage: { 'marquee:tv-session': 'home' }, steps: [{ keys: [38, 13], gap: 600 }, { wait: 4000 }, { keys: [40, 13], gap: 600 }, { wait: 3000 }], after: 2000 },
-  { name: 'tvapp-show', path: '/tv-shell.html', ready: '.row .card', sizes: ['tvapp'], storage: { 'marquee:tv-session': 'home' }, steps: [{ keys: [40, 13], gap: 600 }, { wait: 3000 }], after: 2000 },
-  { name: 'tvapp-pair', path: '/tv-shell.html', ready: '.pair', sizes: ['tvapp'], storage: { 'marquee:tv-session': '' }, after: 1500 },
+  { name: 'tvapp-home', path: '/tv-shell.html', ready: '.row .card', sizes: ['tvapp'], storage: { 'lilin:tv-session': 'home' }, after: 2500 },
+  { name: 'tvapp-home-down', path: '/tv-shell.html', ready: '.row .card', sizes: ['tvapp'], storage: { 'lilin:tv-session': 'home' }, steps: [{ keys: [40, 39, 39] }], after: 1500 },
+  { name: 'tvapp-discover', path: '/tv-shell.html', ready: '.row .card', sizes: ['tvapp'], storage: { 'lilin:tv-session': 'home' }, steps: [{ keys: [38, 13], gap: 600 }, { wait: 4000 }, { keys: [40, 39], gap: 500 }], after: 2500 },
+  { name: 'tvapp-title', path: '/tv-shell.html', ready: '.row .card', sizes: ['tvapp'], storage: { 'lilin:tv-session': 'home' }, steps: [{ keys: [38, 13], gap: 600 }, { wait: 4000 }, { keys: [40, 13], gap: 600 }, { wait: 3000 }], after: 2000 },
+  { name: 'tvapp-show', path: '/tv-shell.html', ready: '.row .card', sizes: ['tvapp'], storage: { 'lilin:tv-session': 'home' }, steps: [{ keys: [40, 13], gap: 600 }, { wait: 3000 }], after: 2000 },
+  { name: 'tvapp-pair', path: '/tv-shell.html', ready: '.pair', sizes: ['tvapp'], storage: { 'lilin:tv-session': '' }, after: 1500 },
 ];

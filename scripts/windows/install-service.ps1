@@ -1,30 +1,30 @@
-# Registers Marquee with Task Scheduler so it starts at boot, before anyone signs in.
+# Registers Lilin with Task Scheduler so it starts at boot, before anyone signs in.
 # Run from an elevated PowerShell (setup.js runs it for you when you choose autostart):
 #   powershell -ExecutionPolicy Bypass -File scripts\windows\install-service.ps1            # install or update
 #   powershell -ExecutionPolicy Bypass -File scripts\windows\install-service.ps1 -Status
 #   powershell -ExecutionPolicy Bypass -File scripts\windows\install-service.ps1 -Uninstall
 #
-# One task, "Marquee", runs start-marquee.cmd as your account with normal (not elevated) rights; its
+# One task, "Lilin", runs start-lilin.cmd as your account with normal (not elevated) rights; its
 # password is needed to run before sign-in. Besides the boot trigger it has a trigger every 2 minutes
 # that starts it again if it isn't running (Windows occasionally skips a boot trigger); a running
-# Marquee is left alone. Create .marquee-stopped in the Marquee folder to keep it stopped on purpose.
+# Lilin is left alone. Create .lilin-stopped in the Lilin folder to keep it stopped on purpose.
 #
-# Nothing runs as SYSTEM or elevated. Older versions registered a "Marquee Watchdog" task that ran a
-# script from this folder as SYSTEM; re-running this removes it. The Marquee folder is also checked:
+# Nothing runs as SYSTEM or elevated. Older versions registered a "Lilin Watchdog" task that ran a
+# script from this folder as SYSTEM; re-running this removes it. The Lilin folder is also checked:
 # if every user of the PC may change its files, write access is limited to you, SYSTEM and
 # administrators (others keep read access), so no one else can change what your task runs.
 param(
   [switch]$Status,
   [switch]$Uninstall,
   [switch]$NoWatchdog,      # no 2-minute restart trigger, only the boot trigger
-  [switch]$KeepFolderAcl,   # don't limit write access to the Marquee folder
+  [switch]$KeepFolderAcl,   # don't limit write access to the Lilin folder
   [switch]$NoStart,
   [string]$CredentialFile   # internal (setup wizard): your Windows password, DPAPI-encrypted for you; deleted once read
 )
 
 $ErrorActionPreference = 'Stop'
 $dir = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-$tasks = 'Marquee', 'Marquee Watchdog'   # the second is from older versions: removed on install
+$tasks = 'Lilin', 'Lilin Watchdog'   # the second is from older versions: removed on install
 
 if ($Status) {
   foreach ($name in $tasks) {
@@ -49,7 +49,7 @@ if ($Uninstall) {
       Write-Host "Removed task $name"
     }
   }
-  Write-Host 'Marquee itself, its settings and its data were not touched.'
+  Write-Host 'Lilin itself, its settings and its data were not touched.'
   exit 0
 }
 
@@ -70,11 +70,11 @@ if ($CredentialFile) {
   finally { Remove-Item -LiteralPath $CredentialFile -Force -ErrorAction SilentlyContinue }
 }
 if (-not $cred) { $cred = Get-Credential -UserName $user -Message ("Windows password for $user (for a Microsoft account, the account " +
-  'password, not the PIN). Task Scheduler needs it to start Marquee before anyone signs in.') }
+  'password, not the PIN). Task Scheduler needs it to start Lilin before anyone signs in.') }
 
 # Limit who can change the files the task runs. New folders under C:\ let every signed-in user
 # modify files in them (Authenticated Users: Modify), which would let another account on this PC
-# change start-marquee.cmd or server.js and run code as you.
+# change start-lilin.cmd or server.js and run code as you.
 $broad = @('S-1-1-0', 'S-1-5-11', 'S-1-5-32-545', 'S-1-5-4')   # Everyone, Authenticated Users, Users, INTERACTIVE
 $writeBits = [int]([Security.AccessControl.FileSystemRights]'WriteData, AppendData, WriteExtendedAttributes, WriteAttributes, Delete, DeleteSubdirectoriesAndFiles, ChangePermissions, TakeOwnership')
 function Get-BroadWriters([string]$path) {
@@ -95,27 +95,27 @@ if ($writers.Count -and -not $KeepFolderAcl) {
   Write-Warning "Every user of this PC can change files in $dir (-KeepFolderAcl). Anyone signed in to it could run code as you."
 }
 
-$action   = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument ('/c "' + (Join-Path $dir 'start-marquee.cmd') + '"') -WorkingDirectory $dir
+$action   = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument ('/c "' + (Join-Path $dir 'start-lilin.cmd') + '"') -WorkingDirectory $dir
 $boot     = New-ScheduledTaskTrigger -AtStartup
 $boot.Delay = 'PT30S'   # let the network and mapped drives come up
 $triggers = @($boot)
 if (-not $NoWatchdog) {
-  # Starts the task if it isn't running; MultipleInstances IgnoreNew leaves a running Marquee alone.
+  # Starts the task if it isn't running; MultipleInstances IgnoreNew leaves a running Lilin alone.
   $triggers += New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(2) -RepetitionInterval (New-TimeSpan -Minutes 2)
 }
 # Priority 4 = normal. Task Scheduler's default (7) starts the server below normal with low I/O and
 # memory priority, so its stream reads would wait behind downloads and other programs.
 $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -StartWhenAvailable `
   -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew -Priority 4
-Register-ScheduledTask -TaskName 'Marquee' -Description 'Marquee media server' `
+Register-ScheduledTask -TaskName 'Lilin' -Description 'Lilin media server' `
   -Action $action -Trigger $triggers -Settings $settings `
   -User $user -Password $cred.GetNetworkCredential().Password -RunLevel Limited -Force | Out-Null
-Write-Host ('Registered task Marquee' + $(if ($NoWatchdog) { '.' } else { ' (restarts within 2 minutes if it stops; create .marquee-stopped to keep it stopped).' }))
+Write-Host ('Registered task Lilin' + $(if ($NoWatchdog) { '.' } else { ' (restarts within 2 minutes if it stops; create .lilin-stopped to keep it stopped).' }))
 
 # Older versions: a SYSTEM task running a script from this folder. Never leave it behind.
-if (Get-ScheduledTask -TaskName 'Marquee Watchdog' -ErrorAction SilentlyContinue) {
-  Unregister-ScheduledTask -TaskName 'Marquee Watchdog' -Confirm:$false
-  Write-Host 'Removed the old Marquee Watchdog task (it ran as SYSTEM; the Marquee task now restarts itself).'
+if (Get-ScheduledTask -TaskName 'Lilin Watchdog' -ErrorAction SilentlyContinue) {
+  Unregister-ScheduledTask -TaskName 'Lilin Watchdog' -Confirm:$false
+  Write-Host 'Removed the old Lilin Watchdog task (it ran as SYSTEM; the Lilin task now restarts itself).'
 }
 
 if (-not $NoStart) {
@@ -123,8 +123,8 @@ if (-not $NoStart) {
   Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
     Where-Object { $_.CommandLine -match 'server\.js' } |
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
-  Start-ScheduledTask -TaskName 'Marquee'
-  Write-Host "Marquee is starting. Log: $dir\logs\marquee.log" -ForegroundColor Green
+  Start-ScheduledTask -TaskName 'Lilin'
+  Write-Host "Lilin is starting. Log: $dir\logs\lilin.log" -ForegroundColor Green
 }
 
 # The task runs with a minimal PATH; tools it can't find can be set by full path in .env.

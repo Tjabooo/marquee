@@ -1,4 +1,4 @@
-// Install commands for Marquee's optional tools, from each platform's official package source.
+// Install commands for Lilin's optional tools, from each platform's official package source.
 // setup.js only prints these unless the user agrees (or passes --allow-install); system package
 // managers on Linux need root, and setup.js never runs sudo without saying so first.
 const PACKAGES = {

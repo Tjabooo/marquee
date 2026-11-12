@@ -70,7 +70,7 @@ test('history written after the fact is listed but never pops up', () => {
   assert.deepEqual(unseenFor(newcomer, list).map((e) => e.id), ['now']);
   assert.deepEqual(unseenFor(user({ seenUpdate: 'past' }), list).map((e) => e.id), ['now']);
   assert.deepEqual(unseenFor(user({ seenUpdate: 'now' }), list), []);
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'marquee-whats-new-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lilin-whats-new-'));
   const file = path.join(dir, 'whats-new.json');
   try {
     initWhatsNew(file);
@@ -86,7 +86,7 @@ test('history written after the fact is listed but never pops up', () => {
 });
 
 test('the file is read from disk and re-read when it changes', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'marquee-whats-new-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lilin-whats-new-'));
   const file = path.join(dir, 'whats-new.json');
   try {
     initWhatsNew(file);
@@ -119,7 +119,7 @@ test('the shipped whats-new.json is valid and nothing in it is dropped', () => {
 });
 
 test('the build id changes with the files', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'marquee-build-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lilin-build-'));
   try {
     const f = path.join(dir, 'app.js');
     fs.writeFileSync(f, 'one');
@@ -160,10 +160,10 @@ test('an update file still being written is not pushed yet', () => {
 test('one update: its title plus a short summary and "Tap to read more"', () => {
   const list = parseEntries([entry('u1', '2026-11-10', [{ title: 'Faster starts', text: 'Videos start in a second. Even on phones.' }], 'Quicker playback')]);
   const msg = pushFor(user(), ['u1'], { tr: trEn, list });
-  assert.equal(msg.title, 'Marquee update: Quicker playback');
+  assert.equal(msg.title, 'Lilin update: Quicker playback');
   assert.equal(msg.body, 'Videos start in a second. Tap to read more.');
   assert.equal(msg.url, '/?update=u1');
-  assert.equal(msg.tag, 'marquee-update');
+  assert.equal(msg.tag, 'lilin-update');
 });
 
 test('several items or updates are summed up by their headlines, and long ones are cut', () => {
@@ -173,7 +173,7 @@ test('several items or updates are summed up by their headlines, and long ones a
   ]);
   assert.equal(pushFor(user(), ['u2'], { tr: trEn, list }).body, 'One · Two Tap to read more.');
   const both = pushFor(user(), ['u2', 'u1'], { tr: trEn, list });
-  assert.equal(both.title, '2 Marquee updates');
+  assert.equal(both.title, '2 Lilin updates');
   assert.equal(both.body, 'Two things · Earlier Tap to read more.');
   assert.equal(both.url, '/?update=u2');
   const long = parseEntries([entry('l', '2026-11-10', [{ title: 'L', text: `${'word '.repeat(100)}end.` }])]);

@@ -1,3 +1,3 @@
-# The page calls these through window.MarqueeNative.
--keepclassmembers class app.marquee.tv.Bridge { @android.webkit.JavascriptInterface <methods>; }
+# The page calls these through window.LilinNative.
+-keepclassmembers class app.lilin.tv.Bridge { @android.webkit.JavascriptInterface <methods>; }
 -keepattributes JavascriptInterface

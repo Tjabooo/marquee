@@ -1,6 +1,6 @@
-# Installing Marquee
+# Installing Lilin
 
-Marquee is one Node.js process with no npm dependencies. This page covers what every installation
+Lilin is one Node.js process with no npm dependencies. This page covers what every installation
 shares. The platform guides below cover only what differs.
 
 > **Tested.** CI runs the test suite and a setup/start/stop smoke test on Ubuntu, Windows and macOS
@@ -29,9 +29,9 @@ shares. The platform guides below cover only what differs.
 
 | Component | Needed for | Notes |
 | --- | --- | --- |
-| Node.js **22.16 or later** | Everything | Marquee uses `node:sqlite` with FTS5. Node 22.13–22.15 have `node:sqlite` without FTS5 and are refused. No `npm install` is needed. |
+| Node.js **22.16 or later** | Everything | Lilin uses `node:sqlite` with FTS5. Node 22.13–22.15 have `node:sqlite` without FTS5 and are refused. No `npm install` is needed. |
 | ffmpeg and ffprobe | Conversion, subtitle timing, previews, clips | Optional. Without them those features stay off. |
-| qBittorrent (Web UI) | Downloads | Optional. Its Web UI defaults to port 8080, the same as Marquee: move it to 8081, the address setup suggests. |
+| qBittorrent (Web UI) | Downloads | Optional. Its Web UI defaults to port 8080, the same as Lilin: move it to 8081, the address setup suggests. |
 | pyatv (`atvscript`) | Apple TV casting | Optional. `pipx install pyatv`, then pair once with `atvremote wizard`. DLNA casting needs nothing extra. |
 | Tesseract | Notes image search (OCR) | Optional, Linux and macOS. Windows uses its built-in OCR. |
 
@@ -44,24 +44,24 @@ All four end with the same folder layout and the same `node setup.js`.
 
 ### A. Installer script (recommended)
 
-Linux and macOS (installs to `~/marquee`):
+Linux and macOS (installs to `~/lilin`):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Tjabooo/marquee/v1.3.0/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/Tjabooo/lilin/v2.0.0/install.sh -o install.sh
 less install.sh
 sh install.sh
 ```
 
 | Option | Effect |
 | --- | --- |
-| `--version v1.3.0` | Install this release instead of the latest |
-| `--dir /opt/marquee` | Install somewhere other than `~/marquee` (or set `MARQUEE_DIR`) |
+| `--version v2.0.0` | Install this release instead of the latest |
+| `--dir /opt/lilin` | Install somewhere other than `~/lilin` (or set `LILIN_DIR`) |
 | `--dry-run` | Show what would happen; change nothing |
 | `--no-setup` | Don't run `node setup.js` afterwards |
 | `--yes` | Run setup unattended (`node setup.js --yes`) |
 | `--uninstall [--purge]` | See [Uninstalling](#uninstalling) |
 
-The script downloads `marquee-<version>.tar.gz` and `SHA256SUMS` from the GitHub release, refuses to
+The script downloads `lilin-<version>.tar.gz` and `SHA256SUMS` from the GitHub release, refuses to
 install on a checksum mismatch, checks build provenance with `gh attestation verify` when `gh` is
 installed, unpacks the archive and runs `node setup.js`. It never uses sudo.
 
@@ -71,21 +71,21 @@ Windows: see [windows.md](windows.md). `install.ps1` takes the same options as `
 ### B. Release archive by hand
 
 ```sh
-curl -fsSLO https://github.com/Tjabooo/marquee/releases/download/v1.3.0/marquee-v1.3.0.tar.gz
-curl -fsSLO https://github.com/Tjabooo/marquee/releases/download/v1.3.0/SHA256SUMS
+curl -fsSLO https://github.com/Tjabooo/lilin/releases/download/v2.0.0/lilin-v2.0.0.tar.gz
+curl -fsSLO https://github.com/Tjabooo/lilin/releases/download/v2.0.0/SHA256SUMS
 sha256sum -c SHA256SUMS            # macOS: shasum -a 256 -c SHA256SUMS
-gh attestation verify marquee-v1.3.0.tar.gz --repo Tjabooo/marquee   # optional
-mkdir -p ~/marquee
-tar -xzf marquee-v1.3.0.tar.gz -C ~/marquee --strip-components=1
-cd ~/marquee && node setup.js
+gh attestation verify lilin-v2.0.0.tar.gz --repo Tjabooo/lilin   # optional
+mkdir -p ~/lilin
+tar -xzf lilin-v2.0.0.tar.gz -C ~/lilin --strip-components=1
+cd ~/lilin && node setup.js
 ```
 
 ### C. Git clone
 
 ```sh
-git clone https://github.com/Tjabooo/marquee.git ~/marquee
-cd ~/marquee
-git checkout v1.3.0
+git clone https://github.com/Tjabooo/lilin.git ~/lilin
+cd ~/lilin
+git checkout v2.0.0
 node setup.js
 ```
 
@@ -94,7 +94,7 @@ checkout; update it with git (see [Updating](#updating)).
 
 ### D. Docker
 
-`ghcr.io/tjabooo/marquee:1.3.0` for `linux/amd64` and `linux/arm64`, with ffmpeg and Tesseract
+`ghcr.io/tjabooo/lilin:2.0.0` for `linux/amd64` and `linux/arm64`, with ffmpeg and Tesseract
 included. See [docker.md](docker.md).
 
 ## First run
@@ -102,7 +102,7 @@ included. See [docker.md](docker.md).
 `node setup.js` asks for:
 
 - the media folder (`MEDIA_DIR`), created if it doesn't exist;
-- on a fresh install, an optional separate data folder (`DATA_DIR`; blank keeps state in the Marquee folder);
+- on a fresh install, an optional separate data folder (`DATA_DIR`; blank keeps state in the Lilin folder);
 - the port (default `8080`) and who can connect (`HOST=0.0.0.0`, your home network, or `127.0.0.1`,
   this computer only, for use behind a local proxy or tunnel);
 - optional TMDB, qBittorrent and OpenSubtitles credentials;
@@ -163,11 +163,11 @@ node setup.js service install --scope user      # systemd only: user or system
 
 | Platform | Mechanism | Runs |
 | --- | --- | --- |
-| Windows | Task Scheduler: task `Marquee` (runs `start-marquee.cmd` as your account, not elevated; restarts it within 2 minutes if it stops) | At boot, before sign-in |
-| Linux, systemd, system scope | `/etc/systemd/system/marquee.service`, running as your user, with `RequiresMountsFor=` on the media and data folders | At boot |
-| Linux, systemd, user scope | `~/.config/systemd/user/marquee.service` plus `loginctl enable-linger` | At boot |
-| Linux, OpenRC (Alpine and others) | `/etc/init.d/marquee`, added to the `default` runlevel | At boot |
-| macOS | LaunchAgent `io.github.tjabooo.marquee` in `~/Library/LaunchAgents` | While you are logged in |
+| Windows | Task Scheduler: task `Lilin` (runs `start-lilin.cmd` as your account, not elevated; restarts it within 2 minutes if it stops) | At boot, before sign-in |
+| Linux, systemd, system scope | `/etc/systemd/system/lilin.service`, running as your user, with `RequiresMountsFor=` on the media and data folders | At boot |
+| Linux, systemd, user scope | `~/.config/systemd/user/lilin.service` plus `loginctl enable-linger` | At boot |
+| Linux, OpenRC (Alpine and others) | `/etc/init.d/lilin`, added to the `default` runlevel | At boot |
+| macOS | LaunchAgent `io.github.tjabooo.lilin` in `~/Library/LaunchAgents` | While you are logged in |
 | Docker | `restart: unless-stopped` | With the Docker daemon |
 
 On systemd the default scope is `user` when setup runs as a normal user in a login session
@@ -182,11 +182,11 @@ The service records the full path of the Node.js binary that ran setup and, for 
 units, the media and data folders. Run `node setup.js service install` again after upgrading Node.js
 to a different path (nvm, Homebrew) or after changing `MEDIA_DIR` or `DATA_DIR`.
 
-Without autostart, start Marquee from its folder with `npm start` (or `node server.js`) and stop it
+Without autostart, start Lilin from its folder with `npm start` (or `node server.js`) and stop it
 with Ctrl+C.
 
-Logs: `journalctl -u marquee` (system unit) or `journalctl --user -u marquee` (user unit) on systemd;
-`logs/marquee.log` in the Marquee folder on Windows, macOS and OpenRC; `docker compose logs marquee`
+Logs: `journalctl -u lilin` (system unit) or `journalctl --user -u lilin` (user unit) on systemd;
+`logs/lilin.log` in the Lilin folder on Windows, macOS and OpenRC; `docker compose logs lilin`
 in Docker.
 
 ## Updating
@@ -213,7 +213,7 @@ sh install.sh --uninstall           # add --dir if you installed elsewhere
 This removes the autostart service and the application files and keeps `.env`, the database,
 state files and `cache/`. With a systemd system unit, run
 `node setup.js service uninstall --scope system` first, because the installer calls
-`service uninstall` without a scope. `--uninstall --purge` deletes the whole Marquee folder after you
+`service uninstall` without a scope. `--uninstall --purge` deletes the whole Lilin folder after you
 type its path to confirm. Media folders outside it are never touched. On Windows use `install.ps1 -Uninstall` from an
 elevated PowerShell. For a git checkout, run `node setup.js service uninstall` and delete the folder.
 
@@ -221,20 +221,20 @@ elevated PowerShell. For a git checkout, run `node setup.js service uninstall` a
 
 | What | Where |
 | --- | --- |
-| Settings (`.env`) | The Marquee folder, or the file in `MARQUEE_ENV_FILE` |
-| Database (`.marquee.db`), state files (`.marquee-*.json`, `.marquee-secret`) | `DATA_DIR`; default the Marquee folder |
-| Notes attachments | `.marquee-notes-files/` in `DATA_DIR`, or `NOTES_FILES_DIR` |
+| Settings (`.env`) | The Lilin folder, or the file in `LILIN_ENV_FILE` |
+| Database (`.lilin.db`), state files (`.lilin-*.json`, `.lilin-secret`) | `DATA_DIR`; default the Lilin folder |
+| Notes attachments | `.lilin-notes-files/` in `DATA_DIR`, or `NOTES_FILES_DIR` |
 | Browser copies, audio fixes and other cache | `cache/` in `DATA_DIR` |
-| Backups from `node setup.js backup` | `backups/marquee-<time>/` in `DATA_DIR`, or `--to DIR` |
+| Backups from `node setup.js backup` | `backups/lilin-<time>/` in `DATA_DIR`, or `--to DIR` |
 | Your films and shows | `MEDIA_DIR` |
 
 Backups don't include `.env` because it holds passwords; copy it separately. To move state out of
-the application folder, stop Marquee and run `node setup.js migrate-data --to DIR`.
+the application folder, stop Lilin and run `node setup.js migrate-data --to DIR`.
 
 ## Network exposure
 
-The default `HOST=0.0.0.0` makes Marquee reachable from your home network. **Never forward
-Marquee's port on your router.** For access from outside, use one of the methods in
+The default `HOST=0.0.0.0` makes Lilin reachable from your home network. **Never forward
+Lilin's port on your router.** For access from outside, use one of the methods in
 [../remote-access.md](../remote-access.md).
 
 ## More

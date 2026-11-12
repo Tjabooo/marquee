@@ -13,7 +13,7 @@ const webp = Buffer.concat([Buffer.from('RIFF'), Buffer.alloc(4), Buffer.from('W
 const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(32)]);
 
 test('profile pictures: stored per person, versioned URL, validated, removable', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'marquee-avatars-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lilin-avatars-'));
   accounts.initAccounts({ dataDir: dir, adminEmails: [], mediaDir: null });
   const anna = accounts.userFor({ headers: { 'cf-access-authenticated-user-email': 'anna@example.test' } });
   assert.equal(anna.avatar, null);
@@ -30,7 +30,7 @@ test('profile pictures: stored per person, versioned URL, validated, removable',
   const newer = accounts.setAvatar(anna.id, png);
   assert.notEqual(newer.avatar, withPic.avatar, 'a new picture gets a new URL, so caches never show the old one');
   assert.equal(accounts.avatarFile(anna.id).type, 'image/png', 'the old file is replaced, not kept beside it');
-  assert.equal(fs.readdirSync(path.join(dir, '.marquee-avatars')).length, 1);
+  assert.equal(fs.readdirSync(path.join(dir, '.lilin-avatars')).length, 1);
 
   // Settings saves keep the picture.
   assert.equal(accounts.updateMe(newer, { name: 'Anna B' }).avatar, newer.avatar);
@@ -45,7 +45,7 @@ test('profile pictures: stored per person, versioned URL, validated, removable',
 });
 
 test('faces travel with names: ratings, Activity, rooms, chat and reactions', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'marquee-faces-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lilin-faces-'));
   accounts.initAccounts({ dataDir: dir, adminEmails: [], mediaDir: null });
   activity.initActivity({ dataDir: dir, nameForUser: accounts.displayNameFor, avatarForUser: accounts.avatarForEmail });
   const req = (email) => ({ headers: { 'cf-access-authenticated-user-email': email } });

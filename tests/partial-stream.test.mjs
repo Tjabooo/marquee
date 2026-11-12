@@ -66,7 +66,7 @@ function rig(t, { size = 8192, state = 'downloading', seq = false, firstLast = f
 }
 
 test('the loopback server holds a read until those pieces are verified, and never serves the holes', { timeout: 15000 }, async (t) => {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-partial-'));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-partial-'));
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
   const file = path.join(dir, 'Film.mkv');
   const real = Buffer.alloc(8192, 0xab);
@@ -113,7 +113,7 @@ test('the loopback server holds a read until those pieces are verified, and neve
 });
 
 test('a reader that leaves while the loopback server waits for room ends the read and closes the file', { timeout: 10000 }, async (t) => {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-partial-'));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-partial-'));
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
   const file = path.join(dir, 'Film.mkv');
   await fs.writeFile(file, Buffer.alloc(8192, 0xab));
@@ -261,7 +261,7 @@ test('a finished download leaving qBittorrent does not stop the person watching 
 });
 
 test('a patient piece wait outlasts the idle limits and ends when the player leaves', { timeout: 8000 }, async (t) => {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-partial-'));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-partial-'));
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
   const { EventEmitter } = await import('node:events');
   const spawnFn = () => { const child = new EventEmitter(); child.stderr = new EventEmitter(); child.kill = () => {}; return child; };
@@ -314,7 +314,7 @@ test('downloads list Play now and only the people it belongs to can open it', { 
   const { default: net } = await import('node:net');
   const { spawn } = await import('node:child_process');
   const { fileURLToPath } = await import('node:url');
-  const app = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-partial-api-'));
+  const app = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-partial-api-'));
   const root = fileURLToPath(new URL('../', import.meta.url));
   const media = path.join(app, 'media'); await fs.mkdir(media);
   const hash = 'd'.repeat(40), name = 'Example.Film.2024.mkv', posts = [];
@@ -349,7 +349,7 @@ test('downloads list Play now and only the people it belongs to can open it', { 
   });
   await new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(`Startup timeout: ${logs}`)), 10000);
-    child.stdout.on('data', (c) => { const ready = /Marquee is running: http:\/\/localhost:(\d+)/.exec(String(c)); if (ready) { port = Number(ready[1]); clearTimeout(timer); resolve(); } });
+    child.stdout.on('data', (c) => { const ready = /Lilin is running: http:\/\/localhost:(\d+)/.exec(String(c)); if (ready) { port = Number(ready[1]); clearTimeout(timer); resolve(); } });
     child.once('error', reject); child.once('exit', () => { clearTimeout(timer); reject(new Error(logs)); });
   });
   const call = (endpoint, email, body) => fetch(`http://127.0.0.1:${port}${endpoint}`, { method: body ? 'POST' : 'GET',

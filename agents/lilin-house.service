@@ -1,0 +1,8 @@
+[Unit]
+Description=Report this machine's health to Lilin (House tab)
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/lilin-house report
+Nice=10

@@ -31,7 +31,7 @@ export function previewOf(note) {
   const local = note.attachments.filter((a) => a.fileId && a.mime);
   return {
     title: clip(lines[0] || (files ? `Note with ${extra}` : 'Note'), 90),
-    desc: clip(lines.slice(1).join('\n') || (lines[0] && lines[0].length > 90 ? text : '') || extra || 'A note shared from Marquee.', 400),
+    desc: clip(lines.slice(1).join('\n') || (lines[0] && lines[0].length > 90 ? text : '') || extra || 'A note shared from Lilin.', 400),
     images: local.filter((a) => a.mime.startsWith('image/')).slice(0, MAX_IMAGES),
     video: local.find((a) => a.mime.startsWith('video/')) || null,
   };
@@ -84,7 +84,7 @@ export class SharedMedia {
       const file = this.notes.file(id);
       if (!file) { this.failed.set(dest, 'The attachment is missing on the server.'); continue; }
       this.failed.delete(dest);
-      const tmp = `${dest}.marquee-tmp${path.extname(dest)}`;
+      const tmp = `${dest}.lilin-tmp${path.extname(dest)}`;
       const job = make(file.full, tmp)
         .then(() => fs.promises.rename(tmp, dest))
         .catch((e) => { this.failed.set(dest, e.message); console.error('[note-share]', e.message); })
@@ -126,7 +126,7 @@ export class SharedMedia {
     try { names = fs.readdirSync(this.dir); } catch { return; }
     for (const name of names) {
       const full = path.join(this.dir, name);
-      if (!keep.has(full) && !name.includes('.marquee-tmp') && ![...this.jobs.keys()].includes(full)) fs.rmSync(full, { force: true });
+      if (!keep.has(full) && !name.includes('.lilin-tmp') && ![...this.jobs.keys()].includes(full)) fs.rmSync(full, { force: true });
     }
   }
 }
@@ -143,7 +143,7 @@ export async function handlePublic(req, res, url, { notes, media, nameFor, sendV
   const note = notes.shared(m[1]);
   if (!note) {
     return send(404, 'text/html; charset=utf-8', page({ title: 'Note not found', desc: 'This link doesn’t work any more.', url: '',
-      body: '<div class="card"><h1>This note isn’t shared any more</h1><p>Ask whoever sent it for a new link.</p><p><a class="brand" href="/">Open Marquee</a></p></div>' }));
+      body: '<div class="card"><h1>This note isn’t shared any more</h1><p>Ask whoever sent it for a new link.</p><p><a class="brand" href="/">Open Lilin</a></p></div>' }));
   }
   const preview = previewOf(note);
   // ---- the preview's media: public, like a shared clip ----
@@ -166,7 +166,7 @@ export async function handlePublic(req, res, url, { notes, media, nameFor, sendV
   }
 
   const open = `/?note=${note.id}`;
-  if (!PREVIEW_BOT.test(req.headers['user-agent'] || '')) return send(302, 'text/plain; charset=utf-8', 'Opening Marquee…', { Location: open });
+  if (!PREVIEW_BOT.test(req.headers['user-agent'] || '')) return send(302, 'text/plain; charset=utf-8', 'Opening Lilin…', { Location: open });
   media.prepare(note); // in case a copy went missing; normally made when the note was shared
   const link = `${baseUrl(req)}/c/n/${m[1]}`;
   const images = preview.images.map((a, i) => (EMBED_IMAGES.has(a.mime) || fs.existsSync(media.imagePath(a.fileId))) && `${link}/image/${i}`).filter(Boolean);
@@ -180,6 +180,6 @@ export async function handlePublic(req, res, url, { notes, media, nameFor, sendV
     title: preview.title, url: link,
     desc: `${preview.desc}${by ? `\n— ${by}` : ''}`,
     image: images[0] || null, images: images.slice(1), video,
-    body: `<h1>Marquee</h1><p>Opening…</p><script>location.replace(${JSON.stringify(open)})</script><noscript><a class="brand" href="${esc(open)}">Open the note in Marquee</a></noscript>`,
+    body: `<h1>Lilin</h1><p>Opening…</p><script>location.replace(${JSON.stringify(open)})</script><noscript><a class="brand" href="${esc(open)}">Open the note in Lilin</a></noscript>`,
   }));
 }

@@ -1,5 +1,5 @@
 // Checks settings for mistakes that would otherwise only show up as a feature quietly not working.
-// Used by server startup (printed as warnings; nothing here stops Marquee) and by `setup.js doctor`.
+// Used by server startup (printed as warnings; nothing here stops Lilin) and by `setup.js doctor`.
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -34,7 +34,7 @@ export function checkConfig(env = process.env, { tools = true } = {}) {
   else {
     const s = dirState(path.resolve(env.MEDIA_DIR));
     if (s === 'read-only') add('warn', 'MEDIA_DIR', `MEDIA_DIR (${env.MEDIA_DIR}) is read-only`, 'Playback works; conversion, subtitles, downloads and deleting need write access.');
-    else if (s) add('error', 'MEDIA_DIR', `MEDIA_DIR (${env.MEDIA_DIR}) ${s}`, 'Create the folder, mount the drive, or fix its permissions for the account Marquee runs as.');
+    else if (s) add('error', 'MEDIA_DIR', `MEDIA_DIR (${env.MEDIA_DIR}) ${s}`, 'Create the folder, mount the drive, or fix its permissions for the account Lilin runs as.');
   }
   for (const key of ['NOTES_FILES_DIR', 'CLIPS_DIR', 'CACHE_DIR', 'AUDIO_FIX_DIR']) {
     if (!env[key]) continue;
@@ -63,9 +63,9 @@ export function checkConfig(env = process.env, { tools = true } = {}) {
   if (env.CF_ACCESS_TEAM_DOMAIN && !env.CF_ACCESS_AUD) add('error', 'CF_ACCESS_AUD', 'CF_ACCESS_TEAM_DOMAIN is set without CF_ACCESS_AUD, so Access tokens are not verified', 'Copy the Application Audience (AUD) tag from the Access application.');
   if (env.CF_ACCESS_AUD && !env.CF_ACCESS_TEAM_DOMAIN) add('error', 'CF_ACCESS_TEAM_DOMAIN', 'CF_ACCESS_AUD is set without CF_ACCESS_TEAM_DOMAIN', 'Set it to <team>.cloudflareaccess.com.');
   const oidc = ['OIDC_CLIENT_ID', 'OIDC_CLIENT_SECRET', 'OIDC_REDIRECT_URIS'].filter((k) => String(env[k] || '').trim());
-  if (oidc.length && oidc.length < 3) add('error', 'OIDC_CLIENT_ID', 'Marquee sign-in for Access needs OIDC_CLIENT_ID, OIDC_CLIENT_SECRET and OIDC_REDIRECT_URIS together, so it is off', 'Run node setup.js (Cloudflare Tunnel + Access, sign in with Marquee passwords) or see docs/remote-access.md.');
-  else if (oidc.length === 3 && String(env.OIDC_CLIENT_SECRET).trim().length < 16) add('error', 'OIDC_CLIENT_SECRET', 'OIDC_CLIENT_SECRET is shorter than 16 characters, so Marquee sign-in for Access is off', 'Use a long random string (node setup.js makes one) and enter the same one in Cloudflare.');
-  else if (oidc.length === 3 && !/^https?:\/\//.test(String(env.PUBLIC_URL || ''))) add('error', 'PUBLIC_URL', 'Marquee sign-in for Access needs PUBLIC_URL (its sign-in addresses live there), so it is off', 'Set PUBLIC_URL to the address people open, e.g. https://marquee.example.com.');
+  if (oidc.length && oidc.length < 3) add('error', 'OIDC_CLIENT_ID', 'Lilin sign-in for Access needs OIDC_CLIENT_ID, OIDC_CLIENT_SECRET and OIDC_REDIRECT_URIS together, so it is off', 'Run node setup.js (Cloudflare Tunnel + Access, sign in with Lilin passwords) or see docs/remote-access.md.');
+  else if (oidc.length === 3 && String(env.OIDC_CLIENT_SECRET).trim().length < 16) add('error', 'OIDC_CLIENT_SECRET', 'OIDC_CLIENT_SECRET is shorter than 16 characters, so Lilin sign-in for Access is off', 'Use a long random string (node setup.js makes one) and enter the same one in Cloudflare.');
+  else if (oidc.length === 3 && !/^https?:\/\//.test(String(env.PUBLIC_URL || ''))) add('error', 'PUBLIC_URL', 'Lilin sign-in for Access needs PUBLIC_URL (its sign-in addresses live there), so it is off', 'Set PUBLIC_URL to the address people open, e.g. https://lilin.example.com.');
   if (env.CONTENT_FILTER && !['on', 'members', 'off'].includes(String(env.CONTENT_FILTER).trim().toLowerCase())) add('warn', 'CONTENT_FILTER', `CONTENT_FILTER="${env.CONTENT_FILTER}" isn't on, members or off, so on is used`, 'Set it to on, members or off.');
   if (env.CF_API_TOKEN && !(env.CF_ACCOUNT_ID && env.CF_ACCESS_LIST_ID)) add('warn', 'CF_ACCESS_LIST_ID', 'Invites need CF_API_TOKEN, CF_ACCOUNT_ID and CF_ACCESS_LIST_ID together', 'See docs/remote-access.md#invites.');
   for (const key of ['HOUSE_TOKEN', 'SCREENTIME_TOKEN']) {

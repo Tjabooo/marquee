@@ -1,4 +1,4 @@
-// The player on a shared clip's public page (/c/<token>): Marquee's player, for one clip only.
+// The player on a shared clip's public page (/c/<token>): Lilin's player, for one clip only.
 // Same markup and styles as the app's player (style.css), with only what watching a clip needs:
 // play, skip, seek, volume, fullscreen and picture in picture, plus the same keyboard shortcuts.
 import { T } from './i18n.js';

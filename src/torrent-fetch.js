@@ -1,4 +1,4 @@
-// Downloads a .torrent file for qBittorrent. Marquee fetches it itself because qBittorrent's own
+// Downloads a .torrent file for qBittorrent. Lilin fetches it itself because qBittorrent's own
 // web requests are blocked when it is fenced into a VPN tunnel (tools/torrent-vpn); its peer and
 // tracker traffic still goes through the tunnel. Only public hosts are fetched, so a pasted link
 // can't be used to probe the local network.

@@ -10,7 +10,7 @@ test('audio selection uses actual served stream IDs and copies video without rep
   const run = promisify(execFile);
   try { await run(process.env.FFMPEG || 'ffmpeg', ['-version']); await run(process.env.FFPROBE || 'ffprobe', ['-version']); }
   catch { t.skip('FFmpeg unavailable'); return; }
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-audio-'));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-audio-'));
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
   const file = path.join(dir, 'sample.mp4');
   await run(process.env.FFMPEG || 'ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=blue:s=64x64:r=2:d=4',

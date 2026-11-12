@@ -7,7 +7,7 @@ import { NotesStore } from '../src/notes.js';
 import { parseDiscordExport, importTimestamp } from '../public/notes-import.js';
 
 const setup = (t) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'marquee-notes-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lilin-notes-'));
   const store = new NotesStore(dir);
   t.after(() => { store.close(); fs.rmSync(dir, { recursive: true, force: true }); });
   return store;

@@ -138,7 +138,7 @@ export class PartialStreams {
   constructor({ qbit, post, filePath, finalPath = filePath, isVideo, start, probe = probeInput, log = console }) {
     Object.assign(this, { qbit, post, filePath, finalPath, isVideo, start, probe, log });
     this.entries = new Map();
-    this.torrents = new Map(); // hash -> what Marquee changed, restored when the last viewer leaves
+    this.torrents = new Map(); // hash -> what Lilin changed, restored when the last viewer leaves
     this.token = crypto.randomBytes(24).toString('hex');
     this.server = null;
     this.port = null;

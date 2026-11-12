@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 test('clip renames persist without moving files or breaking public links; download preferences persist and the old recommendation route is gone', { timeout: 20000 }, async () => {
   const root = fileURLToPath(new URL('../', import.meta.url));
-  const app = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-clip-api-'));
+  const app = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-clip-api-'));
   for (const name of await fs.readdir(root)) if (name.endsWith('.js') || name === 'package.json') await fs.copyFile(path.join(root, name), path.join(app, name));
   await fs.cp(path.join(root, 'public'), path.join(app, 'public'), { recursive: true });
   await fs.cp(path.join(root, 'src'), path.join(app, 'src'), { recursive: true });
@@ -28,7 +28,7 @@ test('clip renames persist without moving files or breaking public links; downlo
   const stat = await fs.stat(original);
   await fs.mkdir(path.join(app, 'cache/clips/share'), { recursive: true });
   await fs.writeFile(path.join(app, `cache/clips/share/${id}.mp4`), content);
-  await fs.writeFile(path.join(app, '.marquee-shares.json'), JSON.stringify({ [token]: { rel, at: Date.now() } }));
+  await fs.writeFile(path.join(app, '.lilin-shares.json'), JSON.stringify({ [token]: { rel, at: Date.now() } }));
   let port = 0; // 0 = the server picks a free port and prints it (see the ready line below)
   let base = ''; // set once the server reports its port
   const env = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, WINDIR: process.env.WINDIR, TEMP: process.env.TEMP, TMP: process.env.TMP,
@@ -40,7 +40,7 @@ test('clip renames persist without moving files or breaking public links; downlo
     exited = new Promise((r) => child.once('exit', r));
     await new Promise((resolve, reject) => {
       let logs = ''; const timer = setTimeout(() => reject(Error('Startup timeout: ' + logs)), 8000);
-      child.stdout.on('data', (c) => { logs += c; const ready = /Marquee is running: http:\/\/localhost:(\d+)/.exec(logs); if (ready) { port = Number(ready[1]); base = `http://127.0.0.1:${port}`; clearTimeout(timer); resolve(); } });
+      child.stdout.on('data', (c) => { logs += c; const ready = /Lilin is running: http:\/\/localhost:(\d+)/.exec(logs); if (ready) { port = Number(ready[1]); base = `http://127.0.0.1:${port}`; clearTimeout(timer); resolve(); } });
       child.stderr.on('data', (c) => { logs += c; });
       child.once('error', reject); child.once('exit', () => { clearTimeout(timer); reject(Error(logs)); });
     });

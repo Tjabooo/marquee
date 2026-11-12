@@ -2,13 +2,13 @@
 //
 // A travel copy is a plain H.264 + stereo AAC MP4 at 480p (Small) or 720p (Standard), with the subtitles
 // saved beside the video built in as tracks, and the index at the front, so it plays in the phone's own
-// Files / Photos / Downloads app, VLC or any browser without Marquee. HDR is tone-mapped to SDR (phones
+// Files / Photos / Downloads app, VLC or any browser without Lilin. HDR is tone-mapped to SDR (phones
 // show HDR files washed out when they can't play them as HDR). Copies are made on request, one at a
 // time below normal priority, NVENC when the GPU has it, else x264, and kept in cache/travel/ until
 // nobody has asked for them in TRAVEL_KEEP_DAYS. TRAVEL_MAX_GB caps the folder: the oldest copies that
 // were already downloaded make room first.
 //
-// Each person has their own list (table travel in .marquee.db): what they asked for, in which size,
+// Each person has their own list (table travel in .lilin.db): what they asked for, in which size,
 // and when they last downloaded it. Copies are shared: two people asking for the same episode in the
 // same size get one file.
 import fs from 'node:fs';
@@ -169,7 +169,7 @@ export class TravelStore {
     this.running = false;
     this.caps = null;
     this.child = null;
-    this.db = new DatabaseSync(path.join(dataDir, '.marquee.db'));
+    this.db = new DatabaseSync(path.join(dataDir, '.lilin.db'));
     this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;
       CREATE TABLE IF NOT EXISTS travel (
         user_id INTEGER NOT NULL, kind TEXT NOT NULL, media_id TEXT NOT NULL, quality TEXT NOT NULL,

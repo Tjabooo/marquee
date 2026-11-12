@@ -1,7 +1,7 @@
 // House: the health of the home server itself, plus the machines that report in (laptop, desktop).
 // Shown in the House tab, which only the server's owner sees (ADMIN_EMAILS, like Activity).
 //
-// Machines report with `agents/marquee-house` (a systemd timer on each Arch machine): a POST to
+// Machines report with `agents/lilin-house` (a systemd timer on each Arch machine): a POST to
 // /api/house/report carrying HOUSE_TOKEN. Reports are only accepted straight from the home network,
 // never through Cloudflare, so the endpoint can't be written to from the internet even if the
 // token leaked. The same token lets those machines read a short summary (/api/house/summary) for
@@ -33,9 +33,9 @@ let dirs = [];          // [{ label, dir }]
 let qbitAlive = null;   // async () => boolean, or null when qBittorrent isn't configured
 
 export function initHouse({ dataDir, mediaDir, clipsDir, qbitCheck }) {
-  file = path.join(dataDir, '.marquee-house.json');
+  file = path.join(dataDir, '.lilin-house.json');
   try { machines = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { machines = {}; }
-  powerFile = path.join(dataDir, '.marquee-power.json');
+  powerFile = path.join(dataDir, '.lilin-power.json');
   try { power = JSON.parse(fs.readFileSync(powerFile, 'utf8')); } catch { power = {}; }
   dirs = [mediaDir && { label: 'Media', dir: mediaDir }, clipsDir && { label: 'Clips', dir: clipsDir }].filter(Boolean);
   qbitAlive = qbitCheck;
@@ -65,7 +65,7 @@ function privateIp(ip) {
 const directFromLan = (req) => !req.headers['cf-ray'] && !req.headers['cf-connecting-ip'] && privateIp(req.socket.remoteAddress);
 export function agentAllowed(req) {
   if (!TOKEN || !directFromLan(req)) return false;
-  const given = Buffer.from(String(req.headers['x-marquee-token'] || ''));
+  const given = Buffer.from(String(req.headers['x-lilin-token'] || ''));
   const want = Buffer.from(TOKEN);
   return given.length === want.length && crypto.timingSafeEqual(given, want);
 }
@@ -104,7 +104,7 @@ export function acceptReport(req, body) {
   try { fs.writeFileSync(file, JSON.stringify(machines)); } catch { /* kept in memory */ }
 }
 
-// What a machine's VPN client says (agents/marquee-house reads `mullvad status --json`). null = no VPN client.
+// What a machine's VPN client says (agents/lilin-house reads `mullvad status --json`). null = no VPN client.
 const VPN_STATES = ['connected', 'connecting', 'disconnected', 'disconnecting', 'error'];
 function vpnReport(v) {
   if (!v || typeof v !== 'object' || !VPN_STATES.includes(v.state)) return null;
@@ -123,7 +123,7 @@ function vpnReport(v) {
 
 // ---------- power: wake a machine and choose what it boots ----------
 // A machine that's off can't be told which OS to start, so the choice is made on the way up: GRUB
-// always starts Linux first, and `marquee-house boot` (a root systemd timer on that machine: right
+// always starts Linux first, and `lilin-house boot` (a root systemd timer on that machine: right
 // after boot, then every 30 s) asks the server what to do. If another system was picked it sets
 // GRUB's one-shot next entry (grub-reboot) and restarts into it. The same poll carries "restart
 // into…" while the machine is on, and tells the server the MAC address and boot menu for next time.
@@ -135,7 +135,7 @@ const WOL_EXTRA = (process.env.WOL_BROADCAST || '').split(',').map((s) => s.trim
 const MAC_RE = /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/;
 
 let powerFile = null;
-let power = {};               // host -> what its last boot poll said, plus `last` (what Marquee last made it do)
+let power = {};               // host -> what its last boot poll said, plus `last` (what Lilin last made it do)
 const pending = new Map();    // host -> { action: 'wake' | 'restart', entry: GRUB title or null, at }
 
 const savePower = () => { try { fs.writeFileSync(powerFile, JSON.stringify(power)); } catch { /* kept in memory */ } };
@@ -236,20 +236,20 @@ async function sendWake(mac, ip) {
 // Returns { message } for the toast and { detail } for the activity log.
 export async function powerAction(host, action, entry) {
   const m = power[host];
-  if (!m) throw httpErr(404, `${host} hasn’t checked in with marquee-house boot yet.`);
+  if (!m) throw httpErr(404, `${host} hasn’t checked in with lilin-house boot yet.`);
   const target = entry == null || entry === '' ? null : m.entries.find((e) => e.title === entry);
   if (entry && !target) throw httpErr(400, 'That isn’t on its boot menu.');
   const on = Date.now() - m.at < POWER_ON_MS;
   const name = target ? osLabel(target.title) : null;
   if (action === 'restart') {
-    if (!on) throw httpErr(409, `${host} isn’t on in Linux, so Marquee can’t restart it.`);
+    if (!on) throw httpErr(409, `${host} isn’t on in Linux, so Lilin can’t restart it.`);
     pending.set(host, { action, entry: target?.title || null, at: Date.now() });
     const into = target && !target.current;
     return { message: into ? `Restarting ${host} into ${name} (within 30 s)` : `Restarting ${host} (within 30 s)`, detail: into ? `${host} into ${name}` : host };
   }
   if (action === 'wake') {
     if (on) throw httpErr(409, `${host} is already on.`);
-    if (!m.mac) throw httpErr(409, `Marquee doesn’t know ${host}’s network card yet: run marquee-house boot on it once.`);
+    if (!m.mac) throw httpErr(409, `Lilin doesn’t know ${host}’s network card yet: run lilin-house boot on it once.`);
     await sendWake(m.mac, m.ip);
     pending.set(host, { action, entry: target?.title || null, at: Date.now() });
     m.last = { action: 'wake', entry: target?.title || null, at: Date.now() };
@@ -269,10 +269,10 @@ function powerView(m) {
   const current = on ? m.entries.find((e) => e.current) : null;
   const def = m.entries.find((e) => e.title === m.default);
   const notes = [];
-  if (!m.mac) notes.push('Marquee doesn’t know its network card yet, so it can’t wake it.');
+  if (!m.mac) notes.push('Lilin doesn’t know its network card yet, so it can’t wake it.');
   else if (!m.wired) notes.push(`It’s on ${m.iface || 'Wi-Fi'}: Wake-on-LAN almost always needs a network cable.`);
   else if (m.wol != null && !m.wol.includes('g')) notes.push(`Wake-on-LAN is off on ${m.iface} and couldn’t be turned on (wol: ${m.wol || 'none'}).`);
-  if (def && def.os !== 'linux') notes.push(`GRUB starts ${osLabel(def.title)} by default, so Marquee can only wake it into that. Set GRUB_DEFAULT to Linux.`);
+  if (def && def.os !== 'linux') notes.push(`GRUB starts ${osLabel(def.title)} by default, so Lilin can only wake it into that. Set GRUB_DEFAULT to Linux.`);
   return {
     host: m.host,
     on,

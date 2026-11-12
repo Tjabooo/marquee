@@ -1,9 +1,9 @@
 // While someone is watching, downloads make room for them. A torrent writing at full speed to the
 // media drive scatters small writes all over it and a player's reads queue up behind them (on a
-// hard drive one 4 MB read can then take seconds). So when the first stream starts, Marquee
+// hard drive one 4 MB read can then take seconds). So when the first stream starts, Lilin
 // switches qBittorrent to its alternative speed limits (set them in qBittorrent: Options → Speed →
 // Alternative rate limits), and switches back once nobody has streamed for a while. If the
-// alternative limits were already on (turned on by hand or by qBittorrent's scheduler), Marquee
+// alternative limits were already on (turned on by hand or by qBittorrent's scheduler), Lilin
 // leaves them alone and never turns them off.
 //
 //   QBIT_PLAYBACK_LIMITS        on (default) | off
@@ -13,7 +13,7 @@ import fs from 'node:fs';
 export function startPlaybackGuard({ watching, qbit, stateFile = null, intervalMs = 5000, log = console.log } = {}) {
   const enabled = Boolean(qbit) && String(process.env.QBIT_PLAYBACK_LIMITS || 'on').toLowerCase() !== 'off';
   const idleMs = Math.max(0, Number(process.env.PLAYBACK_IDLE_SECONDS ?? 60)) * 1000;
-  // `ours` = Marquee turned the alternative limits on and must turn them off again. Saved, so a
+  // `ours` = Lilin turned the alternative limits on and must turn them off again. Saved, so a
   // restart in the middle of a film doesn't leave qBittorrent slow forever.
   let ours = false;
   try { ours = JSON.parse(fs.readFileSync(stateFile, 'utf8')).qbitAlt === true; } catch { /* none */ }

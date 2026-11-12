@@ -2,7 +2,7 @@
 # its route, the firewall kill switch and qBittorrent's binding in place, rotates to the next
 # server when the current one stops answering, and stops every torrent if a leak is ever seen.
 # Writes C:\ProgramData\TorrentVpn\status.json, plus a copy any local user can read in
-# C:\ProgramData\TorrentVpn-Status\status.json (Marquee's House tab runs unelevated).
+# C:\ProgramData\TorrentVpn-Status\status.json (Lilin's House tab runs unelevated).
 param([switch]$Quiet)
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'TorrentVpn.psm1') -Force

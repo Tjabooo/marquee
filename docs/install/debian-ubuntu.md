@@ -32,7 +32,7 @@ Ubuntu and Debian's `ffmpeg` includes libx264. Set `qbittorrent-nox`'s Web UI po
 ## 2. Install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Tjabooo/marquee/v1.3.0/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/Tjabooo/lilin/v2.0.0/install.sh -o install.sh
 less install.sh
 sh install.sh
 ```
@@ -42,26 +42,26 @@ Or use the release archive or git: [README.md](README.md#install-methods).
 ## 3. Configure
 
 Answer setup's questions; a media folder such as `/srv/media` must be readable and writable by the
-account that runs Marquee. See [../configuration.md](../configuration.md).
+account that runs Lilin. See [../configuration.md](../configuration.md).
 
 ## 4. Start
 
-`npm start` in `~/marquee`, or let the service start it.
+`npm start` in `~/lilin`, or let the service start it.
 
 ## 5. Autostart
 
 systemd. Run as a normal user, setup proposes a user unit plus `loginctl enable-linger`. On a
-server, prefer a system unit: setup uses sudo to write `/etc/systemd/system/marquee.service`, which
+server, prefer a system unit: setup uses sudo to write `/etc/systemd/system/lilin.service`, which
 runs as your user and waits for the media mount.
 
 ```sh
-node ~/marquee/setup.js service install --scope system
-systemctl status marquee
-journalctl -u marquee -f
+node ~/lilin/setup.js service install --scope system
+systemctl status lilin
+journalctl -u lilin -f
 ```
 
-For a user unit, use `--scope user`, `systemctl --user status marquee` and
-`journalctl --user -u marquee`. Pass the same `--scope` to `service status`, `restart` and
+For a user unit, use `--scope user`, `systemctl --user status lilin` and
+`journalctl --user -u lilin`. Pass the same `--scope` to `service status`, `restart` and
 `uninstall`.
 
 If you installed Node.js with nvm, run `service install` again after switching Node versions: the
@@ -69,7 +69,7 @@ unit contains the full path of the `node` binary.
 
 ## 6. Update
 
-Run `sh install.sh` again, then `node ~/marquee/setup.js service restart` (it finds the installed unit). See
+Run `sh install.sh` again, then `node ~/lilin/setup.js service restart` (it finds the installed unit). See
 [README.md](README.md#updating).
 
 ## 7. Troubleshooting
@@ -77,7 +77,7 @@ Run `sh install.sh` again, then `node ~/marquee/setup.js service restart` (it fi
 - **Setup says Node.js is too old** although you installed NodeSource: an older `node` earlier on
   PATH. Check `which -a node`.
 - **Other devices can't connect** with ufw enabled: `sudo ufw allow 8080/tcp`.
-- **Marquee starts with an empty library** after boot: the system unit waits for the media mount
+- **Lilin starts with an empty library** after boot: the system unit waits for the media mount
   (`RequiresMountsFor=`). If `MEDIA_DIR` changed since the service was installed, run
   `service install` again.
 

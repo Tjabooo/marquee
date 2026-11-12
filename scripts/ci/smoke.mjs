@@ -7,12 +7,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const app = fileURLToPath(new URL('../../', import.meta.url));
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'marquee-smoke-'));
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lilin-smoke-'));
 const envFile = path.join(dir, '.env');
 const port = 18000 + Math.floor(Math.random() * 1000);
 const answers = path.join(dir, 'answers.json');
 fs.writeFileSync(answers, JSON.stringify({ MEDIA_DIR: path.join(dir, 'media'), DATA_DIR: path.join(dir, 'data'), PORT: String(port), autostart: false, install: [] }));
-const env = { ...process.env, MARQUEE_ENV_FILE: envFile, NO_COLOR: '1' };
+const env = { ...process.env, LILIN_ENV_FILE: envFile, NO_COLOR: '1' };
 const fail = (msg) => { console.error(`SMOKE FAIL: ${msg}`); process.exit(1); };
 
 const setup = spawnSync(process.execPath, ['setup.js', '--config', answers, '--env', envFile, '--offline'], { cwd: app, env, encoding: 'utf8' });
@@ -37,7 +37,7 @@ const page = await fetch(`http://127.0.0.1:${port}/`);
 if (!page.ok || !(await page.text()).includes('<html')) fail('the web app did not load');
 const me = await (await fetch(`http://127.0.0.1:${port}/api/me`, { headers: { 'cf-access-authenticated-user-email': 'owner@example.com' } })).json();
 if (!me.me) fail('/api/me did not answer');
-if (!fs.existsSync(path.join(dir, 'data', '.marquee.db'))) fail('the database was not created in DATA_DIR');
+if (!fs.existsSync(path.join(dir, 'data', '.lilin.db'))) fail('the database was not created in DATA_DIR');
 
 server.kill('SIGTERM');
 const result = await Promise.race([exited, new Promise((r) => setTimeout(() => r(null), 10000))]);
@@ -49,4 +49,4 @@ const doctor = spawnSync(process.execPath, ['setup.js', 'doctor', '--offline', '
 process.stdout.write(doctor.stdout);
 if (doctor.status !== 0) fail(`doctor reported problems (exit ${doctor.status})`);
 fs.rmSync(dir, { recursive: true, force: true });
-console.log(`SMOKE OK: Marquee ${health.version} on ${process.platform}/${process.arch}, Node ${process.versions.node}`);
+console.log(`SMOKE OK: Lilin ${health.version} on ${process.platform}/${process.arch}, Node ${process.versions.node}`);

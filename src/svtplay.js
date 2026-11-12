@@ -117,7 +117,7 @@ const minutesIn = (text) => {
 };
 
 // SVT's numbered seasons, or (news-like programmes) periods such as "2026" and "Sommar 2026", newest first.
-// Marquee numbers those from the oldest, and their episodes from the oldest too, so new ones never renumber old.
+// Lilin numbers those from the oldest, and their episodes from the oldest too, so new ones never renumber old.
 function seasonsOf(page) {
   const found = [];
   for (const mod of page.modules || []) {
@@ -247,7 +247,7 @@ export function pickVariant(master, baseUrl) {
   return { videoUrl: best.url, audioUrl: sound?.url || null, height: best.height, bandwidth: best.bandwidth };
 }
 
-// WebVTT -> SRT: Marquee keeps subtitles as "<name>.sv.srt" beside the video.
+// WebVTT -> SRT: Lilin keeps subtitles as "<name>.sv.srt" beside the video.
 export function vttToSrt(vtt) {
   const out = [];
   const blocks = String(vtt || '').replace(/^﻿/, '').replace(/\r/g, '').split(/\n{2,}/);

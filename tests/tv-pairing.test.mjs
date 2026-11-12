@@ -42,10 +42,10 @@ test('wrong codes never create a session and too many in a row wait', () => {
 });
 
 test('a paired TV signs in with its header session and may POST without an Origin', async () => {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-tv-'));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-tv-'));
   const auth = createAuth({ dataDir: dir, homeNetworkAccess: 'signin' });
   try {
-    const token = auth.createSession(fakeReq(), 'Anna@Example.com', 'Marquee TV app');
+    const token = auth.createSession(fakeReq(), 'Anna@Example.com', 'Lilin TV app');
     const req = fakeReq({ headers: { [SESSION_HEADER]: token } });
     auth.identify(req);
     assert.equal(req.auth.via, 'session');

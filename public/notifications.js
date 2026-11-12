@@ -3,7 +3,7 @@
 import { T } from './i18n.js';
 
 // What this browser can do. 'ios-install' = iPhone/iPad Safari outside a Home Screen app, where
-// Apple only allows notifications once Marquee is added to the Home Screen.
+// Apple only allows notifications once Lilin is added to the Home Screen.
 export function pushSupport(env = globalThis) {
   const nav = env.navigator || {};
   const ios = /iPad|iPhone|iPod/.test(nav.userAgent || '') || (nav.platform === 'MacIntel' && nav.maxTouchPoints > 1);
@@ -58,7 +58,7 @@ export async function currentSubscription(env = globalThis) {
 export async function subscribe(publicKey, env = globalThis) {
   const permission = await env.Notification.requestPermission();
   if (permission !== 'granted') throw new Error(permission === 'denied'
-    ? T('Notifications are blocked for Marquee. Allow them in the browser’s site settings, then try again.')
+    ? T('Notifications are blocked for Lilin. Allow them in the browser’s site settings, then try again.')
     : T('Notifications weren’t allowed.'));
   const reg = await registerWorker(env);
   if (!reg) throw new Error(T('This browser couldn’t start notifications.'));

@@ -120,8 +120,8 @@ export function buildId(files) {
 
 // ---------- Update notifications ----------
 // Every new update is also sent once as a notification (push kind "update", Settings → Notifications →
-// Marquee updates): a quick summary plus "Tap to read more", which opens the notes (?update=<id>).
-// Which updates have gone out is kept in DATA_DIR/.marquee-update-pushes.json, so a restart never
+// Lilin updates): a quick summary plus "Tap to read more", which opens the notes (?update=<id>).
+// Which updates have gone out is kept in DATA_DIR/.lilin-update-pushes.json, so a restart never
 // sends one twice. Only updates dated today or yesterday go out: older notes added late stay quiet.
 
 // The id of the newest update and the ones that still need sending, newest first. `pushed` is the ids
@@ -158,16 +158,16 @@ export function pushFor(user, ids, { tr, list = entries() } = {}) {
   let title, summary;
   if (mine.length === 1) {
     const [e] = mine;
-    title = e.title ? tr('Marquee update: {0}', e.title) : tr('New in Marquee');
+    title = e.title ? tr('Lilin update: {0}', e.title) : tr('New in Lilin');
     // One item: its first sentence says it best. Several: their headlines.
     summary = e.items.length === 1
       ? firstSentence(e.items[0].text) || e.items[0].title
       : e.items.map((i) => i.title || firstSentence(i.text)).filter(Boolean).join(' · ');
   } else {
-    title = tr('{0} Marquee updates', mine.length);
+    title = tr('{0} Lilin updates', mine.length);
     summary = mine.map((e) => e.title || e.items[0].title || firstSentence(e.items[0].text)).filter(Boolean).join(' · ');
   }
-  return { title, body: `${clip(summary, Math.min(room, 220))} ${more}`.trim(), url: `/?update=${encodeURIComponent(mine[0].id)}`, tag: 'marquee-update' };
+  return { title, body: `${clip(summary, Math.min(room, 220))} ${more}`.trim(), url: `/?update=${encodeURIComponent(mine[0].id)}`, tag: 'lilin-update' };
 }
 
 function firstSentence(text) {

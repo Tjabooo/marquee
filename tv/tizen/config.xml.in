@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Marquee's Samsung TV app. build.sh fills in @SERVER@ (where Marquee runs) and @VERSION@. -->
-<widget xmlns="http://www.w3.org/ns/widgets" xmlns:tizen="http://tizen.org/ns/widgets" id="http://github.com/Tjabooo/marquee/tv" version="@VERSION@" viewmodes="maximized">
-  <tizen:application id="MrqTvApp01.Marquee" package="MrqTvApp01" required_version="2.3"/>
+<!-- Lilin's Samsung TV app. build.sh fills in @SERVER@ (where Lilin runs) and @VERSION@. -->
+<widget xmlns="http://www.w3.org/ns/widgets" xmlns:tizen="http://tizen.org/ns/widgets" id="http://github.com/Tjabooo/lilin/tv" version="@VERSION@" viewmodes="maximized">
+  <tizen:application id="LilTvApp01.Lilin" package="LilTvApp01" required_version="2.3"/>
   <content src="index.html"/>
-  <name>Marquee</name>
+  <name>Lilin</name>
   <icon src="icon.png"/>
   <access origin="*" subdomains="true"/>
   <!-- 'unsafe-eval' lets the TV compile the Rust app's WebAssembly (Chrome 69 has no 'wasm-unsafe-eval'). -->

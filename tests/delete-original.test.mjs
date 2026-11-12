@@ -41,7 +41,7 @@ const waitFor = async (check, ms) => {
 
 test('an original converted while qBittorrent had it is deleted later, with every subtitle track kept', { timeout: 60000 }, async (t) => {
   if (!(await ffmpegReady(t))) return;
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-retire-'));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-retire-'));
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
   let mkv, mp4;
   try { ({ mkv, mp4 } = await makePair(dir)); } catch { t.skip('FFmpeg without libx264'); return; }
@@ -61,7 +61,7 @@ test('an original converted while qBittorrent had it is deleted later, with ever
 
 test('an original is kept when its MP4 copy is shorter, or when qBittorrent still owns it', { timeout: 60000 }, async (t) => {
   if (!(await ffmpegReady(t))) return;
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-retire-keep-'));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-retire-keep-'));
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
   const short = path.join(dir, 'short');
   const owned = path.join(dir, 'owned');

@@ -4,22 +4,22 @@
 !.env.example
 
 # Runtime state (kept in DATA_DIR, which defaults to this folder)
-.marquee.db
-.marquee.db-*
-.marquee-*.json
-.marquee-*.jsonl
-.marquee-*.tmp
-.marquee-*.json.tmp
-.marquee-secret
-.marquee-stopped
-.marquee-notes-files/
-.marquee-notes-imports/
-.marquee-avatars/
+.lilin.db
+.lilin.db-*
+.lilin-*.json
+.lilin-*.jsonl
+.lilin-*.tmp
+.lilin-*.json.tmp
+.lilin-secret
+.lilin-stopped
+.lilin-notes-files/
+.lilin-notes-imports/
+.lilin-avatars/
 data/
 logs/
 cache/
 *.subsync-tmp
-*.marquee-tmp.*
+*.lilin-tmp.*
 
 # Setup and installer leftovers
 .setup-state.json
@@ -41,5 +41,5 @@ tools/playback-stress/results/
 
 # Rust TV app build output
 tv/rust/target/
-.marquee-*.pem
-.marquee-*.bak*
+.lilin-*.pem
+.lilin-*.bak*

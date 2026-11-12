@@ -1,6 +1,6 @@
 # Unraid
 
-Marquee runs from the Docker image. Read [docker.md](docker.md) for settings, optional services and
+Lilin runs from the Docker image. Read [docker.md](docker.md) for settings, optional services and
 limitations; this page covers the Unraid specifics.
 
 ## 1. Prerequisites
@@ -12,8 +12,8 @@ limitations; this page covers the Unraid specifics.
 From the Unraid terminal, create the data folder with that owner before the first start:
 
 ```sh
-mkdir -p /mnt/user/appdata/marquee
-chown 99:100 /mnt/user/appdata/marquee
+mkdir -p /mnt/user/appdata/lilin
+chown 99:100 /mnt/user/appdata/lilin
 ```
 
 ## 2. Install
@@ -22,12 +22,12 @@ chown 99:100 /mnt/user/appdata/marquee
 
 | Field | Value |
 | --- | --- |
-| Name | `marquee` |
-| Repository | `ghcr.io/tjabooo/marquee:1.3.0` |
+| Name | `lilin` |
+| Repository | `ghcr.io/tjabooo/lilin:2.0.0` |
 | Network Type | `Bridge` |
 | Extra Parameters | `--user 99:100` |
 | Port | Container `8080` → Host `8080` |
-| Path | Container `/data` → Host `/mnt/user/appdata/marquee` |
+| Path | Container `/data` → Host `/mnt/user/appdata/lilin` |
 | Path | Container `/media` → Host `/mnt/user/media` (read/write) |
 | Variable | `TZ` = your time zone |
 | Variable | `SERVER_IP` = the server's LAN address, e.g. `192.168.1.20` |
@@ -35,13 +35,13 @@ chown 99:100 /mnt/user/appdata/marquee
 The image already sets `DATA_DIR=/data`, `MEDIA_DIR=/media`, `HOST` and `PORT`.
 
 **Or with the Compose Manager plugin:** create a stack from `docker-compose.yml` and set
-`PUID=99`, `PGID=100`, `MEDIA_PATH=/mnt/user/media` and `MARQUEE_DATA=/mnt/user/appdata/marquee` as
+`PUID=99`, `PGID=100`, `MEDIA_PATH=/mnt/user/media` and `LILIN_DATA=/mnt/user/appdata/lilin` as
 described in [docker.md](docker.md#2-install).
 
 ## 3. Configure
 
 Add settings as container variables (`TMDB_TOKEN`, `QBIT_URL`, ...), or copy `.env.example` to
-`/mnt/user/appdata/marquee/.env` and edit it there; the image reads `/data/.env`. See
+`/mnt/user/appdata/lilin/.env` and edit it there; the image reads `/data/.env`. See
 [../configuration.md](../configuration.md).
 
 ## 4. Start
@@ -54,14 +54,14 @@ Turn on **Autostart** for the container on the Docker tab.
 
 ## 6. Update
 
-Back up first (`docker exec marquee node setup.js backup`). Edit the container, change the tag in
+Back up first (`docker exec lilin node setup.js backup`). Edit the container, change the tag in
 Repository (for example to `:1.3.0`), and apply.
 
 ## 7. Troubleshooting
 
 - **Permission errors on `/data` or `/media`**: the folders must be writable by `99:100`.
   Tools → New Permissions resets a share to `nobody:users`.
-- Health check: `docker exec marquee node setup.js doctor --offline`.
+- Health check: `docker exec lilin node setup.js doctor --offline`.
 
 See also [docker.md](docker.md#7-troubleshooting).
 

@@ -29,7 +29,7 @@ port `8081`), `sudo dnf install pipx && pipx install pyatv` (Apple TV).
 ## 2. Install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Tjabooo/marquee/v1.3.0/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/Tjabooo/lilin/v2.0.0/install.sh -o install.sh
 less install.sh
 sh install.sh
 ```
@@ -40,7 +40,7 @@ As in [README.md](README.md#first-run).
 
 ## 4. Start
 
-`npm start` in `~/marquee`, or let the service start it.
+`npm start` in `~/lilin`, or let the service start it.
 
 ## 5. Autostart
 

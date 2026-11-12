@@ -1,4 +1,4 @@
-// Run on the Marquee host: node tools/import-discord-notes.mjs EXPORT.json [--dry-run] [--author-id ID]
+// Run on the Lilin host: node tools/import-discord-notes.mjs EXPORT.json [--dry-run] [--author-id ID]
 // Imports only into the private notes tables; no account tokens and no Discord API access.
 import '../env.js';
 import fs from 'node:fs/promises';
@@ -75,7 +75,7 @@ try {
   await Promise.all(Array.from({ length: 6 }, async () => { while (cursor < queue.length) await download(queue[cursor++]); }));
   const result = store.import({ messages, channelId: parsed.channelId }, actor);
   const report = { ...summary, ...result, attachmentsArchived: archived, attachmentsUnavailable: failures.length, failures };
-  const reports = path.join(root, '.marquee-notes-imports'); await fs.mkdir(reports, { recursive: true });
+  const reports = path.join(root, '.lilin-notes-imports'); await fs.mkdir(reports, { recursive: true });
   await fs.writeFile(path.join(reports, `report-${Date.now()}.json`), JSON.stringify(report, null, 2));
   console.log(JSON.stringify({ ...summary, ...result, attachmentsArchived: archived, attachmentsUnavailable: failures.length }));
 } finally { store.close(); }

@@ -36,7 +36,7 @@ export function isNextEpisodeTime({ ended, time, duration, creditsAt }) {
 }
 
 // ---- Play on TV ----
-// The TV can't show Marquee's buttons, so the phone's remote shows them instead. All it knows is what the
+// The TV can't show Lilin's buttons, so the phone's remote shows them instead. All it knows is what the
 // TV reports every poll (state, position, duration), so the cues come from that position: Skip intro
 // while the opening titles play, Up next from the credits start, or once the TV finished the episode.
 export const TV_END_SLACK = 10; // seconds: a TV that stops this close to the end has played the episode to its end

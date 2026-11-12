@@ -6,7 +6,7 @@ import path from 'node:path';
 import { locationOf, initActivity, seen, record, report } from '../src/activity.js';
 
 test('activity stores city/country alongside device, without an external geolocation lookup', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'marquee-activity-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lilin-activity-'));
   initActivity({ dataDir: dir });
   const req = { headers: { 'cf-connecting-ip': '192.0.2.1', 'cf-ray': 'test', 'cf-ipcity': 'M%C3%BCnchen', 'cf-ipcountry': 'DE',
     'cf-access-authenticated-user-email': 'test@example.test', 'user-agent': 'Windows Chrome/100' } };

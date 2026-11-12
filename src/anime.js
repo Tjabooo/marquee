@@ -8,10 +8,10 @@
 // Journey's End"), and TMDB often lumps several Japanese seasons into one (Frieren's 28 + 10 episodes
 // are TMDB's season 1, episodes 1-38).
 //
-// So for an anime title Marquee builds a context (TMDB + AniList): every known name, TMDB's seasons as
+// So for an anime title Lilin builds a context (TMDB + AniList): every known name, TMDB's seasons as
 // ranges of one absolute episode count, and AniList's seasons ("entries", following its sequel chain)
 // placed on that same count by their episode numbers. Any release name then resolves to TMDB's season
-// and episode numbers, whichever convention it uses. Contexts are cached in .marquee-anime.json.
+// and episode numbers, whichever convention it uses. Contexts are cached in .lilin-anime.json.
 import fs from 'node:fs';
 import path from 'node:path';
 import { showKey } from './shows.js';
@@ -126,7 +126,7 @@ let byKey = new Map();             // title key -> context
 const building = new Map();
 
 export function initAnime({ dataDir } = {}) {
-  cacheFile = dataDir ? path.join(dataDir, '.marquee-anime.json') : null;
+  cacheFile = dataDir ? path.join(dataDir, '.lilin-anime.json') : null;
   try { contexts = cacheFile ? JSON.parse(fs.readFileSync(cacheFile, 'utf8')) : {}; } catch { contexts = {}; }
   for (const [k, c] of Object.entries(contexts)) if (c?.v !== VERSION) delete contexts[k];
   reindex();

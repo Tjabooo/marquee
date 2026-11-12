@@ -24,7 +24,7 @@ test('an AI translation is still better than a file with only the odd line', () 
 });
 
 function tempVideo(...sidecars) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'marquee-subs-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lilin-subs-'));
   const file = path.join(dir, 'Movie.mp4');
   fs.writeFileSync(file, '');
   for (const s of sidecars) fs.writeFileSync(path.join(dir, `Movie.${s}.srt`), '1\n00:00:01,000 --> 00:00:02,000\nHej\n');

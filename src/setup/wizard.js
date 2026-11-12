@@ -34,7 +34,7 @@ async function health(port) {
 }
 
 function defaultMediaDir(platform = process.platform) {
-  return platform === 'win32' ? path.join(os.homedir(), 'Videos', 'Marquee') : path.join(os.homedir(), 'Media');
+  return platform === 'win32' ? path.join(os.homedir(), 'Videos', 'Lilin') : path.join(os.homedir(), 'Media');
 }
 
 // Current .env split into plain values and "is this secret set?" flags.
@@ -53,15 +53,15 @@ export function remoteAccessOf(values) {
   return values.PUBLIC_URL ? 'proxy' : 'none';
 }
 
-// The "Marquee" task counts only if it runs this installation (another copy may own the name).
+// The "Lilin" task counts only if it runs this installation (another copy may own the name).
 export function taskRunsApp(xml, appDir) {
-  const want = path.win32.join(appDir, 'start-marquee.cmd').toLowerCase();
+  const want = path.win32.join(appDir, 'start-lilin.cmd').toLowerCase();
   return String(xml || '').replace(/&quot;|"/g, '').toLowerCase().includes(want);
 }
 
 function windowsTaskInstalled() {
   if (process.platform !== 'win32') return null;
-  const r = spawnSync('schtasks.exe', ['/query', '/tn', 'Marquee', '/xml'], { encoding: 'utf8', windowsHide: true, timeout: 10000 });
+  const r = spawnSync('schtasks.exe', ['/query', '/tn', 'Lilin', '/xml'], { encoding: 'utf8', windowsHide: true, timeout: 10000 });
   return r.status === 0 && taskRunsApp(r.stdout, APP_DIR);
 }
 
@@ -78,7 +78,7 @@ export async function wizardInfo({ envFile }) {
   const port = Number(all.PORT || 8080);
   const running = await health(port);
   let logins = [];
-  if (fs.existsSync(path.join(dataDir, '.marquee.db'))) {
+  if (fs.existsSync(path.join(dataDir, '.lilin.db'))) {
     try { const store = openAuthStore(dataDir); logins = store.list().map((r) => r.email); store.close(); } catch { /* unreadable: treat as none */ }
   }
   const owner = String(all.ADMIN_EMAILS || '').split(',')[0].trim().toLowerCase();
@@ -91,7 +91,7 @@ export async function wizardInfo({ envFile }) {
     appDir: APP_DIR,
     envFile,
     envExists: text !== null,
-    freshInstall: !fs.existsSync(path.join(dataDir, '.marquee.db')),
+    freshInstall: !fs.existsSync(path.join(dataDir, '.lilin.db')),
     platform: process.platform,
     os: detect.osInfo().name,
     hostname: os.hostname(),
@@ -108,8 +108,8 @@ export async function wizardInfo({ envFile }) {
       HOST: all.HOST || '0.0.0.0',
       HOME_NETWORK_ACCESS: all.HOME_NETWORK_ACCESS || 'shared',
       remoteAccess: remoteAccessOf(all),
-      // Marquee as Access's login: on when it's set up, and suggested for new Cloudflare setups.
-      accessSignIn: oidcConfigured(all) || !all.CF_ACCESS_TEAM_DOMAIN ? 'marquee' : 'access',
+      // Lilin as Access's login: on when it's set up, and suggested for new Cloudflare setups.
+      accessSignIn: oidcConfigured(all) || !all.CF_ACCESS_TEAM_DOMAIN ? 'lilin' : 'access',
       CLIPS_DIR: all.CLIPS_DIR || clipper.defaultClipsDir({ MEDIA_DIR: mediaDefault }),
     },
     running: running ? { version: running.version || null } : null,
@@ -137,7 +137,7 @@ export async function wizardCheck({ envFile, answers }) {
   const port = Number(env.PORT || 8080);
   if (Number.isInteger(port) && port > 0 && port < 65536) {
     const running = await health(port);
-    out.port = running ? { ok: true, detail: `Marquee ${running.version || ''} is running on this port`.replace('  ', ' ') }
+    out.port = running ? { ok: true, detail: `Lilin ${running.version || ''} is running on this port`.replace('  ', ' ') }
       : (await portFree(port)) ? { ok: true, detail: 'free' } : { ok: false, detail: `port ${port} is used by another program` };
   } else out.port = { ok: false, detail: 'pick a number from 1 to 65535' };
   const pick = (r) => (r ? { ok: r.ok, detail: r.detail, savePath: r.savePath } : null);
@@ -159,8 +159,8 @@ export function wizardClipper({ envFile, answers }) {
   const quality = answers.quality || 'balanced';
   clipper.parseQuality(quality);
   const lan = detect.lanAddresses()[0]?.address;
-  const marqueeUrl = env.PUBLIC_URL || `http://${lan || os.hostname()}:${answers.PORT || env.PORT || 8080}`;
-  const out = { clipsDir, where, quality, marqueeUrl, commit: clipper.CLIPPER_COMMIT, source: clipper.clipperSourceUrl() };
+  const lilinUrl = env.PUBLIC_URL || `http://${lan || os.hostname()}:${answers.PORT || env.PORT || 8080}`;
+  const out = { clipsDir, where, quality, lilinUrl, commit: clipper.CLIPPER_COMMIT, source: clipper.clipperSourceUrl() };
   if (where === 'here') out.installs = clipper.CLIPPER_INSTALLS[process.platform === 'win32' ? 'windows' : 'linux'];
   if (where === 'windows' || where === 'linux') {
     const share = clipper.shareInstructions({ clipsDir, host: os.hostname(), target: where });
@@ -168,7 +168,7 @@ export function wizardClipper({ envFile, answers }) {
     out.shareName = clipper.shareName(clipsDir);
     out.shareLines = share.lines;
     out.installs = clipper.CLIPPER_INSTALLS[where];
-    out.remoteCommand = clipper.remoteInstallCommand({ target: where, share: out.share, marqueeUrl, quality });
+    out.remoteCommand = clipper.remoteInstallCommand({ target: where, share: out.share, lilinUrl, quality });
   }
   return out;
 }

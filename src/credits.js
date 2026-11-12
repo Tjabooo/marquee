@@ -254,7 +254,7 @@ let saveTimer = null;
 const LIMIT = 3000;
 
 export function initCredits({ dataDir } = {}) {
-  stateFile = dataDir ? path.join(dataDir, '.marquee-credits.json') : null;
+  stateFile = dataDir ? path.join(dataDir, '.lilin-credits.json') : null;
   state = { files: {} };
   if (!stateFile) return;
   try {

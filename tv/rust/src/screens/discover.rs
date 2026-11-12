@@ -195,7 +195,7 @@ impl Discover {
             self.empty = Some(if !err.is_empty() {
                 (String::from(t!("Discover is unavailable")), String::from(err))
             } else {
-                (String::from(t!("Nothing to discover right now")), String::from(t!("Check that TMDB is configured on the Marquee server.")))
+                (String::from(t!("Nothing to discover right now")), String::from(t!("Check that TMDB is configured on the Lilin server.")))
             });
             self.at_top = true;
             cx.redraw();

@@ -1,7 +1,7 @@
 # Torrent VPN (Windows)
 
 Puts qBittorrent, and only qBittorrent, behind a WireGuard VPN, so peers and trackers see the
-VPN's address instead of yours. Marquee, remote access, DNS and everything else on the machine keep
+VPN's address instead of yours. Lilin, remote access, DNS and everything else on the machine keep
 the normal connection. It fails closed: if the tunnel is down, torrents stop moving instead of
 falling back to your connection.
 
@@ -18,7 +18,7 @@ Allowed IPs are `0.0.0.0/1, 128.0.0.0/1` rather than `0.0.0.0/0`. With `/0`, Wir
 Windows turns on its own whole-machine kill switch, which would cut the server off from the LAN.
 
 qBittorrent's own web requests (update checks, fetching `.torrent` links) are blocked by kill
-switch 2. Marquee therefore downloads `.torrent` links itself (`torrent-fetch.js`) and hands the
+switch 2. Lilin therefore downloads `.torrent` links itself (`torrent-fetch.js`) and hands the
 file to qBittorrent.
 
 ## Install
@@ -30,12 +30,12 @@ file to qBittorrent.
 3. In an elevated PowerShell:
 
    ```powershell
-   cd C:\path\to\marquee\tools\torrent-vpn
+   cd C:\path\to\lilin\tools\torrent-vpn
    .\Install-TorrentVpn.ps1 -Config $HOME\Downloads\mullvad_wireguard_windows_se_all.zip -Prefer 'se-sto'
    ```
 
    `-Config` takes one `.conf`, several, a folder or a `.zip`. `-Prefer` is a regex that picks
-   which server to try first. qBittorrent's WebUI credentials come from Marquee's `.env`
+   which server to try first. qBittorrent's WebUI credentials come from Lilin's `.env`
    (`QBIT_URL`, `QBIT_USER`, `QBIT_PASS`; `-EnvFile` to point elsewhere). qBittorrent is restarted
    once so no connection opened before the switch survives it (`-NoQbitRestart` to skip).
 
@@ -49,7 +49,7 @@ by SYSTEM and Administrators.
 .\Test-TorrentVpn.ps1 -Drill   # also stops the tunnel for 20 s and proves nothing moves
 ```
 
-- Live state: `C:\ProgramData\TorrentVpn\status.json` (copy readable by any local user, for Marquee's House tab:
+- Live state: `C:\ProgramData\TorrentVpn\status.json` (copy readable by any local user, for Lilin's House tab:
   `C:\ProgramData\TorrentVpn-Status\status.json`; `lastDropAt` = when the tunnel last lost its handshake)
 - Log: `C:\ProgramData\TorrentVpn\watchdog.log`
 

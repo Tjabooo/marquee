@@ -23,7 +23,7 @@ main{display:grid;grid-template-columns:repeat(${cols},max-content);gap:14px;ali
 figure{margin:0}img{display:block;border:1px solid #333}figcaption{padding:4px 0}
 .pair{display:flex;gap:6px;padding:6px;background:#1b1b1b;border-radius:6px}.missing{width:${width}px;color:#f88}
 </style><main>${cells.join('')}</main>`;
-const tmp = path.join(os.tmpdir(), `mq-contact-${process.pid}.html`);
+const tmp = path.join(os.tmpdir(), `lil-contact-${process.pid}.html`);
 fs.writeFileSync(tmp, html);
 // Tall enough for everything: estimate from the tallest image per row.
 const sizeOf = (f) => { const b = fs.readFileSync(f); return { w: b.readUInt32BE(16), h: b.readUInt32BE(20) }; };

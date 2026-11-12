@@ -9,7 +9,7 @@ import { WatchRooms } from '../src/watch.js';
 import { topicFor } from '../src/live.js';
 
 function setup() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'marquee-social-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lilin-social-'));
   accounts.initAccounts({ dataDir: dir, adminEmails: [], mediaDir: null });
   const make = (email, name) => accounts.updateMe(accounts.userFor({ headers: { 'cf-access-authenticated-user-email': email } }), { name });
   const anna = make('anna@example.test', 'Anna'), ben = make('ben@example.test', 'Ben'), cleo = make('cleo@example.test', 'Cleo');
@@ -77,7 +77,7 @@ test('watch log credits real playback, capped by elapsed time, and survives fini
   assert.throws(() => social.wrapped(anna.id, 'x', nameOf), { status: 400 });
 });
 
-test('Popular on Marquee ranks by likes, viewers and hours, filters by type and drops disliked titles', () => {
+test('Popular on Lilin ranks by likes, viewers and hours, filters by type and drops disliked titles', () => {
   const { anna, ben, cleo } = setup();
   const now = Date.now();
   social.rate(anna.id, 'movie:1', 1); social.rate(ben.id, 'movie:1', 1);

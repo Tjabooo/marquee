@@ -1,11 +1,11 @@
-// Episodes in order: a season Marquee downloads gets its episodes one after another, each at full
+// Episodes in order: a season Lilin downloads gets its episodes one after another, each at full
 // speed, so episode 1 is watchable (and converted to MP4) while episode 2 downloads, and so on.
 //
 // A season pack: the next unfinished episode's file gets qBittorrent's highest file priority, the
 // rest normal (never "skip": that would make the pack look finished). Separate episode torrents:
-// only the earliest unfinished one runs; Marquee stops the later ones and starts each in turn.
+// only the earliest unfinished one runs; Lilin stops the later ones and starts each in turn.
 // Stalled episodes (no peers) don't hold up the season: up to three of them keep trying, and the first
-// healthy one runs alongside them. A torrent Marquee stopped after seeing it stall (wasStalled) still
+// healthy one runs alongside them. A torrent Lilin stopped after seeing it stall (wasStalled) still
 // counts as stalled, so dead torrents can't take turns starving a healthy one. At the same episode a
 // pack's file goes before a separate torrent. Torrents the person paused and failed ones are left alone.
 import path from 'node:path';
@@ -19,7 +19,7 @@ const FAILED = /^(error|missingFiles|unknown)$/;
 const MAX_RUNNING = 3;
 
 // group: { season, ctx? (anime context: names placed on TMDB's numbering), torrents: [{ hash, name, state, progress, wasStalled?, files: [{ index, name, progress, priority }] }] }
-// held: Set of hashes Marquee stopped itself. Returns the changes to make:
+// held: Set of hashes Lilin stopped itself. Returns the changes to make:
 // { priorities: [{ hash, ids, priority }], stop: [hash], start: [hash], running: [{ hash, episode }] }
 export function planEpisodeOrder(group, held = new Set()) {
   const units = [];

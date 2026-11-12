@@ -3,7 +3,7 @@
 // seconds early or late, or drift because the release runs at another frame rate (23.976 vs 25 fps).
 // This lines a subtitle file up against something already in sync with the video, in this order:
 //   1. a text subtitle track embedded in the video (or the file it was converted from),
-//   2. a subtitle file Marquee extracted from such a track during conversion,
+//   2. a subtitle file Lilin extracted from such a track during conversion,
 //   3. the film's audio (when people are talking).
 // Cue timings become on/off signals, are cross-correlated for each likely frame-rate ratio, and the
 // best match is applied only when it is clearly better than the alternatives. The original file is
@@ -48,7 +48,7 @@ export function ensureSync(srt, video) {
 }
 
 export function initSubsync({ dataDir, cacheDir = path.join(dataDir, 'cache'), audioShift } = {}) {
-  registryFile = path.join(dataDir, '.marquee-subsync.json');
+  registryFile = path.join(dataDir, '.lilin-subsync.json');
   backupDir = path.join(cacheDir, 'subsync');
   if (audioShift) manualShift = audioShift;
   try { registry = JSON.parse(fs.readFileSync(registryFile, 'utf8')); } catch { registry = {}; }

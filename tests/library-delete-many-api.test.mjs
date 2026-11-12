@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 const HASH = 'd'.repeat(40);
 async function fixture(t, { authenticated = false, missingMedia = false, inspectCandidates = false } = {}) {
   const root = fileURLToPath(new URL('../', import.meta.url));
-  const app = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-delete-many-'));
+  const app = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-delete-many-'));
   const media = path.join(app, 'media'); await fs.mkdir(media);
   const state = { torrents: [], files: [], adds: 0, deletes: [], actions: [], logins: 0,
     fileRequests: 0, inventoryRequests: 0, rejectAdd: false, down: false, deleteGate: null, filesFail: false };
@@ -81,7 +81,7 @@ async function fixture(t, { authenticated = false, missingMedia = false, inspect
   });
   await new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(Error(logs)), 7000);
-    child.stdout.on('data', (c) => { const ready = /Marquee is running: http:\/\/localhost:(\d+)/.exec(String(c)); if (ready) { port = Number(ready[1]); clearTimeout(timer); resolve(); } });
+    child.stdout.on('data', (c) => { const ready = /Lilin is running: http:\/\/localhost:(\d+)/.exec(String(c)); if (ready) { port = Number(ready[1]); clearTimeout(timer); resolve(); } });
     child.once('error', reject); child.once('exit', () => { clearTimeout(timer); reject(Error(logs)); });
   });
   const request = async (endpoint, body, email = 'member@test.local', status = 200) => {

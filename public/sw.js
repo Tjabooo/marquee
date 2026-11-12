@@ -1,4 +1,4 @@
-// Marquee's service worker: shows notifications (push.js on the server) and opens Marquee when one
+// Lilin's service worker: shows notifications (push.js on the server) and opens Lilin when one
 // is tapped. It caches nothing and doesn't touch page loads, so updates still arrive right away.
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
@@ -7,7 +7,7 @@ self.addEventListener('push', (event) => {
   let data = {};
   try { data = event.data ? event.data.json() : {}; } catch { data = { body: event.data?.text() || '' }; }
   const url = typeof data.url === 'string' && /^\/(?!\/)/.test(data.url) ? data.url : '/';
-  event.waitUntil(self.registration.showNotification(data.title || 'Marquee', {
+  event.waitUntil(self.registration.showNotification(data.title || 'Lilin', {
     body: data.body || '',
     tag: data.tag || undefined,
     renotify: Boolean(data.tag),
@@ -17,7 +17,7 @@ self.addEventListener('push', (event) => {
   }));
 });
 
-// Tapping a notification: bring an open Marquee to the front and let it open the link itself (no
+// Tapping a notification: bring an open Lilin to the front and let it open the link itself (no
 // reload, so a playing video keeps playing until you choose); otherwise open a new window.
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
@@ -27,7 +27,7 @@ self.addEventListener('notificationclick', (event) => {
     const page = open.find((c) => new URL(c.url).origin === self.location.origin);
     if (page) {
       await page.focus().catch(() => {});
-      page.postMessage({ type: 'marquee:open', url });
+      page.postMessage({ type: 'lilin:open', url });
       return;
     }
     await self.clients.openWindow(url);

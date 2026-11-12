@@ -15,7 +15,7 @@ let file = null;
 let data = { devices: {} };
 
 export function initScreenTime({ dataDir }) {
-  file = path.join(dataDir, '.marquee-screentime.json');
+  file = path.join(dataDir, '.lilin-screentime.json');
   try { data = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { data = { devices: {} }; }
   if (!data.devices || typeof data.devices !== 'object') data = { devices: {} };
 }

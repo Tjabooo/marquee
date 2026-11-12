@@ -1,28 +1,28 @@
 #!/bin/bash
-# marquee-house: report this Linux machine's health to Marquee's House tab.
+# lilin-house: report this Linux machine's health to Lilin's House tab.
 #
-#   marquee-house setup URL TOKEN   once, at home: saves the server address + HOUSE_TOKEN and
+#   lilin-house setup URL TOKEN   once, at home: saves the server address + HOUSE_TOKEN and
 #                                   remembers this network's router (by MAC) as "home"
-#   marquee-house report            send a report (marquee-house.timer checks every 30 s, sends when the
+#   lilin-house report            send a report (lilin-house.timer checks every 30 s, sends when the
 #                                   failed services change, else every 5 min)
-#   marquee-house status            JSON for a waybar custom module (house dot + issues tooltip)
-#   marquee-house json              print the report without sending it
-#   marquee-house boot              root, dual-boot machines (marquee-house-boot.timer, every 30 s):
-#                                   tells Marquee this machine's GRUB menu and network card so the
+#   lilin-house status            JSON for a waybar custom module (house dot + issues tooltip)
+#   lilin-house json              print the report without sending it
+#   lilin-house boot              root, dual-boot machines (lilin-house-boot.timer, every 30 s):
+#                                   tells Lilin this machine's GRUB menu and network card so the
 #                                   House tab can wake it, and restarts into another system when
 #                                   asked (grub-reboot). Turns Wake-on-LAN on for the wired card.
 #
 # Reports only go out on the home network: the router's MAC must match the one saved by setup,
 # so the token is never sent to some other network's 192.168.x.y (the VPN's LAN sharing must be on). Away from home the status
 # module hides itself. Needs: bash, curl, jq, iproute2 (+ ethtool and grub for `boot`).
-# Only `boot` needs root; it reads MARQUEE_HOUSE_CONF (/etc/marquee-house.env in its unit).
+# Only `boot` needs root; it reads LILIN_HOUSE_CONF (/etc/lilin-house.env in its unit).
 set -u
 # systemd starts system units without HOME; set -u would abort on it
 : "${HOME:=$(getent passwd "$EUID" | cut -d: -f6)}"
-CONF=${MARQUEE_HOUSE_CONF:-${XDG_CONFIG_HOME:-$HOME/.config}/marquee-house.env}
-STATE=${XDG_STATE_HOME:-$HOME/.local/state}/marquee-house
-MARQUEE_URL="" HOUSE_TOKEN="" HOME_GW_MAC=""
-# The config is written by `marquee-house setup`.
+CONF=${LILIN_HOUSE_CONF:-${XDG_CONFIG_HOME:-$HOME/.config}/lilin-house.env}
+STATE=${XDG_STATE_HOME:-$HOME/.local/state}/lilin-house
+LILIN_URL="" HOUSE_TOKEN="" HOME_GW_MAC=""
+# The config is written by `lilin-house setup`.
 # shellcheck source=/dev/null
 [[ -r $CONF ]] && . "$CONF"
 
@@ -36,7 +36,7 @@ gw_mac() {
   fi
   echo "$mac"
 }
-at_home() { [[ -n $MARQUEE_URL && -n $HOUSE_TOKEN && -n $HOME_GW_MAC && "$(gw_mac)" == "$HOME_GW_MAC" ]]; }
+at_home() { [[ -n $LILIN_URL && -n $HOUSE_TOKEN && -n $HOME_GW_MAC && "$(gw_mac)" == "$HOME_GW_MAC" ]]; }
 
 # Failed system + user units, as a JSON array ("user:" in front of user units)
 failed_units() {
@@ -165,7 +165,7 @@ wake_on() {
 }
 
 boot() {
-  [[ $EUID -eq 0 ]] || { echo "marquee-house boot needs root (it runs ethtool and grub-reboot)" >&2; exit 1; }
+  [[ $EUID -eq 0 ]] || { echo "lilin-house boot needs root (it runs ethtool and grub-reboot)" >&2; exit 1; }
   command -v ethtool >/dev/null || echo "ethtool isn't installed: Wake-on-LAN can't be checked or turned on" >&2
   # right after boot the network can take a moment: retry for up to ~40 s before giving up until the next timer run
   local up tries=0
@@ -185,8 +185,8 @@ boot() {
     --arg mac "$mac" --arg wol "$wol" --argjson entries "$entries" --arg def "$def" --argjson uptime "${up%.*}" \
     '{host:$host,iface:$iface,wired:$wired,mac:$mac,wol:(if $wol == "" then null else $wol end),
       entries:$entries,default:(if $def == "" then null else $def end),uptime:$uptime}')
-  out=$(curl -sS --max-time 8 -w '\n%{http_code}' -X POST -H "X-Marquee-Token: $HOUSE_TOKEN" \
-    -H 'Content-Type: application/json' --data-binary "$body" "$MARQUEE_URL/api/house/boot" 2>&1)
+  out=$(curl -sS --max-time 8 -w '\n%{http_code}' -X POST -H "X-Lilin-Token: $HOUSE_TOKEN" \
+    -H 'Content-Type: application/json' --data-binary "$body" "$LILIN_URL/api/house/boot" 2>&1)
   code=${out##*$'\n'}; reply=${out%$'\n'*}
   [[ $code == 200 ]] || { echo "boot poll not accepted (HTTP ${code:-none}): $reply" >&2; exit 0; }
   reboot=$(jq -r '.reboot // false' <<<"$reply" 2>/dev/null)
@@ -195,21 +195,21 @@ boot() {
   if [[ -n $entry ]]; then
     # only ever an entry from this machine's own menu
     jq -e --arg e "$entry" 'any(.[]; .title == $e)' <<<"$entries" >/dev/null ||
-      { echo "Marquee asked for \"$entry\", which isn't on this boot menu" >&2; exit 1; }
+      { echo "Lilin asked for \"$entry\", which isn't on this boot menu" >&2; exit 1; }
     grub-reboot "$entry" || { echo "grub-reboot \"$entry\" failed" >&2; exit 1; }
-    echo "Marquee: restarting into $entry"
+    echo "Lilin: restarting into $entry"
   else
-    echo "Marquee: restarting"
+    echo "Lilin: restarting"
   fi
   systemctl reboot
 }
 
 case ${1:-report} in
   setup)
-    [[ $# -eq 3 ]] || { echo "usage: marquee-house setup http://SERVER:8080 HOUSE_TOKEN" >&2; exit 2; }
+    [[ $# -eq 3 ]] || { echo "usage: lilin-house setup http://SERVER:8080 HOUSE_TOKEN" >&2; exit 2; }
     mac=$(gw_mac); [[ -n $mac ]] || { echo "no default route: connect to the home network first" >&2; exit 1; }
     mkdir -p "$(dirname "$CONF")"; umask 077
-    printf 'MARQUEE_URL=%s\nHOUSE_TOKEN=%s\nHOME_GW_MAC=%s\n' "${2%/}" "$3" "$mac" > "$CONF"
+    printf 'LILIN_URL=%s\nHOUSE_TOKEN=%s\nHOME_GW_MAC=%s\n' "${2%/}" "$3" "$mac" > "$CONF"
     echo "saved $CONF (home = router $mac)"
     # shellcheck source=/dev/null
     . "$CONF"; exec "$0" report ;;
@@ -223,16 +223,16 @@ case ${1:-report} in
     [[ -r $sent && $(<"$sent") == "$failed" ]] && (( $(date +%s) - $(stat -c %Y "$sent") < 290 )) && exit 0
     # a server that's down or doesn't know the token yet is logged, not a failed unit (which the next
     # report would then flag as an issue about itself)
-    out=$(collect | curl -sS --max-time 8 -w '\n%{http_code}' -X POST -H "X-Marquee-Token: $HOUSE_TOKEN" \
-      -H 'Content-Type: application/json' --data-binary @- "$MARQUEE_URL/api/house/report" 2>&1)
+    out=$(collect | curl -sS --max-time 8 -w '\n%{http_code}' -X POST -H "X-Lilin-Token: $HOUSE_TOKEN" \
+      -H 'Content-Type: application/json' --data-binary @- "$LILIN_URL/api/house/report" 2>&1)
     code=${out##*$'\n'}
     if [[ $code == 200 ]]; then mkdir -p "$STATE" && printf '%s\n' "$failed" > "$sent"
     else echo "report not accepted (HTTP ${code:-none}): ${out%$'\n'*}" >&2; fi
     exit 0 ;;
   status)
     at_home || { echo '{"text":""}'; exit 0; }
-    s=$(curl -fsS --max-time 4 -H "X-Marquee-Token: $HOUSE_TOKEN" "$MARQUEE_URL/api/house/summary" 2>/dev/null) ||
-      { echo '{"text":"󰋜","class":"down","tooltip":"House: Marquee isn'"'"'t answering"}'; exit 0; }
+    s=$(curl -fsS --max-time 4 -H "X-Lilin-Token: $HOUSE_TOKEN" "$LILIN_URL/api/house/summary" 2>/dev/null) ||
+      { echo '{"text":"󰋜","class":"down","tooltip":"House: Lilin isn'"'"'t answering"}'; exit 0; }
     jq -c 'if .ok then {text:"󰋜",class:"ok",tooltip:("House: all fine\n" + (.machines|join(" · ")))}
            else {text:("󰋜 " + (.issues|length|tostring)),class:"issues",tooltip:("House\n" + (.issues|map("• " + .)|join("\n")))} end' <<<"$s" ;;
   boot) boot ;;

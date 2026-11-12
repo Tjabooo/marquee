@@ -1,5 +1,5 @@
-// MarqueeSetup.exe: opens the Marquee setup wizard (scripts\windows\setup-wizard.ps1) in its own
-// window, with no console. Inside a Marquee folder it runs that installation's wizard; anywhere
+// LilinSetup.exe: opens the Lilin setup wizard (scripts\windows\setup-wizard.ps1) in its own
+// window, with no console. Inside a Lilin folder it runs that installation's wizard; anywhere
 // else (e.g. Downloads) it runs the wizard and install.ps1 embedded in it, which download, verify
 // and install the newest release (the one this file was built for only if GitHub can't be reached).
 //
@@ -10,13 +10,13 @@ using System.IO;
 using System.Reflection;
 using System.Windows.Forms;
 
-[assembly: AssemblyTitle("Marquee Setup")]
-[assembly: AssemblyProduct("Marquee")]
-[assembly: AssemblyDescription("Installs and sets up Marquee, the self-hosted media server")]
+[assembly: AssemblyTitle("Lilin Setup")]
+[assembly: AssemblyProduct("Lilin")]
+[assembly: AssemblyDescription("Installs and sets up Lilin, the self-hosted media server")]
 [assembly: AssemblyVersion("__ASSEMBLY_VERSION__")]
 [assembly: AssemblyInformationalVersion("__VERSION__")]
 
-static class MarqueeSetup {
+static class LilinSetup {
   const string Version = "__VERSION__";
 
   static string Quote(string s) { return "\"" + s.Replace("\"", "\\\"") + "\""; }
@@ -39,7 +39,7 @@ static class MarqueeSetup {
       if (File.Exists(own) && File.Exists(Path.Combine(dir, "setup.js"))) {
         args = "-File " + Quote(own);
       } else {
-        tmp = Path.Combine(Path.GetTempPath(), "MarqueeSetup-" + Guid.NewGuid().ToString("N"));
+        tmp = Path.Combine(Path.GetTempPath(), "LilinSetup-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tmp);
         string wizard = Extract("setup-wizard.ps1", tmp);
         string install = Extract("install.ps1", tmp);
@@ -57,12 +57,12 @@ static class MarqueeSetup {
         string err = p.StandardError.ReadToEnd();
         p.WaitForExit();
         if (p.ExitCode != 0 && err.Trim().Length > 0) {
-          MessageBox.Show("Marquee Setup stopped:\n\n" + err.Trim(), "Marquee Setup", MessageBoxButtons.OK, MessageBoxIcon.Error);
+          MessageBox.Show("Lilin Setup stopped:\n\n" + err.Trim(), "Lilin Setup", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         return p.ExitCode;
       }
     } catch (Exception e) {
-      MessageBox.Show("Marquee Setup couldn't start:\n\n" + e.Message, "Marquee Setup", MessageBoxButtons.OK, MessageBoxIcon.Error);
+      MessageBox.Show("Lilin Setup couldn't start:\n\n" + e.Message, "Lilin Setup", MessageBoxButtons.OK, MessageBoxIcon.Error);
       return 1;
     } finally {
       if (tmp != null) { try { Directory.Delete(tmp, true); } catch { } }

@@ -1,18 +1,18 @@
-# Marquee installer and updater for Windows 10/11. Read it before running it; it is short.
+# Lilin installer and updater for Windows 10/11. Read it before running it; it is short.
 #
 #   powershell -ExecutionPolicy Bypass -File install.ps1                    install or update to the latest release
 #   powershell -ExecutionPolicy Bypass -File install.ps1 -Version v1.1.0    a specific release
-#   powershell -ExecutionPolicy Bypass -File install.ps1 -Dir D:\Apps\Marquee somewhere other than %USERPROFILE%\marquee
+#   powershell -ExecutionPolicy Bypass -File install.ps1 -Dir D:\Apps\Lilin somewhere other than %USERPROFILE%\lilin
 #   powershell -ExecutionPolicy Bypass -File install.ps1 -DryRun
 #   powershell -ExecutionPolicy Bypass -File install.ps1 -Uninstall          remove the scheduled tasks and application files
 #                                                                            (.env, database and media stay)
 #
-# It downloads marquee-<version>.tar.gz and SHA256SUMS from the GitHub release, checks the archive
+# It downloads lilin-<version>.tar.gz and SHA256SUMS from the GitHub release, checks the archive
 # against the checksum and unpacks it. Updates replace application files only; .env, the database,
 # state files and cache\ are never touched, and the previous version is kept in .backup-<version>\.
 param(
   [string]$Version = '',
-  [string]$Dir = (Join-Path $env:USERPROFILE 'marquee'),
+  [string]$Dir = (Join-Path $env:USERPROFILE 'lilin'),
   [switch]$DryRun,
   [switch]$NoSetup,
   [switch]$Yes,
@@ -22,8 +22,8 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-$Repo = 'Tjabooo/marquee'
-$AppItems = 'server.js', 'setup.js', 'package.json', 'src', 'public', 'agents', 'scripts', 'tools', 'docs', 'start-marquee.cmd',
+$Repo = 'Tjabooo/lilin'
+$AppItems = 'server.js', 'setup.js', 'package.json', 'src', 'public', 'agents', 'scripts', 'tools', 'docs', 'start-lilin.cmd',
   '.env.example', 'README.md', 'CHANGELOG.md', 'Dockerfile', 'docker-compose.yml', 'docker', 'install.sh', 'install.ps1'
 
 function Step([string]$text, [scriptblock]$action) {
@@ -31,19 +31,19 @@ function Step([string]$text, [scriptblock]$action) {
 }
 
 if ($Uninstall) {
-  if (-not (Test-Path (Join-Path $Dir 'server.js'))) { throw "No Marquee installation in $Dir" }
-  Write-Host "Removing Marquee from $Dir"
+  if (-not (Test-Path (Join-Path $Dir 'server.js'))) { throw "No Lilin installation in $Dir" }
+  Write-Host "Removing Lilin from $Dir"
   $svc = Join-Path $Dir 'scripts\windows\install-service.ps1'
-  if ((Test-Path $svc) -and (Get-ScheduledTask -TaskName 'Marquee' -ErrorAction SilentlyContinue)) {
+  if ((Test-Path $svc) -and (Get-ScheduledTask -TaskName 'Lilin' -ErrorAction SilentlyContinue)) {
     Step 'remove the scheduled tasks' { & powershell -NoProfile -ExecutionPolicy Bypass -File $svc -Uninstall }
   }
   foreach ($item in $AppItems) {
     $p = Join-Path $Dir $item
     if (Test-Path $p) { Step "delete $p" { Remove-Item -Recurse -Force $p } }
   }
-  # Left by the setup wizard (MarqueeSetup.exe): its copy and the Start menu entries.
-  $menu = Join-Path ([Environment]::GetFolderPath('Programs')) 'Marquee'
-  foreach ($p in (Join-Path $Dir 'MarqueeSetup.exe'), $menu) {
+  # Left by the setup wizard (LilinSetup.exe): its copy and the Start menu entries.
+  $menu = Join-Path ([Environment]::GetFolderPath('Programs')) 'Lilin'
+  foreach ($p in (Join-Path $Dir 'LilinSetup.exe'), $menu) {
     if (Test-Path $p) { Step "delete $p" { Remove-Item -Recurse -Force $p } }
   }
   if ($Purge) {
@@ -65,7 +65,7 @@ if ($node) {
   $nodeOk = $v -ge [version]'22.16.0'
 }
 if (-not $nodeOk) {
-  Write-Host 'Marquee needs Node.js 22.16 or later. Install the LTS, open a new PowerShell and run this again:' -ForegroundColor Yellow
+  Write-Host 'Lilin needs Node.js 22.16 or later. Install the LTS, open a new PowerShell and run this again:' -ForegroundColor Yellow
   Write-Host '  winget install OpenJS.NodeJS.LTS'
   exit 1
 }
@@ -77,7 +77,7 @@ if (-not $Version) {
   if (-not $Version) { throw "Couldn't find the latest release; pass -Version vX.Y.Z" }
 }
 if (-not $Version.StartsWith('v')) { $Version = "v$Version" }
-Write-Host "Marquee $Version -> $Dir"
+Write-Host "Lilin $Version -> $Dir"
 
 if (Test-Path (Join-Path $Dir '.git')) {
   Write-Host "$Dir is a git checkout. Update it with git instead:"
@@ -86,14 +86,14 @@ if (Test-Path (Join-Path $Dir '.git')) {
 }
 $current = $null
 $pkg = Join-Path $Dir 'package.json'
-if (Test-Path $pkg) { $current = (Get-Content $pkg -Raw | ConvertFrom-Json).version; Write-Host "Found Marquee ${current}: updating application files only" }
+if (Test-Path $pkg) { $current = (Get-Content $pkg -Raw | ConvertFrom-Json).version; Write-Host "Found Lilin ${current}: updating application files only" }
 
 # ---------- download and verify ----------
-$tmp = Join-Path ([IO.Path]::GetTempPath()) ("marquee-" + [guid]::NewGuid().ToString('N'))
+$tmp = Join-Path ([IO.Path]::GetTempPath()) ("lilin-" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory $tmp | Out-Null
 try {
   $base = "https://github.com/$Repo/releases/download/$Version"
-  $archive = "marquee-$Version.tar.gz"
+  $archive = "lilin-$Version.tar.gz"
   Write-Host "Downloading $archive"
   Invoke-WebRequest "$base/$archive" -OutFile (Join-Path $tmp $archive) -UseBasicParsing
   Invoke-WebRequest "$base/SHA256SUMS" -OutFile (Join-Path $tmp 'SHA256SUMS') -UseBasicParsing
@@ -130,26 +130,26 @@ try {
 
   # ---------- Android TV app (best effort) ----------
   # Releases carry the Android TV app built without a server address (it asks on its first start);
-  # Marquee offers it at /android. An app of your own with the same or a newer version is left alone.
+  # Lilin offers it at /android. An app of your own with the same or a newer version is left alone.
   try {
     $meta = $null
-    try { $meta = Invoke-RestMethod "$base/Marquee.json" -UseBasicParsing } catch { }   # this release has none
+    try { $meta = Invoke-RestMethod "$base/Lilin.json" -UseBasicParsing } catch { }   # this release has none
     $dist = Join-Path $Dir 'tv\android\dist'
     $have = 0
-    if ((Test-Path (Join-Path $dist 'Marquee.apk')) -and (Test-Path (Join-Path $dist 'Marquee.json'))) {
-      try { $have = [int](Get-Content (Join-Path $dist 'Marquee.json') -Raw | ConvertFrom-Json).versionCode } catch { }
+    if ((Test-Path (Join-Path $dist 'Lilin.apk')) -and (Test-Path (Join-Path $dist 'Lilin.json'))) {
+      try { $have = [int](Get-Content (Join-Path $dist 'Lilin.json') -Raw | ConvertFrom-Json).versionCode } catch { }
     }
     if ($meta -and $meta.sha256 -and [int]$meta.versionCode -gt $have) {
-      $apk = Join-Path $tmp 'Marquee.apk'
-      Invoke-WebRequest "$base/Marquee.apk" -OutFile $apk -UseBasicParsing
+      $apk = Join-Path $tmp 'Lilin.apk'
+      Invoke-WebRequest "$base/Lilin.apk" -OutFile $apk -UseBasicParsing
       if ((Get-FileHash $apk -Algorithm SHA256).Hash.ToLower() -ne [string]$meta.sha256) { throw 'checksum mismatch' }
       Step "add the Android TV app $($meta.versionName) to $dist" {
         New-Item -ItemType Directory -Force $dist | Out-Null
-        Copy-Item $apk (Join-Path $dist 'Marquee.apk') -Force
-        [IO.File]::WriteAllText((Join-Path $dist 'Marquee.json'), ($meta | ConvertTo-Json -Compress), (New-Object Text.UTF8Encoding $false))
+        Copy-Item $apk (Join-Path $dist 'Lilin.apk') -Force
+        [IO.File]::WriteAllText((Join-Path $dist 'Lilin.json'), ($meta | ConvertTo-Json -Compress), (New-Object Text.UTF8Encoding $false))
       }
     }
-  } catch { Write-Host "Note: skipped the Android TV app ($($_.Exception.Message)); Marquee works without it" }
+  } catch { Write-Host "Note: skipped the Android TV app ($($_.Exception.Message)); Lilin works without it" }
 } finally {
   Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
 }
@@ -158,5 +158,5 @@ if ($DryRun) { Write-Host 'Dry run: nothing was changed.'; exit 0 }
 if (-not $NoSetup) {
   if ($Yes) { & node (Join-Path $Dir 'setup.js') --yes } else { & node (Join-Path $Dir 'setup.js') }
 }
-if ($current) { Write-Host "Restart Marquee to use ${Version}: node `"$Dir\setup.js`" service restart" }
+if ($current) { Write-Host "Restart Lilin to use ${Version}: node `"$Dir\setup.js`" service restart" }
 Write-Host "Done. Check the installation any time with: node `"$Dir\setup.js`" doctor"

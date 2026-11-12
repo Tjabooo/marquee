@@ -1,20 +1,20 @@
-// Who may use Marquee, and which requests it accepts at all. Three layers, run on every request
+// Who may use Lilin, and which requests it accepts at all. Three layers, run on every request
 // after trust.sanitize() has removed proxy headers nobody vouches for:
 //
 // 1. guard(): refuses requests a web page could send without the visitor meaning to.
 //    * Host check (DNS rebinding): a site the visitor opens can point its own domain at the
-//      server's LAN address and then talk to Marquee "same-origin". Marquee only answers to IP
+//      server's LAN address and then talk to Lilin "same-origin". Lilin only answers to IP
 //      addresses, localhost, single-label and home-network names (geofront, *.local, *.lan,
 //      *.home.arpa, *.internal, *.ts.net), PUBLIC_URL and ALLOWED_HOSTS.
-//    * Origin check (CSRF): a POST must come from Marquee's own pages. Browsers always send Origin
+//    * Origin check (CSRF): a POST must come from Lilin's own pages. Browsers always send Origin
 //      (or Sec-Fetch-Site) on cross-site requests, so one from another site is refused; tools
 //      without a browser (curl, the House and Screen Time agents) send neither and are unaffected.
 //    * Security headers on every response (no framing, no MIME sniffing, no referrers to other sites).
 //
 // 2. identify(): who is asking. In order:
 //    * a verified proxy identity (Cloudflare Access or a trusted reverse proxy; see trust.js),
-//    * Marquee's own sign-in: a session cookie from /signin (passwords made with
-//      `node setup.js user add`), stored hashed in .marquee.db,
+//    * Lilin's own sign-in: a session cookie from /signin (passwords made with
+//      `node setup.js user add`), stored hashed in .lilin.db,
 //    * the shared "Home network" account, only for visitors directly on the home network
 //      (private, loopback or Tailscale addresses) and only while HOME_NETWORK_ACCESS=shared.
 //    A visitor from the internet never gets the shared account, so a port forwarded on the router
@@ -29,9 +29,9 @@ import { createRequire } from 'node:module';
 
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite');
 
-export const COOKIE = 'marquee_session';
-export const TV_HEADER = 'x-marquee-tv';
-export const SESSION_HEADER = 'x-marquee-session';
+export const COOKIE = 'lilin_session';
+export const TV_HEADER = 'x-lilin-tv';
+export const SESSION_HEADER = 'x-lilin-session';
 const IDENTITY = 'cf-access-authenticated-user-email';
 const SCRYPT = { N: 1 << 15, r: 8, p: 1, maxmem: 96 * 1024 * 1024 };
 const MIN_PASSWORD = 10;
@@ -124,9 +124,9 @@ const normalEmail = (e) => String(e || '').trim().toLowerCase();
 export const validEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalEmail(e)) && normalEmail(e).length <= 254;
 const tokenHash = (token) => crypto.createHash('sha256').update(String(token)).digest('hex');
 
-// ---------- the store (.marquee.db) ----------
+// ---------- the store (.lilin.db) ----------
 export function openAuthStore(dataDir) {
-  const db = new DatabaseSync(path.join(dataDir, '.marquee.db'));
+  const db = new DatabaseSync(path.join(dataDir, '.lilin.db'));
   db.exec(`
     PRAGMA journal_mode = WAL;
     PRAGMA busy_timeout = 5000;
@@ -254,17 +254,17 @@ export function createAuth({
     res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
   }
 
-  // Throws for requests Marquee won't handle at all.
+  // Throws for requests Lilin won't handle at all.
   function guard(req, res) {
     setSecurityHeaders(res, /^\/c(\/|$)/.test(String(req.url || '')));
     const throughCloudflare = Boolean(req.headers['cf-ray']); // Cloudflare only routes your own hostnames
     if (!throughCloudflare && !hostAllowed(req.headers.host, hosts)) {
-      throw httpError(421, `Marquee doesn’t answer to “${hostOnly(req.headers.host)}”. Add it to ALLOWED_HOSTS in .env if it’s yours.`);
+      throw httpError(421, `Lilin doesn’t answer to “${hostOnly(req.headers.host)}”. Add it to ALLOWED_HOSTS in .env if it’s yours.`);
     }
     if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return;
     // The TV app (tv/tizen) runs from the TV's own files, so its Origin is "null" or file://. It marks its
-    // requests with X-Marquee-TV: a web page can't send a custom header to another site without a CORS
-    // preflight, and Marquee approves none, so no other site can make a browser send one here.
+    // requests with X-Lilin-TV: a web page can't send a custom header to another site without a CORS
+    // preflight, and Lilin approves none, so no other site can make a browser send one here.
     if (req.headers[TV_HEADER]) return;
     const origin = req.headers.origin;
     const fetchSite = req.headers['sec-fetch-site'];
@@ -276,13 +276,13 @@ export function createAuth({
       try { host = origin === 'null' ? '' : new URL(origin).host.toLowerCase(); } catch { /* refused below */ }
       const own = [req.headers.host, req.headers['x-forwarded-host']].filter(Boolean).map((s) => String(s).split(',')[0].trim().toLowerCase());
       const ok = host && (own.includes(host) || (publicHost && hostOnly(host) === publicHost) || hosts.includes(hostOnly(host)));
-      if (!ok) throw httpError(403, 'This request came from another website, so Marquee refused it.');
+      if (!ok) throw httpError(403, 'This request came from another website, so Lilin refused it.');
     } else if (fetchSite === 'cross-site') {
-      throw httpError(403, 'This request came from another website, so Marquee refused it.');
+      throw httpError(403, 'This request came from another website, so Lilin refused it.');
     }
   }
 
-  // The session cookie, or the X-Marquee-Session header the TV app sends (it has no cookie jar for Marquee).
+  // The session cookie, or the X-Lilin-Session header the TV app sends (it has no cookie jar for Lilin).
   function sessionCookie(req) {
     for (const part of String(req.headers.cookie || '').split(';')) {
       const i = part.indexOf('=');
@@ -329,7 +329,7 @@ export function createAuth({
     if (proxied) return (req.auth = { via: 'proxy', remote, email: proxied });
     const session = sessionFor(sessionCookie(req));
     if (session) {
-      req.headers[IDENTITY] = session.email; // the rest of Marquee reads identity from here
+      req.headers[IDENTITY] = session.email; // the rest of Lilin reads identity from here
       return (req.auth = { via: 'session', remote, email: session.email, session: session.id });
     }
     if (!remote && mode === 'shared') return (req.auth = { via: 'home', remote, email: null });
@@ -363,7 +363,7 @@ export function createAuth({
     return { email: e, setCookie: cookie(req, token, days * 86400) };
   }
 
-  // Someone signed in through Cloudflare Access (or a proxy) who has no Marquee password yet picks
+  // Someone signed in through Cloudflare Access (or a proxy) who has no Lilin password yet picks
   // one. Only for their own account and only while it has none: changing one needs the old one.
   async function setFirstPassword(req, password) {
     const e = req.auth?.via === 'proxy' ? normalEmail(req.auth.email) : '';
@@ -423,7 +423,7 @@ export function signInPage({ next = '/', error = '', hasLogins = true, remote = 
   const langLink = (code, name) => (currentLanguage() === code ? `<b>${name}</b>` : `<a href="/signin?lang=${code}&amp;next=${encodeURIComponent(safeNext(next))}">${name}</a>`);
   return `<!doctype html><html lang="${currentLanguage()}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex">
-<title>${tr('Sign in · Marquee')}</title><link rel="icon" href="/c/favicon.svg" type="image/svg+xml"><style>
+<title>${tr('Sign in · Lilin')}</title><link rel="icon" href="/c/favicon.svg" type="image/svg+xml"><style>
 :root{color-scheme:dark;--bg:#0d0d10;--card:#17171c;--line:#2a2a33;--text:#ecebf0;--dim:#9a99a6;--accent:#f0a83a}
 *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--bg);color:var(--text);font:16px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;padding:24px}
 main{width:100%;max-width:360px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:28px}
@@ -434,7 +434,7 @@ input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:tran
 button{margin-top:20px;width:100%;padding:12px;border:0;border-radius:10px;background:var(--accent);color:#1a1205;font:600 15px system-ui,sans-serif;cursor:pointer}
 .err{color:#ff8a80;background:#2a1414;border-radius:8px;padding:10px 12px;margin:0 0 6px}code{font-size:12px;color:var(--text)}
 .foot{margin:18px 0 0;font-size:12px}</style><link rel="stylesheet" href="/c/pages.css"></head><body><main>
-<h1>Marquee</h1><p>${remote ? tr('You’re connecting from outside the home network. ') : ''}${tr('Sign in to carry on.')}</p>${message}
+<h1>Lilin</h1><p>${remote ? tr('You’re connecting from outside the home network. ') : ''}${tr('Sign in to carry on.')}</p>${message}
 <form method="post" action="${esc(action)}">
 <input type="hidden" name="next" value="${esc(safeNext(next))}">
 <label for="email">${tr('Email')}</label><input id="email" name="email" type="email" autocomplete="username" required autofocus>

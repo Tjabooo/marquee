@@ -27,7 +27,7 @@ jobs:
       - id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/tjabooo/marquee
+          images: ghcr.io/tjabooo/lilin
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -45,7 +45,7 @@ jobs:
           cache-to: type=gha,mode=max
       - uses: actions/attest-build-provenance@v2
         with:
-          subject-name: ghcr.io/tjabooo/marquee
+          subject-name: ghcr.io/tjabooo/lilin
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
 
@@ -53,16 +53,16 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build MarqueeSetup.exe (the Windows setup wizard)
+      - name: Build LilinSetup.exe (the Windows setup wizard)
         shell: pwsh
-        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows/build-setup-exe.ps1 -Version "$env:GITHUB_REF_NAME" -Out MarqueeSetup.exe
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows/build-setup-exe.ps1 -Version "$env:GITHUB_REF_NAME" -Out LilinSetup.exe
       - name: The wizard builds its window
         shell: pwsh
         run: powershell -NoProfile -STA -ExecutionPolicy Bypass -File scripts/windows/setup-wizard.ps1 -SelfTest
       - uses: actions/upload-artifact@v4
         with:
-          name: marquee-setup-exe
-          path: MarqueeSetup.exe
+          name: lilin-setup-exe
+          path: LilinSetup.exe
           if-no-files-found: error
 
   release:
@@ -72,19 +72,19 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: marquee-setup-exe
+          name: lilin-setup-exe
       - name: Check the tag matches package.json
         run: test "v$(node -p 'require("./package.json").version')" = "$GITHUB_REF_NAME"
       - name: Build the source archive and checksums
         run: |
-          git archive --format=tar.gz --prefix="marquee-$GITHUB_REF_NAME/" -o "marquee-$GITHUB_REF_NAME.tar.gz" "$GITHUB_REF_NAME"
-          sha256sum "marquee-$GITHUB_REF_NAME.tar.gz" MarqueeSetup.exe > SHA256SUMS
+          git archive --format=tar.gz --prefix="lilin-$GITHUB_REF_NAME/" -o "lilin-$GITHUB_REF_NAME.tar.gz" "$GITHUB_REF_NAME"
+          sha256sum "lilin-$GITHUB_REF_NAME.tar.gz" LilinSetup.exe > SHA256SUMS
           cat SHA256SUMS
       - uses: actions/attest-build-provenance@v2
         with:
           subject-path: |
-            marquee-${{ github.ref_name }}.tar.gz
-            MarqueeSetup.exe
+            lilin-${{ github.ref_name }}.tar.gz
+            LilinSetup.exe
       - name: Release notes from CHANGELOG.md
         run: |
           v="${GITHUB_REF_NAME#v}"
@@ -94,8 +94,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" --verify-tag --title "Marquee $GITHUB_REF_NAME" --notes-file notes.md \
-            "marquee-$GITHUB_REF_NAME.tar.gz" MarqueeSetup.exe SHA256SUMS
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "Lilin $GITHUB_REF_NAME" --notes-file notes.md \
+            "lilin-$GITHUB_REF_NAME.tar.gz" LilinSetup.exe SHA256SUMS
 
   verify:
     needs: [image, release]

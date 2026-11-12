@@ -4,7 +4,7 @@
 //
 // Sharing gives a clip an unguessable link, /c/<token>. That page, its video and its thumbnail
 // are the only public things on the server: they work without Cloudflare Access once /c/ is
-// bypassed there (see docs/remote-access.md). The page is Marquee's player with only that clip in it, so anyone
+// bypassed there (see docs/remote-access.md). The page is Lilin's player with only that clip in it, so anyone
 // with the link can watch it (and nothing else); in Discord the link shows the clip's thumbnail.
 // The clips are AV1 with separate game / friends / mic tracks, which not every browser can play,
 // so sharing makes a full-resolution, near-lossless H.264 copy with the tracks mixed into one.
@@ -36,9 +36,9 @@ const failed = new Map(); // clip id -> error message
 
 export function initClips({ dataDir, cacheDir: cacheRoot = path.join(dataDir, 'cache') }) {
   cacheDir = path.join(cacheRoot, 'clips');
-  sharesFile = path.join(dataDir, '.marquee-shares.json');
+  sharesFile = path.join(dataDir, '.lilin-shares.json');
   try { shares = JSON.parse(fs.readFileSync(sharesFile, 'utf8')); } catch { shares = {}; }
-  titlesFile = path.join(dataDir, '.marquee-clip-titles.json');
+  titlesFile = path.join(dataDir, '.lilin-clip-titles.json');
   try { titles = JSON.parse(fs.readFileSync(titlesFile, 'utf8')); } catch { titles = {}; }
   if (!titles || typeof titles !== 'object' || Array.isArray(titles)) titles = {};
   scanned = { at: 0, list: [] };
@@ -69,7 +69,7 @@ async function walk(dir, rel = '', depth = 0, out = []) {
   return out;
 }
 
-// "Kept/Counter-Strike 2/clip.mp4" → game "Counter-Strike 2"; trims made in Marquee keep their game
+// "Kept/Counter-Strike 2/clip.mp4" → game "Counter-Strike 2"; trims made in Lilin keep their game
 // ("Trimmed Clips/<Game>/x.mp4"); the desktop's flat "Trimmed Clips/x.mp4" → "Trimmed".
 function gameOf(rel) {
   const parts = rel.split('/');
@@ -165,7 +165,7 @@ function makeShareCopy(c) {
     const src = fullPath(c.rel);
     const { v, audio } = await probe(src);
     if (!v) throw new Error('No video in this clip.');
-    const tmp = `${sharePath(c.id)}.marquee-tmp.mp4`;
+    const tmp = `${sharePath(c.id)}.lilin-tmp.mp4`;
     const args = ['-hide_banner', '-nostdin', '-y', '-i', src, '-map', '0:v:0'];
     // the one track that's already the mix: copy it when it's stereo-or-less AAC, else re-encode
     const mix = mixTrack(audio);
@@ -275,7 +275,7 @@ const canCutExactly = (v) => v?.codec_name === 'av1' && ['yuv420p', 'yuv420p10le
 // ---------- audio tracks ----------
 // A typical replay recorder writes four tracks: 1 everything mixed (what browsers, Discord and phones
 // play), 2 game, 3 friends (Discord), 4 you (mic). Older clips have three tracks and no mix.
-// Copies Marquee makes name their tracks, so the mix is still found when there are fewer than four.
+// Copies Lilin makes name their tracks, so the mix is still found when there are fewer than four.
 const RECORDER_TRACKS = ['Mix', 'Game', 'Friends', 'You'];
 // MP4 keeps a track's name as its handler name; ffmpeg's default ones ("SoundHandler") aren't names.
 const titleOfTrack = (a) => {
@@ -515,9 +515,9 @@ export async function trim(id, segments, { deleteOriginal = false, removeTracks 
   let name = `${base}.mp4`;
   for (let i = 2; fs.existsSync(path.join(dir, name)); i++) name = `${base} ${i}.mp4`;
   const dest = path.join(dir, name);
-  const tmp = `${dest}.marquee-tmp.mp4`;
+  const tmp = `${dest}.lilin-tmp.mp4`;
   // a dot-folder next to the result: same drive, and the clip scan skips it
-  const work = path.join(dir, `.marquee-edit-${crypto.randomBytes(6).toString('hex')}`);
+  const work = path.join(dir, `.lilin-edit-${crypto.randomBytes(6).toString('hex')}`);
   const cutTmp = tracks ? path.join(work, 'cut.mp4') : tmp;
   const cut = (p, out, extra = []) => run(FFMPEG, ['-hide_banner', '-nostdin', '-y', '-ss', String(p.from), '-i', src, '-t', String(p.end - p.from),
     '-map', '0', '-c', 'copy', '-avoid_negative_ts', 'make_zero', ...extra, out]);
@@ -623,7 +623,7 @@ button{font:700 16px/1 system-ui,sans-serif;color:#1F1019;background:#F4C152;bor
 
 export function page({ title, desc, url, image, images = [], video, body }) {
   const og = [
-    ['og:site_name', 'Marquee'], ['og:title', title], ['og:description', desc], ['og:url', url],
+    ['og:site_name', 'Lilin'], ['og:title', title], ['og:description', desc], ['og:url', url],
     ['og:type', video ? 'video.other' : 'website'], image && ['og:image', image], ...images.map((i) => ['og:image', i]),
     ...(video ? [['og:video', video.url], ['og:video:secure_url', video.url], ['og:video:type', 'video/mp4'],
       ['og:video:width', video.width], ['og:video:height', video.height]] : []),
@@ -661,18 +661,18 @@ export async function handlePublic(req, res, url, { sendVideo, previews }) {
     return true;
   };
 
-  // /c/ on its own: an invite card for Marquee itself, so the site's link embeds in Discord too.
+  // /c/ on its own: an invite card for Lilin itself, so the site's link embeds in Discord too.
   // Visitors are sent on to the app (which is still behind Cloudflare Access).
   if (p === '/c' || p === '/c/') {
     const base = baseUrl(req);
     return send(200, 'text/html; charset=utf-8', page({
-      title: 'Marquee',
+      title: 'Lilin',
       desc: 'Films and shows from the home server: browse, download, and play on your phone, in a browser or on the TV.',
-      url: `${base}/c/`, image: `${base}/c/marquee.png`,
-      body: `<h1>Marquee</h1><p>Opening…</p><script>location.replace('/')</script>`,
+      url: `${base}/c/`, image: `${base}/c/lilin.png`,
+      body: `<h1>Lilin</h1><p>Opening…</p><script>location.replace('/')</script>`,
     }));
   }
-  // The shared clip player: Marquee's own stylesheet and a player script for one clip.
+  // The shared clip player: Lilin's own stylesheet and a player script for one clip.
   // Under /c/, so they load for visitors without a sign-in (Cloudflare Access lets /c/ through): the pages'
   // look (pages.css), its font and the favicon.
   const playerFiles = { '/c/style.css': '../public/style.css', '/c/player.js': '../public/clip-share.js', '/c/seek-preview.js': '../public/seek-preview.js',
@@ -685,8 +685,8 @@ export async function handlePublic(req, res, url, { sendVideo, previews }) {
     try { return send(200, fileTypes[p.slice(p.lastIndexOf('.'))], await fs.promises.readFile(file), { 'Cache-Control': 'no-cache' }); }
     catch { return send(404, 'text/plain', 'Not found.'); }
   }
-  if (p === '/c/marquee.png') {
-    const file = new URL('../public/og-marquee.png', import.meta.url);
+  if (p === '/c/lilin.png') {
+    const file = new URL('../public/og-lilin.png', import.meta.url);
     try { return send(200, 'image/png', await fs.promises.readFile(file)); } catch { return send(404, 'text/plain', 'Not found.'); }
   }
 
@@ -727,10 +727,10 @@ export async function handlePublic(req, res, url, { sendVideo, previews }) {
 }
 
 // Discord shows the thumbnail as a large card; clicking it opens this page. The video is the
-// full-quality copy, played in Marquee's player, and the page has no way into the rest of Marquee.
+// full-quality copy, played in Lilin's player, and the page has no way into the rest of Lilin.
 function playerPage({ title, game, link }) {
   const local = new URL(link).pathname; // same host the viewer used
-  const og = [['og:site_name', 'Marquee'], ['og:title', title], ['og:description', `${game} · watch the clip`], ['og:url', link],
+  const og = [['og:site_name', 'Lilin'], ['og:title', title], ['og:description', `${game} · watch the clip`], ['og:url', link],
     ['og:type', 'website'], ['og:image', `${link}/thumb.jpg`], ['twitter:card', 'summary_large_image'], ['twitter:image', `${link}/thumb.jpg`]]
     .map(([k, v]) => `<meta ${k.startsWith('twitter:') ? 'name' : 'property'}="${k}" content="${esc(v)}">`).join('\n  ');
   return `<!doctype html>

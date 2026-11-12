@@ -16,7 +16,7 @@ import { checkConfig } from '../src/config-check.js';
 import { checkQbit, checkTmdb, checkIntegrations } from '../src/setup/integrations.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const tmp = (t, name) => { const d = fs.mkdtempSync(path.join(os.tmpdir(), `marquee-${name}-`)); t.after(() => fs.rmSync(d, { recursive: true, force: true })); return d; };
+const tmp = (t, name) => { const d = fs.mkdtempSync(path.join(os.tmpdir(), `lilin-${name}-`)); t.after(() => fs.rmSync(d, { recursive: true, force: true })); return d; };
 
 test('arguments: commands, consent flags and errors', () => {
   const a = parseArgs(['--yes', '--dry-run', '--allow-install', '--allow-sudo', '--offline']);
@@ -120,28 +120,28 @@ test('LAN detection skips loopback, link-local, VPN and container interfaces', (
 });
 
 test('service plans: systemd waits for mounts, system scope needs root, user scope does not', () => {
-  const unit = systemdUnit({ appDir: '/opt/marquee', node: '/usr/bin/node', user: 'marquee', mediaDir: '/mnt/nas/media' });
+  const unit = systemdUnit({ appDir: '/opt/lilin', node: '/usr/bin/node', user: 'lilin', mediaDir: '/mnt/nas/media' });
   assert.match(unit, /RequiresMountsFor=\/mnt\/nas\/media/);
   assert.match(unit, /After=network-online.target/);
-  assert.match(unit, /ExecStart=\/usr\/bin\/node \/opt\/marquee\/server.js/);
-  assert.match(unit, /User=marquee/);
+  assert.match(unit, /ExecStart=\/usr\/bin\/node \/opt\/lilin\/server.js/);
+  assert.match(unit, /User=lilin/);
   assert.match(unit, /WantedBy=multi-user.target/);
-  const sys = servicePlan('install', { manager: 'systemd', appDir: '/opt/marquee', node: '/usr/bin/node', scope: 'system', user: 'marquee' });
+  const sys = servicePlan('install', { manager: 'systemd', appDir: '/opt/lilin', node: '/usr/bin/node', scope: 'system', user: 'lilin' });
   assert.ok(sys.every((s) => s.privileged));
-  assert.equal(sys[0].write.path, '/etc/systemd/system/marquee.service');
-  const usr = servicePlan('install', { manager: 'systemd', appDir: '/opt/marquee', node: '/usr/bin/node', scope: 'user', user: 'me', home: '/home/me' });
-  assert.equal(usr[0].write.path, '/home/me/.config/systemd/user/marquee.service');
+  assert.equal(sys[0].write.path, '/etc/systemd/system/lilin.service');
+  const usr = servicePlan('install', { manager: 'systemd', appDir: '/opt/lilin', node: '/usr/bin/node', scope: 'user', user: 'me', home: '/home/me' });
+  assert.equal(usr[0].write.path, '/home/me/.config/systemd/user/lilin.service');
   assert.match(usr[0].write.content, /WantedBy=default.target/);
   assert.ok(!usr.some((s) => s.privileged));
   assert.deepEqual(usr.at(-1).cmd, ['loginctl', 'enable-linger', 'me']);
   // Re-running writes the same file at the same path: no duplicate units.
-  assert.deepEqual(servicePlan('install', { manager: 'systemd', appDir: '/opt/marquee', node: '/usr/bin/node', scope: 'user', user: 'me', home: '/home/me' }), usr);
+  assert.deepEqual(servicePlan('install', { manager: 'systemd', appDir: '/opt/lilin', node: '/usr/bin/node', scope: 'user', user: 'me', home: '/home/me' }), usr);
   assert.equal(describeStep(sys[1], { sudo: true }), 'sudo systemctl daemon-reload');
-  const mac = servicePlan('install', { manager: 'launchd', appDir: '/Users/me/marquee', node: '/opt/homebrew/bin/node', home: '/Users/me' });
+  const mac = servicePlan('install', { manager: 'launchd', appDir: '/Users/me/lilin', node: '/opt/homebrew/bin/node', home: '/Users/me' });
   assert.match(mac[0].write.content, /<key>RunAtLoad<\/key><true\/>/);
-  const win = servicePlan('install', { manager: 'task-scheduler', appDir: 'C:\\marquee' });
+  const win = servicePlan('install', { manager: 'task-scheduler', appDir: 'C:\\lilin' });
   assert.ok(win[0].cmd.at(-1).endsWith('install-service.ps1'));
-  assert.ok(servicePlan('uninstall', { manager: 'openrc', appDir: '/opt/marquee', user: 'marquee' }).some((s) => s.remove === '/etc/init.d/marquee'));
+  assert.ok(servicePlan('uninstall', { manager: 'openrc', appDir: '/opt/lilin', user: 'lilin' }).some((s) => s.remove === '/etc/init.d/lilin'));
   assert.throws(() => servicePlan('install', { manager: null, appDir: '/x' }), /No supported service manager/);
 });
 
@@ -160,29 +160,29 @@ test('DATA_DIR guard refuses to strand an existing database', (t) => {
   const data = path.join(app, 'data');
   assert.equal(dataDirProblem(app, app), null);
   assert.equal(dataDirProblem(data, app), null, 'fresh install: nothing to strand');
-  fs.writeFileSync(path.join(app, '.marquee.db'), '');
+  fs.writeFileSync(path.join(app, '.lilin.db'), '');
   assert.match(dataDirProblem(data, app), /migrate-data/);
 });
 
 test('migrate-data copies state, verifies it and sets the originals aside', async (t) => {
   const app = tmp(t, 'migrate');
   const { DatabaseSync } = await import('node:sqlite');
-  const db = new DatabaseSync(path.join(app, '.marquee.db'));
+  const db = new DatabaseSync(path.join(app, '.lilin.db'));
   db.exec("PRAGMA journal_mode=WAL; CREATE TABLE t (v TEXT); INSERT INTO t VALUES ('kept')");
-  fs.writeFileSync(path.join(app, '.marquee-shows.json'), '{"a":1}');
-  fs.mkdirSync(path.join(app, '.marquee-notes-files')); fs.writeFileSync(path.join(app, '.marquee-notes-files', 'x.png'), 'png');
+  fs.writeFileSync(path.join(app, '.lilin-shows.json'), '{"a":1}');
+  fs.mkdirSync(path.join(app, '.lilin-notes-files')); fs.writeFileSync(path.join(app, '.lilin-notes-files', 'x.png'), 'png');
   const data = path.join(app, 'state');
   const dry = await migrateData({ from: app, to: data, dryRun: true, log: () => {} });
   assert.ok(dry.dryRun && !fs.existsSync(data));
-  db.close(); // Marquee is stopped during a migration (and Windows can't move an open database)
+  db.close(); // Lilin is stopped during a migration (and Windows can't move an open database)
   const r = await migrateData({ from: app, to: data, log: () => {} });
-  const copy = new DatabaseSync(path.join(data, '.marquee.db'));
+  const copy = new DatabaseSync(path.join(data, '.lilin.db'));
   assert.equal(copy.prepare('SELECT v FROM t').get().v, 'kept');
   copy.close();
-  assert.equal(fs.readFileSync(path.join(data, '.marquee-shows.json'), 'utf8'), '{"a":1}');
-  assert.ok(fs.existsSync(path.join(data, '.marquee-notes-files', 'x.png')));
-  assert.ok(!fs.existsSync(path.join(app, '.marquee.db')));
-  assert.ok(fs.existsSync(path.join(r.aside, '.marquee.db')), 'originals kept aside, not deleted');
+  assert.equal(fs.readFileSync(path.join(data, '.lilin-shows.json'), 'utf8'), '{"a":1}');
+  assert.ok(fs.existsSync(path.join(data, '.lilin-notes-files', 'x.png')));
+  assert.ok(!fs.existsSync(path.join(app, '.lilin.db')));
+  assert.ok(fs.existsSync(path.join(r.aside, '.lilin.db')), 'originals kept aside, not deleted');
   assert.equal(dataDirProblem(data, app), null);
   await assert.rejects(migrateData({ from: app, to: data, log: () => {} }), /already has a database/);
 });
@@ -190,13 +190,13 @@ test('migrate-data copies state, verifies it and sets the originals aside', asyn
 test('backup makes a consistent database copy plus state files', async (t) => {
   const dir = tmp(t, 'backup');
   const { DatabaseSync } = await import('node:sqlite');
-  const db = new DatabaseSync(path.join(dir, '.marquee.db'));
+  const db = new DatabaseSync(path.join(dir, '.lilin.db'));
   db.exec("PRAGMA journal_mode=WAL; CREATE TABLE t (v); INSERT INTO t VALUES (1)");
-  fs.writeFileSync(path.join(dir, '.marquee-subs.json'), '[]');
+  fs.writeFileSync(path.join(dir, '.lilin-subs.json'), '[]');
   const r = await backup({ dataDir: dir, dest: path.join(dir, 'b') });
   db.close();
-  assert.deepEqual(r.files.sort(), ['.marquee-subs.json', '.marquee.db']);
-  const copy = new DatabaseSync(path.join(dir, 'b', '.marquee.db'));
+  assert.deepEqual(r.files.sort(), ['.lilin-subs.json', '.lilin.db']);
+  const copy = new DatabaseSync(path.join(dir, 'b', '.lilin.db'));
   assert.equal(copy.prepare('SELECT count(*) n FROM t').get().n, 1);
   copy.close();
   await assert.rejects(backup({ dataDir: dir, dest: path.join(dir, 'b') }), /isn't empty/);
@@ -238,17 +238,17 @@ test('clipper: quality names, install commands and share instructions', async ()
   assert.throws(() => parseArgs(['clipper', '--remote', 'mac']), /windows or linux/);
 
   assert.equal(c.defaultClipsDir({ MEDIA_DIR: 'D:\\Media' }, 'C:\\Users\\me', 'win32'), 'D:\\Clips');
-  assert.equal(c.defaultClipsDir({}, '/home/me', 'linux'), '/home/me/Marquee Clips');
+  assert.equal(c.defaultClipsDir({}, '/home/me', 'linux'), '/home/me/Lilin Clips');
 
-  const win = c.remoteInstallCommand({ target: 'windows', share: "\\\\box\\Clips", marqueeUrl: 'http://box:8080', quality: 'bench:smooth' });
+  const win = c.remoteInstallCommand({ target: 'windows', share: "\\\\box\\Clips", lilinUrl: 'http://box:8080', quality: 'bench:smooth' });
   // Pinned commit, installer checksum checked before it runs, never `main` or a pipe into a shell.
   assert.ok(win.includes(`https://raw.githubusercontent.com/Tjabooo/clipper/${c.CLIPPER_COMMIT}/install.ps1 -OutFile $f`));
   assert.ok(win.includes(`(Get-FileHash $f -Algorithm SHA256).Hash -ne '${c.CLIPPER_SCRIPT_SHA256['install.ps1'].toUpperCase()}'`));
   assert.ok(win.includes(`$env:CLIPPER_RELEASE = '${c.CLIPPER_RELEASE}'; $env:CLIPPER_BENCH_SHA256 = '${c.CLIPPER_BINARY_SHA256.windows}';`));
-  assert.match(win, new RegExp(`-Ref ${c.CLIPPER_COMMIT} -Share '\\\\\\\\box\\\\Clips' -MarqueeUrl 'http://box:8080' -Bench smooth$`));
+  assert.match(win, new RegExp(`-Ref ${c.CLIPPER_COMMIT} -Share '\\\\\\\\box\\\\Clips' -LilinUrl 'http://box:8080' -Bench smooth$`));
   const lin = c.remoteInstallCommand({ target: 'linux', share: "/mnt/my clips", quality: 'max' });
   assert.equal(lin, `f=$(mktemp) && curl -fsSL https://raw.githubusercontent.com/Tjabooo/clipper/${c.CLIPPER_COMMIT}/install.sh -o "$f" `
-    + `&& echo '${c.CLIPPER_SCRIPT_SHA256['install.sh']}  '"$f" | sha256sum -c --quiet - && CLIPPER_REF=${c.CLIPPER_COMMIT} CLIPPER_RELEASE=${c.CLIPPER_RELEASE} CLIPPER_SHA256=${c.CLIPPER_BINARY_SHA256.linux.join(',')} sh "$f" --marquee '/mnt/my clips' --quality max`);
+    + `&& echo '${c.CLIPPER_SCRIPT_SHA256['install.sh']}  '"$f" | sha256sum -c --quiet - && CLIPPER_REF=${c.CLIPPER_COMMIT} CLIPPER_RELEASE=${c.CLIPPER_RELEASE} CLIPPER_SHA256=${c.CLIPPER_BINARY_SHA256.linux.join(',')} sh "$f" --lilin '/mnt/my clips' --quality max`);
   assert.deepEqual(c.clipperEnv(), { CLIPPER_RELEASE: c.CLIPPER_RELEASE, CLIPPER_SHA256: c.CLIPPER_BINARY_SHA256.linux.join(','), CLIPPER_BENCH_SHA256: c.CLIPPER_BINARY_SHA256.windows });
   for (const h of [...c.CLIPPER_BINARY_SHA256.linux, c.CLIPPER_BINARY_SHA256.windows]) assert.match(h, /^[0-9a-f]{64}$/);
   for (const cmd of [win, lin]) { assert.ok(!/\/main\//.test(cmd)); assert.ok(!/\| *(sh|iex)\b/.test(cmd)); }
@@ -257,14 +257,14 @@ test('clipper: quality names, install commands and share instructions', async ()
   const sw = c.shareInstructions({ clipsDir: 'D:\\Clips', host: 'box', target: 'windows', platform: 'win32', user: 'me' });
   assert.equal(sw.share, '\\\\box\\Clips');
   assert.ok(sw.lines.some((l) => l.includes("New-SmbShare -Name Clips -Path 'D:\\Clips'")));
-  const sl = c.shareInstructions({ clipsDir: '/srv/Marquee Clips', host: 'box', target: 'linux', platform: 'linux', user: 'me' });
+  const sl = c.shareInstructions({ clipsDir: '/srv/Lilin Clips', host: 'box', target: 'linux', platform: 'linux', user: 'me' });
   assert.equal(sl.share, '/mnt/clips');
-  assert.ok(sl.lines.some((l) => l.startsWith('  //box/MarqueeClips  /mnt/clips  cifs')));
+  assert.ok(sl.lines.some((l) => l.startsWith('  //box/LilinClips  /mnt/clips  cifs')));
 
   assert.deepEqual(c.localInstallCommand({ src: '/s', clipsDir: '/srv/clips', quality: 'bench', yes: true, platform: 'linux' }),
-    ['sh', '/s/linux/install.sh', '--marquee', '/srv/clips', '--quality', 'bench:quality', '--yes']);
-  assert.deepEqual(c.localInstallCommand({ src: 'C:\\s', clipsDir: 'D:\\Clips', marqueeUrl: 'http://x', quality: 'high', platform: 'win32' }).slice(5),
-    ['C:\\s\\windows\\install.ps1', '-Share', 'D:\\Clips', '-MarqueeUrl', 'http://x', '-Quality', 'high']);
+    ['sh', '/s/linux/install.sh', '--lilin', '/srv/clips', '--quality', 'bench:quality', '--yes']);
+  assert.deepEqual(c.localInstallCommand({ src: 'C:\\s', clipsDir: 'D:\\Clips', lilinUrl: 'http://x', quality: 'high', platform: 'win32' }).slice(5),
+    ['C:\\s\\windows\\install.ps1', '-Share', 'D:\\Clips', '-LilinUrl', 'http://x', '-Quality', 'high']);
   assert.throws(() => c.localInstallCommand({ src: '/s', clipsDir: '/c', platform: 'darwin' }), /Linux and Windows/);
 });
 
@@ -282,14 +282,14 @@ test('clipper setup sets CLIPS_DIR and prints the gaming PC commands (dry run wr
   assert.equal(r.status, 0, r.stderr);
   assert.ok(fs.existsSync(path.join(clips, 'Kept')));
   assert.equal(parseEnv(fs.readFileSync(envFile, 'utf8')).CLIPS_DIR, clips);
-  assert.match(r.stdout, /sha256sum -c --quiet - && CLIPPER_REF=[0-9a-f]{40} CLIPPER_RELEASE=v[\d.]+ CLIPPER_SHA256=[0-9a-f,]+ sh "\$f" --marquee \/mnt\/clips --quality bench:smooth/);
+  assert.match(r.stdout, /sha256sum -c --quiet - && CLIPPER_REF=[0-9a-f]{40} CLIPPER_RELEASE=v[\d.]+ CLIPPER_SHA256=[0-9a-f,]+ sh "\$f" --lilin \/mnt\/clips --quality bench:smooth/);
   assert.match(r.stdout, /It sets up:/);
   assert.match(r.stdout, /cifs/);
-  assert.match(r.stdout, /Restart Marquee/);
-  assert.doesNotMatch(run().stdout, /Restart Marquee/, 'unchanged CLIPS_DIR needs no restart');
+  assert.match(r.stdout, /Restart Lilin/);
+  assert.doesNotMatch(run().stdout, /Restart Lilin/, 'unchanged CLIPS_DIR needs no restart');
 });
 
-test('Marquee as Access sign-in: callback from the team, secret kept, login method values', async () => {
+test('Lilin as Access sign-in: callback from the team, secret kept, login method values', async () => {
   const { teamHost, accessCallback, oidcValues, loginMethod, loginMethodLines } = await import('../src/setup/oidc.js');
   assert.equal(teamHost('https://MyTeam.cloudflareaccess.com/'), 'myteam.cloudflareaccess.com');
   assert.equal(teamHost('myteam'), 'myteam.cloudflareaccess.com');
@@ -303,21 +303,21 @@ test('Marquee as Access sign-in: callback from the team, secret kept, login meth
   assert.equal(kept.OIDC_CLIENT_SECRET, fresh.OIDC_CLIENT_SECRET, 'an existing secret survives a re-run');
   assert.equal(kept.OIDC_REDIRECT_URIS, 'https://other.example/cb,https://myteam.cloudflareaccess.com/cdn-cgi/access/callback');
   assert.notEqual(oidcValues({ OIDC_CLIENT_SECRET: 'short' }, 'x').OIDC_CLIENT_SECRET, 'short', 'too-short secrets are replaced');
-  const m = loginMethod({ ...fresh, PUBLIC_URL: 'https://marquee.example.com/' });
+  const m = loginMethod({ ...fresh, PUBLIC_URL: 'https://lilin.example.com/' });
   assert.ok(m.ready);
-  assert.equal(m.authUrl, 'https://marquee.example.com/c/oidc/authorize');
-  assert.equal(m.certUrl, 'https://marquee.example.com/c/oidc/jwks');
+  assert.equal(m.authUrl, 'https://lilin.example.com/c/oidc/authorize');
+  assert.equal(m.certUrl, 'https://lilin.example.com/c/oidc/jwks');
   assert.ok(loginMethodLines(m).some((l) => l.includes(fresh.OIDC_CLIENT_SECRET)));
   assert.deepEqual(loginMethod({ ...fresh }).missing, ['PUBLIC_URL']);
 });
 
-test('unattended Cloudflare setup with Marquee sign-in writes OIDC_*, the cache folder and the content filter', (t) => {
+test('unattended Cloudflare setup with Lilin sign-in writes OIDC_*, the cache folder and the content filter', (t) => {
   const dir = tmp(t, 'oidc');
   const envFile = path.join(dir, '.env');
   const answers = path.join(dir, 'a.json');
   const base = { MEDIA_DIR: path.join(dir, 'm'), DATA_DIR: path.join(dir, 'data'), CACHE_DIR: path.join(dir, 'cache'), PORT: '18767', autostart: false, install: [],
     remoteAccess: 'cloudflare', ADMIN_EMAILS: 'owner@example.com', CF_ACCESS_TEAM_DOMAIN: 'myteam.cloudflareaccess.com', CF_ACCESS_AUD: 'aud-tag',
-    PUBLIC_URL: 'https://marquee.example.com', accessSignIn: 'marquee', CONTENT_FILTER: 'members' };
+    PUBLIC_URL: 'https://lilin.example.com', accessSignIn: 'lilin', CONTENT_FILTER: 'members' };
   fs.writeFileSync(answers, JSON.stringify(base));
   const r = runSetup(['--config', answers, '--env', envFile, '--offline']);
   assert.equal(r.status, 0, r.stderr + r.stdout);
@@ -333,7 +333,7 @@ test('unattended Cloudflare setup with Marquee sign-in writes OIDC_*, the cache 
 
   const shown = runSetup(['oidc', '--env', envFile]);
   assert.equal(shown.status, 0, shown.stderr + shown.stdout);
-  assert.ok(shown.stdout.includes(env.OIDC_CLIENT_SECRET) && shown.stdout.includes('https://marquee.example.com/c/oidc/token'));
+  assert.ok(shown.stdout.includes(env.OIDC_CLIENT_SECRET) && shown.stdout.includes('https://lilin.example.com/c/oidc/token'));
 
   // Re-run: the secret stays (Cloudflare already has it). Switching to Access's own logins clears it.
   const again = runSetup(['--config', answers, '--env', envFile, '--offline']);

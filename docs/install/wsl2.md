@@ -1,6 +1,6 @@
 # WSL2
 
-Marquee runs in WSL2 (for example the Ubuntu distribution) and is fine for trying it out or
+Lilin runs in WSL2 (for example the Ubuntu distribution) and is fine for trying it out or
 developing. For an always-on server, install it [natively on Windows](windows.md): WSL shuts its VM
 down when idle, its network sits behind NAT by default, and Windows-only features aren't available
 from Linux.
@@ -12,7 +12,7 @@ Common steps are in [README.md](README.md).
 Inside the WSL distribution, follow [Debian and Ubuntu](debian-ubuntu.md#1-prerequisites) for
 Node.js and ffmpeg.
 
-**Networking.** By default WSL2 uses NAT: Marquee is reachable from Windows at `localhost:8080`, but
+**Networking.** By default WSL2 uses NAT: Lilin is reachable from Windows at `localhost:8080`, but
 not from phones or TVs on your network, and TV discovery doesn't work. Two options:
 
 - **Mirrored networking** (Windows 11 22H2 or later). In `%UserProfile%\.wslconfig`:
@@ -26,7 +26,7 @@ not from phones or TVs on your network, and TV discovery doesn't work. Two optio
   PowerShell:
 
   ```powershell
-  New-NetFirewallHyperVRule -Name Marquee -DisplayName "Marquee" -Direction Inbound -VMCreatorId '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' -Protocol TCP -LocalPorts 8080
+  New-NetFirewallHyperVRule -Name Lilin -DisplayName "Lilin" -Direction Inbound -VMCreatorId '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' -Protocol TCP -LocalPorts 8080
   ```
 
 - **Port forwarding** (NAT). From an elevated PowerShell, with the address from `wsl hostname -I`:
@@ -44,7 +44,7 @@ not from phones or TVs on your network, and TV discovery doesn't work. Two optio
 Inside WSL:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Tjabooo/marquee/v1.3.0/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/Tjabooo/lilin/v2.0.0/install.sh -o install.sh
 less install.sh
 sh install.sh
 ```
@@ -58,7 +58,7 @@ slower than from the Linux filesystem. See [README.md](README.md#first-run).
 
 ## 4. Start
 
-`npm start` in `~/marquee`.
+`npm start` in `~/lilin`.
 
 ## 5. Autostart
 

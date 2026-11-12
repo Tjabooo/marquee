@@ -1,29 +1,29 @@
-# Marquee with Docker Compose. Quick start:
-#   cp .env.example marquee.env      # then set TMDB_TOKEN and friends (not MEDIA_DIR/DATA_DIR/HOST/PORT)
-# Casting to TVs needs SERVER_IP=<this host's LAN address> in marquee.env, because the container's own
+# Lilin with Docker Compose. Quick start:
+#   cp .env.example lilin.env      # then set TMDB_TOKEN and friends (not MEDIA_DIR/DATA_DIR/HOST/PORT)
+# Casting to TVs needs SERVER_IP=<this host's LAN address> in lilin.env, because the container's own
 # address isn't reachable from the TV; TV discovery (DLNA/Apple TV) needs network_mode: host.
 #   MEDIA_PATH=/path/to/media docker compose up -d
 # Optional services are profiles:  docker compose --profile qbittorrent up -d
-#   qbittorrent  qBittorrent next to Marquee (Web UI on port 8081)
+#   qbittorrent  qBittorrent next to Lilin (Web UI on port 8081)
 #   vpn          qBittorrent whose traffic can only leave through a VPN (Gluetun); see docs/install/docker.md
 #   flaresolverr FlareSolverr for 1337x behind Cloudflare checks
 # NVIDIA GPU encoding: docker compose -f docker-compose.yml -f docker/compose.nvidia.yml up -d
-name: marquee
+name: lilin
 
 x-media: &media ${MEDIA_PATH:-./media}:/media
 
 services:
-  marquee:
-    image: ghcr.io/tjabooo/marquee:${MARQUEE_VERSION:-1.3.0}
+  lilin:
+    image: ghcr.io/tjabooo/lilin:${LILIN_VERSION:-2.0.0}
     restart: unless-stopped
     # Runs as this user and group; the data and media folders must be writable by them.
     user: "${PUID:-1000}:${PGID:-1000}"
     ports:
-      - "${MARQUEE_PORT:-8080}:8080"
+      - "${LILIN_PORT:-8080}:8080"
     env_file:
-      - path: marquee.env
+      - path: lilin.env
         required: false
-    # These always win over marquee.env: they describe the container, not your preferences.
+    # These always win over lilin.env: they describe the container, not your preferences.
     environment:
       DATA_DIR: /data
       MEDIA_DIR: /media
@@ -31,7 +31,7 @@ services:
       PORT: "8080"
       TZ: ${TZ:-UTC}
     volumes:
-      - ${MARQUEE_DATA:-./data}:/data
+      - ${LILIN_DATA:-./data}:/data
       - *media
     stop_grace_period: 20s
 
@@ -50,7 +50,7 @@ services:
       - "6881:6881/udp"
     volumes:
       - ./qbittorrent:/config
-      # Same path as in the marquee container, so the save paths qBittorrent reports exist for Marquee.
+      # Same path as in the lilin container, so the save paths qBittorrent reports exist for Lilin.
       - *media
 
   # Torrent traffic through a VPN. qBittorrent has no network of its own: it shares Gluetun's, and

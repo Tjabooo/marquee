@@ -1,12 +1,12 @@
 // The TV apps' way in from anywhere: /c/tv/<path> is <path>, for the few paths a TV app uses.
 //
 // Behind Cloudflare Access (docs/remote-access.md) only /c/... answers without the Access login, which a
-// TV can't do. So an app built with https://<your Marquee>/c/tv as its address (tv/android) sends
-// everything here, and Marquee checks it like this instead:
+// TV can't do. So an app built with https://<your Lilin>/c/tv as its address (tv/android) sends
+// everything here, and Lilin checks it like this instead:
 //   * the TV app's own files, the sign-in code (tv.js pairing) and the app's update are open;
-//   * the API calls the TV app makes need the TV's own session (X-Marquee-Session, from pairing), which
+//   * the API calls the TV app makes need the TV's own session (X-Lilin-Session, from pairing), which
 //     the normal sign-in check enforces; anything else is "Not found";
-//   * cookies are dropped, so a browser's Marquee session never works through here.
+//   * cookies are dropped, so a browser's Lilin session never works through here.
 // /play/... links are signed for one video, and already public.
 export const TV_GATEWAY = '/c/tv';
 

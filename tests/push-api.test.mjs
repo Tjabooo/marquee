@@ -12,7 +12,7 @@ import { decrypt } from '../src/push.js';
 // file instead of leaving the machine, so the test can decrypt what a phone would have received.
 test('devices turn notifications on and off, get a test, and only room members can invite', { timeout: 30000 }, async () => {
   const root = fileURLToPath(new URL('../', import.meta.url));
-  const app = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-push-api-'));
+  const app = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-push-api-'));
   for (const name of await fs.readdir(root)) if (name.endsWith('.js') || name === 'package.json') await fs.copyFile(path.join(root, name), path.join(app, name));
   await fs.cp(path.join(root, 'public'), path.join(app, 'public'), { recursive: true });
   await fs.cp(path.join(root, 'src'), path.join(app, 'src'), { recursive: true });
@@ -35,7 +35,7 @@ test('devices turn notifications on and off, get a test, and only room members c
   const exited = new Promise((r) => child.once('exit', r));
   await new Promise((resolve, reject) => {
     let logs = ''; const timer = setTimeout(() => reject(Error('Startup timeout: ' + logs)), 8000);
-    child.stdout.on('data', (c) => { logs += c; const ready = /Marquee is running: http:\/\/localhost:(\d+)/.exec(logs); if (ready) { port = Number(ready[1]); clearTimeout(timer); resolve(); } });
+    child.stdout.on('data', (c) => { logs += c; const ready = /Lilin is running: http:\/\/localhost:(\d+)/.exec(logs); if (ready) { port = Number(ready[1]); clearTimeout(timer); resolve(); } });
     child.stderr.on('data', (c) => { logs += c; });
     child.once('error', reject); child.once('exit', () => { clearTimeout(timer); reject(Error(logs)); });
   });
@@ -84,7 +84,7 @@ test('devices turn notifications on and off, get a test, and only room members c
     // Agents on the home network can ask the owner for attention: House token, owner's devices only, rate-limited.
     const agent = async (body, token, status) => {
       const r = await fetch(`http://127.0.0.1:${port}/api/agent/notify`, { method: 'POST', body: JSON.stringify(body),
-        headers: { 'content-type': 'application/json', ...(token ? { 'x-marquee-token': token } : {}) } });
+        headers: { 'content-type': 'application/json', ...(token ? { 'x-lilin-token': token } : {}) } });
       const data = await r.json(); assert.equal(r.status, status, JSON.stringify(data)); return data;
     };
     await agent({ title: 'Hi' }, undefined, 403);

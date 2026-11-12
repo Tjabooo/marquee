@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const APP_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-export const ENV_FILE = process.env.MARQUEE_ENV_FILE ? path.resolve(process.env.MARQUEE_ENV_FILE) : path.join(APP_DIR, '.env');
+export const ENV_FILE = process.env.LILIN_ENV_FILE ? path.resolve(process.env.LILIN_ENV_FILE) : path.join(APP_DIR, '.env');
 
 // Parses KEY=value lines; quotes are stripped and unquoted values may end in a # comment.
 export function parseEnv(text) {

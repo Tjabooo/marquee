@@ -29,7 +29,7 @@ test('chunked media uploads use the configured drive and attach without text', a
     assert.equal(note.text,''); assert.equal(note.attachments[0].fileId,attachment.fileId);
     assert.equal(note.attachments[0].mime,'image/png');
     assert.throws(()=>uploads.start({name:'huge.mov',size:UPLOAD_LIMIT+1},'owner'),{status:413});
-    assert.equal(await fs.stat(path.join(root,'.marquee-notes-files')).catch(()=>null),null);
+    assert.equal(await fs.stat(path.join(root,'.lilin-notes-files')).catch(()=>null),null);
   } finally { store.close(); await fs.rm(root,{recursive:true,force:true}); await fs.rm(fileDir,{recursive:true,force:true}); }
 });
 

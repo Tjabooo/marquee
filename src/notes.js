@@ -1,4 +1,4 @@
-// Shared admin-only notes. Stored in the normal Marquee SQLite database and its backups.
+// Shared admin-only notes. Stored in the normal Lilin SQLite database and its backups.
 import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
@@ -40,8 +40,8 @@ function reminderOf(value) {
 
 export class NotesStore {
   constructor(dataDir, { fileDir } = {}) {
-    this.fileDir = fileDir ? path.resolve(fileDir) : path.join(dataDir, '.marquee-notes-files');
-    this.db = new DatabaseSync(path.join(dataDir, '.marquee.db'));
+    this.fileDir = fileDir ? path.resolve(fileDir) : path.join(dataDir, '.lilin-notes-files');
+    this.db = new DatabaseSync(path.join(dataDir, '.lilin.db'));
     this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;
       CREATE TABLE IF NOT EXISTS note_files(id TEXT PRIMARY KEY, name TEXT NOT NULL, mime TEXT NOT NULL, size INTEGER NOT NULL, text TEXT);
       CREATE TABLE IF NOT EXISTS notes (

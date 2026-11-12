@@ -1,4 +1,4 @@
-// People's faces across Marquee: a profile picture or, without one, their initial on a colour of
+// People's faces across Lilin: a profile picture or, without one, their initial on a colour of
 // their own (the same colour on every device, picked from the name). Also the picture editor used
 // in Settings → You and in the owner's People list: choose a photo, drag it into the circle, zoom,
 // save. The browser crops it to a 256 px square, so the server only ever stores a small image.

@@ -1,6 +1,6 @@
 {
-  "name": "marquee",
-  "version": "1.3.0",
+  "name": "lilin",
+  "version": "2.0.0",
   "description": "Self-hosted, phone-first media server: TMDB discovery, qBittorrent downloads, subtitles, automatic MP4 conversion and casting to smart TVs and Apple TV.",
   "type": "module",
   "main": "server.js",
@@ -16,6 +16,6 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/Tjabooo/marquee.git"
+    "url": "https://github.com/Tjabooo/lilin.git"
   }
 }

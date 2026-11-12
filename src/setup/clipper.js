@@ -3,7 +3,7 @@
 // play on: this one (downloaded and installed for you), or another PC (the commands to paste
 // there are printed with your share filled in). Pure helpers here; prompting lives in cli.js.
 //
-// Clipper is other code, so Marquee never installs "whatever is on main": it pins one reviewed
+// Clipper is other code, so Lilin never installs "whatever is on main": it pins one reviewed
 // commit and checks what it downloads against hashes recorded here. The source download must match
 // CLIPPER_TREE_SHA256 (a hash over every file's path and contents), and the one-liners for another
 // PC check the installer script's SHA-256 before running it; that script then fetches the same
@@ -101,7 +101,7 @@ export function parseQuality(q) {
 export function defaultClipsDir(env = {}, home = os.homedir(), platform = process.platform) {
   const p = platform === 'win32' ? path.win32 : path.posix;
   if (env.MEDIA_DIR) return p.join(p.dirname(p.resolve(env.MEDIA_DIR)), 'Clips');
-  return p.join(home, 'Marquee Clips');
+  return p.join(home, 'Lilin Clips');
 }
 
 // What a share of `dir` is called on the network: its folder name, made SMB-safe.
@@ -111,24 +111,24 @@ const psQuote = (s) => `'${String(s).replace(/'/g, "''")}'`;
 const shQuote = (s) => (/^[\w./:@%+=-]+$/.test(String(s)) ? String(s) : `'${String(s).replace(/'/g, `'\\''`)}'`);
 
 // The command to run on the gaming PC: downloads the pinned installer, checks its SHA-256, runs it.
-export function remoteInstallCommand({ target, share, marqueeUrl, quality }) {
+export function remoteInstallCommand({ target, share, lilinUrl, quality }) {
   const q = parseQuality(quality);
   if (target === 'windows') {
     const args = [`-Share ${psQuote(share)}`];
-    if (marqueeUrl) args.push(`-MarqueeUrl ${psQuote(marqueeUrl)}`);
+    if (lilinUrl) args.push(`-LilinUrl ${psQuote(lilinUrl)}`);
     args.push(q.bench ? `-Bench ${q.bench}` : `-Quality ${q.preset}`);
     return [`$f = "$env:TEMP\\clipper-install.ps1"; irm ${RAW}/install.ps1 -OutFile $f;`,
       `if ((Get-FileHash $f -Algorithm SHA256).Hash -ne '${CLIPPER_SCRIPT_SHA256['install.ps1'].toUpperCase()}') { throw 'Clipper installer checksum mismatch: not running it' };`,
       `$env:CLIPPER_RELEASE = '${CLIPPER_RELEASE}'; $env:CLIPPER_BENCH_SHA256 = '${CLIPPER_BINARY_SHA256.windows}';`,
       `powershell -NoProfile -ExecutionPolicy Bypass -File $f -Ref ${CLIPPER_COMMIT} ${args.join(' ')}`].join(' ');
   }
-  const args = ['--marquee', shQuote(share), '--quality', q.bench ? `bench:${q.bench}` : q.preset];
+  const args = ['--lilin', shQuote(share), '--quality', q.bench ? `bench:${q.bench}` : q.preset];
   return [`f=$(mktemp) && curl -fsSL ${RAW}/install.sh -o "$f"`,
     `&& echo '${CLIPPER_SCRIPT_SHA256['install.sh']}  '"$f" | sha256sum -c --quiet -`,
     `&& CLIPPER_REF=${CLIPPER_COMMIT} CLIPPER_RELEASE=${CLIPPER_RELEASE} CLIPPER_SHA256=${CLIPPER_BINARY_SHA256.linux.join(',')} sh "$f" ${args.join(' ')}`].join(' ');
 }
 
-// How to share the folder from this (the Marquee) machine, and how the gaming PC reaches it.
+// How to share the folder from this (the Lilin) machine, and how the gaming PC reaches it.
 export function shareInstructions({ clipsDir, host, target, platform = process.platform, mount = '/mnt/clips', user = os.userInfo().username }) {
   const name = shareName(clipsDir);
   const unc = `\\\\${host}\\${name}`;
@@ -155,16 +155,16 @@ export function shareInstructions({ clipsDir, host, target, platform = process.p
 }
 
 // Run Clipper's own installer from a checkout in `src`, pointed at CLIPS_DIR on this machine.
-export function localInstallCommand({ src, clipsDir, marqueeUrl, quality, yes = false, platform = process.platform }) {
+export function localInstallCommand({ src, clipsDir, lilinUrl, quality, yes = false, platform = process.platform }) {
   const q = parseQuality(quality);
   if (platform === 'win32') {
     const args = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.win32.join(src, 'windows', 'install.ps1'), '-Share', clipsDir];
-    if (marqueeUrl) args.push('-MarqueeUrl', marqueeUrl);
+    if (lilinUrl) args.push('-LilinUrl', lilinUrl);
     args.push(...(q.bench ? ['-Bench', q.bench] : ['-Quality', q.preset]));
     return ['powershell', ...args];
   }
   if (platform !== 'linux') throw new Error('Clipper records on Linux and Windows only.');
-  const args = ['sh', path.posix.join(src, 'linux', 'install.sh'), '--marquee', clipsDir, '--quality', q.bench ? `bench:${q.bench}` : q.preset];
+  const args = ['sh', path.posix.join(src, 'linux', 'install.sh'), '--lilin', clipsDir, '--quality', q.bench ? `bench:${q.bench}` : q.preset];
   if (yes) args.push('--yes');
   return args;
 }
@@ -202,7 +202,7 @@ export async function downloadClipper(dest, { fetchImpl = fetch, tar = 'tar', sp
 // Clipper writes Kept/<game>/ and Trimmed Clips/; make sure the folder exists and is writable.
 export function prepareClipsDir(dir) {
   fs.mkdirSync(path.join(dir, 'Kept'), { recursive: true });
-  const probe = path.join(dir, `.marquee-write-test-${process.pid}`);
+  const probe = path.join(dir, `.lilin-write-test-${process.pid}`);
   fs.writeFileSync(probe, 'ok');
   fs.rmSync(probe, { force: true });
 }

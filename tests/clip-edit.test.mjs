@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 
-const clipsDir = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-clip-edit-'));
+const clipsDir = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-clip-edit-'));
 process.env.CLIPS_DIR = clipsDir;
 const clips = await import('../src/clips.js');
 const info = { duration: 10, keyframes: [0, 2, 4, 6, 8] };
@@ -41,7 +41,7 @@ test('exact clips cut on the frame showing at each point, with no keyframe rules
 const ffmpeg = process.env.FFMPEG || 'ffmpeg', ffprobe = process.env.FFPROBE || 'ffprobe';
 const hasFfmpeg = spawnSync(ffmpeg, ['-version']).status === 0 && spawnSync(ffprobe, ['-version']).status === 0;
 test('several kept parts are joined losslessly with every track', { skip: !hasFfmpeg && 'ffmpeg not installed', timeout: 60000 }, async () => {
-  const data = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-clip-data-'));
+  const data = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-clip-data-'));
   try {
     clips.initClips({ dataDir: data });
     await fs.mkdir(path.join(clipsDir, 'Game'), { recursive: true });
@@ -83,8 +83,8 @@ test('recorder tracks are recognised, with or without names', () => {
 });
 
 test('removing the mic track rebuilds the mix and copies the rest', { skip: !hasFfmpeg && 'ffmpeg not installed', timeout: 60000 }, async () => {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-clip-tracks-'));
-  const data = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-clip-data-'));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-clip-tracks-'));
+  const data = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-clip-data-'));
   process.env.CLIPS_DIR = dir;
   const fresh = await import(`../src/clips.js?tracks=${Date.now()}`);
   try {
@@ -101,7 +101,7 @@ test('removing the mic track rebuilds the mix and copies the rest', { skip: !has
     const out = path.join(dir, 'Trimmed Clips', 'Game', `${r.title}.mp4`);
     const probe = JSON.parse(spawnSync(ffprobe, ['-v', 'error', '-print_format', 'json', '-show_streams', out]).stdout);
     assert.deepEqual(probe.streams.slice(1).map((s) => s.tags?.handler_name), ['Mix', 'Game', 'Friends']);
-    assert.equal(fresh.mixTrack(probe.streams.slice(1)), probe.streams[1], 'Marquee finds the rebuilt mix by name');
+    assert.equal(fresh.mixTrack(probe.streams.slice(1)), probe.streams[1], 'Lilin finds the rebuilt mix by name');
     assert.equal(probe.streams[1].disposition.default, 1);
     const srcProbe = JSON.parse(spawnSync(ffprobe, ['-v', 'error', '-print_format', 'json', '-show_streams', src]).stdout);
     assert.equal(probe.streams[0].nb_frames, srcProbe.streams[0].nb_frames, 'video is copied, frame for frame');
@@ -114,9 +114,9 @@ test('removing the mic track rebuilds the mix and copies the rest', { skip: !has
 const hasSvt = hasFfmpeg && /libsvtav1/.test(spawnSync(ffmpeg, ['-hide_banner', '-encoders']).stdout) && /libdav1d/.test(spawnSync(ffmpeg, ['-hide_banner', '-decoders']).stdout)
   && svtIsBitExact();
 // Exact cuts need SVT-AV1's lossless mode to reproduce frames bit for bit (recent SVT-AV1). Older
-// builds, such as Ubuntu 24.04's, accept lossless=1 but don't round-trip; Marquee then refuses the cut.
+// builds, such as Ubuntu 24.04's, accept lossless=1 but don't round-trip; Lilin then refuses the cut.
 function svtIsBitExact() {
-  const tmp = path.join(os.tmpdir(), `marquee-svt-probe-${process.pid}.mkv`);
+  const tmp = path.join(os.tmpdir(), `lilin-svt-probe-${process.pid}.mkv`);
   const src = ['-f', 'lavfi', '-i', 'testsrc2=size=320x180:rate=30:duration=0.3', '-pix_fmt', 'yuv420p'];
   try {
     if (spawnSync(ffmpeg, ['-v', 'error', '-y', ...src, '-c:v', 'libsvtav1', '-preset', '8', '-svtav1-params', 'lossless=1', tmp]).status !== 0) return false;
@@ -126,8 +126,8 @@ function svtIsBitExact() {
   } finally { fs.rm(tmp, { force: true }).catch(() => {}); }
 }
 test('AV1 clips are cut on the exact frame and every frame matches the original', { skip: !hasSvt && 'ffmpeg without SVT-AV1 2.0+ (lossless) and dav1d', timeout: 120000 }, async () => {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-clip-exact-'));
-  const data = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-clip-data-'));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-clip-exact-'));
+  const data = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-clip-data-'));
   process.env.CLIPS_DIR = dir;
   const fresh = await import(`../src/clips.js?exact=${Date.now()}`);
   try {

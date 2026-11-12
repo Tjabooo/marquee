@@ -8,7 +8,7 @@ import * as activity from '../src/activity.js';
 import { WatchRooms } from '../src/watch.js';
 
 test('Activity resolves current account names for past events without changing email identity', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'marquee-names-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lilin-names-'));
   accounts.initAccounts({ dataDir: dir, adminEmails: [], mediaDir: null });
   activity.initActivity({ dataDir: dir, nameForUser: accounts.displayNameFor });
   const req = { headers: { 'cf-access-authenticated-user-email': 'dad@example.test' } };
@@ -26,7 +26,7 @@ test('Activity resolves current account names for past events without changing e
   assert.equal(activity.report().events[0].name, 'Captain Dad', 'Historical logs resolve names after restart too');
   const before = accounts.listUsers().length;
   assert.equal(accounts.displayNameFor('unknown@example.test'), 'unknown');
-  assert.equal(accounts.displayNameFor('Marquee'), 'Marquee');
+  assert.equal(accounts.displayNameFor('Lilin'), 'Lilin');
   assert.equal(accounts.displayNameFor('Home network'), 'Home network');
   assert.equal(accounts.listUsers().length, before, 'Resolving names never creates users');
   activity.record(req, 'revoke', 'dad@example.test');

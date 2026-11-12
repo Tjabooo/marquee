@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 test('Discover finds the exact film 9 and treats 2009 as a year filter', { timeout: 15000 }, async (t) => {
   const root = fileURLToPath(new URL('../', import.meta.url));
-  const app = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-search-api-'));
+  const app = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-search-api-'));
   const media = path.join(app, 'media'); await fs.mkdir(media);
   const requests = [];
   const noisy = [
@@ -62,7 +62,7 @@ test('Discover finds the exact film 9 and treats 2009 as a year filter', { timeo
 
   await new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(Error('Startup timeout: ' + logs)), 7000);
-    child.stdout.on('data', (c) => { const ready = /Marquee is running: http:\/\/localhost:(\d+)/.exec(String(c)); if (ready) { port = Number(ready[1]); clearTimeout(timer); resolve(); } });
+    child.stdout.on('data', (c) => { const ready = /Lilin is running: http:\/\/localhost:(\d+)/.exec(String(c)); if (ready) { port = Number(ready[1]); clearTimeout(timer); resolve(); } });
     child.once('error', reject);
     child.once('exit', () => { clearTimeout(timer); reject(Error(logs)); });
   });

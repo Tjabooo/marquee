@@ -1,4 +1,4 @@
-// Live updates: open Marquee pages keep one event stream (/api/events) and are told which part of
+// Live updates: open Lilin pages keep one event stream (/api/events) and are told which part of
 // the app changed ("library", "progress", "notes", ...), so they refetch it right away instead of
 // waiting for the next poll or a reload. Events carry topic names only, never data.
 

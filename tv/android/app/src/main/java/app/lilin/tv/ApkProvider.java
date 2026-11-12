@@ -1,4 +1,4 @@
-package app.marquee.tv;
+package app.lilin.tv;
 
 import android.content.ContentProvider;
 import android.content.ContentValues;
@@ -14,11 +14,11 @@ import java.io.FileNotFoundException;
 
 /** Hands the downloaded update to Android's installer (it may not read the app's own files directly). */
 public final class ApkProvider extends ContentProvider {
-  private static final String AUTHORITY = "app.marquee.tv.update";
+  private static final String AUTHORITY = "app.lilin.tv.update";
   private static final String MIME = "application/vnd.android.package-archive";
 
-  static File file(Context c) { return new File(c.getCacheDir(), "Marquee-update.apk"); }
-  static Uri uri() { return Uri.parse("content://" + AUTHORITY + "/Marquee.apk"); }
+  static File file(Context c) { return new File(c.getCacheDir(), "Lilin-update.apk"); }
+  static Uri uri() { return Uri.parse("content://" + AUTHORITY + "/Lilin.apk"); }
 
   @Override public boolean onCreate() { return true; }
   @Override public String getType(Uri uri) { return MIME; }
@@ -30,7 +30,7 @@ public final class ApkProvider extends ContentProvider {
 
   @Override public Cursor query(Uri uri, String[] projection, String selection, String[] args, String sort) {
     MatrixCursor c = new MatrixCursor(new String[] { OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE });
-    c.addRow(new Object[] { "Marquee.apk", file(getContext()).length() });
+    c.addRow(new Object[] { "Lilin.apk", file(getContext()).length() });
     return c;
   }
 

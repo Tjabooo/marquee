@@ -1,4 +1,4 @@
-package app.marquee.tv;
+package app.lilin.tv;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
@@ -36,16 +36,16 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * Marquee's Android TV app. Like the Samsung app (tv/tizen), it is a small shell: the TV screens
- * themselves (public/tv) load from the Marquee server at every start, so a server update reaches the
+ * Lilin's Android TV app. Like the Samsung app (tv/tizen), it is a small shell: the TV screens
+ * themselves (public/tv) load from the Lilin server at every start, so a server update reaches the
  * TV without a new app. What the shell adds is what a web page can't do on its own: the native video
  * player (VideoPlayer, shaped like Samsung's AVPlay so tv.js runs unchanged), the remote's Back and
  * media keys, and installing the app's own updates.
  */
 public class MainActivity extends Activity {
-  static final String PREFS = "marquee";
+  static final String PREFS = "lilin";
   static final String PREF_SERVER = "server";
-  private static final String NO_SERVER_BASE = "http://marquee.invalid/";
+  private static final String NO_SERVER_BASE = "http://lilin.invalid/";
 
   // Samsung's key codes, which tv.js listens for.
   private static final int JS_BACK = 10009, JS_PLAY_PAUSE = 10252, JS_PLAY = 415, JS_PAUSE = 19,
@@ -82,7 +82,7 @@ public class MainActivity extends Activity {
     updater = new Updater(this);
     SelfUpdate.tidy(this);
     UpdateJob.schedule(this);
-    web.addJavascriptInterface(new Bridge(this), "MarqueeNative");
+    web.addJavascriptInterface(new Bridge(this), "LilinNative");
     server = savedServer();
     loadShell();
     web.requestFocus();
@@ -122,11 +122,11 @@ public class MainActivity extends Activity {
     w.setWebViewClient(new WebViewClient() {
       // The app never navigates away from its one page.
       @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) { return true; }
-      // Marquee's font comes with the app: the first screen is drawn in it at once, with no download.
+      // Lilin's font comes with the app: the first screen is drawn in it at once, with no download.
       @Override public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
         Uri u = request.getUrl();
         String path = u.getPath();
-        // /fonts/… from the shell, or …/fonts/… beside tv.css (under /c/tv for an app that reaches Marquee from anywhere)
+        // /fonts/… from the shell, or …/fonts/… beside tv.css (under /c/tv for an app that reaches Lilin from anywhere)
         int at = path == null ? -1 : path.lastIndexOf("/fonts/bricolage-grotesque-");
         if (at < 0 || !path.endsWith(".woff2") || path.indexOf('/', at + 7) >= 0) return null;
         if (!baseUrl().startsWith(u.getScheme() + "://" + u.getAuthority() + "/")) return null;
@@ -155,7 +155,7 @@ public class MainActivity extends Activity {
   }
 
   private String userAgent() {
-    return WebSettings.getDefaultUserAgent(this) + " MarqueeTV/" + BuildConfig.VERSION_NAME + " (Android TV)";
+    return WebSettings.getDefaultUserAgent(this) + " LilinTV/" + BuildConfig.VERSION_NAME + " (Android TV)";
   }
 
   // ---------- the server and the shell page ----------
@@ -163,12 +163,12 @@ public class MainActivity extends Activity {
 
   private String savedServer() {
     String saved = getSharedPreferences(PREFS, MODE_PRIVATE).getString(PREF_SERVER, "");
-    return saved.isEmpty() ? BuildConfig.MARQUEE_URL : saved;
+    return saved.isEmpty() ? BuildConfig.LILIN_URL : saved;
   }
 
   void useServer(String url) {
     SharedPreferences.Editor e = getSharedPreferences(PREFS, MODE_PRIVATE).edit();
-    if (url.equals(BuildConfig.MARQUEE_URL)) e.remove(PREF_SERVER); else e.putString(PREF_SERVER, url);
+    if (url.equals(BuildConfig.LILIN_URL)) e.remove(PREF_SERVER); else e.putString(PREF_SERVER, url);
     e.apply();
     server = url;
     player.release();
@@ -179,10 +179,10 @@ public class MainActivity extends Activity {
   void loadShell() {
     if (web == null) return;
     String html = asset("shell.html")
-        .replace("\"__MARQUEE_SERVER__\"", JSONObject.quote(server))
-        .replace("\"__MARQUEE_BUILT_IN__\"", JSONObject.quote(BuildConfig.MARQUEE_URL))
+        .replace("\"__LILIN_SERVER__\"", JSONObject.quote(server))
+        .replace("\"__LILIN_BUILT_IN__\"", JSONObject.quote(BuildConfig.LILIN_URL))
         // The TV's own language: Swedish TVs get Swedish, every other TV English.
-        .replace("\"__MARQUEE_LANG__\"", JSONObject.quote(Locale.getDefault().getLanguage()));
+        .replace("\"__LILIN_LANG__\"", JSONObject.quote(Locale.getDefault().getLanguage()));
     web.loadDataWithBaseURL(baseUrl(), html, "text/html", "utf-8", null);
   }
 
@@ -240,7 +240,7 @@ public class MainActivity extends Activity {
     super.onStart();
     SelfUpdate.onScreen = true;
     // Android 12+: look for an update now, so it's downloaded by the time the viewer leaves (it installs then).
-    if (SelfUpdate.canInstallQuietly(this)) new Thread(() -> SelfUpdate.run(getApplicationContext()), "marquee-update-check").start();
+    if (SelfUpdate.canInstallQuietly(this)) new Thread(() -> SelfUpdate.run(getApplicationContext()), "lilin-update-check").start();
     main.removeCallbacks(pauseTimers);
     if (web != null) { web.resumeTimers(); web.onResume(); }
     updater.resume();
@@ -265,7 +265,7 @@ public class MainActivity extends Activity {
 
   void exit() { player.release(); finishAndRemoveTask(); }
 
-  /** Sends the TV to its "Install unknown apps" switch for Marquee. False when this TV has no such screen. */
+  /** Sends the TV to its "Install unknown apps" switch for Lilin. False when this TV has no such screen. */
   boolean openInstallPermission() {
     try {
       startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName())));

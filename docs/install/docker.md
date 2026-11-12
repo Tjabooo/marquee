@@ -1,7 +1,7 @@
 # Docker
 
-The image `ghcr.io/tjabooo/marquee` is published for `linux/amd64` and `linux/arm64` with the tags
-`1.3.0`, `1.3`, `1` and `latest`. It contains Node.js, ffmpeg and Tesseract, runs as an unprivileged
+The image `ghcr.io/tjabooo/lilin` is published for `linux/amd64` and `linux/arm64` with the tags
+`2.0.0`, `2.0`, `2` and `latest`. It contains Node.js, ffmpeg and Tesseract, runs as an unprivileged
 user, and has a health check. Common background is in [README.md](README.md); the NAS guides
 ([Unraid](unraid.md), [Synology](synology.md), [TrueNAS](truenas.md)) build on this page.
 
@@ -15,21 +15,21 @@ user, and has a health check. Common background is in [README.md](README.md); th
 ## 2. Install
 
 ```sh
-mkdir -p ~/marquee && cd ~/marquee
-curl -fsSLO https://raw.githubusercontent.com/Tjabooo/marquee/v1.3.0/docker-compose.yml
-curl -fsSL https://raw.githubusercontent.com/Tjabooo/marquee/v1.3.0/.env.example -o marquee.env
+mkdir -p ~/lilin && cd ~/lilin
+curl -fsSLO https://raw.githubusercontent.com/Tjabooo/lilin/v2.0.0/docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/Tjabooo/lilin/v2.0.0/.env.example -o lilin.env
 mkdir -p data
 sudo chown 1000:1000 data        # your PUID:PGID
 ```
 
 The same files are in the release archive and the git repository. Create `data` before the first
-start: if Docker creates it, it belongs to root and Marquee can't write to it.
+start: if Docker creates it, it belongs to root and Lilin can't write to it.
 
 Compose reads the variables below from the shell or from a file named `.env` next to
-`docker-compose.yml` (Compose's file, not Marquee's):
+`docker-compose.yml` (Compose's file, not Lilin's):
 
 ```sh
-# ~/marquee/.env
+# ~/lilin/.env
 MEDIA_PATH=/srv/media
 PUID=1000
 PGID=1000
@@ -39,26 +39,26 @@ TZ=Europe/London
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `MEDIA_PATH` | `./media` | Host folder mounted at `/media` |
-| `MARQUEE_DATA` | `./data` | Host folder mounted at `/data` (database, state, cache) |
-| `MARQUEE_PORT` | `8080` | Host port |
-| `MARQUEE_VERSION` | `1.3.0` | Image tag |
-| `PUID`, `PGID` | `1000` | User and group Marquee (and qBittorrent) run as |
+| `LILIN_DATA` | `./data` | Host folder mounted at `/data` (database, state, cache) |
+| `LILIN_PORT` | `8080` | Host port |
+| `LILIN_VERSION` | `2.0.0` | Image tag |
+| `PUID`, `PGID` | `1000` | User and group Lilin (and qBittorrent) run as |
 | `TZ` | `UTC` | Time zone |
 | `TRUSTED_PROXIES` | `127.0.0.1,::1` | See [../remote-access.md](../remote-access.md) |
 | `COMPOSE_PROFILES` | | Optional services to include, e.g. `qbittorrent,flaresolverr` |
 
 ## 3. Configure
 
-Edit `marquee.env` ([../configuration.md](../configuration.md)). Leave `MEDIA_DIR`, `DATA_DIR`,
+Edit `lilin.env` ([../configuration.md](../configuration.md)). Leave `MEDIA_DIR`, `DATA_DIR`,
 `HOST` and `PORT` alone: Compose sets them for the container and they always win.
 
 Set **`SERVER_IP`** to the host's LAN address, for example `SERVER_IP=192.168.1.20`. Inside the
-container Marquee only sees its container address, and TVs stream from `SERVER_IP`.
+container Lilin only sees its container address, and TVs stream from `SERVER_IP`.
 
 `node setup.js` isn't used in Docker, so `HOUSE_TOKEN` and `SCREENTIME_TOKEN` aren't generated; set
 them yourself (`openssl rand -hex 32`) if you use the House agents or screentime.
 
-Instead of `marquee.env`, settings can also live in `.env` inside the data folder: the image reads
+Instead of `lilin.env`, settings can also live in `.env` inside the data folder: the image reads
 `/data/.env`. Container environment variables override it.
 
 ## 4. Start
@@ -66,7 +66,7 @@ Instead of `marquee.env`, settings can also live in `.env` inside the data folde
 ```sh
 docker compose up -d
 docker compose ps                  # STATUS shows (healthy) after up to 30 s
-docker compose logs -f marquee
+docker compose logs -f lilin
 ```
 
 Open `http://192.168.1.20:8080` (your host's address).
@@ -79,7 +79,7 @@ in Compose's `.env`.
 **qBittorrent** (`qbittorrent` profile): Web UI on port 8081, configuration in `./qbittorrent`. The
 image prints a temporary Web UI password in `docker compose logs qbittorrent`; sign in at
 `http://192.168.1.20:8081`, set a password, and set the default save path to `/media/Downloads`
-(qBittorrent sees the media folder at the same path as Marquee). In `marquee.env`:
+(qBittorrent sees the media folder at the same path as Lilin). In `lilin.env`:
 
 ```sh
 QBIT_URL=http://qbittorrent:8081
@@ -93,16 +93,16 @@ namespace, so its traffic can only leave through the tunnel: if the VPN is down,
 connectivity rather than falling back to your normal connection.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Tjabooo/marquee/v1.3.0/docker/vpn.env.example -o vpn.env
+curl -fsSL https://raw.githubusercontent.com/Tjabooo/lilin/v2.0.0/docker/vpn.env.example -o vpn.env
 # fill in vpn.env (provider options: https://github.com/qdm12/gluetun-wiki)
 docker compose --profile vpn up -d
 ```
 
-Set `QBIT_URL=http://gluetun:8081` in `marquee.env`; the Web UI is at port 8081 on the host as above.
+Set `QBIT_URL=http://gluetun:8081` in `lilin.env`; the Web UI is at port 8081 on the host as above.
 The host needs `/dev/net/tun`.
 
 **FlareSolverr** (`flaresolverr` profile): set `FLARESOLVERR_URL=http://flaresolverr:8191` in
-`marquee.env`. It isn't published on a host port.
+`lilin.env`. It isn't published on a host port.
 
 ### NVIDIA GPU encoding
 
@@ -112,24 +112,24 @@ host, then:
 
 ```sh
 mkdir -p docker
-curl -fsSL https://raw.githubusercontent.com/Tjabooo/marquee/v1.3.0/docker/compose.nvidia.yml -o docker/compose.nvidia.yml
+curl -fsSL https://raw.githubusercontent.com/Tjabooo/lilin/v2.0.0/docker/compose.nvidia.yml -o docker/compose.nvidia.yml
 docker compose -f docker-compose.yml -f docker/compose.nvidia.yml up -d
-docker compose exec marquee node setup.js doctor --offline
+docker compose exec lilin node setup.js doctor --offline
 ```
 
-Doctor's "Encoder Marquee will use" line should say NVIDIA NVENC. Pass both `-f` options to every
+Doctor's "Encoder Lilin will use" line should say NVIDIA NVENC. Pass both `-f` options to every
 later `docker compose` command. See [../hardware-acceleration.md](../hardware-acceleration.md).
 
 ### One-file Compose for NAS interfaces
 
-Some NAS interfaces take a single Compose file without the extra files. This is the `marquee`
+Some NAS interfaces take a single Compose file without the extra files. This is the `lilin`
 service from `docker-compose.yml` with paths and settings written in; adjust the paths, user and
 address:
 
 ```yaml
 services:
-  marquee:
-    image: ghcr.io/tjabooo/marquee:1.3.0
+  lilin:
+    image: ghcr.io/tjabooo/lilin:2.0.0
     restart: unless-stopped
     user: "1000:1000"
     ports:
@@ -143,7 +143,7 @@ services:
       SERVER_IP: 192.168.1.20
       TMDB_TOKEN: ""
     volumes:
-      - /srv/marquee/data:/data
+      - /srv/lilin/data:/data
       - /srv/media:/media
     stop_grace_period: 20s
 ```
@@ -157,11 +157,11 @@ Add other settings under `environment`, or put them in `.env` in the data folder
 
 ## 6. Update
 
-`docker-compose.yml` pins the image to `1.3.0`, so set the new version first:
+`docker-compose.yml` pins the image to `2.0.0`, so set the new version first:
 
 ```sh
-docker compose exec marquee node setup.js backup     # lands in data/backups/
-# set MARQUEE_VERSION=1.3.0 in Compose's .env (or download the new docker-compose.yml)
+docker compose exec lilin node setup.js backup     # lands in data/backups/
+# set LILIN_VERSION=2.0.0 in Compose's .env (or download the new docker-compose.yml)
 docker compose pull && docker compose up -d
 ```
 
@@ -170,15 +170,15 @@ See [../upgrading-and-backups.md](../upgrading-and-backups.md).
 ## 7. Troubleshooting
 
 ```sh
-docker compose exec marquee node setup.js doctor --offline
+docker compose exec lilin node setup.js doctor --offline
 ```
 
 - **`EACCES` in the log, or doctor reports "Data folder /data: EACCES"**: the data or media folder
   isn't writable by `PUID:PGID`. `sudo chown -R 1000:1000 data` (your IDs), and give that user write access to the media.
 - **TVs show an error or can't load the video**: `SERVER_IP` is missing or wrong.
-- **Port 8080 is taken**: set `MARQUEE_PORT` to another host port.
+- **Port 8080 is taken**: set `LILIN_PORT` to another host port.
 - **`env_file` or `required` rejected**: Compose is older than 2.24. Update it, or change the
-  `env_file` entry to the short form `env_file: [marquee.env]` and create the file.
+  `env_file` entry to the short form `env_file: [lilin.env]` and create the file.
 
 More in [../troubleshooting.md](../troubleshooting.md).
 
@@ -187,7 +187,7 @@ More in [../troubleshooting.md](../troubleshooting.md).
 - **Casting is limited.** The image doesn't include pyatv, so Apple TV casting is unavailable. On the
   default bridge network, DLNA TVs and AirPlay devices aren't discovered (multicast doesn't reach
   the container); list DLNA TVs in `DLNA_DEVICES`. On a Linux host, `network_mode: host` on the
-  `marquee` service (and no `ports:`) lets discovery work; Marquee then listens on port 8080 of the
+  `lilin` service (and no `ports:`) lets discovery work; Lilin then listens on port 8080 of the
   host directly, and reaches qBittorrent at `http://localhost:8081` instead of by service name.
   The player's own AirPlay (Safari) and Chromecast (Chrome on Android) buttons work either way,
   since the phone does the discovery.

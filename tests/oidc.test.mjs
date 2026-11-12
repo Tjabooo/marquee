@@ -11,12 +11,12 @@ import { createOidc } from '../src/oidc.js';
 
 const REDIRECT = 'https://team.cloudflareaccess.com/cdn-cgi/access/callback';
 const SECRET = 'a-long-client-secret-for-tests';
-const tmp = () => fs.mkdtemp(path.join(os.tmpdir(), 'marquee-oidc-'));
+const tmp = () => fs.mkdtemp(path.join(os.tmpdir(), 'lilin-oidc-'));
 
 // A request that can be read as a stream (form posts) and carries cookies/headers like a real one.
 function req({ method = 'GET', url = '/', headers = {}, body = '' } = {}) {
   const r = Readable.from(body ? [Buffer.from(body)] : []);
-  Object.assign(r, { method, url, headers: { host: 'marquee.example.com', 'cf-ray': 'x', 'cf-connecting-ip': '81.1.2.3', ...headers }, socket: { remoteAddress: '127.0.0.1' } });
+  Object.assign(r, { method, url, headers: { host: 'lilin.example.com', 'cf-ray': 'x', 'cf-connecting-ip': '81.1.2.3', ...headers }, socket: { remoteAddress: '127.0.0.1' } });
   return r;
 }
 function res() {
@@ -31,10 +31,10 @@ const cookieOf = (setCookie) => String(setCookie).split(';')[0];
 
 async function setup() {
   const dataDir = await tmp();
-  const auth = createAuth({ dataDir, publicUrl: 'https://marquee.example.com' });
+  const auth = createAuth({ dataDir, publicUrl: 'https://lilin.example.com' });
   await auth.store.setPassword('friend@example.com', 'popcorn and films');
   const oidc = createOidc({
-    dataDir, auth, publicUrl: 'https://marquee.example.com',
+    dataDir, auth, publicUrl: 'https://lilin.example.com',
     settings: { clientId: 'cloudflare', clientSecret: SECRET, redirectUris: [REDIRECT] }, nameFor: () => 'Friend',
   });
   const call = async (opts) => {
@@ -54,7 +54,7 @@ const authorizeUrl = (extra = {}) => `/c/oidc/authorize?${new URLSearchParams({
   code_challenge: challenge, code_challenge_method: 'S256', ...extra })}`;
 const basic = `Basic ${Buffer.from(`cloudflare:${SECRET}`).toString('base64')}`;
 
-test('a Marquee session goes straight through: code, token, signed ID token', async () => {
+test('a Lilin session goes straight through: code, token, signed ID token', async () => {
   const { auth, call } = await setup();
   const { setCookie } = await auth.signIn(req(), 'friend@example.com', 'popcorn and films');
   const a = await call({ url: authorizeUrl(), headers: { cookie: cookieOf(setCookie) } });
@@ -77,7 +77,7 @@ test('a Marquee session goes straight through: code, token, signed ID token', as
   const claims = JSON.parse(Buffer.from(p, 'base64url'));
   assert.equal(claims.email, 'friend@example.com');
   assert.equal(claims.aud, 'cloudflare');
-  assert.equal(claims.iss, 'https://marquee.example.com/c/oidc');
+  assert.equal(claims.iss, 'https://lilin.example.com/c/oidc');
   assert.equal(claims.nonce, 'n0nce');
   assert.equal(claims.name, 'Friend');
 
@@ -119,7 +119,7 @@ test('without a session the sign-in form is shown, and signing in there returns 
   const ok = await call({ method: 'POST', url: '/c/oidc/login', body: new URLSearchParams({ email: 'friend@example.com', password: 'popcorn and films', next }).toString() });
   assert.equal(ok.status, 302);
   assert.ok(new URL(ok.headers.location).searchParams.get('code'));
-  assert.match(ok.headers['set-cookie'], /^marquee_session=/);
+  assert.match(ok.headers['set-cookie'], /^lilin_session=/);
   const elsewhere = await call({ method: 'POST', url: '/c/oidc/login', body: new URLSearchParams({ email: 'friend@example.com', password: 'popcorn and films', next: '/api/me' }).toString() });
   assert.equal(elsewhere.status, 400, 'the form only continues an authorize request');
 });
@@ -132,7 +132,7 @@ test('people signed in through Cloudflare pick their first password once, for th
   assert.equal(auth.hasPassword('old@example.com'), false);
   await assert.rejects(auth.setFirstPassword(viaCf, 'short'), /at least 10/);
   const { setCookie } = await auth.setFirstPassword(viaCf, 'a fine new password');
-  assert.match(setCookie, /^marquee_session=/);
+  assert.match(setCookie, /^lilin_session=/);
   assert.equal(auth.hasPassword('old@example.com'), true);
   await assert.rejects(auth.setFirstPassword(viaCf, 'another password!!'), (e) => e.status === 409);
   const viaSession = req({ headers: { cookie: cookieOf(setCookie) } });
@@ -140,7 +140,7 @@ test('people signed in through Cloudflare pick their first password once, for th
   await assert.rejects(auth.setFirstPassword(viaSession, 'another password!!'), (e) => e.status === 400);
   // and through Cloudflare they can now change it like anyone else
   const changed = await auth.changePassword(viaCf, 'a fine new password', 'a better new password');
-  assert.match(changed.setCookie, /^marquee_session=/);
+  assert.match(changed.setCookie, /^lilin_session=/);
 });
 
 test('invite page: new email joins with a password and is signed straight in; taken emails need a password link', async (t) => {
@@ -170,13 +170,13 @@ test('invite page: new email joins with a password and is signed straight in; ta
   let r = await post(open, { email: 'old@example.com', password: 'twelve chars!', again: 'twelve chars!' });
   assert.match(r.body, /already has access/, 'an open invite cannot claim someone already on the list');
   r = await post(open, { email: 'friend@example.com', password: 'twelve chars!', again: 'twelve chars!' });
-  assert.match(r.body, /already has a Marquee account/);
+  assert.match(r.body, /already has a Lilin account/);
   r = await post(open, { email: 'new@example.com', password: 'twelve chars!', again: 'twelve charz!' });
   assert.match(r.body, /aren’t the same/);
   r = await post(open, { email: 'new@example.com', password: 'twelve chars!', again: 'twelve chars!' });
   assert.equal(r.status, 303);
   assert.equal(r.headers.location, '/');
-  assert.match(r.headers['set-cookie'], /^marquee_session=/);
+  assert.match(r.headers['set-cookie'], /^lilin_session=/);
   assert.ok(list.has('new@example.com'));
   assert.equal(auth.hasPassword('new@example.com'), true);
   r = await post(open, { email: 'other@example.com', password: 'twelve chars!', again: 'twelve chars!' });

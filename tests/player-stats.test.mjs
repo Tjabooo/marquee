@@ -67,7 +67,7 @@ test('probeDetails reads a real file through ffprobe', { timeout: 20000 }, async
   try { await run(process.env.FFMPEG || 'ffmpeg', ['-version']); await run(process.env.FFPROBE || 'ffprobe', ['-version']); }
   catch { t.skip('FFmpeg unavailable'); return; }
   const { probeDetails } = await import('../src/convert.js');
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-stats-'));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-stats-'));
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
   const file = path.join(dir, 'sample.mp4');
   await run(process.env.FFMPEG || 'ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=blue:s=64x48:r=25:d=1',

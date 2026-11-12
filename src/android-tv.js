@@ -1,4 +1,4 @@
-// Marquee's Android TV app (tv/android): the install steps (/android), the app itself (/android.apk) and its
+// Lilin's Android TV app (tv/android): the install steps (/android), the app itself (/android.apk) and its
 // version (/android.json, which installed apps check to offer their own update). The app is built with
 // tv/android/build.sh into tv/android/dist (or ANDROID_APP_DIR). Its build holds the server's address: a home
 // one (the file is only handed out at home), or a public https one through the TV gateway (/c/tv,
@@ -33,12 +33,12 @@ const rank = (ip) => (ip.startsWith('192.168.') ? 0 : ip.startsWith('10.') ? 1 :
 export function createAndroidTv({ dir = process.env.ANDROID_APP_DIR || DEFAULT_DIR, port = 8080 } = {}) {
   const portNow = () => (typeof port === 'function' ? port() : port);
   function app() {
-    const file = path.join(dir, 'Marquee.apk');
+    const file = path.join(dir, 'Lilin.apk');
     let stat;
     try { stat = fs.statSync(file); } catch { return null; }
     if (!stat.isFile()) return null;
     let meta = {};
-    try { meta = JSON.parse(fs.readFileSync(path.join(dir, 'Marquee.json'), 'utf8')); } catch { /* built without it: version 1 */ }
+    try { meta = JSON.parse(fs.readFileSync(path.join(dir, 'Lilin.json'), 'utf8')); } catch { /* built without it: version 1 */ }
     const server = typeof meta.server === 'string' ? meta.server.replace(/\/+$/, '') : '';
     // Built for an https address: it works from anywhere, so it may be handed out anywhere.
     const anywhere = /^https:\/\/[^/]+/i.test(server) && !privateV4(server.replace(/^https:\/\//i, ''));
@@ -68,7 +68,7 @@ export function createAndroidTv({ dir = process.env.ANDROID_APP_DIR || DEFAULT_D
       res.writeHead(200, {
         'Content-Type': 'application/vnd.android.package-archive',
         'Content-Length': found.size,
-        'Content-Disposition': 'attachment; filename="Marquee.apk"',
+        'Content-Disposition': 'attachment; filename="Lilin.apk"',
         'Cache-Control': 'no-cache',
       });
       if (head) { res.end(); return true; }
@@ -91,20 +91,20 @@ function page({ home, found, address, prefix = '' }) {
     [tr('Get Downloader'), `<p>${esc(tr('On the TV, open Google Play, search for Downloader and install it. It’s free, made by AFTVnews, with an orange icon.'))}</p>`],
     [tr('Type this address'), `<p>${esc(tr('Open Downloader, select the address box and type:'))}</p>
       <div class="address" aria-label="${esc(typed)}">${esc(typed)}</div><p>${esc(tr('Then press Go.'))}</p>`],
-    [tr('Install Marquee'), `<p>${esc(tr('When the download is done, press Install. The first time, the TV asks to let Downloader install apps: choose Settings, turn Downloader on, press Back, then Install.'))}</p>`],
-    [tr('Sign in'), `<p>${esc(tr('Press Open. The TV shows a code: on your phone, open Marquee, go to Settings → Sign in a TV and enter it.'))}</p>`],
+    [tr('Install Lilin'), `<p>${esc(tr('When the download is done, press Install. The first time, the TV asks to let Downloader install apps: choose Settings, turn Downloader on, press Back, then Install.'))}</p>`],
+    [tr('Sign in'), `<p>${esc(tr('Press Open. The TV shows a code: on your phone, open Lilin, go to Settings → Sign in a TV and enter it.'))}</p>`],
   ];
   let body;
   if (!home) {
-    body = `<section class="card note"><h2>${esc(tr('Open this page at home.'))}</h2><p>${esc(tr('The Android TV app installs and runs on the home network, where Marquee is.'))}</p></section>`;
+    body = `<section class="card note"><h2>${esc(tr('Open this page at home.'))}</h2><p>${esc(tr('The Android TV app installs and runs on the home network, where Lilin is.'))}</p></section>`;
   } else if (!found) {
-    body = `<section class="card note"><h2>${esc(tr('The Android TV app isn’t on this server yet.'))}</h2><p>${esc(tr('Whoever runs Marquee can build it with tv/android/build.sh (see docs/android-tv.md).'))}</p></section>`;
+    body = `<section class="card note"><h2>${esc(tr('The Android TV app isn’t on this server yet.'))}</h2><p>${esc(tr('Whoever runs Lilin can build it with tv/android/build.sh (see docs/android-tv.md).'))}</p></section>`;
   } else {
     const size = `${(found.size / 1048576).toFixed(1)} MB`;
     body = `<ol class="steps">${steps.map(([title, text], i) => `<li class="card"><span class="n">${i + 1}</span><div><h2>${esc(title)}</h2>${text}</div></li>`).join('')}</ol>
-      <p class="after">${esc(tr('Marquee is now among the TV’s apps. It keeps itself up to date: when there’s a new version, the TV offers it as the app starts. Downloader may offer to delete the file it fetched; the app stays.'))}</p>
-      ${found.anywhere ? '' : `<p class="after">${esc(tr('The TV has to be on the same network as Marquee.'))}</p>`}
-      <a class="download" href="${prefix}/android.apk" download="Marquee.apk">${esc(tr('Download the app ({0} · version {1})', size, found.versionName))}</a>`;
+      <p class="after">${esc(tr('Lilin is now among the TV’s apps. It keeps itself up to date: when there’s a new version, the TV offers it as the app starts. Downloader may offer to delete the file it fetched; the app stays.'))}</p>
+      ${found.anywhere ? '' : `<p class="after">${esc(tr('The TV has to be on the same network as Lilin.'))}</p>`}
+      <a class="download" href="${prefix}/android.apk" download="Lilin.apk">${esc(tr('Download the app ({0} · version {1})', size, found.versionName))}</a>`;
   }
   return `<!doctype html>
 <html lang="${currentLanguage()}">
@@ -113,7 +113,7 @@ function page({ home, found, address, prefix = '' }) {
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1F1019">
 <meta name="robots" content="noindex">
-<title>${esc(tr('Marquee on Android TV'))}</title>
+<title>${esc(tr('Lilin on Android TV'))}</title>
 <link rel="icon" href="/c/favicon.svg" type="image/svg+xml">
 <style>
   @font-face { font-family: "Bricolage Grotesque"; font-weight: 200 800; font-display: swap; src: url("/c/fonts/bricolage-grotesque-latin.woff2") format("woff2"); }
@@ -144,8 +144,8 @@ function page({ home, found, address, prefix = '' }) {
 </style>
 </head>
 <body><main>
-<div class="mark">Marquee</div>
-<h1>${esc(tr('Marquee on Android TV'))}</h1>
+<div class="mark">Lilin</div>
+<h1>${esc(tr('Lilin on Android TV'))}</h1>
 <p class="lead">${esc(tr('For TVs with Android TV or Google TV, Chromecast with Google TV, Nvidia Shield and other Android TV boxes.'))}</p>
 ${body}
 </main></body>

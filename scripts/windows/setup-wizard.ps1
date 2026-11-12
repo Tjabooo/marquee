@@ -1,5 +1,5 @@
-# Marquee setup wizard for Windows: a normal Windows window that installs Marquee, sets it up and
-# can add Clipper (game clips). Start it with MarqueeSetup.exe, the "Marquee Setup" Start menu
+# Lilin setup wizard for Windows: a normal Windows window that installs Lilin, sets it up and
+# can add Clipper (game clips). Start it with LilinSetup.exe, the "Lilin Setup" Start menu
 # entry, `node setup.js gui`, or:
 #   powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File scripts\windows\setup-wizard.ps1
 #
@@ -7,7 +7,7 @@
 #   install.ps1 -NoSetup                  download, checksum-check and unpack a release
 #   node setup.js wizard info|check|clipper   read the current state as JSON (changes nothing)
 #   node setup.js --config FILE           write .env (the answers file is deleted straight after)
-#   node setup.js user add EMAIL          the owner's sign-in (password passed in MARQUEE_PASSWORD)
+#   node setup.js user add EMAIL          the owner's sign-in (password passed in LILIN_PASSWORD)
 #   node setup.js clipper --config FILE   game clips folder, and Clipper itself on this PC
 #   install-service.ps1 (elevated)        start at boot; your Windows password goes over in a file
 #                                         only your account can decrypt (DPAPI), deleted when read
@@ -15,9 +15,9 @@
 param(
   [string]$AppDir = '',          # set up this installation (default: the one this script is part of)
   [string]$Version = '',         # new installs: release to download (default: the latest)
-  [string]$InstallScript = '',   # new installs: install.ps1 to use (MarqueeSetup.exe passes its own copy)
+  [string]$InstallScript = '',   # new installs: install.ps1 to use (LilinSetup.exe passes its own copy)
   [string]$BundledVersion = '',  # the release $InstallScript came from; used if the latest can't be looked up
-  [string]$LauncherPath = '',    # the MarqueeSetup.exe that started this; copied into the installation
+  [string]$LauncherPath = '',    # the LilinSetup.exe that started this; copied into the installation
   [string]$Screenshot = '',      # testing: render every page to PNG files in this folder, then exit
   [switch]$SelfTest,             # testing: build the window and check it, then exit
   [string]$TestRun = ''          # testing: JSON file of page values; runs the whole plan hidden (no admin step), prints the log
@@ -29,7 +29,7 @@ Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, Sys
 $Native = @'
 using System;
 using System.Runtime.InteropServices;
-public static class MarqueeNative {
+public static class LilinNative {
   [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr h, int attr, ref int value, int size);
   public static void DarkTitle(IntPtr h, int captionBgr) {
     int on = 1; DwmSetWindowAttribute(h, 20, ref on, 4);          // immersive dark mode
@@ -82,7 +82,7 @@ public static class MarqueeNative {
   }
 }
 '@
-if (-not ('MarqueeNative' -as [type])) { Add-Type -TypeDefinition $Native }
+if (-not ('LilinNative' -as [type])) { Add-Type -TypeDefinition $Native }
 
 # ---------------------------------------------------------------- where we are
 $Here = $PSScriptRoot
@@ -93,12 +93,12 @@ if (-not $AppDir) {
 $Fresh = -not $AppDir                       # true: download and install first
 function Find-TaskDir {
   try {
-    $t = Get-ScheduledTask -TaskName 'Marquee' -ErrorAction Stop
-    if ($t.Actions[0].Arguments -match '"([^"]+)\\start-marquee\.cmd"') { return $Matches[1] }
+    $t = Get-ScheduledTask -TaskName 'Lilin' -ErrorAction Stop
+    if ($t.Actions[0].Arguments -match '"([^"]+)\\start-lilin\.cmd"') { return $Matches[1] }
   } catch { }
   $null
 }
-$DefaultDir = if ($AppDir) { $AppDir } elseif ($d = Find-TaskDir) { $d } else { Join-Path $env:USERPROFILE 'marquee' }
+$DefaultDir = if ($AppDir) { $AppDir } elseif ($d = Find-TaskDir) { $d } else { Join-Path $env:USERPROFILE 'lilin' }
 
 function Refresh-Path {
   $m = [Environment]::GetEnvironmentVariable('Path', 'Machine'); $usr = [Environment]::GetEnvironmentVariable('Path', 'User')
@@ -124,7 +124,7 @@ function Find-Winget {
 [xml]$Xaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Marquee Setup" Width="980" Height="700" MinWidth="760" MinHeight="520"
+        Title="Lilin Setup" Width="980" Height="700" MinWidth="760" MinHeight="520"
         WindowStartupLocation="CenterScreen" Background="#1F1019" FontFamily="Segoe UI" FontSize="14"
         TextOptions.TextFormattingMode="Display" UseLayoutRounding="True" SnapsToDevicePixels="True">
   <Window.Resources>
@@ -440,7 +440,7 @@ function Find-Winget {
             <TextBlock Text="M" FontSize="19" FontWeight="Black" Foreground="{StaticResource Paper}" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-1,0,0"/>
           </Grid>
           <StackPanel Margin="13,0,0,0" VerticalAlignment="Center">
-            <TextBlock Text="Marquee" FontSize="20" FontWeight="Bold"/>
+            <TextBlock Text="Lilin" FontSize="20" FontWeight="Bold"/>
             <TextBlock Text="Setup" Foreground="{StaticResource Dust}" FontSize="12.5"/>
           </StackPanel>
         </StackPanel>
@@ -470,7 +470,7 @@ function Find-Winget {
             </Border>
             <TextBlock Style="{StaticResource Section}" Text="WHAT HAPPENS"/>
             <StackPanel x:Name="WelcomeList" Margin="0,6,0,0"/>
-            <TextBlock Style="{StaticResource Hint}" Margin="0,18,0,0" Text="You can come back and change anything later: run Marquee Setup again from the Start menu. Nothing is changed until you press Install on the last page."/>
+            <TextBlock Style="{StaticResource Hint}" Margin="0,18,0,0" Text="You can come back and change anything later: run Lilin Setup again from the Start menu. Nothing is changed until you press Install on the last page."/>
           </StackPanel>
 
           <!-- 1 Install -->
@@ -486,7 +486,7 @@ function Find-Winget {
                 <Button x:Name="NodeBtn" Grid.Column="1" Style="{StaticResource Small}" Content="Install Node.js" Margin="14,0,0,0" VerticalAlignment="Center"/>
               </Grid>
             </Border>
-            <TextBlock Style="{StaticResource Label}" Text="Install Marquee in"/>
+            <TextBlock Style="{StaticResource Label}" Text="Install Lilin in"/>
             <Grid>
               <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
               <TextBox x:Name="InstallDir"/>
@@ -510,7 +510,7 @@ function Find-Winget {
               <TextBox x:Name="MediaDir"/>
               <Button x:Name="MediaDirBtn" Grid.Column="1" Style="{StaticResource Small}" Content="Browse..." Margin="8,0,0,0"/>
             </Grid>
-            <TextBlock Style="{StaticResource Hint}" Text="Marquee plays what's in here and saves new downloads to it. It's created if it doesn't exist. A big drive is best."/>
+            <TextBlock Style="{StaticResource Hint}" Text="Lilin plays what's in here and saves new downloads to it. It's created if it doesn't exist. A big drive is best."/>
             <StackPanel x:Name="DataBox">
               <TextBlock Style="{StaticResource Label}" Text="Database and settings folder (optional)"/>
               <Grid>
@@ -518,14 +518,14 @@ function Find-Winget {
                 <TextBox x:Name="DataDir"/>
                 <Button x:Name="DataDirBtn" Grid.Column="1" Style="{StaticResource Small}" Content="Browse..." Margin="8,0,0,0"/>
               </Grid>
-              <TextBlock Style="{StaticResource Hint}" Text="Leave empty to keep it in the Marquee folder. Pick another folder to keep your data apart from the program, e.g. on a drive you back up."/>
+              <TextBlock Style="{StaticResource Hint}" Text="Leave empty to keep it in the Lilin folder. Pick another folder to keep your data apart from the program, e.g. on a drive you back up."/>
               <TextBlock Style="{StaticResource Label}" Text="Cache folder (optional)"/>
               <Grid>
                 <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                 <TextBox x:Name="CacheDir"/>
                 <Button x:Name="CacheDirBtn" Grid.Column="1" Style="{StaticResource Small}" Content="Browse..." Margin="8,0,0,0"/>
               </Grid>
-              <TextBlock Style="{StaticResource Hint}" Text="Copies Marquee can always make again: versions for browsers and phones, previews and share copies. They can grow to hundreds of GB, so pick a big drive if C: is small. Leave empty to keep them with the database."/>
+              <TextBlock Style="{StaticResource Hint}" Text="Copies Lilin can always make again: versions for browsers and phones, previews and share copies. They can grow to hundreds of GB, so pick a big drive if C: is small. Leave empty to keep them with the database."/>
             </StackPanel>
             <TextBlock Style="{StaticResource Section}" Text="VIDEO TOOLS"/>
             <Border Style="{StaticResource Panel}" Margin="0,8,0,0">
@@ -544,7 +544,7 @@ function Find-Winget {
               <TextBox x:Name="Port" Width="120"/>
               <TextBlock x:Name="PortState" Style="{StaticResource Hint}" VerticalAlignment="Center" Margin="14,0,0,0"/>
             </StackPanel>
-            <TextBlock Style="{StaticResource Label}" Text="Who can open Marquee?"/>
+            <TextBlock Style="{StaticResource Label}" Text="Who can open Lilin?"/>
             <RadioButton x:Name="HostLan" GroupName="host" Style="{StaticResource Card}">
               <StackPanel><TextBlock Text="Devices on my home network" FontWeight="SemiBold"/><TextBlock Style="{StaticResource Hint}" Margin="0,3,0,0" Text="Phones, TVs and laptops at home open it by this PC's address. Recommended."/></StackPanel>
             </RadioButton>
@@ -564,7 +564,7 @@ function Find-Winget {
           <StackPanel x:Name="PAccess" Style="{StaticResource Page}">
             <TextBlock Style="{StaticResource Label}" Text="Your email"/>
             <TextBox x:Name="OwnerEmail"/>
-            <TextBlock Style="{StaticResource Hint}" Text="You become Marquee's owner: you see the House, Activity and Clips tabs and manage who has access."/>
+            <TextBlock Style="{StaticResource Hint}" Text="You become Lilin's owner: you see the House, Activity and Clips tabs and manage who has access."/>
             <StackPanel x:Name="PwBox">
               <Grid Margin="0,0,0,0">
                 <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="12"/><ColumnDefinition/></Grid.ColumnDefinitions>
@@ -584,7 +584,7 @@ function Find-Winget {
               <StackPanel><TextBlock Text="Cloudflare Tunnel and Access" FontWeight="SemiBold"/><TextBlock Style="{StaticResource Hint}" Margin="0,3,0,0" Text="Share with family and friends on your own web address, each with a personal account."/></StackPanel>
             </RadioButton>
             <RadioButton x:Name="RemoteProxy" GroupName="remote" Style="{StaticResource Card}">
-              <StackPanel><TextBlock Text="My own reverse proxy" FontWeight="SemiBold"/><TextBlock Style="{StaticResource Hint}" Margin="0,3,0,0" Text="Caddy, nginx or similar, with its own sign-in in front of Marquee."/></StackPanel>
+              <StackPanel><TextBlock Text="My own reverse proxy" FontWeight="SemiBold"/><TextBlock Style="{StaticResource Hint}" Margin="0,3,0,0" Text="Caddy, nginx or similar, with its own sign-in in front of Lilin."/></StackPanel>
             </RadioButton>
             <StackPanel x:Name="CfBox" Margin="30,0,0,0">
               <TextBlock Style="{StaticResource Label}" Text="Access team domain (optional)"/>
@@ -593,14 +593,14 @@ function Find-Winget {
               <StackPanel x:Name="CfAudBox">
                 <TextBlock Style="{StaticResource Label}" Text="Access application AUD tag"/>
                 <PasswordBox x:Name="CfAud"/>
-                <CheckBox x:Name="OidcOn" Content="People sign in to Access with their Marquee password" Margin="0,16,0,0"/>
+                <CheckBox x:Name="OidcOn" Content="People sign in to Access with their Lilin password" Margin="0,16,0,0"/>
                 <TextBlock Style="{StaticResource Hint}" Margin="31,0,0,0" Text="Recommended. No one-time email codes, and an invite signs the new person straight in. At the end, Setup shows what to enter in Cloudflare."/>
               </StackPanel>
             </StackPanel>
             <StackPanel x:Name="UrlBox" Margin="30,0,0,0">
               <TextBlock Style="{StaticResource Label}" Text="Public address"/>
               <TextBox x:Name="PublicUrl"/>
-              <TextBlock Style="{StaticResource Hint}" Text="e.g. https://marquee.example.com. Used for share links and the phone app."/>
+              <TextBlock Style="{StaticResource Hint}" Text="e.g. https://lilin.example.com. Used for share links and the phone app."/>
             </StackPanel>
           </StackPanel>
 
@@ -653,7 +653,7 @@ function Find-Winget {
                       <TextBlock Text="ADD-ON" FontSize="10.5" FontWeight="Bold" Foreground="{StaticResource Bulb}"/>
                     </Border>
                   </StackPanel>
-                  <TextBlock Style="{StaticResource Hint}" FontSize="13" Margin="0,6,0,0" Text="Keeps the last 90 seconds of your games in memory. Press Alt+F9 to save a clip; it shows up in Marquee's Clips tab, ready to trim and share on Discord."/>
+                  <TextBlock Style="{StaticResource Hint}" FontSize="13" Margin="0,6,0,0" Text="Keeps the last 90 seconds of your games in memory. Press Alt+F9 to save a clip; it shows up in Lilin's Clips tab, ready to trim and share on Discord."/>
                 </StackPanel>
                 <CheckBox x:Name="ClipsOn" Grid.Column="1" Style="{StaticResource Switch}" VerticalAlignment="Top" Margin="18,2,0,0"/>
               </Grid>
@@ -702,14 +702,14 @@ function Find-Winget {
           <StackPanel x:Name="PStartup" Style="{StaticResource Page}">
             <Border Style="{StaticResource Panel}" Margin="0,14,0,0">
               <StackPanel>
-                <CheckBox x:Name="AutoOn" Margin="0" Content="Start Marquee when this PC starts, before anyone signs in"/>
-                <TextBlock x:Name="AutoHint" Style="{StaticResource Hint}" Margin="31,6,0,0" Text="Marquee runs as you, without admin rights, and restarts by itself within two minutes if it stops."/>
+                <CheckBox x:Name="AutoOn" Margin="0" Content="Start Lilin when this PC starts, before anyone signs in"/>
+                <TextBlock x:Name="AutoHint" Style="{StaticResource Hint}" Margin="31,6,0,0" Text="Lilin runs as you, without admin rights, and restarts by itself within two minutes if it stops."/>
               </StackPanel>
             </Border>
             <StackPanel x:Name="WinPwBox">
               <TextBlock x:Name="WinPwLabel" Style="{StaticResource Label}" Text="Your Windows password"/>
               <PasswordBox x:Name="WinPw"/>
-              <TextBlock Style="{StaticResource Hint}" Text="Windows needs it to start Marquee while nobody is signed in. With a Microsoft account, use that account's password, not your PIN. It's handed straight to Task Scheduler and not saved by Marquee."/>
+              <TextBlock Style="{StaticResource Hint}" Text="Windows needs it to start Lilin while nobody is signed in. With a Microsoft account, use that account's password, not your PIN. It's handed straight to Task Scheduler and not saved by Lilin."/>
               <TextBlock x:Name="WinPwState" Style="{StaticResource Hint}"/>
               <TextBlock Style="{StaticResource Hint}" Margin="0,12,0,0" Foreground="{StaticResource Bulb}" Text="Windows asks for permission once (an admin prompt) when this step runs."/>
             </StackPanel>
@@ -743,13 +743,13 @@ function Find-Winget {
               <Grid>
                 <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                 <StackPanel VerticalAlignment="Center">
-                  <TextBlock Text="Open Marquee at" Style="{StaticResource Hint}" Margin="0"/>
+                  <TextBlock Text="Open Lilin at" Style="{StaticResource Hint}" Margin="0"/>
                   <TextBlock x:Name="DoneUrl" FontSize="19" FontWeight="SemiBold" Foreground="{StaticResource Bulb}" Margin="0,3,0,0"/>
                   <TextBlock x:Name="DoneUrlHint" Style="{StaticResource Hint}"/>
                 </StackPanel>
                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="16,0,0,0">
-                  <Button x:Name="OpenBtn" Style="{StaticResource Primary}" Content="Open Marquee"/>
-                  <Button x:Name="StartBtn" Style="{StaticResource Small}" Content="Start Marquee" Margin="0,8,0,0"/>
+                  <Button x:Name="OpenBtn" Style="{StaticResource Primary}" Content="Open Lilin"/>
+                  <Button x:Name="StartBtn" Style="{StaticResource Small}" Content="Start Lilin" Margin="0,8,0,0"/>
                 </StackPanel>
               </Grid>
             </Border>
@@ -761,7 +761,7 @@ function Find-Winget {
             </StackPanel>
             <StackPanel x:Name="OidcBox" Visibility="Collapsed">
               <TextBlock Style="{StaticResource Section}" Text="IN CLOUDFLARE ACCESS"/>
-              <TextBlock x:Name="OidcLead" Style="{StaticResource Hint}" FontSize="13" Text="Add Marquee as a login method, so people sign in with their Marquee password. It includes a secret: paste it only into Cloudflare. To see it again later, run node setup.js oidc in the Marquee folder."/>
+              <TextBlock x:Name="OidcLead" Style="{StaticResource Hint}" FontSize="13" Text="Add Lilin as a login method, so people sign in with their Lilin password. It includes a secret: paste it only into Cloudflare. To see it again later, run node setup.js oidc in the Lilin folder."/>
               <TextBox x:Name="OidcText" IsReadOnly="True" TextWrapping="Wrap" Height="Auto" Padding="10,8" FontFamily="Cascadia Mono, Consolas" FontSize="11.5" Margin="0,8,0,0"/>
               <Button x:Name="OidcCopy" Style="{StaticResource Small}" Content="Copy" HorizontalAlignment="Left" Margin="0,8,0,0"/>
             </StackPanel>
@@ -863,7 +863,7 @@ function Bullet-Row([string]$glyph, $brush, [string]$title, [string]$detail = ''
   $g
 }
 function Write-TempJson($obj) {
-  $f = Join-Path ([IO.Path]::GetTempPath()) ("marquee-setup-" + [guid]::NewGuid().ToString('N') + '.json')
+  $f = Join-Path ([IO.Path]::GetTempPath()) ("lilin-setup-" + [guid]::NewGuid().ToString('N') + '.json')
   [IO.File]::WriteAllText($f, ($obj | ConvertTo-Json -Depth 5 -Compress), (New-Object Text.UTF8Encoding $false))
   [void]$S.TempFiles.Add($f)
   $f
@@ -916,8 +916,8 @@ function Wizard-Json([string]$action, $answers, [scriptblock]$OnDone, [string]$i
 }
 # Calls $Then (with $Ctx) once $Until (with $Ctx) returns true; checked on every timer tick.
 function Wait-For([scriptblock]$Until, [scriptblock]$Then, $Ctx = @{}) { [void]$Waits.Add([pscustomobject]@{ Until = $Until; Then = $Then; Ctx = $Ctx }) }
-# Polls Marquee's /api/health until it answers or $seconds pass; $Then gets $true/$false.
-function Wait-Marquee([int]$seconds, [scriptblock]$Then) {
+# Polls Lilin's /api/health until it answers or $seconds pass; $Then gets $true/$false.
+function Wait-Lilin([int]$seconds, [scriptblock]$Then) {
   Wait-For -Ctx @{ Port = $U.Port.Text.Trim(); Deadline = (Get-Date).AddSeconds($seconds); Task = $null; Ok = $false; Then = $Then } -Until {
     param($ctx)
     if ($ctx.Task -and $ctx.Task.IsCompleted) {
@@ -999,37 +999,37 @@ function Update-Sidebar {
 # ---------------------------------------------------------------- pages: filling in
 $Titles = @{
   PWelcome = @('Welcome', '')
-  PInstall = @('Install Marquee', 'Marquee runs on Node.js. Setup downloads the release, checks it against its published checksum and unpacks it.')
+  PInstall = @('Install Lilin', 'Lilin runs on Node.js. Setup downloads the release, checks it against its published checksum and unpacks it.')
   PLibrary = @('Your library', 'Where your films and shows live.')
-  PNetwork = @('Network', 'How phones, TVs and other computers reach Marquee.')
-  PAccess = @('Sign-in and remote access', 'Your owner account, and whether Marquee should be reachable outside your home.')
-  PServices = @('Services', 'Optional, but they make Marquee much better. Paste a key, or leave a box empty to skip it.')
-  PClips = @('Game clips', 'An optional add-on: record your best moments and share them from Marquee.')
-  PStartup = @('Start at boot', 'Marquee is a server: it works best when it starts with the PC.')
+  PNetwork = @('Network', 'How phones, TVs and other computers reach Lilin.')
+  PAccess = @('Sign-in and remote access', 'Your owner account, and whether Lilin should be reachable outside your home.')
+  PServices = @('Services', 'Optional, but they make Lilin much better. Paste a key, or leave a box empty to skip it.')
+  PClips = @('Game clips', 'An optional add-on: record your best moments and share them from Lilin.')
+  PStartup = @('Start at boot', 'Lilin is a server: it works best when it starts with the PC.')
   PReview = @('Ready to install', 'Check your choices. Nothing has changed yet.')
-  PProgress = @('Setting up Marquee', 'This takes a minute or two. Larger downloads (Node.js, FFmpeg, Clipper) take longer.')
-  PDone = @('Marquee is ready', '')
+  PProgress = @('Setting up Lilin', 'This takes a minute or two. Larger downloads (Node.js, FFmpeg, Clipper) take longer.')
+  PDone = @('Lilin is ready', '')
 }
 
 function Fill-Welcome {
   $U.WelcomeList.Children.Clear()
   if ($Fresh) {
-    $U.WelcomeState.Text = 'Marquee will be installed on this PC'
+    $U.WelcomeState.Text = 'Lilin will be installed on this PC'
     $U.WelcomeStateHint.Text = 'A self-hosted media server for your films and shows: watch on phones, TVs and browsers, with downloads, subtitles and casting.'
     $items = @(
-      @('Install', 'Node.js if it''s missing, then the latest Marquee release.'),
+      @('Install', 'Node.js if it''s missing, then the latest Lilin release.'),
       @('Set up', 'Your library folder, network, sign-in and the services you use.'),
-      @('Game clips (optional)', 'Clipper records your games; clips land in Marquee.'),
-      @('Start at boot', 'So Marquee is always there, even before you sign in.'))
+      @('Game clips (optional)', 'Clipper records your games; clips land in Lilin.'),
+      @('Start at boot', 'So Lilin is always there, even before you sign in.'))
   } else {
     $v = if ($S.Info) { $S.Info.version } else { '' }
-    $U.WelcomeState.Text = "Marquee $v in $AppDir"
+    $U.WelcomeState.Text = "Lilin $v in $AppDir"
     $U.WelcomeStateHint.Text = if ($S.Info -and $S.Info.envExists) { 'Your current settings are filled in. Change what you like; everything else is kept as it is.' } else { 'Not set up yet. Setup fills in sensible defaults for this PC.' }
     $items = @(
       @('Settings', 'Library, network, sign-in and services.'),
       @('Game clips (optional)', 'Add Clipper, or point the Clips tab at a folder.'),
-      @('Start at boot', 'Register or refresh the Marquee task.'),
-      @('Restart', 'Marquee restarts at the end so the changes take effect.'))
+      @('Start at boot', 'Register or refresh the Lilin task.'),
+      @('Restart', 'Lilin restarts at the end so the changes take effect.'))
   }
   $n = 1
   foreach ($it in $items) { [void]$U.WelcomeList.Children.Add((Bullet-Row ([string]$n) $B.Bulb $it[0] $it[1])); $n++ }
@@ -1044,7 +1044,7 @@ function Fill-NodeState {
     $U.NodeState.Text = if ($S.Node) { "Node.js $($S.Node.Version) is too old" } else { 'Node.js is not installed' }
     $U.NodeState.Foreground = $B.Bulb
     $wg = Find-Winget
-    $U.NodeHint.Text = if ($wg) { 'Marquee needs Node.js 22.16 or later. Setup installs the current LTS for you (with winget) when you press Install.' } else { 'Marquee needs Node.js 22.16 or later. Install the LTS from nodejs.org, then press Install.' }
+    $U.NodeHint.Text = if ($wg) { 'Lilin needs Node.js 22.16 or later. Setup installs the current LTS for you (with winget) when you press Install.' } else { 'Lilin needs Node.js 22.16 or later. Install the LTS from nodejs.org, then press Install.' }
     $U.NodeBtn.Content = 'Open nodejs.org'
     $U.NodeBtn.Visibility = Vis (-not $wg)
   }
@@ -1054,14 +1054,14 @@ function Fill-InstallDirHint {
   $d = $U.InstallDir.Text.Trim()
   $U.InstallDirHint.Text = if (-not $d) { '' }
     elseif (Test-Path (Join-Path $d '.git')) { 'This is a git checkout: Setup uses it as it is (update it with git).' }
-    elseif (Test-Path (Join-Path $d 'package.json')) { try { "Marquee $(((Get-Content (Join-Path $d 'package.json') -Raw) | ConvertFrom-Json).version) is installed here: it's updated, and your settings and data are kept." } catch { 'An existing installation: updated in place, settings and data kept.' } }
+    elseif (Test-Path (Join-Path $d 'package.json')) { try { "Lilin $(((Get-Content (Join-Path $d 'package.json') -Raw) | ConvertFrom-Json).version) is installed here: it's updated, and your settings and data are kept." } catch { 'An existing installation: updated in place, settings and data kept.' } }
     else { 'A new folder for the program, its settings and (unless you pick another folder later) its database.' }
 }
 
 # Fills the setting pages from `wizard info`.
 function Fill-FromInfo {
   $i = $S.Info; $v = $i.values; $d = $i.defaults
-  $U.SideFoot.Text = "Marquee $($i.version)`n$($i.appDir)"
+  $U.SideFoot.Text = "Lilin $($i.version)`n$($i.appDir)"
   $U.MediaDir.Text = $d.MEDIA_DIR
   $U.DataDir.Text = $d.DATA_DIR
   $U.CacheDir.Text = [string]$d.CACHE_DIR
@@ -1071,7 +1071,7 @@ function Fill-FromInfo {
     $U.FfState.Text = "$(Glyph ok)  FFmpeg $($i.ffmpeg.version)"; $U.FfHint.Text = $i.ffmpeg.path; $U.FfInstall.Visibility = 'Collapsed'; $U.FfInstall.IsChecked = $false
   } else {
     $U.FfState.Text = 'FFmpeg is not installed'
-    $U.FfHint.Text = 'Marquee uses it to convert videos so every device can play them, for subtitle timing, previews and clip sharing. Without it those stay off.'
+    $U.FfHint.Text = 'Lilin uses it to convert videos so every device can play them, for subtitle timing, previews and clip sharing. Without it those stay off.'
     $wg = Find-Winget
     $U.FfInstall.Visibility = if ($wg) { 'Visible' } else { 'Collapsed' }; $U.FfInstall.IsChecked = [bool]$wg
     if (-not $wg) { $U.FfHint.Text += ' Install it from gyan.dev/ffmpeg and run Setup again.' }
@@ -1116,7 +1116,7 @@ function Fill-FromInfo {
   $U.ClipPin.Text = "Clipper is separate open-source software. Setup installs one reviewed version ($($i.clipper.commit.Substring(0, 12))) and checks the download against its hash first."
   # Startup
   $U.AutoOn.IsChecked = -not $i.autostart
-  $U.AutoOn.Content = if ($i.autostart) { 'Register the Marquee task again (it already starts at boot)' } else { 'Start Marquee when this PC starts, before anyone signs in' }
+  $U.AutoOn.Content = if ($i.autostart) { 'Register the Lilin task again (it already starts at boot)' } else { 'Start Lilin when this PC starts, before anyone signs in' }
   $U.WinPwLabel.Text = "Windows password for $env:USERNAME"
   Update-Visibility
 }
@@ -1125,7 +1125,7 @@ function Selected-Remote { foreach ($n in 'None', 'Tailscale', 'Cloudflare', 'Pr
 function Selected-Where { foreach ($n in 'Here', 'Windows', 'Linux', 'None') { if ($U["Where$n"].IsChecked) { return $n.ToLower() } }; 'here' }
 function Selected-Quality { if ($U.Quality.SelectedItem) { [string]$U.Quality.SelectedItem.Tag } else { 'balanced' } }
 function Vis([bool]$on) { if ($on) { 'Visible' } else { 'Collapsed' } }
-# Marquee as Cloudflare Access's sign-in: needs Cloudflare and a team domain (its callback lives there).
+# Lilin as Cloudflare Access's sign-in: needs Cloudflare and a team domain (its callback lives there).
 function Oidc-On { (Selected-Remote) -eq 'cloudflare' -and $U.CfTeam.Text.Trim() -ne '' -and [bool]$U.OidcOn.IsChecked }
 function Selected-Filter { if ($U.ContentFilter.SelectedItem) { [string]$U.ContentFilter.SelectedItem.Tag } else { 'on' } }
 
@@ -1135,7 +1135,7 @@ function Update-Visibility {
   $U.CfAudBox.Visibility = Vis ($U.CfTeam.Text.Trim() -ne '')
   $U.UrlBox.Visibility = Vis ($remote -in 'cloudflare', 'proxy')
   $hasLogin = $S.Info -and $S.Info.ownerHasLogin -and $S.Info.logins -contains $U.OwnerEmail.Text.Trim().ToLower()
-  $U.PwHint.Text = if ($hasLogin) { "$(Glyph ok)  You already have a Marquee password. Type a new one only to change it." }
+  $U.PwHint.Text = if ($hasLogin) { "$(Glyph ok)  You already have a Lilin password. Type a new one only to change it." }
     elseif (Oidc-On) { 'At least 10 characters. Needed: Cloudflare Access signs you in with this password.' }
     elseif ($remote -eq 'cloudflare') { 'Optional with Cloudflare Access (it signs people in). A password also lets you sign in at home.' }
     else { 'At least 10 characters. You sign in with it from outside your home, and at home if everyone signs in.' }
@@ -1164,7 +1164,7 @@ function Refresh-ClipPlan {
     $U.ClipInstalls.Children.Clear()
     $U.ClipInstallsTitle.Text = switch ($plan.where) { 'here' { 'Clipper will install on this PC' } 'none' { 'Setup will only create the folder' } default { 'On the gaming PC, Clipper installs' } }
     foreach ($l in @($plan.installs)) { if ($l) { $r = Bullet-Row (Glyph dot) $B.Dust $l; $r.Margin = '0,4,0,0'; $r.Tag.Title.FontSize = 13; [void]$U.ClipInstalls.Children.Add($r) } }
-    if ($plan.where -eq 'none') { [void]$U.ClipInstalls.Children.Add((New-Text "$($plan.clipsDir)\Kept, which Marquee's Clips tab shows." 'Hint')) }
+    if ($plan.where -eq 'none') { [void]$U.ClipInstalls.Children.Add((New-Text "$($plan.clipsDir)\Kept, which Lilin's Clips tab shows." 'Hint')) }
     if ($plan.share -and $U.SharePath.Tag -ne 'typed') { $U.SharePath.Text = $plan.share }
   }
 }
@@ -1176,7 +1176,7 @@ function Validate-Page([string]$key) {
   Set-Foot ''
   switch ($key) {
     'PInstall' {
-      if (-not $U.InstallDir.Text.Trim()) { return Field-Error 'Choose a folder for Marquee.' $U.InstallDir }
+      if (-not $U.InstallDir.Text.Trim()) { return Field-Error 'Choose a folder for Lilin.' $U.InstallDir }
       try { [IO.Path]::GetFullPath($U.InstallDir.Text.Trim()) | Out-Null } catch { return Field-Error 'That folder path isn''t valid.' $U.InstallDir }
     }
     'PLibrary' {
@@ -1207,8 +1207,8 @@ function Validate-Page([string]$key) {
         return Field-Error 'Everyone signs in (Network page), so set a password, or nobody can get in.' $U.OwnerPw
       }
       if ((Selected-Remote) -eq 'cloudflare' -and -not $e) { return Field-Error 'Cloudflare Access needs the owner''s email (as you sign in there).' $U.OwnerEmail }
-      if ((Oidc-On) -and -not $pw -and -not ($S.Info.logins -contains $e.ToLower())) { return Field-Error 'Access will sign people in with Marquee passwords: set yours, or you can''t get in from outside.' $U.OwnerPw }
-      if ((Oidc-On) -and -not $U.PublicUrl.Text.Trim()) { return Field-Error 'Signing in with Marquee passwords needs the public address.' $U.PublicUrl }
+      if ((Oidc-On) -and -not $pw -and -not ($S.Info.logins -contains $e.ToLower())) { return Field-Error 'Access will sign people in with Lilin passwords: set yours, or you can''t get in from outside.' $U.OwnerPw }
+      if ((Oidc-On) -and -not $U.PublicUrl.Text.Trim()) { return Field-Error 'Signing in with Lilin passwords needs the public address.' $U.PublicUrl }
       if ((Selected-Remote) -in 'cloudflare', 'proxy' -and $U.PublicUrl.Text.Trim() -and $U.PublicUrl.Text.Trim() -notmatch '^https?://') { return Field-Error 'The public address starts with https://' $U.PublicUrl }
     }
     'PServices' {
@@ -1224,7 +1224,7 @@ function Validate-Page([string]$key) {
     'PStartup' {
       if ($U.AutoOn.IsChecked) {
         if (-not $U.WinPw.Password) { return Field-Error 'Type your Windows password, or untick the box to skip this.' $U.WinPw }
-        $r = [MarqueeNative]::CheckPassword($env:USERNAME, $env:USERDOMAIN, $U.WinPw.Password)
+        $r = [LilinNative]::CheckPassword($env:USERNAME, $env:USERDOMAIN, $U.WinPw.Password)
         if ($r -eq 0 -and $S.NextConfirmed -ne 'PStartup') {
           $U.WinPwState.Text = "Windows didn't accept that password. Check it (not your PIN), or press Next again to use it anyway."
           $U.WinPwState.Foreground = $B.Alert
@@ -1258,7 +1258,7 @@ function Answers {
   if ($remote -eq 'cloudflare') {
     $a.CF_ACCESS_TEAM_DOMAIN = $U.CfTeam.Text.Trim()
     if ($U.CfAud.Password) { $a.CF_ACCESS_AUD = $U.CfAud.Password }
-    $a.accessSignIn = if (Oidc-On) { 'marquee' } else { 'access' }
+    $a.accessSignIn = if (Oidc-On) { 'lilin' } else { 'access' }
   }
   if ($remote -in 'cloudflare', 'proxy') { $a.PUBLIC_URL = $U.PublicUrl.Text.Trim() }
   if ($U.Tmdb.Password) { $a.TMDB_TOKEN = $U.Tmdb.Password.Trim() }
@@ -1292,7 +1292,7 @@ function Review-Row([string]$title, [string]$detail) {
 function Fill-Review {
   $U.ReviewList.Children.Clear()
   $a = Answers
-  if ($Fresh) { Review-Row 'Install' ("Marquee $(if ($Version) { $Version } else { '(latest release)' }) in $($U.InstallDir.Text.Trim())") }
+  if ($Fresh) { Review-Row 'Install' ("Lilin $(if ($Version) { $Version } else { '(latest release)' }) in $($U.InstallDir.Text.Trim())") }
   Review-Row 'Library' $a.MEDIA_DIR
   if ($a.DATA_DIR) { Review-Row 'Database' $a.DATA_DIR }
   if ($a.CACHE_DIR) { Review-Row 'Cache' $a.CACHE_DIR }
@@ -1300,7 +1300,7 @@ function Fill-Review {
   Review-Row 'Address' ("Port $($a.PORT), " + $(if ($a.HOST -eq '127.0.0.1') { 'this computer only' } else { 'whole home network' }) + ', ' + $(if ($a.HOME_NETWORK_ACCESS -eq 'signin') { 'everyone signs in' } else { 'no sign-in at home' }))
   $owner = if ($a.ADMIN_EMAILS) { ($a.ADMIN_EMAILS -split ',')[0] } else { 'none' }
   Review-Row 'Owner' ($owner + $(if ($U.OwnerPw.Password) { ', new password' } elseif ($S.Info.logins -contains $owner) { ', existing password' } else { '' }))
-  Review-Row 'Remote access' (@{ none = 'Home network only'; tailscale = 'Tailscale'; cloudflare = 'Cloudflare Tunnel and Access'; proxy = 'Your reverse proxy' }[$a.remoteAccess] + $(if ($a.PUBLIC_URL) { " ($($a.PUBLIC_URL))" } else { '' }) + $(if ($a.accessSignIn -eq 'marquee') { ', sign in with Marquee passwords' } else { '' }))
+  Review-Row 'Remote access' (@{ none = 'Home network only'; tailscale = 'Tailscale'; cloudflare = 'Cloudflare Tunnel and Access'; proxy = 'Your reverse proxy' }[$a.remoteAccess] + $(if ($a.PUBLIC_URL) { " ($($a.PUBLIC_URL))" } else { '' }) + $(if ($a.accessSignIn -eq 'lilin') { ', sign in with Lilin passwords' } else { '' }))
   $svc = @()
   if ($a.TMDB_TOKEN -or $U.Tmdb.Tag) { $svc += 'TMDB' }
   if ($a.OPENSUBTITLES_API_KEY -or $U.OpenSubs.Tag) { $svc += 'OpenSubtitles' }
@@ -1373,7 +1373,7 @@ function Build-Plan {
         param($code)
         Refresh-Path
         if ($code -eq 0 -or (Get-Command ffmpeg -ErrorAction SilentlyContinue)) { Step-Ok }
-        else { Step-Warn "winget exit code $code" 'Install FFmpeg (winget install Gyan.FFmpeg), then restart Marquee' }
+        else { Step-Warn "winget exit code $code" 'Install FFmpeg (winget install Gyan.FFmpeg), then restart Lilin' }
       }
     }
   }
@@ -1398,7 +1398,7 @@ function Build-Plan {
   }
   if ($U.OwnerPw.Password) {
     Add-Step 'owner' "Set the password for $($U.OwnerEmail.Text.Trim().ToLower())" {
-      Proc-Step $S.Node.Path @((Setup-Js), 'user', 'add', $U.OwnerEmail.Text.Trim().ToLower()) -Env @{ MARQUEE_PASSWORD = $U.OwnerPw.Password }
+      Proc-Step $S.Node.Path @((Setup-Js), 'user', 'add', $U.OwnerEmail.Text.Trim().ToLower()) -Env @{ LILIN_PASSWORD = $U.OwnerPw.Password }
     }
   }
   if ($clips) {
@@ -1410,46 +1410,46 @@ function Build-Plan {
       Proc-Step $S.Node.Path @((Setup-Js), 'clipper', '--config', $f, '--allow-install') -Ctx @{ File = $f } -Then {
         param($code, $out, $err, $ctx)
         Remove-Temp $ctx.File
-        if ($code -eq 0) { Step-Ok } else { Step-Warn 'Clipper''s installer failed (see details)' 'Install Clipper again: run Marquee Setup, Game clips' }
+        if ($code -eq 0) { Step-Ok } else { Step-Warn 'Clipper''s installer failed (see details)' 'Install Clipper again: run Lilin Setup, Game clips' }
       }
     }
   }
   $share = $clips -and $where -in 'windows', 'linux' -and $U.ShareMake.IsChecked
   if ($U.AutoOn.IsChecked -or $share) {
-    $label = if ($U.AutoOn.IsChecked -and $share) { 'Start at boot and share the clips folder' } elseif ($share) { 'Share the clips folder' } else { 'Start Marquee at boot' }
+    $label = if ($U.AutoOn.IsChecked -and $share) { 'Start at boot and share the clips folder' } elseif ($share) { 'Share the clips folder' } else { 'Start Lilin at boot' }
     Add-Step 'elevated' $label { Run-Elevated }
   }
   if (-not $U.AutoOn.IsChecked -and $S.Info.autostart) {
-    Add-Step 'restart' 'Restart Marquee' {
+    Add-Step 'restart' 'Restart Lilin' {
       Proc-Step $S.Node.Path @((Setup-Js), 'service', 'restart') -Then {
-        param($code) if ($code -eq 0) { Step-Ok } else { Step-Warn 'restart failed' 'Restart Marquee: Start menu, Marquee Setup, or restart the PC' }
+        param($code) if ($code -eq 0) { Step-Ok } else { Step-Warn 'restart failed' 'Restart Lilin: Start menu, Lilin Setup, or restart the PC' }
       }
     }
   }
   if ($U.AutoOn.IsChecked -or $S.Info.autostart) {
-    Add-Step 'health' 'Wait for Marquee to answer' {
-      Wait-Marquee 60 {
+    Add-Step 'health' 'Wait for Lilin to answer' {
+      Wait-Lilin 60 {
         param($ok)
-        if ($ok) { Step-Ok 'running' } else { Step-Warn 'no answer yet' "Marquee didn't answer within a minute: see $($S.Info.appDir)\logs\marquee.log" }
+        if ($ok) { Step-Ok 'running' } else { Step-Warn 'no answer yet' "Lilin didn't answer within a minute: see $($S.Info.appDir)\logs\lilin.log" }
       }
     }
   }
-  if (-not $TestRun) { Add-Step 'shortcut' 'Add Marquee to the Start menu' { Make-Shortcuts; Step-Ok } }
+  if (-not $TestRun) { Add-Step 'shortcut' 'Add Lilin to the Start menu' { Make-Shortcuts; Step-Ok } }
 }
 
 # One admin prompt for the steps that need it: registering the task and sharing the clips folder.
 function Run-Elevated {
-  $log = Join-Path ([IO.Path]::GetTempPath()) ("marquee-setup-admin-" + [guid]::NewGuid().ToString('N') + '.log')
+  $log = Join-Path ([IO.Path]::GetTempPath()) ("lilin-setup-admin-" + [guid]::NewGuid().ToString('N') + '.log')
   $q = { param($st) "'" + ($st -replace "'", "''") + "'" }
   $lines = @('$ErrorActionPreference = ''Stop''', "`$log = $(& $q $log)", 'function L($m) { Add-Content -LiteralPath $log -Value $m -Encoding UTF8 }', 'try {')
   $cred = $null
   if ($U.AutoOn.IsChecked) {
-    $cred = Join-Path ([IO.Path]::GetTempPath()) ("marquee-setup-" + [guid]::NewGuid().ToString('N') + '.key')
+    $cred = Join-Path ([IO.Path]::GetTempPath()) ("lilin-setup-" + [guid]::NewGuid().ToString('N') + '.key')
     $U.WinPw.SecurePassword | ConvertFrom-SecureString | Set-Content -LiteralPath $cred -Encoding ASCII
     [void]$S.TempFiles.Add($cred)
     $svc = Join-Path $S.Info.appDir 'scripts\windows\install-service.ps1'
     $lines += "  & $(& $q $svc) -CredentialFile $(& $q $cred) *>&1 | ForEach-Object { L ([string]`$_) }"
-    $lines += '  if (-not (Get-ScheduledTask -TaskName ''Marquee'' -ErrorAction SilentlyContinue)) { throw ''The Marquee task was not registered'' }'
+    $lines += '  if (-not (Get-ScheduledTask -TaskName ''Lilin'' -ErrorAction SilentlyContinue)) { throw ''The Lilin task was not registered'' }'
   }
   if ($U.ClipsOn.IsChecked -and (Selected-Where) -in 'windows', 'linux' -and $U.ShareMake.IsChecked) {
     $dir = $U.ClipsDir.Text.Trim()
@@ -1459,14 +1459,14 @@ function Run-Elevated {
     $lines += "  if (Get-SmbShare -Name $(& $q $name) -ErrorAction SilentlyContinue) { L $(& $q "The share $name already exists; left as it is") }"
     $lines += "  else { New-SmbShare -Name $(& $q $name) -Path $(& $q $dir) -ChangeAccess $(& $q $who) | Out-Null; L $(& $q "Shared $dir as \\$env:COMPUTERNAME\$name (change access: $who)") }"
   }
-  $lines += "  L 'MARQUEE-SETUP-OK'", '} catch { L ("ERROR: " + $_.Exception.Message) }'
+  $lines += "  L 'LILIN-SETUP-OK'", '} catch { L ("ERROR: " + $_.Exception.Message) }'
   $enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes(($lines -join "`n")))
   Add-Log '  Waiting for the Windows admin prompt...'
   try {
     $p = Start-Process powershell.exe -Verb RunAs -WindowStyle Hidden -PassThru -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $enc
   } catch {
     Remove-Temp $cred
-    Step-Warn 'not done: the admin prompt was declined' 'Start at boot: run Marquee Setup again and accept the admin prompt'
+    Step-Warn 'not done: the admin prompt was declined' 'Start at boot: run Lilin Setup again and accept the admin prompt'
     return
   }
   Wait-For -Ctx @{ P = $p; Log = $log; Cred = $cred } -Until { param($ctx) $ctx.P.HasExited } -Then {
@@ -1474,8 +1474,8 @@ function Run-Elevated {
     Remove-Temp $ctx.Cred
     $text = if (Test-Path $ctx.Log) { Get-Content -LiteralPath $ctx.Log -Raw -Encoding UTF8 } else { '' }
     Remove-Item -LiteralPath $ctx.Log -Force -ErrorAction SilentlyContinue
-    foreach ($l in ($text -split "`r?`n")) { if ($l -and $l -ne 'MARQUEE-SETUP-OK') { Add-Log "  $l" } }
-    if ($text -match 'MARQUEE-SETUP-OK') { Step-Ok }
+    foreach ($l in ($text -split "`r?`n")) { if ($l -and $l -ne 'LILIN-SETUP-OK') { Add-Log "  $l" } }
+    if ($text -match 'LILIN-SETUP-OK') { Step-Ok }
     elseif ($text -match 'ERROR: (.+)') { Fail-Step $Matches[1].Trim() }
     else { Fail-Step 'the admin step ended without a result' }
   }
@@ -1483,12 +1483,12 @@ function Run-Elevated {
 
 function Make-Shortcuts {
   try {
-    $menu = Join-Path ([Environment]::GetFolderPath('Programs')) 'Marquee'
+    $menu = Join-Path ([Environment]::GetFolderPath('Programs')) 'Lilin'
     New-Item -ItemType Directory -Force $menu | Out-Null
     $sh = New-Object -ComObject WScript.Shell
-    $exe = Join-Path $S.Info.appDir 'MarqueeSetup.exe'
+    $exe = Join-Path $S.Info.appDir 'LilinSetup.exe'
     if ($LauncherPath -and (Test-Path $LauncherPath) -and ([IO.Path]::GetFullPath($LauncherPath) -ne [IO.Path]::GetFullPath($exe))) { Copy-Item -LiteralPath $LauncherPath $exe -Force }
-    $lnk = $sh.CreateShortcut((Join-Path $menu 'Marquee Setup.lnk'))
+    $lnk = $sh.CreateShortcut((Join-Path $menu 'Lilin Setup.lnk'))
     if (Test-Path $exe) { $lnk.TargetPath = $exe; $lnk.Arguments = '' }
     else {
       $lnk.TargetPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
@@ -1496,15 +1496,15 @@ function Make-Shortcuts {
       $lnk.WindowStyle = 7
     }
     $lnk.WorkingDirectory = $S.Info.appDir
-    $lnk.Description = 'Change Marquee''s settings, add game clips, update'
+    $lnk.Description = 'Change Lilin''s settings, add game clips, update'
     $lnk.Save()
-    $url = Join-Path $menu 'Marquee.url'
-    [IO.File]::WriteAllText($url, "[InternetShortcut]`r`nURL=$(Marquee-Url -local)`r`n")
+    $url = Join-Path $menu 'Lilin.url'
+    [IO.File]::WriteAllText($url, "[InternetShortcut]`r`nURL=$(Lilin-Url -local)`r`n")
     Add-Log "  Start menu: $menu"
   } catch { Add-Log "  Couldn't add Start menu entries: $($_.Exception.Message)" }
 }
 
-function Marquee-Url([switch]$local) {
+function Lilin-Url([switch]$local) {
   $port = $U.Port.Text.Trim()
   if ($local -or $U.HostLocal.IsChecked) { return "http://localhost:$port" }
   $lan = @($S.Info.lan)[0]
@@ -1516,7 +1516,7 @@ function Start-Run {
   $U.Log.Clear(); $U.ProgressList.Children.Clear(); $Run.Rows = @{}
   Build-Plan
   foreach ($st in $Run.Steps) { $r = Bullet-Row (Glyph dot) $B.Line $st.Label; $Run.Rows[$st.Id] = $r; [void]$U.ProgressList.Children.Add($r); Set-Row $st 'wait' }
-  Add-Log "Marquee Setup, $(Get-Date -Format 'yyyy-MM-dd HH:mm'), $($S.Info.appDir)"
+  Add-Log "Lilin Setup, $(Get-Date -Format 'yyyy-MM-dd HH:mm'), $($S.Info.appDir)"
   Update-Buttons
   Next-Step
 }
@@ -1524,7 +1524,7 @@ function Start-Run {
 function Finish-Run {
   $S.Busy = $false
   $U.ProgressBar.Value = 100
-  $S.Url = Marquee-Url
+  $S.Url = Lilin-Url
   Show-Page (Page-Index 'PDone')
   if ($TestRun) { End-TestRun 0 }
 }
@@ -1554,17 +1554,17 @@ function Fill-Done {
   }
   $owner = $U.OwnerEmail.Text.Trim().ToLower()
   if ($owner -and -not $U.OwnerPw.Password -and -not ($S.Info.logins -contains $owner) -and ((Selected-Remote) -ne 'cloudflare' -or (Oidc-On))) {
-    [void]$S.Todo.Add("Give $owner a password so you can sign in: run Marquee Setup again (Sign-in page)")
+    [void]$S.Todo.Add("Give $owner a password so you can sign in: run Lilin Setup again (Sign-in page)")
   }
-  if ((Selected-Remote) -eq 'cloudflare') { [void]$S.Todo.Add('Finish Cloudflare Tunnel and Access: docs\remote-access.md in the Marquee folder') }
+  if ((Selected-Remote) -eq 'cloudflare') { [void]$S.Todo.Add('Finish Cloudflare Tunnel and Access: docs\remote-access.md in the Lilin folder') }
   if ((Selected-Remote) -eq 'tailscale') { [void]$S.Todo.Add("Install Tailscale on this PC and your devices, then open http://$($env:COMPUTERNAME.ToLower()):$($U.Port.Text.Trim())") }
-  if ((Selected-Remote) -eq 'proxy') { [void]$S.Todo.Add('Point your reverse proxy at this PC: docs\remote-access.md in the Marquee folder') }
+  if ((Selected-Remote) -eq 'proxy') { [void]$S.Todo.Add('Point your reverse proxy at this PC: docs\remote-access.md in the Lilin folder') }
   $U.OidcBox.Visibility = 'Collapsed'
   if ((Oidc-On) -and -not $Screenshot) {
     Wizard-Json 'oidc' $null {
       param($m, $err)
       if ($m -and $m.ready) { $U.OidcText.Text = (@($m.lines) -join "`r`n"); $U.OidcBox.Visibility = 'Visible' }
-      elseif ($m) { [void]$U.TodoList.Children.Add((Bullet-Row (Glyph dot) $B.Bulb "Marquee sign-in for Access is missing $(@($m.missing) -join ', '): run Marquee Setup again")); $U.TodoBox.Visibility = 'Visible' }
+      elseif ($m) { [void]$U.TodoList.Children.Add((Bullet-Row (Glyph dot) $B.Bulb "Lilin sign-in for Access is missing $(@($m.missing) -join ', '): run Lilin Setup again")); $U.TodoBox.Visibility = 'Visible' }
     }
   }
   $U.TodoList.Children.Clear()
@@ -1602,8 +1602,8 @@ function Get-LatestRelease {
   # Tag of the newest GitHub release (e.g. v1.3.0), or $null when offline / rate-limited.
   try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-    $req = [Net.HttpWebRequest]::Create('https://api.github.com/repos/Tjabooo/marquee/releases/latest')
-    $req.UserAgent = 'MarqueeSetup'; $req.Accept = 'application/vnd.github+json'; $req.Timeout = 10000
+    $req = [Net.HttpWebRequest]::Create('https://api.github.com/repos/Tjabooo/lilin/releases/latest')
+    $req.UserAgent = 'LilinSetup'; $req.Accept = 'application/vnd.github+json'; $req.Timeout = 10000
     $res = $req.GetResponse()
     try { $body = (New-Object IO.StreamReader $res.GetResponseStream()).ReadToEnd() } finally { $res.Close() }
     $t = ($body | ConvertFrom-Json).tag_name
@@ -1614,21 +1614,21 @@ function Get-LatestRelease {
 function Install-Release {
   $dir = [IO.Path]::GetFullPath($U.InstallDir.Text.Trim())
   if ($S.SkipDownload -or (Test-Path (Join-Path $dir '.git'))) { Load-App $dir; return }
-  # Always the newest release (unless -Version pins one), even from an older MarqueeSetup.exe:
+  # Always the newest release (unless -Version pins one), even from an older LilinSetup.exe:
   # look it up now, and use that release's install.ps1. Offline lookups fall back to the bundled one.
   $tag = if ($Version) { $Version } else { Get-LatestRelease }
   if (-not $tag) { $tag = $BundledVersion }
   $inst = if ($InstallScript -and (Test-Path $InstallScript) -and (-not $tag -or $tag -eq $BundledVersion)) { $InstallScript } else { $null }
   if (-not $inst) {
-    $inst = Join-Path ([IO.Path]::GetTempPath()) ("marquee-install-" + [guid]::NewGuid().ToString('N') + '.ps1')
+    $inst = Join-Path ([IO.Path]::GetTempPath()) ("lilin-install-" + [guid]::NewGuid().ToString('N') + '.ps1')
     $ref = if ($tag) { $tag } else { 'master' }
-    try { (New-Object Net.WebClient).DownloadFile("https://raw.githubusercontent.com/Tjabooo/marquee/$ref/install.ps1", $inst); [void]$S.TempFiles.Add($inst) }
+    try { (New-Object Net.WebClient).DownloadFile("https://raw.githubusercontent.com/Tjabooo/lilin/$ref/install.ps1", $inst); [void]$S.TempFiles.Add($inst) }
     catch {
       if ($InstallScript -and (Test-Path $InstallScript)) { $inst = $InstallScript }
       else { Install-Failed "Couldn't download the installer: $($_.Exception.Message)"; return }
     }
   }
-  $U.InstallProgressText.Text = "Downloading Marquee $(if ($tag) { $tag } else { '(latest release)' })..."; $U.InstallProgressText.Foreground = $B.Paper
+  $U.InstallProgressText.Text = "Downloading Lilin $(if ($tag) { $tag } else { '(latest release)' })..."; $U.InstallProgressText.Foreground = $B.Paper
   $iargs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $inst, '-Dir', $dir, '-NoSetup')
   if ($tag) { $iargs += @('-Version', $tag) }
   Start-Proc -File 'powershell.exe' -Arguments $iargs -Ctx @{ Dir = $dir } -OnLine { param($l) if ($l.Trim()) { $U.InstallProgressLine.Text = $l.Trim(); Add-Log $l } } -OnExit {
@@ -1651,7 +1651,7 @@ function Load-App([string]$dir) {
     $S.Info = $info; $S.InstallDone = $true
     Fill-FromInfo
     $U.InstallBar.IsIndeterminate = $false; $U.InstallBar.Value = 100
-    $U.InstallProgressText.Text = "$(Glyph ok)  Marquee $($info.version) is installed in $($info.appDir)"
+    $U.InstallProgressText.Text = "$(Glyph ok)  Lilin $($info.version) is installed in $($info.appDir)"
     $U.InstallProgressLine.Text = ''
     $S.Busy = $false
     Show-Page ($S.Page + 1)
@@ -1690,8 +1690,8 @@ function Show-Page([int]$i) {
     'PReview' { Fill-Review }
     'PDone' { Fill-Done }
   }
-  if ($key -eq 'PWelcome' -and -not $Fresh -and $S.Info) { $U.PageTitle.Text = 'Marquee Setup' }
-  if ($key -eq 'PDone' -and -not $Fresh) { $U.PageTitle.Text = $(if ($S.Info.envExists) { 'Changes saved' } else { 'Marquee is ready' }) }
+  if ($key -eq 'PWelcome' -and -not $Fresh -and $S.Info) { $U.PageTitle.Text = 'Lilin Setup' }
+  if ($key -eq 'PDone' -and -not $Fresh) { $U.PageTitle.Text = $(if ($S.Info.envExists) { 'Changes saved' } else { 'Lilin is ready' }) }
   $U.PageLead.Visibility = Vis ([bool]$U.PageLead.Text)
   $U.Scroll.ScrollToTop()
   Set-Foot ''
@@ -1758,7 +1758,7 @@ function Pick-Folder($box, [string]$title) {
   $h = (New-Object Windows.Interop.WindowInteropHelper $Win).Handle
   $start = $box.Text.Trim()
   while ($start -and -not (Test-Path $start)) { $start = Split-Path $start -Parent }
-  $p = [MarqueeNative]::PickFolder($h, $title, $start)
+  $p = [LilinNative]::PickFolder($h, $title, $start)
   if ($p) { $box.Text = $p }
 }
 
@@ -1767,11 +1767,11 @@ $U.NextBtn.add_Click({ Go-Next })
 $U.BackBtn.add_Click({ Go-Back })
 $U.CancelBtn.add_Click({ $Win.Close() })
 $U.NodeBtn.add_Click({ Open-Url 'https://nodejs.org/en/download' })
-$U.InstallDirBtn.add_Click({ Pick-Folder $U.InstallDir 'Where to install Marquee'; Fill-InstallDirHint })
+$U.InstallDirBtn.add_Click({ Pick-Folder $U.InstallDir 'Where to install Lilin'; Fill-InstallDirHint })
 $U.InstallDir.add_TextChanged({ Fill-InstallDirHint })
 $U.MediaDirBtn.add_Click({ Pick-Folder $U.MediaDir 'Folder with your films and shows' })
-$U.DataDirBtn.add_Click({ Pick-Folder $U.DataDir 'Folder for Marquee''s database' })
-$U.CacheDirBtn.add_Click({ Pick-Folder $U.CacheDir 'Folder for Marquee''s cache' })
+$U.DataDirBtn.add_Click({ Pick-Folder $U.DataDir 'Folder for Lilin''s database' })
+$U.CacheDirBtn.add_Click({ Pick-Folder $U.CacheDir 'Folder for Lilin''s cache' })
 $U.ClipsDirBtn.add_Click({ Pick-Folder $U.ClipsDir 'Folder for game clips'; Refresh-ClipPlan })
 $U.MediaDir.add_LostFocus({ if ($S.Info -and -not $S.Info.values.CLIPS_DIR -and $U.MediaDir.Text.Trim()) { try { $U.ClipsDir.Text = Join-Path (Split-Path ([IO.Path]::GetFullPath($U.MediaDir.Text.Trim())) -Parent) 'Clips' } catch { } } })
 $U.Port.add_LostFocus({ Check-Port })
@@ -1790,19 +1790,19 @@ $U.WinPw.add_PasswordChanged({ $U.WinPwState.Text = ''; $S.NextConfirmed = $null
 foreach ($n in 'TmdbLink', 'OsLink', 'ClipLink') { $U[$n].add_RequestNavigate({ param($st, $e) Open-Url $e.Uri.AbsoluteUri }) }
 $U.OpenBtn.add_Click({ Open-Url $S.Url })
 $U.StartBtn.add_Click({
-  $cmd = Join-Path $S.Info.appDir 'start-marquee.cmd'
+  $cmd = Join-Path $S.Info.appDir 'start-lilin.cmd'
   Start-Process cmd.exe -ArgumentList '/c', "`"$cmd`"" -WorkingDirectory $S.Info.appDir -WindowStyle Hidden
   $U.StartBtn.IsEnabled = $false; $U.StartBtn.Content = 'Starting...'
-  Wait-Marquee 30 {
+  Wait-Lilin 30 {
     param($ok)
     if ($ok) { $U.StartBtn.Content = "$(Glyph ok)  Running"; $U.PageLead.Text = 'It''s running. Here''s how to open it.' }
-    else { $U.StartBtn.Content = 'Start Marquee'; $U.StartBtn.IsEnabled = $true; Set-Foot "It didn't answer: see $($S.Info.appDir)\logs\marquee.log" }
+    else { $U.StartBtn.Content = 'Start Lilin'; $U.StartBtn.IsEnabled = $true; Set-Foot "It didn't answer: see $($S.Info.appDir)\logs\lilin.log" }
   }
 })
 $U.CopyBtn.add_Click({ [Windows.Clipboard]::SetText($U.RemoteCmd.Text); $U.CopyBtn.Content = "$(Glyph ok)  Copied" })
 $U.OidcCopy.add_Click({ [Windows.Clipboard]::SetText($U.OidcText.Text); $U.OidcCopy.Content = "$(Glyph ok)  Copied" })
 $U.LogBtn.add_Click({
-  $f = Join-Path ([IO.Path]::GetTempPath()) 'marquee-setup.log'
+  $f = Join-Path ([IO.Path]::GetTempPath()) 'lilin-setup.log'
   [IO.File]::WriteAllText($f, $S.Log.ToString(), (New-Object Text.UTF8Encoding $false))
   Start-Process notepad.exe $f
 })
@@ -1818,7 +1818,7 @@ $Win.Dispatcher.add_UnhandledException({
 $wa = [Windows.SystemParameters]::WorkArea
 if ($wa.Width -lt $Win.Width + 20) { $Win.Width = [math]::Max($Win.MinWidth, $wa.Width - 20) }
 if ($wa.Height -lt $Win.Height + 20) { $Win.Height = [math]::Max($Win.MinHeight, $wa.Height - 20) }
-# Marquee's icon in the title bar and taskbar, from the launcher exe or the installation.
+# Lilin's icon in the title bar and taskbar, from the launcher exe or the installation.
 try {
   $png = if ($AppDir) { Join-Path $AppDir 'public\icon-192.png' } else { $null }
   if ($png -and (Test-Path $png)) { $Win.Icon = [Windows.Media.Imaging.BitmapFrame]::Create([uri]$png) }
@@ -1829,12 +1829,12 @@ try {
   }
 } catch { }
 $Win.add_SourceInitialized({
-  try { [MarqueeNative]::DarkTitle((New-Object Windows.Interop.WindowInteropHelper $Win).Handle, 0x19101F) } catch { }
+  try { [LilinNative]::DarkTitle((New-Object Windows.Interop.WindowInteropHelper $Win).Handle, 0x19101F) } catch { }
 })
 $Win.add_Closing({
   param($st, $e)
   if ($S.Busy -and $Pages[$S.Page].Key -eq 'PProgress') {
-    $r = [Windows.MessageBox]::Show($Win, 'Setup is still working. Stop it anyway? A half-finished step can be repeated by running Setup again.', 'Marquee Setup', 'YesNo', 'Warning')
+    $r = [Windows.MessageBox]::Show($Win, 'Setup is still working. Stop it anyway? A half-finished step can be repeated by running Setup again.', 'Lilin Setup', 'YesNo', 'Warning')
     if ($r -ne 'Yes') { $e.Cancel = $true; return }
   }
   foreach ($j in @($Jobs)) { try { if (-not $j.P.HasExited) { $j.P.Kill() } } catch { } }
@@ -1876,7 +1876,7 @@ if ($SelfTest -or $Screenshot) {
   $missing = @($U.Keys | Where-Object { $null -eq $U[$_] })
   if ($missing) { Write-Output "Missing elements: $($missing -join ', ')"; exit 1 }
   $S.Node = [pscustomobject]@{ Path = 'node.exe'; Version = [version]'22.22.0'; Ok = $true }
-  $sample = '{"version":"1.1.0","appDir":"C:\\Users\\you\\marquee","envFile":"C:\\Users\\you\\marquee\\.env","envExists":false,"freshInstall":true,"lan":["192.168.1.20"],
+  $sample = '{"version":"1.1.0","appDir":"C:\\Users\\you\\lilin","envFile":"C:\\Users\\you\\lilin\\.env","envExists":false,"freshInstall":true,"lan":["192.168.1.20"],
     "values":{},"secrets":{"TMDB_TOKEN":true},"defaults":{"MEDIA_DIR":"D:\\Media","DATA_DIR":"","PORT":"8080","HOST":"0.0.0.0","HOME_NETWORK_ACCESS":"shared","remoteAccess":"none","CLIPS_DIR":"D:\\Clips"},
     "running":null,"portFree":true,"ffmpeg":null,"winget":true,"logins":[],"ownerHasLogin":false,"autostart":false,
     "clipper":{"commit":"30cd2d10cf18a9bac18d5439512407eb276273d9","source":"https://github.com/Tjabooo/clipper","installs":{},"installedHere":false,
@@ -1908,17 +1908,17 @@ if ($SelfTest -or $Screenshot) {
       Show-Page $i; Build-Plan
       foreach ($st in $Run.Steps) { $row = Bullet-Row (Glyph dot) $B.Line $st.Label; $Run.Rows[$st.Id] = $row; [void]$U.ProgressList.Children.Add($row); Set-Row $st 'wait' }
       Set-Row $Run.Steps[0] 'ok'; Set-Row $Run.Steps[1] 'run'; $U.ProgressBar.Value = 35
-      Add-Log 'Marquee setup'; Add-Log "$([char]0x2713) Windows (10.0.26100) x64, Node.js 22.22.0"; Add-Log 'Creating C:\Users\you\marquee\.env:'
+      Add-Log 'Lilin setup'; Add-Log "$([char]0x2713) Windows (10.0.26100) x64, Node.js 22.22.0"; Add-Log 'Creating C:\Users\you\lilin\.env:'
     } elseif ($key -eq 'PDone') {
       $S.Url = 'http://192.168.1.20:8080'; $S.Running = $true
       $S.ClipPlan = [pscustomobject]@{ where = 'windows'; share = '\\GAMEBOX\Clips'; remoteCommand = '$f = "$env:TEMP\clipper-install.ps1"; irm https://raw.githubusercontent.com/Tjabooo/clipper/30cd2d1/install.ps1 -OutFile $f; ...'; shareLines = @() }
       $U.WhereWindows.IsChecked = $true; $U.ShareMake.IsChecked = $true
       [void]$S.Todo.Add('Finish Cloudflare Tunnel and Access: docs\remote-access.md')
       Show-Page $i
-      $U.OidcText.Text = "Cloudflare Zero Trust, Settings, Authentication, Login methods, Add new, OpenID Connect:`r`n  App ID:           cloudflare`r`n  Client secret:    (sample)`r`n  Auth URL:         https://marquee.example.com/c/oidc/authorize"
+      $U.OidcText.Text = "Cloudflare Zero Trust, Settings, Authentication, Login methods, Add new, OpenID Connect:`r`n  App ID:           cloudflare`r`n  Client secret:    (sample)`r`n  Auth URL:         https://lilin.example.com/c/oidc/authorize"
       $U.OidcBox.Visibility = 'Visible'
     } else { Show-Page $i }
-    if ($key -eq 'PInstall') { $U.NodeState.Text = 'Node.js is not installed'; $U.NodeState.Foreground = $B.Bulb; $U.NodeHint.Text = 'Marquee needs Node.js 22.16 or later. Setup installs the current LTS for you (with winget) when you press Install.'; $U.NodeBtn.Visibility = 'Collapsed' }
+    if ($key -eq 'PInstall') { $U.NodeState.Text = 'Node.js is not installed'; $U.NodeState.Foreground = $B.Bulb; $U.NodeHint.Text = 'Lilin needs Node.js 22.16 or later. Setup installs the current LTS for you (with winget) when you press Install.'; $U.NodeBtn.Visibility = 'Collapsed' }
     if ($key -eq 'PNetwork') { $U.PortState.Text = "$(Glyph ok)  free"; $U.PortState.Foreground = $B.Good }
     & $render ("{0:D2}-{1}" -f $i, $key.Substring(1).ToLower())
   }

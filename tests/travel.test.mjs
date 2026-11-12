@@ -10,7 +10,7 @@ import {
 import { travelTitle, sizeWords, stateWords, travelSummary, travelOrder } from '../public/travel.js';
 import { topicFor } from '../src/live.js';
 
-const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'marquee-travel-'));
+const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'lilin-travel-'));
 const hasFfmpeg = (() => { try { execFileSync(process.env.FFMPEG || 'ffmpeg', ['-hide_banner', '-version'], { stdio: 'ignore' }); return true; } catch { return false; } })();
 
 test('size estimates follow the bitrates', () => {

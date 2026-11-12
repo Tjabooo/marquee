@@ -66,7 +66,7 @@ const parse = (s) => { try { return s ? JSON.parse(s) : null; } catch { return n
 
 export class WatchlistStore {
   constructor(dataDir) {
-    this.db = new DatabaseSync(path.join(dataDir, '.marquee.db'));
+    this.db = new DatabaseSync(path.join(dataDir, '.lilin.db'));
     this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;
       CREATE TABLE IF NOT EXISTS watchlist (
         user_id INTEGER NOT NULL, type TEXT NOT NULL, tmdb_id INTEGER NOT NULL,

@@ -1,25 +1,25 @@
 # Jellyfin
 
-People who run their own [Jellyfin](https://jellyfin.org) can watch their Marquee library in it with the
-[Marquee plugin for Jellyfin](https://github.com/Tjabooo/jellyfin-plugin-marquee). Their films and shows
+People who run their own [Jellyfin](https://jellyfin.org) can watch their Lilin library in it with the
+[Lilin plugin for Jellyfin](https://github.com/Tjabooo/jellyfin-plugin-lilin). Their films and shows
 become normal Jellyfin libraries, so every Jellyfin app (TVs, phones, Kodi, the web) can play them. The
-video streams from the Marquee server; their own Jellyfin server converts it if a device needs that.
+video streams from the Lilin server; their own Jellyfin server converts it if a device needs that.
 
 ## Connecting a Jellyfin server
 
 1. In Jellyfin: **Dashboard → Plugins → Repositories**, add
-   `https://raw.githubusercontent.com/Tjabooo/jellyfin-plugin-marquee/main/manifest.json`, install
-   **Marquee** from the Catalog and restart Jellyfin.
-2. **Dashboard → Plugins → Marquee**: enter the address they open Marquee at (the `PUBLIC_URL`, or the
+   `https://raw.githubusercontent.com/Tjabooo/jellyfin-plugin-lilin/main/manifest.json`, install
+   **Lilin** from the Catalog and restart Jellyfin.
+2. **Dashboard → Plugins → Lilin**: enter the address they open Lilin at (the `PUBLIC_URL`, or the
    home-network address when the Jellyfin server is in the same house) and press **Get a code**.
-3. In Marquee: **Settings → Jellyfin**, enter the code.
+3. In Lilin: **Settings → Jellyfin**, enter the code.
 
 The plugin syncs straight away and then every 15 minutes. **Settings → Jellyfin** lists the connected
 servers with when each last synced; **Disconnect** cuts one off. Up to ten servers per person.
 
 ## What the Jellyfin server gets
 
-- The person's library as Marquee shows it (shared libraries included), but not titles still converting.
+- The person's library as Lilin shows it (shared libraries included), but not titles still converting.
 - One link per video, signed for that video and that connection. A leaked `.strm` file opens one video;
   it can't list the library or reach anything else.
 - Subtitles saved beside each video.
@@ -32,7 +32,7 @@ Streams count in House → Sharing like any other playback.
 
 Everything is under `/c/jf/v1`, the `/c/` path Cloudflare Access already bypasses (see
 [remote-access.md](remote-access.md#what-stays-public)), because a Jellyfin server can't sign in to
-Cloudflare. Marquee checks a key or a signature on every call.
+Cloudflare. Lilin checks a key or a signature on every call.
 
 | Call | Auth | What it does |
 | --- | --- | --- |
@@ -45,11 +45,11 @@ Cloudflare. Marquee checks a key or a signature on every call.
 | `GET /s/<link>/<sig>/<id>/<name>` | signature | The video, with range requests. |
 | `GET /t/<link>/<sig>/<id>/<lang>.srt` | signature | Saved subtitles. |
 
-The key goes in `Authorization: Bearer mqjf_…`. Approving a code is `POST /api/jellyfin/approve { code }`
+The key goes in `Authorization: Bearer liljf_…`. Approving a code is `POST /api/jellyfin/approve { code }`
 from a signed-in session, with the same wrong-code limits as signing in a TV; `GET /api/jellyfin` lists
 connections and `POST /api/jellyfin/<id>/remove` removes one.
 
-Keys are stored as SHA-256 hashes in the `jellyfin_links` table of `.marquee.db`, next to a per-connection
+Keys are stored as SHA-256 hashes in the `jellyfin_links` table of `.lilin.db`, next to a per-connection
 secret that signs the links (HMAC-SHA256, 128 bits). Removing the connection deletes both, so every link
 made with it stops working at once. Removing someone from the access list removes their connections too.
 

@@ -1,4 +1,4 @@
-// Marquee: self-hosted media server for phones, browsers and TVs.
+// Lilin: self-hosted media server for phones, browsers and TVs.
 // No dependencies. Requires Node.js 22.13+ (node:sqlite without a flag).
 import './env.js'; // must be the first import so .env is loaded before other modules read it
 import http from 'node:http';
@@ -150,7 +150,7 @@ function notify(userIds, kind, message) {
 const auth = createAuth({ dataDir: DATA_DIR });
 const tvPairing = createTvPairing();
 const tvPairLimit = createPairLimit(); // sign-in codes asked for from outside the home network (tv-gateway.js)
-// The Jellyfin plugin (jellyfin.js, jellyfin/): someone's own Jellyfin server showing their Marquee library.
+// The Jellyfin plugin (jellyfin.js, jellyfin/): someone's own Jellyfin server showing their Lilin library.
 const jellyfin = createJellyfin({
   dataDir: DATA_DIR,
   version: VERSION,
@@ -215,7 +215,7 @@ raiseServer();
 startPlaybackGuard({
   watching: load.watching,
   qbit: QBIT_URL ? (endpoint, init) => qbitRequest(endpoint, init) : null,
-  stateFile: path.join(DATA_DIR, '.marquee-playback.json'),
+  stateFile: path.join(DATA_DIR, '.lilin-playback.json'),
 });
 shows.initShows({ dataDir: DATA_DIR });
 anime.initAnime({ dataDir: DATA_DIR });
@@ -224,9 +224,9 @@ initCredits({ dataDir: DATA_DIR });
 whatsNew.initWhatsNew(path.join(APP_DIR, 'whats-new.json'));
 const WEB_BUILD = whatsNew.buildId(['index.html', 'app.js', 'style.css'].map((f) => path.join(PUBLIC_DIR, f)));
 // Each new update is also sent once as a notification to everyone who hasn't read it yet and has
-// Settings → Notifications → Marquee updates on (whats-new.js updatesToPush/pushFor). Checked shortly
+// Settings → Notifications → Lilin updates on (whats-new.js updatesToPush/pushFor). Checked shortly
 // after start and every two minutes, so a note added without a restart goes out too.
-const UPDATE_PUSHES_FILE = path.join(DATA_DIR, '.marquee-update-pushes.json');
+const UPDATE_PUSHES_FILE = path.join(DATA_DIR, '.lilin-update-pushes.json');
 async function pushNewUpdates() {
   let pushed = [];
   try { pushed = JSON.parse(fs.readFileSync(UPDATE_PUSHES_FILE, 'utf8')).pushed || []; } catch { /* none yet */ }
@@ -256,13 +256,13 @@ const webBuildFor = (req) => (preview.inPreview(req, PREVIEW_DIR) ? preview.prev
 screenTime.initScreenTime({ dataDir: DATA_DIR });
 clips.initClips({ dataDir: DATA_DIR, cacheDir: CACHE_DIR, getEncoder: () => converter.converterStatus().encoder });
 invites.initInvites({ dataDir: DATA_DIR, onEvent: activity.record });
-// Marquee as the sign-in provider for Cloudflare Access (oidc.js): with it set up, invites sign people
-// straight in and everyone signing in through Access is asked to pick a Marquee password.
+// Lilin as the sign-in provider for Cloudflare Access (oidc.js): with it set up, invites sign people
+// straight in and everyone signing in through Access is asked to pick a Lilin password.
 const oidc = createOidc({
   dataDir: DATA_DIR, auth, nameFor: (email) => accounts.displayNameFor(email),
-  onSignIn: (req, email) => activity.record(req, 'signin', 'Signed in to Marquee', { user: email }),
+  onSignIn: (req, email) => activity.record(req, 'signin', 'Signed in to Lilin', { user: email }),
 });
-// Signed in through Access/a proxy but no Marquee password yet: the app blocks until they pick one.
+// Signed in through Access/a proxy but no Lilin password yet: the app blocks until they pick one.
 const needsPassword = (req) => oidc.configured && req.auth?.via === 'proxy' && Boolean(req.auth.email) && !auth.hasPassword(req.auth.email);
 cast.initCasting({ lanIp: LAN_IP });
 subsync.initSubsync({ dataDir: DATA_DIR, cacheDir: CACHE_DIR, audioShift: (video) => converter.syncState(video).shift });
@@ -808,7 +808,7 @@ let libraryCache = { at: 0, items: [] };
 let libraryScan = null;
 let libraryRevision = 0;
 function invalidateLibrary() { libraryCache.at = 0; libraryRevision++; live.publish('library'); }
-let libraryIds = null; // what the last scan found, so files added or removed outside Marquee show up live
+let libraryIds = null; // what the last scan found, so files added or removed outside Lilin show up live
 
 async function scanLibrary() {
   if (!MEDIA_DIR) return null;
@@ -1043,7 +1043,7 @@ async function jellyfinItem(user, id) {
   let full;
   try { full = librarySource(id); } catch { throw new HttpError(404, 'Not found.'); }
   const key = accounts.mediaKey(full);
-  if (!key || !accounts.hasEntry(user.id, key)) throw new HttpError(404, 'That video isn’t in your Marquee library any more.');
+  if (!key || !accounts.hasEntry(user.id, key)) throw new HttpError(404, 'That video isn’t in your Lilin library any more.');
   if (!fs.existsSync(full)) {
     const twin = (await scanLibrary())?.find((i) => accounts.mediaKey(i.full) === key);
     if (!twin) throw new HttpError(404, 'That file is no longer on the server.');
@@ -1171,7 +1171,7 @@ function torrentIdentity(name) {
 }
 
 // Adds a magnet link, .torrent URL or uploaded .torrent file. `user` is who it's for: the torrent is
-// tagged marquee-u<id> (and a magnet's infohash recorded) so it lands in their library when it finishes.
+// tagged lilin-u<id> (and a magnet's infohash recorded) so it lands in their library when it finishes.
 const downloadAdds = new Map();
 const recentlyAddedDownloads = new Map();
 const deletingDownloads = new Set();
@@ -1277,7 +1277,7 @@ async function haveEpisodes(key, seasonNo, user = null, ctx = null, { dub = fals
   try { list = await qbit('/api/v2/torrents/info'); } catch { /* qBittorrent down: library only */ }
   const relevant = list.filter((t) => {
     if (dub && !isDualAudio(t.name)) return false;
-    // Anime: a torrent Marquee downloaded for this show, or any name the context places in this season.
+    // Anime: a torrent Lilin downloaded for this show, or any name the context places in this season.
     if (ctx && (shows.showDownload(t.hash)?.id === ctx.id || season.episodesIn(t.name, seasonNo, ctx).length)) return true;
     const identity = torrentIdentity(t.name);
     return identity.season === seasonNo && season.sameShow(identity.title, key);
@@ -1418,7 +1418,7 @@ async function upgradeSource(user, title, seasonNo) {
   };
 }
 // New download hash -> { title, season, by, old: [{ id, full, episodes }], at }. Saved across restarts.
-const UPGRADE_FILE = path.join(DATA_DIR, '.marquee-upgrades.json');
+const UPGRADE_FILE = path.join(DATA_DIR, '.lilin-upgrades.json');
 const upgrades = new Map(Object.entries((() => { try { return JSON.parse(fs.readFileSync(UPGRADE_FILE, 'utf8')); } catch { return {}; } })()));
 const saveUpgrades = () => { try { fs.writeFileSync(UPGRADE_FILE, JSON.stringify(Object.fromEntries(upgrades))); } catch (e) { console.warn(`[upgrade] ${e.message}`); } };
 function registerUpgrade(hash, entry) {
@@ -1766,9 +1766,9 @@ function downloadWant(user, body = {}) {
 }
 
 // ---- episodes in order (episode-order.js) ----
-// Torrents a Download Season added: hash -> { key, season, held }. held = stopped by Marquee to
+// Torrents a Download Season added: hash -> { key, season, held }. held = stopped by Lilin to
 // let an earlier episode download first. Saved, so a restart doesn't leave episodes stopped.
-const ORDER_FILE = path.join(DATA_DIR, '.marquee-episode-order.json');
+const ORDER_FILE = path.join(DATA_DIR, '.lilin-episode-order.json');
 const episodeOrder = new Map(Object.entries((() => { try { return JSON.parse(fs.readFileSync(ORDER_FILE, 'utf8')); } catch { return {}; } })()));
 const saveEpisodeOrder = () => { try { fs.writeFileSync(ORDER_FILE, JSON.stringify(Object.fromEntries(episodeOrder))); } catch (e) { console.warn(`[order] ${e.message}`); } };
 const finishedEpisodeFiles = new Set();
@@ -1778,12 +1778,12 @@ function orderEpisodes(hash, key, seasonNo) {
   saveEpisodeOrder();
   setTimeout(() => episodeOrderRound().catch(() => {}), 1500);
 }
-// The person took over this download (paused, resumed or removed it): Marquee stops ordering it.
+// The person took over this download (paused, resumed or removed it): Lilin stops ordering it.
 function releaseEpisodeOrder(hash) {
   if (episodeOrder.delete(String(hash).toLowerCase())) saveEpisodeOrder();
 }
 let orderBusy = false;
-// When each ordered torrent was last seen stalled: one Marquee stopped keeps counting as stalled for a
+// When each ordered torrent was last seen stalled: one Lilin stopped keeps counting as stalled for a
 // while (episode-order.js), then gets another try.
 const lastStalled = new Map();
 const STALL_MEMORY = 30 * 60e3;
@@ -1844,9 +1844,9 @@ setInterval(() => episodeOrderRound(), 5000).unref();
 // Logged in the activity feed (the owner sees it under What happened) and the server log.
 function contentBlocked(user, title, found) {
   console.warn(`[content-filter] blocked ${user?.email || 'a download'}: ${title} (${found.reason}${found.name && found.name !== title ? ` in ${found.name}` : ''})`);
-  activity.record(SYSTEM, 'blocked', `${String(title || 'a torrent').slice(0, 200)} (adult content)`, { user: user?.email || 'Marquee' });
+  activity.record(SYSTEM, 'blocked', `${String(title || 'a torrent').slice(0, 200)} (adult content)`, { user: user?.email || 'Lilin' });
 }
-// Marquee's downloads are checked once their name and file list are known (a magnet's files arrive
+// Lilin's downloads are checked once their name and file list are known (a magnet's files arrive
 // with its metadata, a few seconds after it's added). Adult ones are removed with their files.
 // Downloads that finished before this server started are only reported, never deleted.
 const contentChecked = new Set();
@@ -1863,7 +1863,7 @@ async function contentGuardRound() {
       present.add(hash);
       if (contentChecked.has(hash) || deletingDownloads.has(hash)) continue;
       const ownerId = accounts.torrentRow(hash)?.user_id ?? accounts.userFromTags(t.tags);
-      // Not added through Marquee, or its owner isn't filtered: left alone.
+      // Not added through Lilin, or its owner isn't filtered: left alone.
       if (ownerId == null || !filterApplies(accounts.userById(ownerId))) { contentChecked.add(hash); continue; }
       let found = firstAdult([t.name]);
       if (!found) {
@@ -1918,7 +1918,7 @@ async function readRaw(req, limit, tooLarge = 'That file is too large for a .tor
 
 const validHash = (h) => /^[a-f0-9]{40}$|^[a-f0-9]{64}$/i.test(h);
 
-// Who a torrent is for: recorded when it was added through Marquee, or its marquee-u<id> tag.
+// Who a torrent is for: recorded when it was added through Lilin, or its lilin-u<id> tag.
 // Torrents added straight in qBittorrent belong to the owner.
 const torrentOwner = (t) => accounts.torrentRow(t.hash)?.user_id ?? accounts.userFromTags(t.tags) ?? accounts.ownerUser()?.id ?? null;
 
@@ -2031,7 +2031,7 @@ async function listDownloads(user, all = false) {
     seeds: Number.isFinite(t.num_seeds) ? t.num_seeds : null,
     swarmSeeds: Number.isFinite(t.num_complete) && t.num_complete >= 0 ? t.num_complete : null,
     size: t.size,
-    // Stopped by Marquee so an earlier episode downloads first: waiting its turn, not paused.
+    // Stopped by Lilin so an earlier episode downloads first: waiting its turn, not paused.
     state: episodeOrder.get(t.hash.toLowerCase())?.held && /^(paused|stopped)/.test(t.state || '') ? 'queuedDL' : t.state,
     transferComplete: t.progress >= 1,
     done: Boolean(verifiedComplete),
@@ -2110,7 +2110,7 @@ const attachment = (name) => `attachment; filename="${String(name).replace(/[^\x
 const PLAY_LINK_HOURS = 12;
 const streamSecret = (() => {
   if (process.env.STREAM_SECRET) return process.env.STREAM_SECRET;
-  const file = path.join(DATA_DIR, '.marquee-secret');
+  const file = path.join(DATA_DIR, '.lilin-secret');
   try { return fs.readFileSync(file, 'utf8').trim(); } catch { /* first run */ }
   const secret = crypto.randomBytes(32).toString('hex');
   try { fs.writeFileSync(file, secret); } catch { /* links then only last until restart */ }
@@ -2596,12 +2596,12 @@ async function sendVideo(req, res, file, { captionUrl, headers = {}, label = nul
 }
 
 // ---------- casting ----------
-// Each browser sends a random ID (X-Marquee-Client), so the remote and "now playing" bar only show the
+// Each browser sends a random ID (X-Lilin-Client), so the remote and "now playing" bar only show the
 // TVs that browser started. Pages loaded before this existed send no ID; they're told apart by their
 // Cloudflare Access login and address instead. Anyone can still pick any TV from the TV list.
 const castOwners = new Map(); // deviceId -> who started what's playing
 function clientOf(req) {
-  const id = String(req.headers['x-marquee-client'] || '').replace(/[^\w-]/g, '').slice(0, 64);
+  const id = String(req.headers['x-lilin-client'] || '').replace(/[^\w-]/g, '').slice(0, 64);
   if (id) return id;
   const who = req.headers['cf-access-authenticated-user-email'] || '';
   const where = req.headers['cf-connecting-ip'] || req.socket.remoteAddress || '';
@@ -2708,7 +2708,7 @@ async function creditPeers(file) {
 // play has to compare the audio itself, and the button can turn up after the intro has passed. One
 // decode at a time, so someone pressing play waits for the one in progress at most, and with longer
 // pauses while anyone is watching. Saved, so a restart carries on where it was.
-const PREP_FILE = path.join(DATA_DIR, '.marquee-prep-seasons.json');
+const PREP_FILE = path.join(DATA_DIR, '.lilin-prep-seasons.json');
 const seasonsToPrep = new Map((() => { try { return JSON.parse(fs.readFileSync(PREP_FILE, 'utf8')); } catch { return []; } })());
 const savePrepSeasons = () => { try { fs.writeFileSync(PREP_FILE, JSON.stringify([...seasonsToPrep])); } catch (e) { console.warn(`[prep] ${e.message}`); } };
 let prepRunning = false;
@@ -2814,8 +2814,8 @@ function announceArrivals(hash, arrived, claimants) {
     const name = pushTitle(eps[0].info.title);
     notify(people, 'episode', {
       title: eps.length === 1 ? `New episode of ${name}` : `${eps.length} new episodes of ${name}`,
-      body: eps.length === 1 ? `${label(eps[0].info)} just arrived on Marquee. Find it on the show’s page to add it to your library.`
-        : `${label(eps[0].info)} to ${label(eps.at(-1).info)} just arrived on Marquee. Find them on the show’s page to add them to your library.`,
+      body: eps.length === 1 ? `${label(eps[0].info)} just arrived on Lilin. Find it on the show’s page to add it to your library.`
+        : `${label(eps[0].info)} to ${label(eps.at(-1).info)} just arrived on Lilin. Find them on the show’s page to add them to your library.`,
       url: '/', tag: `episode-${k}`.slice(0, 64),
     });
   }
@@ -2871,7 +2871,7 @@ async function handleApi(req, res, url) {
       throw err;
     }
   }
-  // `marquee-house boot` (root, on a dual-boot machine): reports its boot menu + network card and
+  // `lilin-house boot` (root, on a dual-boot machine): reports its boot menu + network card and
   // gets back whether to restart, and into what (house.js, "power").
   if (p === '/api/house/boot' && req.method === 'POST') {
     if (!house.agentAllowed(req)) throw new HttpError(403, 'Not allowed.');
@@ -2899,7 +2899,7 @@ async function handleApi(req, res, url) {
   const user = accounts.userFor(req);
   // Live updates (live.js): one stream per open page, and every successful change announces itself.
   if (p === '/api/events' && req.method === 'GET') return live.subscribe(req, res, { userId: user.id, admin: activity.isAdmin(req), tab: url.searchParams.get('tab') });
-  if (req.method === 'POST') res.once('finish', () => live.afterRequest(p, res.statusCode, { userId: user.id, tab: req.headers['x-marquee-tab'] }));
+  if (req.method === 'POST') res.once('finish', () => live.afterRequest(p, res.statusCode, { userId: user.id, tab: req.headers['x-lilin-tab'] }));
 
   // Watch-room links still require the normal Cloudflare sign-in. A room grants access to this
   // one title, without adding it to every participant's library or changing anyone's subtitles.
@@ -3044,7 +3044,7 @@ async function handleApi(req, res, url) {
     if (!push.hasDevice(user.id)) throw new HttpError(400, 'Turn notifications on for this device first.');
     if (Date.now() - (pushTestsSent.get(user.id) || 0) < 10000) throw new HttpError(429, 'Wait a few seconds before sending another test.');
     pushTestsSent.set(user.id, Date.now());
-    const sent = await notify([user.id], 'test', { title: 'Marquee', body: 'Notifications work. You’ll hear when downloads are ready, new episodes arrive and someone invites you to watch.', url: '/#settings', tag: 'test' });
+    const sent = await notify([user.id], 'test', { title: 'Lilin', body: 'Notifications work. You’ll hear when downloads are ready, new episodes arrive and someone invites you to watch.', url: '/#settings', tag: 'test' });
     return sendJson(res, 200, { sent, devices: push.devices(user.id) });
   }
 
@@ -3057,7 +3057,7 @@ async function handleApi(req, res, url) {
     }
     return sendJson(res, 200, { me: { ...accounts.publicUser(user), via: req.auth.via } });
   }
-  // Profile pictures: anyone signed in sees everyone's (they show beside names all over Marquee).
+  // Profile pictures: anyone signed in sees everyone's (they show beside names all over Lilin).
   if ((m = p.match(/^\/api\/avatar\/(\d{1,9})$/)) && req.method === 'GET') {
     const found = accounts.avatarFile(Number(m[1]));
     if (!found) throw new HttpError(404, 'No picture.');
@@ -3079,7 +3079,7 @@ async function handleApi(req, res, url) {
     const email = req.auth.via === 'home' ? null : req.auth.email;
     const result = tvPairing.approve(`u${user.id}`, body.code, () => ({
       // The shared Home network account has no email: its TV simply uses home network access.
-      token: email ? auth.createSession(req, email, 'Marquee TV app') : null,
+      token: email ? auth.createSession(req, email, 'Lilin TV app') : null,
       name: user.name || accounts.displayNameFor(email) || 'Home network',
     }));
     activity.record(req, 'signin', 'Signed in a TV');
@@ -3089,7 +3089,7 @@ async function handleApi(req, res, url) {
     if (req.method === 'POST') {
       const { ref, time, duration, watched, about, room } = await readJson(req);
       saveProgressAllVersions(user.id, ref, time, duration);
-      // Watch time for Wrapped and Popular on Marquee (see social.js), with who was in the same room.
+      // Watch time for Wrapped and Popular on Lilin (see social.js), with who was in the same room.
       if (about && typeof about === 'object') {
         const companions = /^[A-Za-z0-9_-]{24}$/.test(String(room || '')) ? watchRooms.companions(room, user.id) : [];
         social.logWatch(user.id, { ref, about, watched, finished: time == null, companions });
@@ -3098,7 +3098,7 @@ async function handleApi(req, res, url) {
     }
     return sendJson(res, 200, { progress: accounts.progressOf(user.id) });
   }
-  // Marquee Wrapped: one person's year (defaults to this one).
+  // Lilin Wrapped: one person's year (defaults to this one).
   if (p === '/api/me/wrapped') {
     const year = Number(url.searchParams.get('year')) || new Date().getFullYear();
     return sendJson(res, 200, social.wrapped(user.id, year, personName, avatarOf));
@@ -3118,7 +3118,7 @@ async function handleApi(req, res, url) {
     }
     return sendJson(res, 200, { ok: true });
   }
-  // ---- social: thumbs up/down, who liked a title, Popular on Marquee ----
+  // ---- social: thumbs up/down, who liked a title, Popular on Lilin ----
   if (p === '/api/social/rate' && req.method === 'POST') {
     const { key, value, title } = await readJson(req);
     social.rate(user.id, String(key || ''), value, title);
@@ -3288,7 +3288,7 @@ async function handleApi(req, res, url) {
     }
     // A one-time link that lets an existing member (who signed in with Cloudflare's codes) pick a password.
     if (p === '/api/access/password-link' && req.method === 'POST') {
-      if (!oidc.configured) throw new HttpError(400, 'Marquee sign-in for Cloudflare isn’t set up (OIDC_* in .env).');
+      if (!oidc.configured) throw new HttpError(400, 'Lilin sign-in for Cloudflare isn’t set up (OIDC_* in .env).');
       const { email } = await readJson(req);
       const identity = typeof email === 'string' ? email.trim().toLowerCase() : '';
       if (!(await invites.members()).includes(identity)) throw new HttpError(404, 'That person is no longer in the access list.');
@@ -3303,7 +3303,7 @@ async function handleApi(req, res, url) {
     if (p === '/api/access/remove' && req.method === 'POST') {
       const { email } = await readJson(req);
       const left = await invites.removeMember(email, activity.adminEmails());
-      auth.store.remove(String(email || '')); // their Marquee password and sessions go too
+      auth.store.remove(String(email || '')); // their Lilin password and sessions go too
       invites.revokeAccess(String(email || '')).catch((e) => console.warn('[invites] revoke:', e.message)); // and their Cloudflare sign-ins
       const gone = accounts.listUsers().find((u) => u.email && u.email === String(email || '').trim().toLowerCase());
       if (gone) { push.forgetUser(gone.id); jellyfin.store.removeUser(gone.id); } // their devices stop getting notifications, their Jellyfin servers lose access
@@ -4147,14 +4147,14 @@ function publicPath(req, url) {
 }
 
 function refuseSignedOut(req, res, url) {
-  if (url.pathname.startsWith('/api/') || req.method !== 'GET') return sendJson(res, 401, { error: 'Sign in to use Marquee.', signin: true });
+  if (url.pathname.startsWith('/api/') || req.method !== 'GET') return sendJson(res, 401, { error: 'Sign in to use Lilin.', signin: true });
   res.writeHead(303, { Location: `/signin?next=${encodeURIComponent(url.pathname + url.search)}`, 'Cache-Control': 'no-store' });
   res.end();
 }
 
 function sendSignIn(req, res, url) {
   const asked = url.searchParams.get('lang');
-  if (['en', 'sv'].includes(asked)) res.setHeader('Set-Cookie', `marquee_lang=${asked}; Path=/; Max-Age=31536000; SameSite=Lax`);
+  if (['en', 'sv'].includes(asked)) res.setHeader('Set-Cookie', `lilin_lang=${asked}; Path=/; Max-Age=31536000; SameSite=Lax`);
   return inLanguage(['en', 'sv'].includes(asked) ? asked : currentLanguage(), () => drawSignIn(req, res, url));
 }
 function drawSignIn(req, res, url) {
@@ -4182,7 +4182,7 @@ async function handleAuth(req, res, p) {
   if (p === '/api/auth/first-password' && req.method === 'POST') {
     const body = await readJson(req, 4096);
     const { email, setCookie } = await auth.setFirstPassword(req, body.password);
-    activity.record(req, 'signin', 'Set a Marquee password', { user: email });
+    activity.record(req, 'signin', 'Set a Lilin password', { user: email });
     res.setHeader('Set-Cookie', setCookie);
     return sendJson(res, 200, { ok: true });
   }
@@ -4192,7 +4192,7 @@ async function handleAuth(req, res, p) {
     try {
       if (!body.email || !body.password) throw new HttpError(400, 'Enter your email and password.');
       const { email, setCookie } = await auth.signIn(req, body.email, body.password);
-      activity.record(req, 'signin', 'Signed in to Marquee', { user: email });
+      activity.record(req, 'signin', 'Signed in to Lilin', { user: email });
       res.setHeader('Set-Cookie', setCookie);
       if (body.form) { res.writeHead(303, { Location: next, 'Cache-Control': 'no-store' }); return res.end(); }
       return sendJson(res, 200, { ok: true });
@@ -4233,13 +4233,13 @@ async function handleRequest(req, res) {
     if (url.pathname === '/api/health' && (req.method === 'GET' || req.method === 'HEAD')) return sendJson(res, 200, { status: 'ok', version: VERSION });
     await trust.sanitize(req);
     auth.guard(req, res);       // DNS rebinding, cross-site requests, security headers (auth.js)
-    auth.identify(req);         // proxy identity, Marquee sign-in, or the shared home account
+    auth.identify(req);         // proxy identity, Lilin sign-in, or the shared home account
     if (url.pathname === '/signin' || url.pathname.startsWith('/c/')) preview.previewPageStyles(req, res, PREVIEW_DIR);
     if (url.pathname === '/signin' && (req.method === 'GET' || req.method === 'HEAD')) return sendSignIn(req, res, url);
     if (!req.auth.via && !publicPath(req, url)) return refuseSignedOut(req, res, url);
     // The app shows a password step it can't be closed past; the API holds the same line.
     if (needsPassword(req) && url.pathname.startsWith('/api/') && !/^\/api\/(status$|auth\/)/.test(url.pathname)) {
-      return sendJson(res, 403, { error: 'Pick a Marquee password first.', setPassword: true });
+      return sendJson(res, 403, { error: 'Pick a Lilin password first.', setPassword: true });
     }
     const allowed = req.method === 'GET' || req.method === 'HEAD'
       || (req.method === 'POST' && (url.pathname.startsWith('/api/cast/') || url.pathname === '/api/downloads/add' || url.pathname === '/api/downloads/smart' || url.pathname === '/api/svt/add' || url.pathname === '/api/subs/fetch' || url.pathname === '/api/subs/sync' || url.pathname === '/api/library/delete' || url.pathname === '/api/library/delete-many' || url.pathname === '/api/library/delete-many-info' || /^\/api\/downloads\/\w+\/(pause|resume|retry|delete|leave)$/.test(url.pathname) || /^\/api\/media\/\w+\/[\w-]+\/sync$/.test(url.pathname)
@@ -4256,7 +4256,7 @@ async function handleRequest(req, res) {
     if (!allowed) throw new HttpError(405, 'Method not allowed.');
     if (url.pathname.startsWith('/api/')) await handleApi(req, res, url);
     else if (url.pathname.startsWith('/play/')) await handlePlay(req, res, url);
-    // Public: shared clips, shared note previews and the Marquee invite card (bypassed in Cloudflare Access; see docs/remote-access.md)
+    // Public: shared clips, shared note previews and the Lilin invite card (bypassed in Cloudflare Access; see docs/remote-access.md)
     else if (url.pathname === '/c' || url.pathname.startsWith('/c/')) {
       if (url.pathname.startsWith('/c/jf/')) { if (!(await jellyfin.handlePublic(req, res, url))) throw new HttpError(404, 'Not found.'); }
       else if (await oidc.handle(req, res, url)) { /* sign-in provider for Cloudflare Access */ }
@@ -4345,7 +4345,7 @@ async function torrentFor(file) {
   let list;
   try { list = await qbit('/api/v2/torrents/info'); } catch (e) {
     // Refuse rather than delete files qBittorrent may still own.
-    throw new HttpError(503, `${e.message} Marquee needs it to check whether this file belongs to a torrent.`);
+    throw new HttpError(503, `${e.message} Lilin needs it to check whether this file belongs to a torrent.`);
   }
   for (const t of list) {
     const content = t.content_path || path.join(t.save_path, t.name);
@@ -4362,7 +4362,7 @@ async function torrentFor(file) {
   return null;
 }
 
-// Files Marquee created alongside a video: MP4 copy and subtitles.
+// Files Lilin created alongside a video: MP4 copy and subtitles.
 function extrasFor(file) {
   const out = [];
   if (converter.needsConversion(file)) {
@@ -4580,7 +4580,7 @@ async function setPaused(hash, paused) {
   }
 }
 
-// Removes a download from qBittorrent, with its files (and Marquee's copies and subtitles) unless keepFiles.
+// Removes a download from qBittorrent, with its files (and Lilin's copies and subtitles) unless keepFiles.
 async function retryDownload(t) {
   await qbitRequest('/api/v2/torrents/recheck', {
     method: 'POST', body: new URLSearchParams({ hashes: t.hash }),
@@ -4680,7 +4680,7 @@ async function stopSeeding() {
   }
 }
 // ---------- whose library each video is in ----------
-// Finished downloads go into the library of whoever started them (the torrent's marquee-u<id> tag, or
+// Finished downloads go into the library of whoever started them (the torrent's lilin-u<id> tag, or
 // the infohash recorded when it was added). Torrents added straight in qBittorrent belong to the owner.
 // Videos that turn up in MEDIA_DIR any other way (copied in by hand, or there before accounts
 // existed) go into the owner's library as kept, so nothing that was already there gets auto-deleted.
@@ -4772,7 +4772,7 @@ async function claimFiles() {
 // Each video in someone's library has a date it goes (the owner sets how long, 7 days by default;
 // "Keep longer" pushes it back). When that passes it leaves their library, and once it's in nobody's
 // library the file is deleted. A delete that fails (the file is playing) is tried again next round.
-const SYSTEM = { headers: { 'user-agent': 'Marquee' } }; // stands in for a request in the activity log
+const SYSTEM = { headers: { 'user-agent': 'Lilin' } }; // stands in for a request in the activity log
 async function expireLibrary() {
   if (!MEDIA_DIR) return;
   const orphaned = accounts.expireDue();
@@ -4788,7 +4788,7 @@ async function expireLibrary() {
     try {
       await deleteMedia(item.id, 'file');
       accounts.markGone(key);
-      activity.record(SYSTEM, 'expire', titleOf(item.full), { user: 'Marquee' });
+      activity.record(SYSTEM, 'expire', titleOf(item.full), { user: 'Lilin' });
     } catch (e) {
       console.warn(`[library] couldn’t auto-delete ${item.file}: ${e.message} Trying again later.`);
     }
@@ -4878,10 +4878,10 @@ server.on('error', (err) => {
 server.listen(PORT, HOST, () => {
   PORT = server.address().port;
   svtQueue?.start();
-  console.log(`Marquee is running: http://localhost:${PORT} (version ${VERSION})`);
+  console.log(`Lilin is running: http://localhost:${PORT} (version ${VERSION})`);
   console.log(`  Data:      ${DATA_DIR}`);
   console.log(`  Cache:     ${CACHE_DIR}`);
-  console.log(`  Accounts:  ${trust.mode === 'access-jwt' ? 'Cloudflare Access tokens verified' : `identity headers trusted from ${process.env.TRUSTED_PROXIES || '127.0.0.1, ::1'}`}; ${auth.store.count()} Marquee sign-in${auth.store.count() === 1 ? '' : 's'}`);
+  console.log(`  Accounts:  ${trust.mode === 'access-jwt' ? 'Cloudflare Access tokens verified' : `identity headers trusted from ${process.env.TRUSTED_PROXIES || '127.0.0.1, ::1'}`}; ${auth.store.count()} Lilin sign-in${auth.store.count() === 1 ? '' : 's'}`);
   console.log(`  Sign-in:   ${auth.mode === 'signin' ? 'required for everyone' : 'home network shares one account; visitors from the internet must sign in'}`);
   console.log(`  Search:    ${TMDB_TOKEN || TMDB_KEY ? 'ready' : 'off (add TMDB_TOKEN to .env)'}`);
   console.log(`  Library:   ${MEDIA_DIR || 'off (add MEDIA_DIR to .env)'}`);
@@ -4894,12 +4894,12 @@ server.listen(PORT, HOST, () => {
   for (const w of checkConfig(process.env).filter((c) => c.level !== 'info')) console.warn(`  ! ${w.message}. ${w.fix}`);
 });
 
-// Docker and service managers stop Marquee with SIGTERM. Open live-update streams would keep
+// Docker and service managers stop Lilin with SIGTERM. Open live-update streams would keep
 // server.close() waiting forever, so connections are closed too. qBittorrent keeps downloading;
 // an interrupted conversion starts over on the next run.
 for (const signal of ['SIGTERM', 'SIGINT']) {
   process.once(signal, () => {
-    console.log(`Marquee stopping (${signal})`);
+    console.log(`Lilin stopping (${signal})`);
     server.close();
     server.closeAllConnections();
     setTimeout(() => process.exit(0), 300).unref();

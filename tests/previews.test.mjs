@@ -54,7 +54,7 @@ test('the seek tip stays on the bar and its caret points at the hovered spot', (
 });
 
 test('a storyboard is made in the background, sheet by sheet', { skip: !hasFfmpeg && 'ffmpeg not installed', timeout: 60000 }, async () => {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-previews-'));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-previews-'));
   const video = path.join(dir, 'in.mp4');
   // 60 s with a keyframe every second: 60 frames = 3 sheets (25 + 25 + 10).
   const made = spawnSync(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=320x180:rate=10:duration=60',

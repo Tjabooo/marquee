@@ -7,7 +7,7 @@
 // Shown in House → Sharing, and read by Archfleet and other home machines through
 // GET /api/house/load (House token, home network only).
 //
-// Streams themselves cost almost no CPU (Marquee sends files as they are): they cost upload and
+// Streams themselves cost almost no CPU (Lilin sends files as they are): they cost upload and
 // disk reads. CPU and the GPU's encoder go to the jobs.
 import fs from 'node:fs';
 import os from 'node:os';
@@ -71,12 +71,12 @@ let torrents = null;             // latest qBittorrent reading
 let torrentAsking = false;
 const SUSTAINED_TICKS = 6;      // 30 s: a buffering burst is not a full line
 const upRecent = [];             // internet upload (streams + torrents) at each tick
-let marqueeCpu = { at: Date.now(), usage: process.cpuUsage(), pct: null };
+let lilinCpu = { at: Date.now(), usage: process.cpuUsage(), pct: null };
 let fallbackCpu = null;
 const prevProcs = new Map();     // pid -> { cpu seconds, at }
 
 export function initLoad({ dataDir, mediaDir, clipsDir, ipName, torrentsUp, conversionStatus, sample = process.platform === 'win32' && process.env.LOAD_SAMPLER !== 'off' } = {}) {
-  file = dataDir ? path.join(dataDir, '.marquee-load.json') : null;
+  file = dataDir ? path.join(dataDir, '.lilin-load.json') : null;
   if (ipName) nameForIp = ipName;
   if (torrentsUp) torrentRate = torrentsUp;
   if (conversionStatus) conversion = conversionStatus;
@@ -366,8 +366,8 @@ function cpuFallback() {
 function tick() {
   const now = Date.now();
   const u = process.cpuUsage();
-  const dt = (now - marqueeCpu.at) / 1000;
-  if (dt > 0) marqueeCpu = { at: now, usage: u, pct: Math.round((((u.user - marqueeCpu.usage.user) + (u.system - marqueeCpu.usage.system)) / 1e6 / (dt * THREADS)) * 1000) / 10 };
+  const dt = (now - lilinCpu.at) / 1000;
+  if (dt > 0) lilinCpu = { at: now, usage: u, pct: Math.round((((u.user - lilinCpu.usage.user) + (u.system - lilinCpu.usage.system)) / 1e6 / (dt * THREADS)) * 1000) / 10 };
   const fresh = sys && now - sys.at < 3 * TICK_MS ? sys : null;
   if (fresh) {
     for (const p of fresh.procs) {
@@ -470,7 +470,7 @@ export function loadReport({ hours = 1 } = {}) {
   })).sort((a, b) => a.drive.localeCompare(b.drive));
   const jobPids = new Set(jobs.keys());
   const top = (fresh?.procs || []).filter((p) => !/^idle$/i.test(p.name) && p.cpu >= 0.5).sort((a, b) => b.cpu - a.cpu).slice(0, 6)
-    .map((p) => ({ name: p.pid === process.pid ? 'Marquee' : p.name, pid: p.pid, cpu: p.cpu, mem: p.mem, job: jobPids.has(p.pid) }));
+    .map((p) => ({ name: p.pid === process.pid ? 'Lilin' : p.name, pid: p.pid, cpu: p.cpu, mem: p.mem, job: jobPids.has(p.pid) }));
 
   const warnings = [];
   const upHeld = upRecent.length >= SUSTAINED_TICKS ? Math.min(...upRecent) : 0;
@@ -496,7 +496,7 @@ export function loadReport({ hours = 1 } = {}) {
     at: now,
     sampled: Boolean(fresh),
     limits: { uploadMbps: UPLOAD_MBPS, linkMbps, nvencSessions: NVENC_LIMIT, threads: THREADS },
-    cpu, marqueeCpu: marqueeCpu.pct,
+    cpu, lilinCpu: lilinCpu.pct,
     mem: { total: os.totalmem(), avail: os.freemem() },
     gpu: g && { name: g.name, busy: g.busy, enc: g.enc, dec: g.dec, sessions: g.sessions, fps: g.fps, temp: g.temp, memUsed: g.memUsed, memTotal: g.memTotal },
     net: fresh ? { up: Math.round(fresh.net.up), down: Math.round(fresh.net.down) } : null,

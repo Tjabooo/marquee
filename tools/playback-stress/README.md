@@ -1,7 +1,7 @@
 # Playback stress test
 
 Checks that streams keep playing while the server is busy. It plays a few files from a running
-Marquee the way players do (4 MB range requests, a 10 s buffer, the odd seek) while background work
+Lilin the way players do (4 MB range requests, a 10 s buffer, the odd seek) while background work
 runs, and reports per stream how long each request took, whether the buffer ran dry and how long a
 seek took to play again. On Windows it also records disk latency, queue length and idle time per
 disk, CPU per process and GPU encode/decode use (typeperf, nvidia-smi).
@@ -25,13 +25,13 @@ streaming when the test began, falls behind, the test stops all load at once and
 | Key | What runs | Like |
 | --- | --- | --- |
 | `writer` | a sparse file written in 16 KiB blocks into 16 random 4 MiB pieces at a time, capped at `rateMBps` | qBittorrent downloading without preallocation |
-| `convert` | ffmpeg repackaging an MKV the way Marquee's converter does (video copied, AAC stereo + E-AC-3 640k), again and again | MKV → MP4 conversion |
-| `storyboard` | Marquee's own timeline preview job for that file (its old previews are removed first) | first play of a video |
-| `browserCopy` | Marquee's own browser copy for an HEVC file (the old copy is removed first) | a Firefox viewer opening an HEVC film |
+| `convert` | ffmpeg repackaging an MKV the way Lilin's converter does (video copied, AAC stereo + E-AC-3 640k), again and again | MKV → MP4 conversion |
+| `storyboard` | Lilin's own timeline preview job for that file (its old previews are removed first) | first play of a video |
+| `browserCopy` | Lilin's own browser copy for an HEVC file (the old copy is removed first) | a Firefox viewer opening an HEVC film |
 | `libraryScanSeconds` | `GET /api/library` every n seconds | library scans |
 
 `convert.apply` can name a module whose default export receives the ffmpeg child process, to test a
-scheduling policy on it (`apply-background.mjs` applies Marquee's background priority).
+scheduling policy on it (`apply-background.mjs` applies Lilin's background priority).
 
 With `"purgeStandby": true` (Windows, as administrator) every run starts with an empty file cache,
 so files read in an earlier run aren't served from RAM.
@@ -40,10 +40,10 @@ so files read in an earlier run aren't served from RAM.
 
 ```json
 {
-  "marquee": "http://127.0.0.1:8080",
+  "lilin": "http://127.0.0.1:8080",
   "email": "owner@example.com",
   "mediaDir": "/path/to/media",
-  "cacheDir": "/path/to/marquee/cache",
+  "cacheDir": "/path/to/lilin/cache",
   "seconds": 180,
   "purgeStandby": false,
   "streams": [
@@ -60,7 +60,7 @@ so files read in an earlier run aren't served from RAM.
 }
 ```
 
-`file` paths are relative to `mediaDir` (as Marquee lists them); `writer.file` and `convert.outDir`
+`file` paths are relative to `mediaDir` (as Lilin lists them); `writer.file` and `convert.outDir`
 are scratch space on the drive you want to load, and are deleted afterwards.
 
 ## Reading the result

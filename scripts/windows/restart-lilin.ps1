@@ -1,16 +1,16 @@
 # Restarts the scheduled task created by install-service.ps1 and reports status.
-#   powershell -ExecutionPolicy Bypass -File scripts\windows\restart-marquee.ps1
+#   powershell -ExecutionPolicy Bypass -File scripts\windows\restart-lilin.ps1
 # (or: node setup.js service restart)
 
 $dir = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 
-if (-not (Get-ScheduledTask -TaskName 'Marquee' -ErrorAction SilentlyContinue)) {
-  Write-Host "No Marquee task found. Run scripts\windows\install-service.ps1 (or node setup.js service install) first." -ForegroundColor Red
+if (-not (Get-ScheduledTask -TaskName 'Lilin' -ErrorAction SilentlyContinue)) {
+  Write-Host "No Lilin task found. Run scripts\windows\install-service.ps1 (or node setup.js service install) first." -ForegroundColor Red
   exit 1
 }
 
-Write-Host 'Stopping Marquee...'
-# Find Marquee and everything it started (ffmpeg conversions, Apple TV helpers) before stopping it,
+Write-Host 'Stopping Lilin...'
+# Find Lilin and everything it started (ffmpeg conversions, Apple TV helpers) before stopping it,
 # so no conversion is left running on its own. Downloads are unaffected: qBittorrent keeps going.
 $all = @(Get-CimInstance Win32_Process)
 $nodes = @($all | Where-Object { $_.Name -eq 'node.exe' -and $_.CommandLine -match 'server\.js' })
@@ -19,17 +19,17 @@ function Get-Descendants($parentId) {
 }
 $helpers = @(foreach ($n in $nodes) { Get-Descendants $n.ProcessId })
 
-Stop-ScheduledTask -TaskName 'Marquee' -ErrorAction SilentlyContinue
+Stop-ScheduledTask -TaskName 'Lilin' -ErrorAction SilentlyContinue
 # Stopping the task can leave node.exe and its helpers running.
 foreach ($p in $nodes + $helpers) { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue }
-# Conversions orphaned by an earlier restart (they write *.marquee-tmp files).
+# Conversions orphaned by an earlier restart (they write *.lilin-tmp files).
 Get-CimInstance Win32_Process -Filter "Name='ffmpeg.exe'" |
-  Where-Object { $_.CommandLine -match 'marquee-tmp' } |
+  Where-Object { $_.CommandLine -match 'lilin-tmp' } |
   ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 Start-Sleep -Seconds 2
 
-Write-Host 'Starting Marquee...'
-Start-ScheduledTask -TaskName 'Marquee'
+Write-Host 'Starting Lilin...'
+Start-ScheduledTask -TaskName 'Lilin'
 
 $port = 8080
 $envFile = Join-Path $dir '.env'
@@ -50,12 +50,12 @@ if ($status) { try { $status = Invoke-RestMethod "http://127.0.0.1:$port/api/sta
 function OnOff($v) { if ($v) { 'on' } else { 'off' } }
 
 if ($health) {
-  Write-Host "Marquee is running on port $port." -ForegroundColor Green
+  Write-Host "Lilin is running on port $port." -ForegroundColor Green
 }
 if ($status) {
   Write-Host ("  Search: {0}   Library: {1}   Downloads: {2}   Torrents: {3}   Subtitles: {4}" -f `
     (OnOff $status.search), (OnOff $status.library), (OnOff $status.downloads), (OnOff $status.torrents), (OnOff $status.subtitles))
 } elseif (-not $health) {
-  Write-Host "Marquee didn't respond within 20 seconds. Last lines of the log:" -ForegroundColor Yellow
-  Get-Content (Join-Path $dir 'logs\marquee.log') -Tail 15 -ErrorAction SilentlyContinue
+  Write-Host "Lilin didn't respond within 20 seconds. Last lines of the log:" -ForegroundColor Yellow
+  Get-Content (Join-Path $dir 'logs\lilin.log') -Tail 15 -ErrorAction SilentlyContinue
 }

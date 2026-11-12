@@ -11,7 +11,7 @@ import { parseArgs } from '../src/setup/cli.js';
 import { splitSecrets, remoteAccessOf, taskRunsApp } from '../src/setup/wizard.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const tmp = (t, name) => { const d = fs.mkdtempSync(path.join(os.tmpdir(), `marquee-${name}-`)); t.after(() => fs.rmSync(d, { recursive: true, force: true })); return d; };
+const tmp = (t, name) => { const d = fs.mkdtempSync(path.join(os.tmpdir(), `lilin-${name}-`)); t.after(() => fs.rmSync(d, { recursive: true, force: true })); return d; };
 const wizard = (args) => {
   const r = spawnSync(process.execPath, ['setup.js', 'wizard', ...args], { cwd: root, encoding: 'utf8', timeout: 60000, env: { ...process.env, NODE_NO_WARNINGS: '1' } });
   assert.equal(r.status, 0, r.stderr);
@@ -35,12 +35,12 @@ test('secrets are reported as set or not, never by value', () => {
   assert.equal(remoteAccessOf({ PUBLIC_URL: 'https://films.example.com' }), 'proxy');
 });
 
-test('the Marquee task only counts when it runs this installation', () => {
-  const xml = '<Exec><Command>cmd.exe</Command><Arguments>/c "C:\\marquee\\start-marquee.cmd"</Arguments></Exec>';
-  assert.equal(taskRunsApp(xml, 'C:\\marquee'), true);
-  assert.equal(taskRunsApp(xml.replace(/"/g, '&quot;'), 'C:\\Marquee'), true);
-  assert.equal(taskRunsApp(xml, 'D:\\Apps\\marquee'), false);
-  assert.equal(taskRunsApp('', 'C:\\marquee'), false);
+test('the Lilin task only counts when it runs this installation', () => {
+  const xml = '<Exec><Command>cmd.exe</Command><Arguments>/c "C:\\lilin\\start-lilin.cmd"</Arguments></Exec>';
+  assert.equal(taskRunsApp(xml, 'C:\\lilin'), true);
+  assert.equal(taskRunsApp(xml.replace(/"/g, '&quot;'), 'C:\\Lilin'), true);
+  assert.equal(taskRunsApp(xml, 'D:\\Apps\\lilin'), false);
+  assert.equal(taskRunsApp('', 'C:\\lilin'), false);
 });
 
 test('wizard info reads .env without printing secrets', (t) => {
@@ -70,7 +70,7 @@ test('wizard info suggests the new choices; wizard oidc shows the Access login m
   assert.equal(info.defaults.accessSignIn, 'access', 'an existing Access setup keeps its own logins until asked');
   assert.equal(wizard(['oidc', '--env', envFile]).json.configured, false);
   fs.appendFileSync(envFile, `OIDC_CLIENT_ID=cloudflare\nOIDC_CLIENT_SECRET=${'s'.repeat(40)}\nOIDC_REDIRECT_URIS=https://t.cloudflareaccess.com/cdn-cgi/access/callback\nPUBLIC_URL=https://m.example.com\n`);
-  assert.equal(wizard(['info', '--env', envFile]).json.defaults.accessSignIn, 'marquee');
+  assert.equal(wizard(['info', '--env', envFile]).json.defaults.accessSignIn, 'lilin');
   const m = wizard(['oidc', '--env', envFile]).json;
   assert.equal(m.ready, true);
   assert.equal(m.tokenUrl, 'https://m.example.com/c/oidc/token');

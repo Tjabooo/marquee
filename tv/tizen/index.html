@@ -2,15 +2,15 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Marquee</title>
+<title>Lilin</title>
 <!-- The TV's own APIs (the AVPlay player). Only pages inside the app package get them, which is why
-     this small shell is installed on the TV and loads the rest of Marquee's TV app from the server. -->
+     this small shell is installed on the TV and loads the rest of Lilin's TV app from the server. -->
 <script src="$WEBAPIS/webapis/webapis.js"></script>
 <script src="config.js"></script>
 <style>
   html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: #1F1019; color: #F6EADF; font-family: "SamsungOne", "Tizen Sans", sans-serif; }
   .shell { position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
-  /* The splash while the TV app loads from the server: the lit wordmark under a row of marquee bulbs */
+  /* The splash while the TV app loads from the server: the lit wordmark under a row of lilin bulbs */
   html, body { background: radial-gradient(ellipse 1500px 700px at 50% -160px, #3D2234 0%, rgba(61, 34, 52, 0) 100%), linear-gradient(#1F1019, #160B12); }
   .shell::before { content: ''; width: 330px; height: 16px; margin-bottom: 30px;
     background: radial-gradient(circle, #F4C152 5px, rgba(244, 193, 82, .35) 6.5px, rgba(244, 193, 82, 0) 9px) 0 50% / 33px 16px repeat-x; }
@@ -19,7 +19,7 @@
 </style>
 </head>
 <body>
-<div id="app"><div class="shell"><b>Marquee</b><p id="shell-note"></p></div></div>
+<div id="app"><div class="shell"><b>Lilin</b><p id="shell-note"></p></div></div>
 <script src="shell.js"></script>
 </body>
 </html>

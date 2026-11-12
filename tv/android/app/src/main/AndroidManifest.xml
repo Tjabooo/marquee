@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
   <uses-permission android:name="android.permission.INTERNET" />
-  <!-- Installs the app's own updates from the Marquee server (the TV asks once). -->
+  <!-- Installs the app's own updates from the Lilin server (the TV asks once). -->
   <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
   <!-- Android 12+: once allowed, the app updates itself without asking (only while it isn't on screen). -->
   <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
@@ -10,12 +10,12 @@
   <uses-feature android:name="android.software.leanback" android:required="false" />
   <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
-  <!-- Cleartext: Marquee is usually reached at a plain http:// address on the home network. -->
+  <!-- Cleartext: Lilin is usually reached at a plain http:// address on the home network. -->
   <application
-    android:label="Marquee"
+    android:label="Lilin"
     android:icon="@mipmap/ic_launcher"
     android:banner="@drawable/banner"
-    android:theme="@style/Marquee"
+    android:theme="@style/Lilin"
     android:allowBackup="false"
     android:hardwareAccelerated="true"
     android:usesCleartextTraffic="true"
@@ -35,7 +35,7 @@
     </activity>
     <provider
       android:name=".ApkProvider"
-      android:authorities="app.marquee.tv.update"
+      android:authorities="app.lilin.tv.update"
       android:exported="false"
       android:grantUriPermissions="true" />
     <service

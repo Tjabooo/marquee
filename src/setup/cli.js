@@ -22,7 +22,7 @@ import { openAuthStore } from '../auth.js';
 import { checkConfig } from '../config-check.js';
 import { dataDirProblem, STATE_FILES } from '../paths.js';
 
-export const HELP = `Marquee setup
+export const HELP = `Lilin setup
 
 Usage:
   node setup.js                  Interactive setup (safe to re-run)
@@ -30,14 +30,14 @@ Usage:
   node setup.js --config FILE    Unattended setup from a JSON file of answers
   node setup.js doctor           Check an installation without changing it
   node setup.js backup [--to DIR]        Consistent copy of the database and state
-  node setup.js migrate-data --to DIR    Move state to a new DATA_DIR (Marquee stopped)
+  node setup.js migrate-data --to DIR    Move state to a new DATA_DIR (Lilin stopped)
   node setup.js service install|status|restart|uninstall [--scope user|system]
-  node setup.js user add EMAIL [--owner]   Create a Marquee sign-in (or reset its password)
+  node setup.js user add EMAIL [--owner]   Create a Lilin sign-in (or reset its password)
   node setup.js user passwd|remove|signout EMAIL, user list
-  node setup.js gui              Windows: the graphical setup wizard (also MarqueeSetup.exe)
+  node setup.js gui              Windows: the graphical setup wizard (also LilinSetup.exe)
   node setup.js wizard info|check|clipper|oidc [--config FILE]
                                  JSON for graphical front ends (the Windows setup wizard); reads only
-  node setup.js oidc             What to enter in Cloudflare Access to sign in with Marquee passwords
+  node setup.js oidc             What to enter in Cloudflare Access to sign in with Lilin passwords
   node setup.js clipper          Game clips: set up CLIPS_DIR and install Clipper (the recorder)
                                  on this PC, or print the commands for your gaming PC
 
@@ -45,14 +45,14 @@ Options:
   --dry-run            Show what would change; write and run nothing
   --yes, -y            Accept defaults instead of asking
   --config FILE        Answers as JSON: .env keys plus "autostart", "install", "serviceScope", "qbitSavePath",
-                       "remoteAccess" (none|tailscale|cloudflare|proxy), "accessSignIn" (marquee|access)
+                       "remoteAccess" (none|tailscale|cloudflare|proxy), "accessSignIn" (lilin|access)
   --allow-install      Unattended: may install missing packages (with sudo on Linux)
   --allow-service      Unattended: may register the autostart service
   --allow-sudo         Unattended: may use sudo for system-level steps
   --allow-qbit-config  Unattended: may set qBittorrent's save path to MEDIA_DIR
   --offline            Skip network checks of integrations
   --scope user|system  systemd service scope (default: system on servers, user otherwise)
-  --env FILE           Use this .env instead of the one in the Marquee folder
+  --env FILE           Use this .env instead of the one in the Lilin folder
   --owner              With user add: also make them an owner (adds them to ADMIN_EMAILS)
 
 Clipper options (node setup.js clipper):
@@ -216,7 +216,7 @@ function loadEnv(file) {
 }
 
 function defaultMediaDir() {
-  return process.platform === 'win32' ? path.join(os.homedir(), 'Videos', 'Marquee') : path.join(os.homedir(), 'Media');
+  return process.platform === 'win32' ? path.join(os.homedir(), 'Videos', 'Lilin') : path.join(os.homedir(), 'Media');
 }
 
 function serviceManager() { return detect.serviceManagers()[0] || null; }
@@ -224,8 +224,8 @@ function serviceManager() { return detect.serviceManagers()[0] || null; }
 // The scope of a systemd unit that's already installed wins, so status/restart/uninstall act on it.
 // For a new install, a desktop session suggests a personal machine (user service); otherwise system.
 function defaultScope(info) {
-  if (fs.existsSync('/etc/systemd/system/marquee.service')) return 'system';
-  if (fs.existsSync(path.join(os.homedir(), '.config', 'systemd', 'user', 'marquee.service'))) return 'user';
+  if (fs.existsSync('/etc/systemd/system/lilin.service')) return 'system';
+  if (fs.existsSync(path.join(os.homedir(), '.config', 'systemd', 'user', 'lilin.service'))) return 'user';
   return info.os.platform === 'linux' && process.env.XDG_SESSION_TYPE && !isRoot() ? 'user' : 'system';
 }
 
@@ -236,10 +236,10 @@ async function setup(opts) {
   const ask = new Prompter({ yes: opts.yes, answers });
   const done = [], skipped = [], manual = [];
 
-  console.log(bold('\nMarquee setup') + dim(opts.dryRun ? '  (dry run: nothing will be written or run)' : ''));
+  console.log(bold('\nLilin setup') + dim(opts.dryRun ? '  (dry run: nothing will be written or run)' : ''));
   const info = await detect.detectAll(process.env, { encoders: false });
   if (!info.node.ok || !info.sqlite.ok) {
-    throw new Error(`Marquee needs Node.js ${info.node.minimum} or later (this is ${info.node.version}${info.sqlite.ok ? '' : `; ${info.sqlite.reason}`}). Install the current LTS from nodejs.org or your package manager.`);
+    throw new Error(`Lilin needs Node.js ${info.node.minimum} or later (this is ${info.node.version}${info.sqlite.ok ? '' : `; ${info.sqlite.reason}`}). Install the current LTS from nodejs.org or your package manager.`);
   }
   console.log(`${mark.ok} ${info.os.name} ${info.os.arch}${info.os.wsl ? ' (WSL)' : ''}${info.os.container ? ' (container)' : ''}, Node.js ${info.node.version}`);
 
@@ -255,14 +255,14 @@ async function setup(opts) {
     if (opts.dryRun) console.log(`  would create ${media}`);
     else { try { fs.mkdirSync(media, { recursive: true }); done.push(`Created ${media}`); } catch (e) { manual.push(`Create ${media} (${e.code})`); } }
   }
-  const freshInstall = !fs.existsSync(path.join(cur('DATA_DIR') || APP_DIR, '.marquee.db'));
+  const freshInstall = !fs.existsSync(path.join(cur('DATA_DIR') || APP_DIR, '.lilin.db'));
   if (freshInstall && ('DATA_DIR' in answers || !opts.yes)) {
-    set.DATA_DIR = await ask.text('DATA_DIR', 'Folder for Marquee\'s database and state (blank = the Marquee folder)', cur('DATA_DIR'));
+    set.DATA_DIR = await ask.text('DATA_DIR', 'Folder for Lilin\'s database and state (blank = the Lilin folder)', cur('DATA_DIR'));
   }
   // Browser copies, previews and share copies can grow to hundreds of GB. Asked only on a fresh
-  // install: moving it later means stopping Marquee and moving the folder (docs/configuration.md).
+  // install: moving it later means stopping Lilin and moving the folder (docs/configuration.md).
   if (freshInstall && ('CACHE_DIR' in answers || !opts.yes)) {
-    set.CACHE_DIR = await ask.text('CACHE_DIR', 'Folder for copies Marquee can always make again (browser copies, previews; can grow to hundreds of GB; blank = in the data folder)', cur('CACHE_DIR'));
+    set.CACHE_DIR = await ask.text('CACHE_DIR', 'Folder for copies Lilin can always make again (browser copies, previews; can grow to hundreds of GB; blank = in the data folder)', cur('CACHE_DIR'));
   }
   for (const dir of [set.DATA_DIR, set.CACHE_DIR]) {
     if (!dir || fs.existsSync(dir)) continue;
@@ -280,7 +280,7 @@ async function setup(opts) {
     else manual.push(`Port ${port} is busy: set PORT in .env to a free port`);
   }
   set.PORT = String(port);
-  set.HOST = await ask.choose('HOST', 'Who can open Marquee?', [
+  set.HOST = await ask.choose('HOST', 'Who can open Lilin?', [
     ['0.0.0.0', 'Devices on my home network (recommended)'],
     ['127.0.0.1', 'Only this computer (a reverse proxy or tunnel on this machine publishes it)'],
   ], cur('HOST', '0.0.0.0'));
@@ -312,28 +312,28 @@ async function setup(opts) {
     set.ADMIN_EMAILS = await ask.text('ADMIN_EMAILS', 'Owner email(s) as signed in through Cloudflare Access, comma-separated', cur('ADMIN_EMAILS'));
     set.CF_ACCESS_TEAM_DOMAIN = await ask.text('CF_ACCESS_TEAM_DOMAIN', 'Access team domain, e.g. myteam.cloudflareaccess.com (blank = trust cloudflared on this machine)', cur('CF_ACCESS_TEAM_DOMAIN'));
     if (set.CF_ACCESS_TEAM_DOMAIN) set.CF_ACCESS_AUD = await ask.text('CF_ACCESS_AUD', 'Access application AUD tag', cur('CF_ACCESS_AUD'), { secret: true });
-    set.PUBLIC_URL = await ask.text('PUBLIC_URL', 'Public address, e.g. https://marquee.example.com', cur('PUBLIC_URL'));
+    set.PUBLIC_URL = await ask.text('PUBLIC_URL', 'Public address, e.g. https://lilin.example.com', cur('PUBLIC_URL'));
     manual.push('Finish Cloudflare Tunnel + Access: docs/remote-access.md#cloudflare-tunnel-and-access');
-    // Marquee as Access's login (src/oidc.js) needs the team's callback address, so it's offered
+    // Lilin as Access's login (src/oidc.js) needs the team's callback address, so it's offered
     // only with a team domain.
     if (set.CF_ACCESS_TEAM_DOMAIN) {
       accessSignIn = await ask.choose('accessSignIn', 'How do people sign in to Cloudflare Access?', [
-        ['marquee', 'With their Marquee password: no email codes, invites sign people straight in (recommended)'],
+        ['lilin', 'With their Lilin password: no email codes, invites sign people straight in (recommended)'],
         ['access', 'With Cloudflare\'s own login methods (one-time email codes, Google, ...)'],
-      ], oidcConfigured(values) || freshInstall ? 'marquee' : 'access');
-      if (accessSignIn === 'marquee') {
+      ], oidcConfigured(values) || freshInstall ? 'lilin' : 'access');
+      if (accessSignIn === 'lilin') {
         Object.assign(set, oidcValues({ ...values, ...answers }, set.CF_ACCESS_TEAM_DOMAIN));
-        if (!values.OIDC_CLIENT_SECRET) done.push('Generated OIDC_CLIENT_SECRET for the Marquee sign-in');
-        manual.push('Add Marquee as a login method in Cloudflare Access: node setup.js oidc shows what to enter');
+        if (!values.OIDC_CLIENT_SECRET) done.push('Generated OIDC_CLIENT_SECRET for the Lilin sign-in');
+        manual.push('Add Lilin as a login method in Cloudflare Access: node setup.js oidc shows what to enter');
       }
     }
-    if (accessSignIn !== 'marquee' && oidcConfigured(values)) for (const k of OIDC_KEYS) set[k] = '';
+    if (accessSignIn !== 'lilin' && oidcConfigured(values)) for (const k of OIDC_KEYS) set[k] = '';
   } else if (remote === 'tailscale') manual.push('Install Tailscale and open http://<this machine\'s tailnet name>:' + port + ' (docs/remote-access.md#tailscale)');
-  else if (remote === 'proxy') manual.push('Put Marquee behind an authenticating proxy: docs/remote-access.md#reverse-proxy');
+  else if (remote === 'proxy') manual.push('Put Lilin behind an authenticating proxy: docs/remote-access.md#reverse-proxy');
   if (remote !== 'cloudflare') {
-    set.ADMIN_EMAILS = await ask.text('ADMIN_EMAILS', 'Your email, for signing in to Marquee as its owner (blank = skip)', cur('ADMIN_EMAILS'));
+    set.ADMIN_EMAILS = await ask.text('ADMIN_EMAILS', 'Your email, for signing in to Lilin as its owner (blank = skip)', cur('ADMIN_EMAILS'));
   }
-  set.HOME_NETWORK_ACCESS = await ask.choose('HOME_NETWORK_ACCESS', 'Who can use Marquee on your home network without signing in?', [
+  set.HOME_NETWORK_ACCESS = await ask.choose('HOME_NETWORK_ACCESS', 'Who can use Lilin on your home network without signing in?', [
     ['shared', 'Everyone at home, as one shared account (visitors from the internet always sign in)'],
     ['signin', 'No one: everyone signs in, at home too'],
   ], cur('HOME_NETWORK_ACCESS', 'shared'));
@@ -388,7 +388,7 @@ async function setup(opts) {
     const qbit = integrations.find((r) => r.name === 'qBittorrent' && r.ok);
     const target = env.MEDIA_DIR && path.resolve(env.MEDIA_DIR);
     if (qbit && target && answers.qbitSavePath !== false && path.resolve(qbit.savePath || '') !== target) {
-      console.log(`  qBittorrent saves to ${qbit.savePath}; Marquee's library is ${target}.`);
+      console.log(`  qBittorrent saves to ${qbit.savePath}; Lilin's library is ${target}.`);
       const ok = answers.qbitSavePath === true ? opts.allow.has('qbit-config') : await ask.confirm(`Change qBittorrent's default save path to ${target}?`, { allow: 'qbit-config', allowed: opts.allow });
       if (ok && !opts.dryRun) { const r = await setQbitSavePath(env, target); (r.ok ? done : manual).push(r.ok ? `qBittorrent ${r.detail}` : `Set qBittorrent's save path by hand (${r.detail})`); }
       else if (!ok) manual.push('Downloads land outside MEDIA_DIR until qBittorrent\'s save path points inside it');
@@ -400,12 +400,12 @@ async function setup(opts) {
   const mgr = serviceManager();
   let startup = 'not set up (start with: npm start)';
   if (info.os.container) { startup = 'managed by the container runtime'; console.log(`${mark.info} Running in a container: no service needed`); }
-  else if (!mgr) { console.log(`${mark.warn} No supported service manager found`); manual.push('Start Marquee with your init system: see docs/install/'); }
+  else if (!mgr) { console.log(`${mark.warn} No supported service manager found`); manual.push('Start Lilin with your init system: see docs/install/'); }
   else {
     const scope = opts.scope || answers.serviceScope || defaultScope(info);
     const plan = servicePlan('install', { manager: mgr, appDir: APP_DIR, scope, mediaDir: env.MEDIA_DIR || null, dataDir: env.DATA_DIR || null });
     const wants = 'autostart' in answers ? Boolean(answers.autostart) : !opts.yes || opts.allow.has('service');
-    const ok = wants && await ask.confirm(`Start Marquee automatically at boot (${mgr}${mgr === 'systemd' ? `, ${scope} service` : ''})?`, { dflt: true, allow: 'service', allowed: opts.allow });
+    const ok = wants && await ask.confirm(`Start Lilin automatically at boot (${mgr}${mgr === 'systemd' ? `, ${scope} service` : ''})?`, { dflt: true, allow: 'service', allowed: opts.allow });
     const needsSudo = plan.some((s) => s.privileged) && process.platform !== 'win32' && !isRoot();
     if (ok && needsSudo && opts.yes && !opts.allow.has('sudo')) {
       skipped.push('Autostart: needs --allow-sudo for a system service (or use --scope user)');
@@ -419,13 +419,13 @@ async function setup(opts) {
 
   // The owner's own sign-in (auth.js), unless Cloudflare Access signs people in with its own logins.
   const ownerEmail = String(env.ADMIN_EMAILS || '').split(',')[0].trim().toLowerCase();
-  if (ownerEmail && (remote !== 'cloudflare' || accessSignIn === 'marquee') && !opts.dryRun) {
+  if (ownerEmail && (remote !== 'cloudflare' || accessSignIn === 'lilin') && !opts.dryRun) {
     const dataDir = env.DATA_DIR ? path.resolve(env.DATA_DIR) : APP_DIR;
     let store = null;
     try {
       store = openAuthStore(dataDir);
       if (!store.login(ownerEmail)) {
-        const now = opts.yes ? Boolean(process.env.MARQUEE_PASSWORD) : process.stdin.isTTY && await ask.confirm(`Create a Marquee password for ${ownerEmail} now?`, { dflt: true });
+        const now = opts.yes ? Boolean(process.env.LILIN_PASSWORD) : process.stdin.isTTY && await ask.confirm(`Create a Lilin password for ${ownerEmail} now?`, { dflt: true });
         if (now) {
           ask.close(); // the password is read straight from the terminal, without echo
           await store.setPassword(ownerEmail, await askNewPassword(ownerEmail));
@@ -448,7 +448,7 @@ async function setup(opts) {
   console.log(`  Startup:  ${startup}`);
   console.log(`  Check:    node setup.js doctor`);
   if (manual.length) { console.log(bold('\nStill to do')); for (const m of manual) console.log(`  - ${m}`); }
-  if (accessSignIn === 'marquee' && !opts.yes && loginMethod(env).ready) { console.log(''); for (const l of loginMethodLines(loginMethod(env))) console.log(`  ${l}`); }
+  if (accessSignIn === 'lilin' && !opts.yes && loginMethod(env).ready) { console.log(''); for (const l of loginMethodLines(loginMethod(env))) console.log(`  ${l}`); }
   if (opts.dryRun) console.log(dim('\nDry run: nothing was written or run.'));
   ask.close();
   return 0;
@@ -463,7 +463,7 @@ async function doctor(opts) {
     if (level === 'error') errors++; if (level === 'warn') warnings++;
     console.log(`${mark[level]} ${msg}${fix ? `\n    ${dim(fix)}` : ''}`);
   };
-  console.log(bold('\nMarquee doctor') + dim(`  ${APP_DIR}`));
+  console.log(bold('\nLilin doctor') + dim(`  ${APP_DIR}`));
 
   console.log(bold('\nRuntime'));
   const info = await detect.detectAll(env);
@@ -480,8 +480,8 @@ async function doctor(opts) {
   const dataDir = env.DATA_DIR ? path.resolve(env.DATA_DIR) : APP_DIR;
   const problem = dataDirProblem(dataDir, APP_DIR);
   if (problem) report('error', problem);
-  try { fs.accessSync(dataDir, fs.constants.W_OK); report('ok', `Data folder ${dataDir} is writable`); } catch (e) { report('error', `Data folder ${dataDir}: ${e.code}`, 'Create it and give the Marquee account write access.'); }
-  const db = path.join(dataDir, '.marquee.db');
+  try { fs.accessSync(dataDir, fs.constants.W_OK); report('ok', `Data folder ${dataDir} is writable`); } catch (e) { report('error', `Data folder ${dataDir}: ${e.code}`, 'Create it and give the Lilin account write access.'); }
+  const db = path.join(dataDir, '.lilin.db');
   if (fs.existsSync(db)) report('ok', `Database ${(fs.statSync(db).size / 1048576).toFixed(1)} MB, ${STATE_FILES.filter((f) => fs.existsSync(path.join(dataDir, f))).length} state files`);
   else report('info', 'No database yet (created on first start)');
   for (const [label, dir] of [['data', dataDir], ['media', env.MEDIA_DIR]]) {
@@ -499,10 +499,10 @@ async function doctor(opts) {
   else {
     report(ff.ffprobeOk ? 'ok' : 'warn', `ffmpeg ${ff.version}${ff.ffprobeOk ? ' and ffprobe' : ', ffprobe missing'}`);
     const nv = ff.encoders.nvenc;
-    report('ok', `Encoder Marquee will use: ${nv?.works ? 'NVIDIA NVENC (h264_nvenc)' : ff.libx264 ? 'libx264 on the CPU' : 'none found (no libx264)'}`,
+    report('ok', `Encoder Lilin will use: ${nv?.works ? 'NVIDIA NVENC (h264_nvenc)' : ff.libx264 ? 'libx264 on the CPU' : 'none found (no libx264)'}`,
       nv && !nv.works ? `h264_nvenc is listed but a test encode failed: ${nv.error}` : null);
     const others = Object.values(ff.encoders).filter((e) => !e.used);
-    for (const e of others) report('info', `${e.label}: ${e.works ? 'works in ffmpeg, not used by Marquee yet' : `listed but not working (${e.error})`}`);
+    for (const e of others) report('info', `${e.label}: ${e.works ? 'works in ffmpeg, not used by Lilin yet' : `listed but not working (${e.error})`}`);
   }
   if (info.gpus.length) report('info', `GPU: ${info.gpus.join('; ')}`);
   report(info.tesseract ? 'ok' : 'info', info.tesseract === 'windows-ocr' ? 'Notes OCR: Windows OCR' : info.tesseract ? `Notes OCR: Tesseract (${info.tesseract})` : 'Notes OCR off (install tesseract to search text in images)');
@@ -512,9 +512,9 @@ async function doctor(opts) {
   console.log(bold('\nServer'));
   const port = Number(env.PORT || 8080);
   const h = await health(port);
-  if (h) report('ok', `Marquee ${h.version} is answering on port ${port}`);
-  else if (await portFree(port)) report('warn', `Marquee isn't running on port ${port}`, 'Start it: npm start, or node setup.js service restart.');
-  else if (await fetch(`http://127.0.0.1:${port}/api/status`, { signal: AbortSignal.timeout(3000) }).then((r) => r.ok, () => false)) report('warn', `An older Marquee is running on port ${port}`, 'Restart it to run this version: node setup.js service restart.');
+  if (h) report('ok', `Lilin ${h.version} is answering on port ${port}`);
+  else if (await portFree(port)) report('warn', `Lilin isn't running on port ${port}`, 'Start it: npm start, or node setup.js service restart.');
+  else if (await fetch(`http://127.0.0.1:${port}/api/status`, { signal: AbortSignal.timeout(3000) }).then((r) => r.ok, () => false)) report('warn', `An older Lilin is running on port ${port}`, 'Restart it to run this version: node setup.js service restart.');
   else report('error', `Port ${port} is used by another program`, 'Stop it or change PORT in .env.');
   const mgr = serviceManager();
   if (mgr) {
@@ -536,32 +536,32 @@ async function doctor(opts) {
   return errors ? 1 : 0;
 }
 
-// Sign-in setup, and whether anyone but you could change what Marquee runs.
+// Sign-in setup, and whether anyone but you could change what Lilin runs.
 function securityChecks({ env, dataDir, report }) {
   console.log(bold('\nSecurity'));
   let logins = [];
-  if (fs.existsSync(path.join(dataDir, '.marquee.db'))) {
+  if (fs.existsSync(path.join(dataDir, '.lilin.db'))) {
     try { const store = openAuthStore(dataDir); logins = store.list().map((r) => r.email); store.close(); } catch (e) { report('warn', `Couldn't read sign-ins: ${e.message}`); }
   }
   const mode = String(env.HOME_NETWORK_ACCESS || 'shared').toLowerCase();
   report('ok', mode === 'signin' ? 'Everyone signs in, at home too (HOME_NETWORK_ACCESS=signin)'
     : 'Home network shares one account; visitors from the internet must sign in');
-  report(logins.length ? 'ok' : 'info', logins.length ? `${logins.length} Marquee sign-in(s): ${logins.join(', ')}` : 'No Marquee sign-ins', logins.length ? null : 'Create one with: node setup.js user add you@example.com --owner');
+  report(logins.length ? 'ok' : 'info', logins.length ? `${logins.length} Lilin sign-in(s): ${logins.join(', ')}` : 'No Lilin sign-ins', logins.length ? null : 'Create one with: node setup.js user add you@example.com --owner');
   const owners = String(env.ADMIN_EMAILS || '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
   if (oidcConfigured(env) && owners.length && !owners.some((o) => logins.includes(o))) {
-    report('warn', 'Access signs people in with Marquee passwords (OIDC_*), but no owner has one yet', `node setup.js user add ${owners[0]}`);
+    report('warn', 'Access signs people in with Lilin passwords (OIDC_*), but no owner has one yet', `node setup.js user add ${owners[0]}`);
   } else if (!env.CF_ACCESS_TEAM_DOMAIN && owners.length && !owners.some((o) => logins.includes(o))) {
-    report('info', 'No owner (ADMIN_EMAILS) has a Marquee sign-in; the owner tabs then need Cloudflare Access or a proxy', `node setup.js user add ${owners[0]}`);
+    report('info', 'No owner (ADMIN_EMAILS) has a Lilin sign-in; the owner tabs then need Cloudflare Access or a proxy', `node setup.js user add ${owners[0]}`);
   }
   if (mode === 'signin' && !logins.length && !env.CF_ACCESS_TEAM_DOMAIN) report('error', 'HOME_NETWORK_ACCESS=signin but nobody can sign in', 'node setup.js user add you@example.com --owner');
   if (process.platform === 'win32') {
-    const legacy = spawnSync('schtasks.exe', ['/query', '/tn', 'Marquee Watchdog', '/xml'], { encoding: 'utf8', windowsHide: true, timeout: 10000 });
-    if (legacy.status === 0 && /-File\b|\.ps1|\.cmd|\.bat/i.test(legacy.stdout || '')) report('error', 'The old "Marquee Watchdog" task runs a script from the Marquee folder as SYSTEM', 'In an elevated PowerShell: node setup.js service install (it replaces it), or Unregister-ScheduledTask "Marquee Watchdog".');
-    else if (legacy.status === 0) report('info', 'An old "Marquee Watchdog" task is still registered (it runs no script file)', 'node setup.js service install in an elevated PowerShell replaces it with the Marquee task\'s own restart trigger.');
-    const ps = `$b='S-1-1-0','S-1-5-11','S-1-5-32-545','S-1-5-4';$w=[int][Security.AccessControl.FileSystemRights]'WriteData,AppendData,Delete,ChangePermissions,TakeOwnership';@((Get-Acl -LiteralPath $env:MQ_DIR).Access|?{$_.AccessControlType -eq 'Allow' -and ([int]$_.FileSystemRights -band $w) -and $(try{$b -contains $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value}catch{$false})}).Count`;
-    const r = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { encoding: 'utf8', windowsHide: true, timeout: 20000, env: { ...process.env, MQ_DIR: APP_DIR } });
-    if (r.status === 0 && Number(r.stdout.trim()) > 0) report('warn', `Every user of this PC can change files in ${APP_DIR}`, 'In an elevated PowerShell: node setup.js service install (it limits write access to you), so no one else can change what Marquee runs.');
-    else if (r.status === 0) report('ok', 'Only you and administrators can change the Marquee folder');
+    const legacy = spawnSync('schtasks.exe', ['/query', '/tn', 'Lilin Watchdog', '/xml'], { encoding: 'utf8', windowsHide: true, timeout: 10000 });
+    if (legacy.status === 0 && /-File\b|\.ps1|\.cmd|\.bat/i.test(legacy.stdout || '')) report('error', 'The old "Lilin Watchdog" task runs a script from the Lilin folder as SYSTEM', 'In an elevated PowerShell: node setup.js service install (it replaces it), or Unregister-ScheduledTask "Lilin Watchdog".');
+    else if (legacy.status === 0) report('info', 'An old "Lilin Watchdog" task is still registered (it runs no script file)', 'node setup.js service install in an elevated PowerShell replaces it with the Lilin task\'s own restart trigger.');
+    const ps = `$b='S-1-1-0','S-1-5-11','S-1-5-32-545','S-1-5-4';$w=[int][Security.AccessControl.FileSystemRights]'WriteData,AppendData,Delete,ChangePermissions,TakeOwnership';@((Get-Acl -LiteralPath $env:LIL_DIR).Access|?{$_.AccessControlType -eq 'Allow' -and ([int]$_.FileSystemRights -band $w) -and $(try{$b -contains $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value}catch{$false})}).Count`;
+    const r = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { encoding: 'utf8', windowsHide: true, timeout: 20000, env: { ...process.env, LIL_DIR: APP_DIR } });
+    if (r.status === 0 && Number(r.stdout.trim()) > 0) report('warn', `Every user of this PC can change files in ${APP_DIR}`, 'In an elevated PowerShell: node setup.js service install (it limits write access to you), so no one else can change what Lilin runs.');
+    else if (r.status === 0) report('ok', 'Only you and administrators can change the Lilin folder');
   } else {
     for (const f of [APP_DIR, path.join(APP_DIR, 'server.js'), ENV_FILE]) {
       try { if (fs.statSync(f).mode & 0o002) report('warn', `${f} can be changed by every user of this machine`, `chmod o-w '${f}'`); } catch { /* missing */ }
@@ -594,7 +594,7 @@ async function clipperSetup(opts) {
   const env = { ...values };
   console.log(bold('\nGame clips') + dim(opts.dryRun ? '  (dry run: nothing will be written or run)' : ''));
   console.log(dim('Clipper keeps the last 90 s of your screen in memory; a hotkey saves it, and kept clips land in'));
-  console.log(dim('Marquee\'s Clips tab. https://github.com/' + clipper.CLIPPER_REPO));
+  console.log(dim('Lilin\'s Clips tab. https://github.com/' + clipper.CLIPPER_REPO));
 
   // 1. The folder
   const clipsDir = path.resolve(opts.clipsDir || await ask.text('CLIPS_DIR', 'Folder for game clips (CLIPS_DIR)', values.CLIPS_DIR || clipper.defaultClipsDir(env)));
@@ -619,7 +619,7 @@ async function clipperSetup(opts) {
   const quality = opts.quality || (where === 'none' ? 'balanced' : await ask.choose('quality', 'Clip quality?', clipper.QUALITY_CHOICES, 'balanced'));
   const q = clipper.parseQuality(quality);
   const lan = detect.lanAddresses()[0]?.address;
-  const marqueeUrl = values.PUBLIC_URL || `http://${lan || os.hostname()}:${values.PORT || 8080}`;
+  const lilinUrl = values.PUBLIC_URL || `http://${lan || os.hostname()}:${values.PORT || 8080}`;
 
   let status = 0;
   if (where === 'here') {
@@ -630,11 +630,11 @@ async function clipperSetup(opts) {
     if (process.platform === 'linux' && clipsDir === path.join(os.homedir(), 'Videos', 'Clips')) {
       throw new Error(`${clipsDir} is Clipper's own working folder (it empties it as clips move on). Pick another CLIPS_DIR.`);
     }
-    const cmd = clipper.localInstallCommand({ src, clipsDir, marqueeUrl, quality, yes: opts.yes });
+    const cmd = clipper.localInstallCommand({ src, clipsDir, lilinUrl, quality, yes: opts.yes });
     const ref = opts.clipperRef || clipper.CLIPPER_COMMIT;
     console.log(bold('\n  Clipper is separate software; review it before installing.'));
     console.log(`  Source: ${clipper.clipperSourceUrl(ref)}`);
-    if (opts.clipperRef) console.log(`  ${mark.warn} --clipper-ref ${opts.clipperRef}: not the version this Marquee pins, so its contents can't be checked.`);
+    if (opts.clipperRef) console.log(`  ${mark.warn} --clipper-ref ${opts.clipperRef}: not the version this Lilin pins, so its contents can't be checked.`);
     else console.log(dim(`  Pinned commit ${ref.slice(0, 12)} and release ${clipper.CLIPPER_RELEASE}; downloads are checked against their SHA-256 before anything runs.`));
     console.log('  It installs:');
     for (const line of clipper.CLIPPER_INSTALLS[process.platform === 'win32' ? 'windows' : 'linux']) console.log(`    - ${line}`);
@@ -660,10 +660,10 @@ async function clipperSetup(opts) {
     console.log(bold(`\nOn the gaming PC (${where === 'windows' ? 'PowerShell' : 'a terminal'})`));
     console.log(dim(`  Installs Clipper ${clipper.CLIPPER_COMMIT.slice(0, 12)} (review: ${clipper.clipperSourceUrl()}); the installer's checksum is checked first. It sets up:`));
     for (const line of clipper.CLIPPER_INSTALLS[where]) console.log(dim(`    - ${line}`));
-    console.log(`  ${clipper.remoteInstallCommand({ target: where, share: reach, marqueeUrl, quality })}`);
+    console.log(`  ${clipper.remoteInstallCommand({ target: where, share: reach, lilinUrl, quality })}`);
     if (q.bench) console.log(dim('  Start a game before running it: the benchmark records 8 s of you playing.'));
   }
-  if (restartNeeded) console.log(`\n${mark.warn} Restart Marquee to show the Clips tab: node setup.js service restart`);
+  if (restartNeeded) console.log(`\n${mark.warn} Restart Lilin to show the Clips tab: node setup.js service restart`);
   console.log(dim('\nThe Clips tab is for the owner (ADMIN_EMAILS); see docs/integrations.md#clips-and-discord-share-links.'));
   ask.close();
   return status;
@@ -679,11 +679,11 @@ function openGui() {
   const child = spawn('powershell.exe', ['-NoProfile', '-STA', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', script],
     { detached: true, stdio: 'ignore', windowsHide: true });
   child.unref();
-  console.log('Opening Marquee Setup...');
+  console.log('Opening Lilin Setup...');
   return 0;
 }
 
-// Adds `email` to ADMIN_EMAILS in .env (owners are read at startup, so Marquee needs a restart).
+// Adds `email` to ADMIN_EMAILS in .env (owners are read at startup, so Lilin needs a restart).
 // `node setup.js oidc`: the login method to add in Cloudflare (it shows the client secret: that's
 // what it's for, so it's only printed when asked for).
 function oidcInfo(opts) {
@@ -691,13 +691,13 @@ function oidcInfo(opts) {
   const env = { ...parseEnv(readEnvFile(file) ?? ''), ...Object.fromEntries(OIDC_KEYS.concat('PUBLIC_URL').filter((k) => process.env[k]).map((k) => [k, process.env[k]])) };
   const m = loginMethod(env);
   if (!oidcConfigured(env)) {
-    console.log(`${mark.info} Marquee isn't set up as Cloudflare Access's sign-in. Run node setup.js, pick Cloudflare Tunnel + Access`);
-    console.log('  and "With their Marquee password", or see docs/remote-access.md#marquee-as-the-sign-in-for-access-no-email-codes');
+    console.log(`${mark.info} Lilin isn't set up as Cloudflare Access's sign-in. Run node setup.js, pick Cloudflare Tunnel + Access`);
+    console.log('  and "With their Lilin password", or see docs/remote-access.md#lilin-as-the-sign-in-for-access-no-email-codes');
     return 1;
   }
   if (!m.ready) { console.log(`${mark.warn} Missing or too short in .env: ${m.missing.join(', ')}. Run node setup.js to fill them in.`); return 1; }
   for (const l of loginMethodLines(m)) console.log(l);
-  console.log(dim(`\nCallback address(es) Marquee accepts: ${m.redirectUris.join(', ')}`));
+  console.log(dim(`\nCallback address(es) Lilin accepts: ${m.redirectUris.join(', ')}`));
   return 0;
 }
 
@@ -706,7 +706,7 @@ function addOwnerEmail(file, email) {
   const list = String(parseEnv(text).ADMIN_EMAILS || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
   if (list.includes(email)) { console.log(`${mark.ok} ${email} is already an owner`); return; }
   writeEnvFile(file, updateEnvText(text, { ADMIN_EMAILS: [...list, email].join(',') }));
-  console.log(`${mark.ok} Added ${email} to ADMIN_EMAILS in ${file}. Restart Marquee to apply: node setup.js service restart`);
+  console.log(`${mark.ok} Added ${email} to ADMIN_EMAILS in ${file}. Restart Lilin to apply: node setup.js service restart`);
 }
 
 export async function main(argv = process.argv.slice(2)) {
@@ -745,7 +745,7 @@ export async function main(argv = process.argv.slice(2)) {
       }
       const to = opts.to ? path.resolve(opts.to) : env.DATA_DIR && path.resolve(env.DATA_DIR);
       if (!to) throw new Error('Say where to: node setup.js migrate-data --to /path/to/data');
-      if (await health(Number(env.PORT || 8080))) throw new Error('Marquee is running. Stop it first, then run migrate-data again.');
+      if (await health(Number(env.PORT || 8080))) throw new Error('Lilin is running. Stop it first, then run migrate-data again.');
       await migrateData({ from: APP_DIR, to, dryRun: opts.dryRun });
       if (!opts.dryRun && path.resolve(env.DATA_DIR || APP_DIR) !== to) {
         const file = opts.envFile ? path.resolve(opts.envFile) : ENV_FILE;

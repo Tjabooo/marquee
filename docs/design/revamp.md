@@ -1,4 +1,4 @@
-# Marquee revamp: design brief
+# Lilin revamp: design brief
 
 What the web app should feel like after the revamp, and the rules every screen follows. The tokens and
 components named here live in `public/style.css` (top of the file); screens are built from them. The
@@ -6,14 +6,14 @@ audit that led here is in [audit.md](audit.md).
 
 ## Direction
 
-**The house lights go down.** Marquee is a picture palace in your pocket. The room is dark velvet, the
-pictures are as big as the screen allows, and the only warm light is the marquee's bulbs, used the way a
+**The house lights go down.** Lilin is a picture palace in your pocket. The room is dark velvet, the
+pictures are as big as the screen allows, and the only warm light is the lilin's bulbs, used the way a
 theatre uses its lights: to show you where to look. Art comes first and fills the screen edge to edge;
 everything else (chrome, text, controls) is quiet, set in confident type, and steps back into darkness.
 Bulb light is spent sparingly: the one primary action on a surface, focus, progress, and things that are
 new or live. Motion is calm and physical (a curtain, not a slot machine), and the app should feel alive
 without asking for attention: the billboard drifts, cards lift toward you, the new-episode bulb glows.
-It is Marquee's own: the velvet, the gold bulb, the Bricolage Grotesque wordmark and the row of marquee
+It is Lilin's own: the velvet, the gold bulb, the Bricolage Grotesque wordmark and the row of lilin
 bulbs carry the identity; no other service's logos, names or signature layouts.
 
 ## Type
@@ -31,7 +31,7 @@ without separate breakpoints.
 | `--t-h3` | 16 → 20 px, 700 | card groups, sheet titles |
 | `--t-body` | 15 → 18 px | text, overviews (16 px minimum in inputs: iOS zoom) |
 | `--t-small` | 13 → 15 px | meta lines, card subtitles |
-| `--t-kicker` | 11 → 13 px, 700, uppercase, +0.14 em | labels above titles ("Now showing", "New in Marquee") |
+| `--t-kicker` | 11 → 13 px, 700, uppercase, +0.14 em | labels above titles ("Now showing", "New in Lilin") |
 
 Numbers use tabular figures. Lines of prose stop at 68 characters.
 
@@ -95,7 +95,7 @@ movement becomes an instant change or a short fade, autoplaying trailers and sli
 - **Tab bar (phones, tablets):** glass, icons with labels, the current tab lit with a bulb above it.
 - **Billboard (Discover):** full-bleed backdrop (phones 4:5 crop, wide screens up to 82 vh), TMDB logo
   art or the title in display type, one line of meta, two buttons (Play/Add as the lit primary, More
-  info as glass), and the slides as a row of marquee bulbs. Swipes on phones, advances every 9 s on
+  info as glass), and the slides as a row of lilin bulbs. Swipes on phones, advances every 9 s on
   wide screens, and plays a muted trailer after a few seconds on desktop (never on phones, metered
   connections, Save-Data or reduced motion).
 - **Row:** title (`--t-h2`) with an optional kicker and a See all chevron; cards scroll with
@@ -122,7 +122,7 @@ movement becomes an instant change or a short fade, autoplaying trailers and sli
 - **Buttons:** primary (bulb, one per surface), secondary (glass or surface), quiet (text), icon (44 px
   round). Chips for filters. All have visible `:focus-visible` rings with the bulb glow.
 - **States:** skeletons shaped like what's coming (billboard, rows, cards, page), a row of chasing
-  bulbs instead of spinners, empty states with an unlit marquee sign and one way forward.
+  bulbs instead of spinners, empty states with an unlit lilin sign and one way forward.
 
 ## From phone to TV
 

@@ -5,13 +5,13 @@ import vm from 'node:vm';
 
 const read = (p) => fs.readFileSync(new URL('../' + p, import.meta.url), 'utf8');
 
-test('There is one TV app: the Tizen shell loads /tv under the Marquee package', () => {
+test('There is one TV app: the Tizen shell loads /tv under the Lilin package', () => {
   const config = read('tv/tizen/config.xml.in');
   const shell = read('tv/tizen/shell.js');
-  assert.match(config, /MrqTvApp01\.Marquee/);
-  assert.match(config, /<name>Marquee<\/name>/);
+  assert.match(config, /LilTvApp01\.Lilin/);
+  assert.match(config, /<name>Lilin<\/name>/);
   assert.match(shell, /\/tv\/tv\.js/);
-  assert.doesNotMatch(shell + config, /tv-preview|MrqTvPrv01/);
+  assert.doesNotMatch(shell + config, /tv-preview|LilTvPrv01/);
   assert.equal(fs.existsSync(new URL('../public/tv-preview', import.meta.url)), false);
   assert.equal(fs.existsSync(new URL('../tv/tizen-preview', import.meta.url)), false);
 });
@@ -43,7 +43,7 @@ test('TV keeps its render budget deliberately small', () => {
 test('TV logic: library genre rows and search keys', () => {
   const sandbox = {};
   vm.runInNewContext(read('public/tv/logic.js'), sandbox);
-  const L = sandbox.MarqueeTvLogic;
+  const L = sandbox.LilinTvLogic;
   const genres = [{ name: 'Action', movie: 28, tv: 10759 }, { name: 'Comedy', movie: 35, tv: 35 }, { name: 'Horror', movie: 27, tv: null }];
   const library = [
     { id: 'a', tmdbId: 1, genres: [28], addedAt: 1 },
@@ -62,7 +62,7 @@ test('TV logic: library genre rows and search keys', () => {
 
 test('the search keyboard has å ä ö only on a Swedish TV', () => {
   const js = read('public/tv/tv.js');
-  const m = js.match(/var KEYBOARD = \(window\.MarqueeTvStrings \? ('[^']*')\s*: ('(?:[^'\\]|\\.)*')\)\.split/);
+  const m = js.match(/var KEYBOARD = \(window\.LilinTvStrings \? ('[^']*')\s*: ('(?:[^'\\]|\\.)*')\)\.split/);
   assert.ok(m, 'KEYBOARD picks its layout by language');
   const [sv, en] = [m[1], m[2]].map((s) => vm.runInNewContext(s).split(''));
   assert.ok(sv.includes('å') && sv.includes('ö'));
@@ -88,7 +88,7 @@ test('TV reconnect keeps the current position and never plays from zero after a 
 test('Rust TV app: every line has Swedish, the shell starts it and falls back to the JavaScript app', () => {
   const sandbox = { window: {} };
   vm.runInNewContext(read('public/tv/sv.js'), sandbox);
-  const strings = sandbox.window.MarqueeTvStrings;
+  const strings = sandbox.window.LilinTvStrings;
   const dir = new URL('../tv/rust/src/', import.meta.url);
   const src = fs.readdirSync(dir, { recursive: true }).filter((f) => f.endsWith('.rs')).map((f) => fs.readFileSync(new URL(f, dir), 'utf8')).join('\n');
   const lines = [...src.matchAll(/(?<![A-Za-z_])t!\(\s*"((?:[^"\\]|\\.)*)"/g)].map((m) => m[1]);
@@ -105,7 +105,7 @@ test('Rust TV host is old-browser JavaScript and the built app is in public/', (
   assert.doesNotThrow(() => new vm.Script(host));
   assert.doesNotMatch(host, /\?\./, 'Chrome 69 must not see optional chaining');
   assert.doesNotMatch(host, /\?\?/, 'Chrome 69 must not see nullish coalescing');
-  const wasm = fs.readFileSync(new URL('../public/tv-rs/marquee_tv.wasm', import.meta.url));
+  const wasm = fs.readFileSync(new URL('../public/tv-rs/lilin_tv.wasm', import.meta.url));
   assert.deepEqual([...wasm.subarray(0, 4)], [0, 0x61, 0x73, 0x6d]);
   // Every function Rust imports is one host.js provides.
   const mod = new WebAssembly.Module(wasm);

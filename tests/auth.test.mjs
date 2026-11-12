@@ -13,7 +13,7 @@ import { userCommand } from '../src/setup/users.js';
 
 const fakeReq = ({ ip = '192.168.1.20', headers = {}, method = 'GET' } = {}) => ({ method, headers: { host: '192.168.1.5:8080', ...headers }, socket: { remoteAddress: ip } });
 const fakeRes = () => { const h = {}; return { h, setHeader: (k, v) => { h[k.toLowerCase()] = v; } }; };
-const tmp = () => fs.mkdtemp(path.join(os.tmpdir(), 'marquee-auth-'));
+const tmp = () => fs.mkdtemp(path.join(os.tmpdir(), 'lilin-auth-'));
 
 test('home, Tailscale and loopback addresses are private; the internet is not', () => {
   for (const ip of ['127.0.0.1', '::1', '10.1.2.3', '172.16.0.1', '172.31.255.1', '192.168.50.67', '100.64.0.1', '100.127.1.1', 'fd7a:115c::1', 'fe80::1', '::ffff:192.168.1.2'])
@@ -111,7 +111,7 @@ test('sessions identify people; the shared account is for the home network only'
   strict.store.close();
 });
 
-test('the sign-in page escapes what it echoes and only redirects within Marquee', () => {
+test('the sign-in page escapes what it echoes and only redirects within Lilin', () => {
   for (const bad of ['//evil.example', 'https://evil.example', '/\\evil.example', 'javascript:alert(1)', '/ok\r\nSet-Cookie: x=1']) assert.equal(safeNext(bad), '/');
   assert.equal(safeNext('/#library'), '/#library');
   const html = signInPage({ next: '/"><script>x</script>', error: '<b>' });
@@ -121,7 +121,7 @@ test('the sign-in page escapes what it echoes and only redirects within Marquee'
 
 test('server: sign-in gate, form login, CSRF and host checks end to end', { timeout: 30000 }, async () => {
   const root = fileURLToPath(new URL('../', import.meta.url));
-  const app = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-auth-api-'));
+  const app = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-auth-api-'));
   for (const name of await fs.readdir(root)) if (name.endsWith('.js') || name === 'package.json' || name === 'whats-new.json') await fs.copyFile(path.join(root, name), path.join(app, name));
   await fs.cp(path.join(root, 'public'), path.join(app, 'public'), { recursive: true });
   await fs.cp(path.join(root, 'src'), path.join(app, 'src'), { recursive: true });
@@ -134,7 +134,7 @@ test('server: sign-in gate, form login, CSRF and host checks end to end', { time
   try {
     await new Promise((resolve, reject) => {
       let logs = ''; const timer = setTimeout(() => reject(Error('Startup timeout: ' + logs)), 10000);
-      child.stdout.on('data', (c) => { logs += c; const ready = /Marquee is running: http:\/\/localhost:(\d+)/.exec(logs); if (ready) { port = Number(ready[1]); clearTimeout(timer); resolve(); } });
+      child.stdout.on('data', (c) => { logs += c; const ready = /Lilin is running: http:\/\/localhost:(\d+)/.exec(logs); if (ready) { port = Number(ready[1]); clearTimeout(timer); resolve(); } });
       child.stderr.on('data', (c) => { logs += c; });
     });
     const base = `http://127.0.0.1:${port}`;

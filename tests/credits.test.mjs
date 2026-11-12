@@ -28,7 +28,7 @@ test('chapter probe reads actual media, caches by file identity and degrades gra
   const run = promisify(execFile);
   try { await run(process.env.FFMPEG || 'ffmpeg', ['-version']); await run(process.env.FFPROBE || 'ffprobe', ['-version']); }
   catch { t.skip('FFmpeg tools unavailable'); return; }
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-credits-'));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-credits-'));
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
   const video = path.join(dir, 'sample.mp4'), meta = path.join(dir, 'chapters.txt');
   await fs.writeFile(meta, ';FFMETADATA1\n[CHAPTER]\nTIMEBASE=1/1000\nSTART=0\nEND=12000\ntitle=Episode\n[CHAPTER]\nTIMEBASE=1/1000\nSTART=12000\nEND=20000\ntitle=End Credits\n');
@@ -76,7 +76,7 @@ test('the shared closing music is found to the frame, and unrelated endings matc
 test('creditsFor compares real encoded episodes, prefers chapters and caches on disk', async (t) => {
   const run = promisify(execFile);
   try { await run(process.env.FFMPEG || 'ffmpeg', ['-version']); } catch { t.skip('FFmpeg unavailable'); return; }
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-credits-'));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-credits-'));
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
   initCredits({ dataDir: dir });
   const encode = async (name, samples) => {
@@ -99,7 +99,7 @@ test('creditsFor compares real encoded episodes, prefers chapters and caches on 
   assert.equal(await creditsFor(e1, [e3, e2]), at, 'one sibling without the same credits does not hide the other');
   assert.equal(await creditsFor(e1, []), null);
   await new Promise((r) => setTimeout(r, 1300));
-  const saved = JSON.parse(await fs.readFile(path.join(dir, '.marquee-credits.json'), 'utf8'));
+  const saved = JSON.parse(await fs.readFile(path.join(dir, '.lilin-credits.json'), 'utf8'));
   assert.ok(Object.values(saved.files[e1].vs).includes(at));
   initCredits({ dataDir: dir });
   assert.equal(await creditsFor(e1, [e2]), at, 'the comparison survives a restart');
@@ -139,7 +139,7 @@ test('the shared theme song is found after a cold open of any length', async () 
 test('introFor compares real encoded openings and caches them', async (t) => {
   const run = promisify(execFile);
   try { await run(process.env.FFMPEG || 'ffmpeg', ['-version']); } catch { t.skip('FFmpeg unavailable'); return; }
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-intro-'));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-intro-'));
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
   initCredits({ dataDir: dir });
   const encode = async (name, samples) => {
@@ -167,7 +167,7 @@ test('introFor compares real encoded openings and caches them', async (t) => {
 async function longEpisodes(t) {
   const run = promisify(execFile);
   try { await run(process.env.FFMPEG || 'ffmpeg', ['-version']); } catch { t.skip('FFmpeg unavailable'); return null; }
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-late-'));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-late-'));
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
   initCredits({ dataDir: dir });
   return async (name, seed, parts) => {
@@ -216,7 +216,7 @@ test('a long scene repeated late on never counts as the intro', async (t) => {
 async function episodesWithCopies(t) {
   const run = promisify(execFile);
   try { await run(process.env.FFMPEG || 'ffmpeg', ['-version']); } catch { t.skip('FFmpeg unavailable'); return null; }
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-twin-'));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-twin-'));
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
   const encode = async (name, samples) => {
     const raw = path.join(dir, `${name}.raw`), out = path.join(dir, name);
@@ -256,7 +256,7 @@ test('an MP4 copy keeps the matches of the original it replaced', async (t) => {
   assert.deepEqual(await introFor(toMp4(f.e1), [toMp4(f.e2)]), i1);
   assert.deepEqual(await introFor(toMp4(f.e2), [toMp4(f.e1)]), i2);
   await saved();
-  const { files } = JSON.parse(await fs.readFile(path.join(f.dir, '.marquee-credits.json'), 'utf8'));
+  const { files } = JSON.parse(await fs.readFile(path.join(f.dir, '.lilin-credits.json'), 'utf8'));
   assert.ok(!(f.e1 in files) && !(f.e2 in files), 'the removed originals are forgotten');
 });
 
@@ -277,7 +277,7 @@ test('comparisons saved in the old format still count', async (t) => {
   const i1 = await introFor(f.e1, [f.e2]);
   assert.ok(i1);
   await saved();
-  const file = path.join(f.dir, '.marquee-credits.json');
+  const file = path.join(f.dir, '.lilin-credits.json');
   const state = JSON.parse(await fs.readFile(file, 'utf8'));
   for (const [name, entry] of Object.entries(state.files)) {
     const peer = name === f.e1 ? f.e2 : f.e1;

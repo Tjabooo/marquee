@@ -16,7 +16,7 @@ const AUDIO_COPY = new Set(['aac', 'mp3', 'ac3', 'eac3', 'alac']);        // App
 // get a stereo AAC track first, with the original tracks kept after it.
 export const BROWSER_AUDIO = new Set(['aac', 'mp3']);
 const TEXT_SUBS = new Set(['subrip', 'ass', 'ssa', 'mov_text', 'webvtt', 'text']); // image subs (PGS) can't go in MP4
-const TMP_TAG = '.marquee-tmp';
+const TMP_TAG = '.lilin-tmp';
 // Downloaded MP4s are never modified (they may be seeding). If their audio isn't browser-compatible,
 // a fixed copy is written to the cache directory and served to browsers only.
 const FIX_EXT = new Set(['.mp4', '.m4v', '.mov']);
@@ -1136,7 +1136,7 @@ export async function startConverter({ dataDir, cacheDir = path.join(dataDir, 'c
     status.reason = 'Needs ffmpeg. Install it with: winget install Gyan.FFmpeg — then restart.';
     return;
   }
-  stateFile = path.join(dataDir, '.marquee-convert.json');
+  stateFile = path.join(dataDir, '.lilin-convert.json');
   fixDir = audioRoot;
   try {
     const saved = JSON.parse(fs.readFileSync(stateFile, 'utf8'));

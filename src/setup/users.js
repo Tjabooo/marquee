@@ -1,4 +1,4 @@
-// `node setup.js user ...`: Marquee's own sign-ins (see src/auth.js). Run on the server, so only
+// `node setup.js user ...`: Lilin's own sign-ins (see src/auth.js). Run on the server, so only
 // someone with access to the machine can create accounts; nothing here is reachable over the network.
 //
 //   user add EMAIL [--owner]   create a sign-in, or set a new password (signs out that person)
@@ -7,14 +7,14 @@
 //   user signout EMAIL         end every session of that person
 //   user list                  who can sign in
 //
-// The password is read from the terminal without echo, or from MARQUEE_PASSWORD (for scripts).
+// The password is read from the terminal without echo, or from LILIN_PASSWORD (for scripts).
 import { openAuthStore, passwordProblem, validEmail } from '../auth.js';
 
 export const USER_ACTIONS = ['add', 'passwd', 'remove', 'signout', 'list'];
 
 // Reads a line from the terminal without showing it.
 export function readHidden(question, { input = process.stdin, output = process.stdout } = {}) {
-  if (!input.isTTY) throw new Error('No terminal to type a password in. Set MARQUEE_PASSWORD for scripts.');
+  if (!input.isTTY) throw new Error('No terminal to type a password in. Set LILIN_PASSWORD for scripts.');
   return new Promise((resolve, reject) => {
     output.write(question);
     let value = '';
@@ -41,10 +41,10 @@ export function readHidden(question, { input = process.stdin, output = process.s
 }
 
 export async function askNewPassword(email, { env = process.env, read = readHidden } = {}) {
-  if (env.MARQUEE_PASSWORD) {
-    const problem = passwordProblem(env.MARQUEE_PASSWORD, email);
-    if (problem) throw new Error(`MARQUEE_PASSWORD: ${problem}`);
-    return env.MARQUEE_PASSWORD;
+  if (env.LILIN_PASSWORD) {
+    const problem = passwordProblem(env.LILIN_PASSWORD, email);
+    if (problem) throw new Error(`LILIN_PASSWORD: ${problem}`);
+    return env.LILIN_PASSWORD;
   }
   for (let tries = 0; ; tries++) {
     if (tries === 3) throw new Error('No password set.');
@@ -62,7 +62,7 @@ export async function userCommand({ action, email, owner = false, dataDir, addOw
   try {
     if (action === 'list') {
       const rows = store.list();
-      if (!rows.length) log('No Marquee sign-ins yet. Create one with: node setup.js user add you@example.com --owner');
+      if (!rows.length) log('No Lilin sign-ins yet. Create one with: node setup.js user add you@example.com --owner');
       for (const r of rows) {
         const seen = r.lastSeen ? `last seen ${new Date(r.lastSeen).toISOString().slice(0, 16).replace('T', ' ')}` : 'never signed in';
         log(`  ${r.email}  (${r.sessions} active session${r.sessions === 1 ? '' : 's'}, ${seen})`);
@@ -73,14 +73,14 @@ export async function userCommand({ action, email, owner = false, dataDir, addOw
     if (!validEmail(e)) throw new Error(`Say whose sign-in: node setup.js user ${action} someone@example.com`);
     if (action === 'add' || action === 'passwd') {
       const exists = Boolean(store.login(e));
-      if (action === 'passwd' && !exists) throw new Error(`${e} has no Marquee sign-in. Create it with: node setup.js user add ${e}`);
+      if (action === 'passwd' && !exists) throw new Error(`${e} has no Lilin sign-in. Create it with: node setup.js user add ${e}`);
       await store.setPassword(e, await askNewPassword(e, read ? { read } : {}));
-      log(exists ? `✓ New password set for ${e}; their other sessions were signed out.` : `✓ ${e} can now sign in to Marquee.`);
+      log(exists ? `✓ New password set for ${e}; their other sessions were signed out.` : `✓ ${e} can now sign in to Lilin.`);
       if (owner) addOwner?.(e);
       return 0;
     }
     if (action === 'remove') {
-      if (!store.remove(e)) { log(`${e} had no Marquee sign-in.`); return 1; }
+      if (!store.remove(e)) { log(`${e} had no Lilin sign-in.`); return 1; }
       log(`✓ Removed ${e}'s sign-in and ended their sessions. Their library and settings are kept.`);
       return 0;
     }

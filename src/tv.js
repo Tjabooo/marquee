@@ -1,6 +1,6 @@
 // Signing in a TV app (tv/tizen): the TV can't type a password comfortably, so it shows a short code
-// and someone approves it from their phone (Settings → Sign in a TV). The TV then gets its own Marquee
-// session for that person, which it sends in the X-Marquee-Session header (auth.js).
+// and someone approves it from their phone (Settings → Sign in a TV). The TV then gets its own Lilin
+// session for that person, which it sends in the X-Lilin-Session header (auth.js).
 //
 // start()   → { code, poll, expiresIn }: the code is shown on the TV, `poll` stays secret on the TV.
 // poll(id)  → { state: 'waiting' | 'approved' | 'expired', grant? }: the grant is handed over once.

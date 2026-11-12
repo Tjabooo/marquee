@@ -1,4 +1,4 @@
-package app.marquee.tv;
+package app.lilin.tv;
 
 import android.app.job.JobInfo;
 import android.app.job.JobParameters;
@@ -42,7 +42,7 @@ public final class UpdateJob extends JobService {
     new Thread(() -> {
       SelfUpdate.run(getApplicationContext());
       jobFinished(params, false); // after an install Android closes the app any moment now: done either way
-    }, "marquee-update-job").start();
+    }, "lilin-update-job").start();
     return true;
   }
 

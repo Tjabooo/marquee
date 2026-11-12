@@ -24,7 +24,7 @@ const get = (tv, p, { home = true, local } = {}) => {
 };
 
 test('the install page, the APK and its version, from tv/android/dist', async () => {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-android-'));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-android-'));
   const tv = createAndroidTv({ dir, port: 8080 });
   try {
     // Nothing built yet: the page says so, the file and version aren't there.
@@ -32,8 +32,8 @@ test('the install page, the APK and its version, from tv/android/dist', async ()
     assert.equal(get(tv, '/android.apk').status, 404);
     assert.equal(get(tv, '/android.json').status, 404);
 
-    await fs.writeFile(path.join(dir, 'Marquee.apk'), 'PK-fake-apk');
-    await fs.writeFile(path.join(dir, 'Marquee.json'), JSON.stringify({ versionCode: 3, versionName: '1.2.0', sha256: 'ab' }));
+    await fs.writeFile(path.join(dir, 'Lilin.apk'), 'PK-fake-apk');
+    await fs.writeFile(path.join(dir, 'Lilin.json'), JSON.stringify({ versionCode: 3, versionName: '1.2.0', sha256: 'ab' }));
     const page = get(tv, '/android').body();
     assert.match(page, /192\.168\.1\.5:8080\/android\.apk/, 'the address to type in Downloader');
     assert.match(page, /version 1\.2\.0/);
@@ -68,7 +68,7 @@ test('the address a TV types is a home-network one', () => {
 });
 
 test('an app built for a public https address is handed out anywhere, with gateway links', async () => {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-android-'));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-android-'));
   const tv = createAndroidTv({ dir, port: 8080 });
   const gatewayGet = (p) => {
     const res = fakeRes();
@@ -76,15 +76,15 @@ test('an app built for a public https address is handed out anywhere, with gatew
     return res;
   };
   try {
-    await fs.writeFile(path.join(dir, 'Marquee.apk'), 'PK-fake-apk');
+    await fs.writeFile(path.join(dir, 'Lilin.apk'), 'PK-fake-apk');
     // A home build stays at home, even through the gateway.
-    await fs.writeFile(path.join(dir, 'Marquee.json'), JSON.stringify({ versionCode: 3, versionName: '1.2.0', server: 'http://192.168.1.5:8080' }));
+    await fs.writeFile(path.join(dir, 'Lilin.json'), JSON.stringify({ versionCode: 3, versionName: '1.2.0', server: 'http://192.168.1.5:8080' }));
     assert.equal(gatewayGet('/android.apk').status, 404);
     assert.equal(gatewayGet('/android.json').status, 404);
 
-    await fs.writeFile(path.join(dir, 'Marquee.json'), JSON.stringify({ versionCode: 4, versionName: '1.3.0', server: 'https://marquee.example.com/c/tv' }));
+    await fs.writeFile(path.join(dir, 'Lilin.json'), JSON.stringify({ versionCode: 4, versionName: '1.3.0', server: 'https://lilin.example.com/c/tv' }));
     const page = gatewayGet('/android').body();
-    assert.match(page, /https:\/\/marquee\.example\.com\/c\/tv\/android\.apk/, 'the public address to type in Downloader');
+    assert.match(page, /https:\/\/lilin\.example\.com\/c\/tv\/android\.apk/, 'the public address to type in Downloader');
     assert.match(page, /href="\/c\/tv\/android\.apk"/, 'the download link stays under the gateway');
     assert.doesNotMatch(page, /same network/);
     assert.equal(JSON.parse(gatewayGet('/android.json').body()).versionCode, 4);
@@ -92,7 +92,7 @@ test('an app built for a public https address is handed out anywhere, with gatew
     await apk.done;
     assert.equal(apk.status, 200);
     // A signed-in visitor from outside (the phone's Settings → Android TV) gets the steps too.
-    assert.match(get(tv, '/android', { home: false }).body(), /marquee\.example\.com\/c\/tv\/android\.apk/);
+    assert.match(get(tv, '/android', { home: false }).body(), /lilin\.example\.com\/c\/tv\/android\.apk/);
   } finally {
     await fs.rm(dir, { recursive: true, force: true });
   }

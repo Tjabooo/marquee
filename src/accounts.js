@@ -1,14 +1,14 @@
-// Accounts: everyone who signs in through Cloudflare Access gets their own Marquee (their library,
+// Accounts: everyone who signs in through Cloudflare Access gets their own Lilin (their library,
 // watch progress, colours and preferences) with no extra login. The email Cloudflare adds to each
 // request (Cf-Access-Authenticated-User-Email) is the account. Visits through the server's local
 // address carry no email and share one "Home network" account.
 //
-// Stored in SQLite (.marquee.db, Node's built-in node:sqlite, so still no dependencies):
+// Stored in SQLite (.lilin.db, Node's built-in node:sqlite, so still no dependencies):
 //   users     one row per person, with their settings as JSON
 //   library   what's in each person's library: a video (by media key), when it was added and when
 //             it gets deleted (expires_at; null = kept)
 //   torrents  who started each download, so its files land in their library when it finishes
-//   media     videos Marquee tracks; one that nobody has in their library any more is deleted
+//   media     videos Lilin tracks; one that nobody has in their library any more is deleted
 //   progress  where each person stopped watching, so it resumes on any of their devices
 //   meta      server-wide settings (the owner's part of the Settings tab) and migration flags
 //   ratings, watch_log, watch_company, watch_parties  thumbs, watch time and planned watch parties
@@ -40,7 +40,7 @@ const SERVER_DEFAULTS = {
   extendDays: 7,           // "Keep longer" adds this many days
   maxExtensions: 0,        // times one video can be extended (0 = no limit)
   membersCanDownload: true, // new people may start downloads
-  defaultTheme: 'marquee',
+  defaultTheme: 'lilin',
 };
 const RETENTION_CHOICES = [0, 1, 3, 7, 14, 30];
 const EXTEND_CHOICES = [1, 3, 7, 14, 30];
@@ -68,8 +68,8 @@ const httpError = (status, message) => Object.assign(new Error(message), { statu
 export function initAccounts({ dataDir, adminEmails, mediaDir: dir }) {
   admins = adminEmails.map((e) => e.toLowerCase());
   mediaDir = dir;
-  avatarDir = path.join(dataDir, '.marquee-avatars');
-  db = new DatabaseSync(path.join(dataDir, '.marquee.db'));
+  avatarDir = path.join(dataDir, '.lilin-avatars');
+  db = new DatabaseSync(path.join(dataDir, '.lilin.db'));
   db.exec(`
     PRAGMA journal_mode = WAL;
     PRAGMA foreign_keys = ON;
@@ -222,7 +222,7 @@ const fallbackName = (identity) => identity === HOME || identity === 'Home netwo
 
 // ---------- profile pictures ----------
 // One small square image per person (the browser crops and shrinks it to 256 px before upload), kept
-// as .marquee-avatars/<id>.<ext>. settings.avatar holds the upload time, which versions the URL, so
+// as .lilin-avatars/<id>.<ext>. settings.avatar holds the upload time, which versions the URL, so
 // browsers can cache a picture forever and still see a new one at once.
 let avatarDir = null;
 const AVATAR_MAX = 600 * 1024;
@@ -320,7 +320,7 @@ export function userFor(req) {
   return user;
 }
 
-// The server's owner (first of ADMIN_EMAILS): files added outside Marquee go in their library.
+// The server's owner (first of ADMIN_EMAILS): files added outside Lilin go in their library.
 export const ownerUser = () => (admins[0] ? ensureUser(admins[0]) : null);
 
 export function userById(id) {
@@ -393,7 +393,7 @@ export function publicUser(u) {
     sharedWith: libraryMates(u.id).filter((id) => id !== u.id).map((id) => userById(id)).filter(Boolean).map((m) => ({ id: m.id, name: m.name, avatar: m.avatar })) };
 }
 
-// The owner's list of people: everyone who has opened Marquee, with what's in their library.
+// The owner's list of people: everyone who has opened Lilin, with what's in their library.
 export function listUsers() {
   const rows = db.prepare('SELECT * FROM users ORDER BY (last_seen IS NULL), last_seen DESC').all();
   const counts = db.prepare('SELECT user_id, media_key, source FROM library').all();
@@ -432,7 +432,7 @@ export function mediaKey(full) {
   return rel.slice(0, rel.length - path.extname(rel).length).split(path.sep).join('/').toLowerCase();
 }
 
-// Videos Marquee looks after (in someone's library, or waiting to be deleted).
+// Videos Lilin looks after (in someone's library, or waiting to be deleted).
 export const trackedKeys = () => new Set(db.prepare("SELECT key FROM media WHERE state != 'gone'").all().map((r) => r.key));
 function track(key) {
   db.prepare("INSERT INTO media (key, state, first_seen) VALUES (?, 'tracked', ?) ON CONFLICT(key) DO UPDATE SET state = 'tracked'").run(key, Date.now());
@@ -601,9 +601,9 @@ export const markGone = (key) => db.prepare("UPDATE media SET state = 'gone' WHE
 export const pendingDeletes = () => db.prepare("SELECT key FROM media WHERE state = 'deleting'").all().map((r) => r.key);
 
 // ---------- downloads ----------
-export const tagFor = (userId) => `marquee-u${userId}`;
+export const tagFor = (userId) => `lilin-u${userId}`;
 export function userFromTags(tags) {
-  const m = /(?:^|,)\s*marquee-u(\d+)\s*(?:,|$)/.exec(String(tags || ''));
+  const m = /(?:^|,)\s*lilin-u(\d+)\s*(?:,|$)/.exec(String(tags || ''));
   return m ? Number(m[1]) : null;
 }
 

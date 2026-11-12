@@ -1,5 +1,5 @@
-// Social parts of the web client: thumbs up/down with "Liked by …", the Popular on Marquee shelf,
-// planned watch parties, the room's chat and reactions, and Marquee Wrapped. app.js passes in its
+// Social parts of the web client: thumbs up/down with "Liked by …", the Popular on Lilin shelf,
+// planned watch parties, the room's chat and reactions, and Lilin Wrapped. app.js passes in its
 // helpers (h, api, toast, …) so this file has no globals of its own beyond the DOM.
 import { T, locale } from './i18n.js';
 
@@ -122,7 +122,7 @@ export function createSocial({ h, api, jsonPost, toast, icon, people }) {
     for (const el of openRows) { if (!el.isConnected) openRows.delete(el); else el.refresh(); }
   }
 
-  // Popular on Marquee: what the household liked and watched lately. null when there's nothing yet.
+  // Popular on Lilin: what the household liked and watched lately. null when there's nothing yet.
   async function popularShelf(type, { carousel, titleCard, signal }) {
     let items = [];
     try { items = (await api(`/api/social/popular?type=${type}`, { signal })).items || []; } catch { return null; }
@@ -134,7 +134,7 @@ export function createSocial({ h, api, jsonPost, toast, icon, people }) {
       if (note) li.querySelector('.sub')?.replaceChildren(h('span', { class: 'popular-why' }, faces(t.people, { size: 18, max: 3 }), h('span', {}, note)));
       return li;
     });
-    return carousel(T('Popular on Marquee'), h('ul', { class: 'shelf-items', tabindex: '0', 'aria-label': T('Popular on Marquee') }, cards));
+    return carousel(T('Popular on Lilin'), h('ul', { class: 'shelf-items', tabindex: '0', 'aria-label': T('Popular on Lilin') }, cards));
   }
 
   // ---------- watch parties ----------
@@ -233,7 +233,7 @@ export function createSocial({ h, api, jsonPost, toast, icon, people }) {
         h('p', {}, msg.text)));
   }
 
-  // ---------- Marquee Wrapped ----------
+  // ---------- Lilin Wrapped ----------
   // A short story of slides: tap or arrow keys to move on. data from /api/me/wrapped.
   function wrappedSlides(w, { name }) {
     const big = (text) => h('p', { class: 'wr-big' }, text);
@@ -241,15 +241,15 @@ export function createSocial({ h, api, jsonPost, toast, icon, people }) {
     const slides = [];
     const slide = (cls, ...kids) => slides.push(h('section', { class: `wr-slide ${cls}` }, ...kids.filter(Boolean)));
     if (w.empty) {
-      slide('wr-a', h('p', { class: 'wr-kicker' }, T('Marquee Wrapped {0}', w.year)), big(T('Nothing here yet')),
+      slide('wr-a', h('p', { class: 'wr-kicker' }, T('Lilin Wrapped {0}', w.year)), big(T('Nothing here yet')),
         small(T('Watch something and your year starts filling in. Wrapped counts the time you actually spend watching.')));
       return slides;
     }
-    slide('wr-a', h('p', { class: 'wr-kicker' }, T('Marquee Wrapped {0}', w.year)), big(T('{0}here\'s your year', name ? `${name}, ` : '')),
+    slide('wr-a', h('p', { class: 'wr-kicker' }, T('Lilin Wrapped {0}', w.year)), big(T('{0}here\'s your year', name ? `${name}, ` : '')),
       small(T('Tap to continue')));
     slide('wr-b', h('p', { class: 'wr-kicker' }, T('You watched')), big(fmtHours(w.seconds)),
       small(T('{0} {1}: {2} {3} and {4} {5}, on {6} {7}.', w.titles, w.titles === 1 ? T('title') : T('titles'), w.films, w.films === 1 ? T('film') : T('films'), w.episodes, w.episodes === 1 ? T('episode') : T('episodes'), w.activeDays, w.activeDays === 1 ? T('day') : T('days'))),
-      w.people > 1 && small(w.rank === 1 ? T('More than anyone else on Marquee ({0} people watched).', w.people) : T('Number {0} of the {1} people who watched here.', w.rank, w.people)));
+      w.people > 1 && small(w.rank === 1 ? T('More than anyone else on Lilin ({0} people watched).', w.people) : T('Number {0} of the {1} people who watched here.', w.rank, w.people)));
     if (w.top?.length) slide('wr-c', h('p', { class: 'wr-kicker' }, T('Your top titles')),
       h('ol', { class: 'wr-list' }, w.top.map((t) => h('li', {}, h('span', {}, t.title),
         h('small', {}, t.tv && t.episodes ? `${t.episodes} ${t.episodes === 1 ? T('episode') : T('episodes')} · ${fmtHours(t.seconds)}` : fmtHours(t.seconds))))));

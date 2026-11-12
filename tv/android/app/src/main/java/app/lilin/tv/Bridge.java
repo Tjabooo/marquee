@@ -1,4 +1,4 @@
-package app.marquee.tv;
+package app.lilin.tv;
 
 import android.webkit.JavascriptInterface;
 
@@ -10,7 +10,7 @@ import java.net.URL;
 import java.util.Locale;
 
 /**
- * window.MarqueeNative: what the page (shell.html) may ask of the app. Calls arrive on the web
+ * window.LilinNative: what the page (shell.html) may ask of the app. Calls arrive on the web
  * engine's own thread and are handed to the main thread, where the player and the page live.
  */
 final class Bridge {
@@ -39,7 +39,7 @@ final class Bridge {
   /** True when this version arrives by itself (Android 12+, see SelfUpdate): the page offers nothing then. */
   @JavascriptInterface public boolean updatesItself(int code) { return SelfUpdate.updatesItself(app, code); }
 
-  /** Checks the address answers as Marquee, then switches to it. Answers with a "server" event. */
+  /** Checks the address answers as Lilin, then switches to it. Answers with a "server" event. */
   @JavascriptInterface public void setServer(String typed) {
     String url = normalize(typed);
     new Thread(() -> {
@@ -51,7 +51,7 @@ final class Bridge {
         app.send(e);
         if (problem == null) app.useServer(url);
       });
-    }, "marquee-server-check").start();
+    }, "lilin-server-check").start();
   }
 
   static String normalize(String typed) {
@@ -61,14 +61,14 @@ final class Bridge {
     try {
       URL u = new URL(s);
       if (u.getHost().isEmpty()) return null;
-      // The path stays: an app that reaches Marquee from anywhere uses https://<Marquee>/c/tv.
+      // The path stays: an app that reaches Lilin from anywhere uses https://<Lilin>/c/tv.
       return u.getProtocol() + "://" + u.getAuthority() + u.getPath().replaceAll("/+$", "");
     } catch (Exception e) {
       return null;
     }
   }
 
-  /** null when url is a Marquee server, else a short reason the page turns into words. */
+  /** null when url is a Lilin server, else a short reason the page turns into words. */
   private static String check(String url) {
     HttpURLConnection c = null;
     try {
@@ -76,11 +76,11 @@ final class Bridge {
       c.setConnectTimeout(5000);
       c.setReadTimeout(5000);
       int status = c.getResponseCode();
-      if (status != 200) return "not-marquee";
+      if (status != 200) return "not-lilin";
       byte[] body = new byte[512];
       int n = c.getInputStream().read(body);
       String text = n > 0 ? new String(body, 0, n, "UTF-8") : "";
-      return text.contains("\"status\"") ? null : "not-marquee";
+      return text.contains("\"status\"") ? null : "not-lilin";
     } catch (Exception e) {
       return "unreachable";
     } finally {

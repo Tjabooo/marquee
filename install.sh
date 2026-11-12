@@ -1,28 +1,28 @@
 #!/bin/sh
-# Marquee installer and updater for Linux and macOS. Read it before running it; it is short.
+# Lilin installer and updater for Linux and macOS. Read it before running it; it is short.
 #
 #   sh install.sh                      install or update to the latest release, then run setup
 #   sh install.sh --version v1.1.0     a specific release
-#   sh install.sh --dir /opt/marquee   somewhere other than ~/marquee
+#   sh install.sh --dir /opt/lilin   somewhere other than ~/lilin
 #   sh install.sh --dry-run            show what would happen
 #   sh install.sh --uninstall          remove the autostart service and the application files
 #                                      (your .env, database and media stay)
 #
-# What it does: downloads marquee-<version>.tar.gz and SHA256SUMS from the GitHub release, checks
+# What it does: downloads lilin-<version>.tar.gz and SHA256SUMS from the GitHub release, checks
 # the archive against the checksum, and unpacks it. On an update it replaces only application
 # files; .env, the database, state files and cache/ are never touched, and the previous version is
 # kept in .backup-<version>/. It never uses sudo. "Latest" is resolved to a concrete version first.
 set -eu
 
-REPO="Tjabooo/marquee"
-DIR="${MARQUEE_DIR:-$HOME/marquee}"
+REPO="Tjabooo/lilin"
+DIR="${LILIN_DIR:-$HOME/lilin}"
 VERSION=""
 DRY=0
 SETUP=1
 YES=""
 UNINSTALL=0
 PURGE=0
-APP_ITEMS="server.js setup.js package.json src public agents scripts tools docs start-marquee.cmd .env.example README.md CHANGELOG.md Dockerfile docker-compose.yml docker install.sh install.ps1"
+APP_ITEMS="server.js setup.js package.json src public agents scripts tools docs start-lilin.cmd .env.example README.md CHANGELOG.md Dockerfile docker-compose.yml docker install.sh install.ps1"
 
 say() { printf '%s\n' "$*"; }
 die() { printf 'Error: %s\n' "$*" >&2; exit 1; }
@@ -46,8 +46,8 @@ need() { command -v "$1" >/dev/null 2>&1; }
 
 # ---------- uninstall ----------
 if [ "$UNINSTALL" = 1 ]; then
-  [ -f "$DIR/server.js" ] || die "no Marquee installation in $DIR"
-  say "Removing Marquee from $DIR"
+  [ -f "$DIR/server.js" ] || die "no Lilin installation in $DIR"
+  say "Removing Lilin from $DIR"
   if need node && [ "$DRY" = 0 ]; then node "$DIR/setup.js" service uninstall || say "  (no service to remove, or removal needs sudo: node setup.js service uninstall)"; fi
   for item in $APP_ITEMS; do [ -e "$DIR/$item" ] && run rm -rf "${DIR:?}/$item"; done
   if [ "$PURGE" = 1 ]; then
@@ -76,7 +76,7 @@ node_ok() {
   node -e 'const [a,b]=process.versions.node.split(".").map(Number);process.exit(a>22||(a===22&&b>=16)?0:1)'
 }
 if ! node_ok; then
-  say "Marquee needs Node.js 22.16 or later$(need node && printf ' (found %s)' "$(node --version)")."
+  say "Lilin needs Node.js 22.16 or later$(need node && printf ' (found %s)' "$(node --version)")."
   say "Install the current LTS, then run this again:"
   case "$(uname -s)" in
     Darwin) say "  brew install node" ;;
@@ -95,7 +95,7 @@ if [ -z "$VERSION" ]; then
   [ -n "$VERSION" ] || die "couldn't find the latest release; pass --version vX.Y.Z"
 fi
 case "$VERSION" in v*) ;; *) VERSION="v$VERSION" ;; esac
-say "Marquee $VERSION → $DIR"
+say "Lilin $VERSION → $DIR"
 
 if [ -d "$DIR/.git" ]; then
   say "$DIR is a git checkout. Update it with git instead:"
@@ -104,13 +104,13 @@ if [ -d "$DIR/.git" ]; then
 fi
 CURRENT=""
 [ -f "$DIR/package.json" ] && CURRENT=$(node -p "require('$DIR/package.json').version" 2>/dev/null || true)
-[ -n "$CURRENT" ] && say "Found Marquee $CURRENT: updating application files only"
+[ -n "$CURRENT" ] && say "Found Lilin $CURRENT: updating application files only"
 
 # ---------- download and verify ----------
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT INT TERM
 BASE="https://github.com/$REPO/releases/download/$VERSION"
-ARCHIVE="marquee-$VERSION.tar.gz"
+ARCHIVE="lilin-$VERSION.tar.gz"
 say "Downloading $ARCHIVE"
 fetch "$BASE/$ARCHIVE" "$TMP/$ARCHIVE" || die "download failed: $BASE/$ARCHIVE"
 fetch "$BASE/SHA256SUMS" "$TMP/SHA256SUMS" || die "download failed: $BASE/SHA256SUMS"
@@ -141,21 +141,21 @@ run rm -rf "$STAGE"
 
 # ---------- Android TV app (best effort) ----------
 # Releases carry the Android TV app built without a server address (it asks on its first start);
-# Marquee offers it at /android. An app of your own with the same or a newer version is left alone.
+# Lilin offers it at /android. An app of your own with the same or a newer version is left alone.
 DIST="$DIR/tv/android/dist"
 json_field() { sed -n "s/.*\"$1\": *\"\{0,1\}\([^\",}]*\).*/\1/p" "$2" | head -n1; }
-if fetch "$BASE/Marquee.json" "$TMP/Marquee.json" 2>/dev/null; then
-  NEW_CODE=$(json_field versionCode "$TMP/Marquee.json"); APK_SUM=$(json_field sha256 "$TMP/Marquee.json")
+if fetch "$BASE/Lilin.json" "$TMP/Lilin.json" 2>/dev/null; then
+  NEW_CODE=$(json_field versionCode "$TMP/Lilin.json"); APK_SUM=$(json_field sha256 "$TMP/Lilin.json")
   HAVE_CODE=0
-  if [ -f "$DIST/Marquee.apk" ] && [ -f "$DIST/Marquee.json" ]; then HAVE_CODE=$(json_field versionCode "$DIST/Marquee.json"); fi
+  if [ -f "$DIST/Lilin.apk" ] && [ -f "$DIST/Lilin.json" ]; then HAVE_CODE=$(json_field versionCode "$DIST/Lilin.json"); fi
   case "$NEW_CODE$HAVE_CODE" in *[!0-9]*|'') NEW_CODE=0 ;; esac
   if [ "${NEW_CODE:-0}" -gt "${HAVE_CODE:-0}" ] && [ -n "$APK_SUM" ]; then
-    if fetch "$BASE/Marquee.apk" "$TMP/Marquee.apk" && [ "$(sha256 "$TMP/Marquee.apk")" = "$APK_SUM" ]; then
+    if fetch "$BASE/Lilin.apk" "$TMP/Lilin.apk" && [ "$(sha256 "$TMP/Lilin.apk")" = "$APK_SUM" ]; then
       run mkdir -p "$DIST"
-      run cp "$TMP/Marquee.apk" "$DIST/Marquee.apk"
-      run cp "$TMP/Marquee.json" "$DIST/Marquee.json"
-      say "Added the Android TV app (Marquee offers it at /android on your home network)"
-    else say "Note: skipped the Android TV app (download or checksum failed); Marquee works without it"; fi
+      run cp "$TMP/Lilin.apk" "$DIST/Lilin.apk"
+      run cp "$TMP/Lilin.json" "$DIST/Lilin.json"
+      say "Added the Android TV app (Lilin offers it at /android on your home network)"
+    else say "Note: skipped the Android TV app (download or checksum failed); Lilin works without it"; fi
   fi
 fi
 
@@ -168,5 +168,5 @@ if [ "$SETUP" = 1 ]; then
   elif (: </dev/tty) 2>/dev/null; then node "$DIR/setup.js" </dev/tty
   else node "$DIR/setup.js" --yes; fi
 fi
-if [ -n "$CURRENT" ]; then say "Restart Marquee to use $VERSION: node \"$DIR/setup.js\" service restart"; fi
+if [ -n "$CURRENT" ]; then say "Restart Lilin to use $VERSION: node \"$DIR/setup.js\" service restart"; fi
 say "Done. Check the installation any time with: node \"$DIR/setup.js\" doctor"

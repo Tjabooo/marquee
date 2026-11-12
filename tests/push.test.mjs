@@ -24,7 +24,7 @@ function browserKeys() {
   return { p256dh: ecdh.getPublicKey().toString('base64url'), privateKey: ecdh.getPrivateKey().toString('base64url'), auth: crypto.randomBytes(16).toString('base64url') };
 }
 const subscription = (keys, endpoint = 'https://fcm.googleapis.com/fcm/send/abc123') => ({ endpoint, keys: { p256dh: keys.p256dh, auth: keys.auth } });
-const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'marquee-push-'));
+const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'lilin-push-'));
 
 test('encryption matches the RFC 8291 example byte for byte', () => {
   const out = encrypt(Buffer.from(RFC.plaintext, 'base64url'), { p256dh: RFC.uaPublic, auth: RFC.auth },
@@ -77,7 +77,7 @@ test('the store keeps its key, devices per person, and sends encrypted messages'
   const store = new PushStore(dir, { fetch, log: { warn() {} } });
   const key = store.publicKey();
   assert.equal(new PushStore(dir).publicKey(), key, 'the VAPID key survives a restart');
-  if (process.platform !== 'win32') assert.equal(fs.statSync(path.join(dir, '.marquee-push.json')).mode & 0o077, 0, 'the key file is private'); // Windows has no mode bits
+  if (process.platform !== 'win32') assert.equal(fs.statSync(path.join(dir, '.lilin-push.json')).mode & 0o077, 0, 'the key file is private'); // Windows has no mode bits
 
   const phone = browserKeys(), laptop = browserKeys();
   const id = store.subscribe(1, subscription(phone, 'https://fcm.googleapis.com/fcm/send/phone'), 'Chrome on Android');

@@ -1,13 +1,13 @@
 # Configuration
 
-Marquee reads its settings from `.env` in the Marquee folder. `node setup.js` creates and edits that
-file for you; you can also edit it by hand. Restart Marquee after a change. Variables set in the real
+Lilin reads its settings from `.env` in the Lilin folder. `node setup.js` creates and edits that
+file for you; you can also edit it by hand. Restart Lilin after a change. Variables set in the real
 environment (Docker, systemd, CI) override `.env`.
 
-Every setting is optional. A feature whose settings are blank is off, and Marquee says so at startup.
+Every setting is optional. A feature whose settings are blank is off, and Lilin says so at startup.
 `node setup.js doctor` checks the whole file.
 
-Settings marked 🔒 are secrets: keep `.env` readable only by the account that runs Marquee
+Settings marked 🔒 are secrets: keep `.env` readable only by the account that runs Lilin
 (`setup.js` creates it with mode `600` on Linux and macOS) and never commit it.
 
 ## Server
@@ -17,25 +17,25 @@ Settings marked 🔒 are secrets: keep `.env` readable only by the account that 
 | `PORT` | `8080` | Port for the web app. |
 | `HOST` | `0.0.0.0` | Address to listen on. `0.0.0.0` serves your home network; `127.0.0.1` only this computer, for use behind a reverse proxy or tunnel on the same machine. |
 | `SERVER_IP` | detected | LAN address TVs stream from. Set it if the address printed at startup is wrong (several network cards, VPN). |
-| `PUBLIC_URL` | from the request | Public address used in share links and link previews, e.g. `https://marquee.example.com`. |
-| `DATA_DIR` | the Marquee folder | Where the database, state files, Notes attachments and `cache/` live. Marquee refuses to start if `DATA_DIR` points at an empty folder while the Marquee folder still has a database; move it with `node setup.js migrate-data --to <folder>`. |
-| `CACHE_DIR` | `cache` in `DATA_DIR` | Where copies Marquee can always make again are kept: browser copies, timeline previews, share copies. They can take hundreds of GB, so put this on a big drive rather than a small system disk. To move it, stop Marquee and move the folder's contents. |
-| `PREVIEW_DIR` | off | Absolute path to a second copy of the web app (another `public/` folder, e.g. a git worktree of a redesign branch). Opening `/preview` sets a `marquee_preview` cookie that makes this browser get its files (anything missing comes from `public/`); `/preview/off` clears it. Everything else stays the same: the API, sign-in and permissions. Server-drawn pages (sign-in, share pages) also get the folder's `pages.css`. Updating the preview's files needs no restart. See [Previewing a redesign](#previewing-a-redesign). |
-| `STREAM_SECRET` 🔒 | generated | Key that signs stream links. Blank: generated once and stored in `.marquee-secret`. Changing it invalidates links that are already open on TVs. |
-| `MARQUEE_ENV_FILE` | `.env` in the Marquee folder | Environment only (not read from `.env`): load settings from another file. |
+| `PUBLIC_URL` | from the request | Public address used in share links and link previews, e.g. `https://lilin.example.com`. |
+| `DATA_DIR` | the Lilin folder | Where the database, state files, Notes attachments and `cache/` live. Lilin refuses to start if `DATA_DIR` points at an empty folder while the Lilin folder still has a database; move it with `node setup.js migrate-data --to <folder>`. |
+| `CACHE_DIR` | `cache` in `DATA_DIR` | Where copies Lilin can always make again are kept: browser copies, timeline previews, share copies. They can take hundreds of GB, so put this on a big drive rather than a small system disk. To move it, stop Lilin and move the folder's contents. |
+| `PREVIEW_DIR` | off | Absolute path to a second copy of the web app (another `public/` folder, e.g. a git worktree of a redesign branch). Opening `/preview` sets a `lilin_preview` cookie that makes this browser get its files (anything missing comes from `public/`); `/preview/off` clears it. Everything else stays the same: the API, sign-in and permissions. Server-drawn pages (sign-in, share pages) also get the folder's `pages.css`. Updating the preview's files needs no restart. See [Previewing a redesign](#previewing-a-redesign). |
+| `STREAM_SECRET` 🔒 | generated | Key that signs stream links. Blank: generated once and stored in `.lilin-secret`. Changing it invalidates links that are already open on TVs. |
+| `LILIN_ENV_FILE` | `.env` in the Lilin folder | Environment only (not read from `.env`): load settings from another file. |
 
 ## Accounts and remote access
 
-See [remote-access.md](remote-access.md) for how accounts work and how to publish Marquee safely.
+See [remote-access.md](remote-access.md) for how accounts work and how to publish Lilin safely.
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
-| `ADMIN_EMAILS` | | Owner accounts, as they sign in (Marquee's own sign-in or Cloudflare Access), comma-separated. The first is the owner: files added outside Marquee go to their library. Owners see Activity, House, Clips, Notes and the server settings. |
+| `ADMIN_EMAILS` | | Owner accounts, as they sign in (Lilin's own sign-in or Cloudflare Access), comma-separated. The first is the owner: files added outside Lilin go to their library. Owners see Activity, House, Clips, Notes and the server settings. |
 | `HOME_NETWORK_ACCESS` | `shared` | `shared`: visitors directly on the home network (private, loopback and Tailscale addresses) use the shared Home network account without signing in. `signin`: everyone signs in. Visitors from the internet must sign in either way. |
-| `SESSION_DAYS` | `30` | How long a Marquee sign-in lasts unused. Renewed while in use, never longer than a year from signing in. |
-| `ALLOWED_HOSTS` | | Extra host names Marquee answers to, comma-separated (`*.example.com` allowed). IP addresses, `localhost`, single-label names, home-network suffixes (`.local`, `.lan`, `.home.arpa`, `.internal`, `.ts.net`) and `PUBLIC_URL`'s host always work; any other name is refused (DNS-rebinding protection). |
+| `SESSION_DAYS` | `30` | How long a Lilin sign-in lasts unused. Renewed while in use, never longer than a year from signing in. |
+| `ALLOWED_HOSTS` | | Extra host names Lilin answers to, comma-separated (`*.example.com` allowed). IP addresses, `localhost`, single-label names, home-network suffixes (`.local`, `.lan`, `.home.arpa`, `.internal`, `.ts.net`) and `PUBLIC_URL`'s host always work; any other name is refused (DNS-rebinding protection). |
 | `TRUSTED_PROXIES` | `127.0.0.1,::1` | Addresses or CIDR ranges whose identity headers (`Cf-Access-Authenticated-User-Email`, `Cf-Connecting-IP`, `X-Forwarded-*`) are believed. Headers from anywhere else are removed. Set it to the address of a proxy on another machine; an empty value trusts nobody. |
-| `CF_ACCESS_TEAM_DOMAIN` | | Your Cloudflare Access team domain, e.g. `myteam.cloudflareaccess.com`. With `CF_ACCESS_AUD`, Marquee verifies each request's Access token and takes the account from it, wherever the connection comes from. |
+| `CF_ACCESS_TEAM_DOMAIN` | | Your Cloudflare Access team domain, e.g. `myteam.cloudflareaccess.com`. With `CF_ACCESS_AUD`, Lilin verifies each request's Access token and takes the account from it, wherever the connection comes from. |
 | `CF_ACCESS_AUD` 🔒 | | The Access application's Audience (AUD) tag. |
 
 ## Metadata
@@ -44,13 +44,13 @@ See [remote-access.md](remote-access.md) for how accounts work and how to publis
 | --- | --- | --- |
 | `TMDB_TOKEN` 🔒 | | TMDB "API Read Access Token" (themoviedb.org → Settings → API). Enables Discover, search, posters and episode details. |
 | `TMDB_API_KEY` 🔒 | | The short TMDB v3 key; used when `TMDB_TOKEN` is blank. |
-| `TMDB_LANG` | `en-US` | Language for titles, and for descriptions when the viewer's language has none. People who use Marquee in Swedish get TMDB's Swedish descriptions and genre names on top of this. |
+| `TMDB_LANG` | `en-US` | Language for titles, and for descriptions when the viewer's language has none. People who use Lilin in Swedish get TMDB's Swedish descriptions and genre names on top of this. |
 
 ## Library
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
-| `MEDIA_DIR` | | Folder with films and shows. Marquee needs read access to play and write access to convert, fetch subtitles, download and delete. Put qBittorrent's save path inside it. |
+| `MEDIA_DIR` | | Folder with films and shows. Lilin needs read access to play and write access to convert, fetch subtitles, download and delete. Put qBittorrent's save path inside it. |
 
 ## qBittorrent
 
@@ -100,7 +100,7 @@ See [remote-access.md](remote-access.md) for how accounts work and how to publis
 | `ATVSCRIPT` | `atvscript` on PATH | Full path to pyatv's `atvscript`. |
 | `ATV_HOSTS` | | Apple TV addresses to query directly if discovery fails, comma-separated. |
 | `CAST_WHEN_AWAY` | `off` | Offer TVs to visitors who aren't on the home network. |
-| `ANDROID_APP_DIR` | `tv/android/dist` | Folder holding the Android TV app (`Marquee.apk` + `Marquee.json`, made by `tv/android/build.sh`), offered at `/android` on the home network. See [Android TV](android-tv.md). |
+| `ANDROID_APP_DIR` | `tv/android/dist` | Folder holding the Android TV app (`Lilin.apk` + `Lilin.json`, made by `tv/android/build.sh`), offered at `/android` on the home network. See [Android TV](android-tv.md). |
 
 ## Playback first
 
@@ -112,10 +112,10 @@ that is a hard disk shared with downloads and conversions.
 | `STREAM_READ_KB` | `4096` | How much of a file a stream reads at a time (64–65536). Large reads keep a busy hard drive from making a player wait in its queue once per 64 KB. |
 | `PHONE_STREAMS_MAX` | `3` | Phone-quality streams (a live 1080p or 720p version of a big file, for phones) that may run at once. Each uses one GPU encoder session; a new one stops the one idle longest. |
 | `PARTIAL_STREAMS` | `on` | Play now: watch a video while qBittorrent is still downloading it, as a live stream of up to 1080p. Each stream counts towards `PHONE_STREAMS_MAX`. `off` plays finished files only. |
-| `MARQUEE_PRIORITY` | `above_normal` | CPU priority of the Marquee process: `above_normal`, `normal` or `high`. On Windows its I/O and memory priority are always set to normal, also when it runs as a scheduled task (whose default is low I/O priority, which made streams stall behind downloads). |
+| `LILIN_PRIORITY` | `above_normal` | CPU priority of the Lilin process: `above_normal`, `normal` or `high`. On Windows its I/O and memory priority are always set to normal, also when it runs as a scheduled task (whose default is low I/O priority, which made streams stall behind downloads). |
 | `BACKGROUND_PRIORITY` | `below_normal` | CPU priority of background jobs (conversions, browser copies, timeline previews, credits, subtitle sync, clip and note copies, OCR): `below_normal`, `idle` or `normal`. |
 | `BACKGROUND_IO` | `normal` | Windows: I/O and memory priority of those jobs: `normal`, `low` or `very_low`. `low` makes their disk reads wait for a stream's and their cached pages leave RAM first, but slows a conversion 3–4x while anyone watches; try it only if streams still stall during background work. |
-| `QBIT_PLAYBACK_LIMITS` | `on` | While anyone is streaming, switch qBittorrent to its alternative speed limits (set them in qBittorrent: Options → Speed). Marquee turns them off again afterwards, unless they were already on. |
+| `QBIT_PLAYBACK_LIMITS` | `on` | While anyone is streaming, switch qBittorrent to its alternative speed limits (set them in qBittorrent: Options → Speed). Lilin turns them off again afterwards, unless they were already on. |
 | `PLAYBACK_IDLE_SECONDS` | `60` | How long after the last stream downloads go back to full speed. |
 
 ## Conversion
@@ -146,7 +146,7 @@ the CPU. See [hardware-acceleration.md](hardware-acceleration.md).
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
-| `NOTES_FILES_DIR` | `.marquee-notes-files` in `DATA_DIR` | Where Notes attachments are stored. Copy existing files before changing it. |
+| `NOTES_FILES_DIR` | `.lilin-notes-files` in `DATA_DIR` | Where Notes attachments are stored. Copy existing files before changing it. |
 | `NOTES_OCR` | on | Text in Notes images becomes searchable: Windows OCR on Windows, Tesseract elsewhere when installed. `off` disables it. |
 | `TESSERACT` | `tesseract` on PATH | Full path to Tesseract. |
 
@@ -154,7 +154,7 @@ the CPU. See [hardware-acceleration.md](hardware-acceleration.md).
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
-| `HOUSE_TOKEN` 🔒 | generated by setup | Shared secret for `agents/marquee-house` on your Linux machines. Reports are only accepted from the home network. |
+| `HOUSE_TOKEN` 🔒 | generated by setup | Shared secret for `agents/lilin-house` on your Linux machines. Reports are only accepted from the home network. |
 | `SCREENTIME_TOKEN` 🔒 | generated by setup | Bearer token for `POST /api/screentime` from the [screentime](https://github.com/Tjabooo/screentime) daemon. |
 | `ADGUARD_URL` | | AdGuard Home web UI, e.g. `http://localhost:3000`. |
 | `ADGUARD_USER` | | AdGuard Home user. |
@@ -183,7 +183,7 @@ Invites add people to the email list your Cloudflare Access policy allows. See
 | `CF_ACCOUNT_ID` | | Cloudflare account ID. |
 | `CF_ACCESS_LIST_ID` | | ID of the email list (Zero Trust → Reusable components → Lists). |
 | `INVITE_DAYS` | `7` | How long an invite link stays valid. |
-| `OIDC_CLIENT_ID` | | With the two below: Marquee becomes Cloudflare Access's login method, so people sign in with a Marquee password and invites sign people straight in ([remote-access.md](remote-access.md#marquee-as-the-sign-in-for-access-no-email-codes)). |
+| `OIDC_CLIENT_ID` | | With the two below: Lilin becomes Cloudflare Access's login method, so people sign in with a Lilin password and invites sign people straight in ([remote-access.md](remote-access.md#lilin-as-the-sign-in-for-access-no-email-codes)). |
 | `OIDC_CLIENT_SECRET` | | Long random string, also entered in the Access login method. |
 | `OIDC_REDIRECT_URIS` | | Comma-separated; for Access `https://<team>.cloudflareaccess.com/cdn-cgi/access/callback`. |
 
@@ -192,9 +192,9 @@ Invites add people to the email list your Cloudflare Access policy allows. See
 `PREVIEW_DIR` lets you try a new web app on the real server, with the real library, before anyone else
 sees it:
 
-1. Check the branch out next to the live copy, e.g. `git worktree add ../marquee-preview redesign`.
-2. Set `PREVIEW_DIR` to its `public` folder (absolute path) and restart Marquee once.
-3. Open `https://your-marquee/preview` in the browser that should see it. `/preview/off` goes back.
+1. Check the branch out next to the live copy, e.g. `git worktree add ../lilin-preview redesign`.
+2. Set `PREVIEW_DIR` to its `public` folder (absolute path) and restart Lilin once.
+3. Open `https://your-lilin/preview` in the browser that should see it. `/preview/off` goes back.
 
 Pull new commits into the worktree to update the preview; static files are read on every request, so
 no restart is needed, and open preview pages offer a reload like after a normal update. The preview

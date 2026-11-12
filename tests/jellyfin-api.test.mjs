@@ -6,11 +6,11 @@ import os from 'node:os';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-// The Jellyfin plugin's whole conversation with Marquee: pair with a code, read the library, stream a
+// The Jellyfin plugin's whole conversation with Lilin: pair with a code, read the library, stream a
 // video and its subtitles through signed URLs, report progress, and lose access when disconnected.
 test('a Jellyfin server pairs, syncs, streams signed files and reports progress', { timeout: 30000 }, async (t) => {
   const root = fileURLToPath(new URL('../', import.meta.url));
-  const app = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-jellyfin-'));
+  const app = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-jellyfin-'));
   const media = path.join(app, 'media');
   const put = async (name, data) => { const full = path.join(media, name); await fs.mkdir(path.dirname(full), { recursive: true }); await fs.writeFile(full, data); };
   await put('Films/Heat.1995.1080p.mp4', Buffer.from('0123456789abcdef'));
@@ -31,7 +31,7 @@ test('a Jellyfin server pairs, syncs, streams signed files and reports progress'
   });
   await new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(Error(logs)), 8000);
-    child.stdout.on('data', (c) => { const ready = /Marquee is running: http:\/\/localhost:(\d+)/.exec(String(c)); if (ready) { port = Number(ready[1]); clearTimeout(timer); resolve(); } });
+    child.stdout.on('data', (c) => { const ready = /Lilin is running: http:\/\/localhost:(\d+)/.exec(String(c)); if (ready) { port = Number(ready[1]); clearTimeout(timer); resolve(); } });
     child.once('exit', () => { clearTimeout(timer); reject(Error(logs)); });
   });
   const base = `http://127.0.0.1:${port}`;
@@ -50,7 +50,7 @@ test('a Jellyfin server pairs, syncs, streams signed files and reports progress'
   const onServer = (await json(await owner('/api/library'))).server;
   await json(await owner('/api/library/add', { ids: onServer.map((i) => i.id) }));
 
-  // Pairing: the plugin shows a code, the owner enters it in Marquee, the plugin gets a key once.
+  // Pairing: the plugin shows a code, the owner enters it in Lilin, the plugin gets a key once.
   const started = await json(await plugin('/c/jf/v1/pair/start', { body: { name: 'Pappa’s Jellyfin' } }));
   assert.match(started.code, /^[A-Z2-9]{6}$/);
   assert.deepEqual(await json(await plugin(`/c/jf/v1/pair/poll?id=${started.poll}`)), { state: 'waiting' });
@@ -60,12 +60,12 @@ test('a Jellyfin server pairs, syncs, streams signed files and reports progress'
   assert.equal(approved.links[0].name, 'Pappa’s Jellyfin');
   const got = await json(await plugin(`/c/jf/v1/pair/poll?id=${started.poll}`));
   assert.equal(got.state, 'approved');
-  assert.match(got.key, /^mqjf_[\w-]{43}$/);
+  assert.match(got.key, /^liljf_[\w-]{43}$/);
   assert.deepEqual(await json(await plugin(`/c/jf/v1/pair/poll?id=${started.poll}`)), { state: 'expired' }, 'the key is handed over once');
   const key = got.key;
 
   await json(await plugin('/c/jf/v1/library'), 401);
-  await json(await plugin('/c/jf/v1/library', { key: 'mqjf_' + 'x'.repeat(43) }), 401);
+  await json(await plugin('/c/jf/v1/library', { key: 'liljf_' + 'x'.repeat(43) }), 401);
   assert.equal((await json(await plugin('/c/jf/v1/me', { key }))).link.name, 'Pappa’s Jellyfin');
   const lib = await json(await plugin('/c/jf/v1/library', { key }));
   assert.equal(lib.films.length, 1);
@@ -86,7 +86,7 @@ test('a Jellyfin server pairs, syncs, streams signed files and reports progress'
   r = await fetch(base + film.subtitles[0].url);
   assert.equal(r.status, 200); assert.match(await r.text(), /Hej/);
 
-  // Progress lands in Marquee's own Continue watching, and finishing clears it.
+  // Progress lands in Lilin's own Continue watching, and finishing clears it.
   await json(await plugin('/c/jf/v1/progress', { key, body: { key: film.key, position: 600, duration: 6000 } }));
   let progress = (await json(await owner('/api/me/progress'))).progress;
   assert.equal(progress['m:films/heat.1995.1080p'].time, 600);
@@ -95,7 +95,7 @@ test('a Jellyfin server pairs, syncs, streams signed files and reports progress'
   progress = (await json(await owner('/api/me/progress'))).progress;
   assert.equal(progress['m:films/heat.1995.1080p'], undefined);
 
-  // Disconnecting from Marquee kills the key and every signed URL.
+  // Disconnecting from Lilin kills the key and every signed URL.
   const links = (await json(await owner('/api/jellyfin'))).links;
   await json(await owner(`/api/jellyfin/${links[0].id}/remove`, {}));
   await json(await plugin('/c/jf/v1/library', { key }), 401);

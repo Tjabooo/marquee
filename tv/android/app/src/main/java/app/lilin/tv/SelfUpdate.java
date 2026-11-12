@@ -1,4 +1,4 @@
-package app.marquee.tv;
+package app.lilin.tv;
 
 import android.app.PendingIntent;
 import android.content.Context;
@@ -25,13 +25,13 @@ import java.util.Locale;
 
 /**
  * The app's own updates. The server says which version it has (/android.json: versionCode, size,
- * sha256, apk). On Android 12 and later, once Marquee may install apps, a new version downloads by
+ * sha256, apk). On Android 12 and later, once Lilin may install apps, a new version downloads by
  * itself and installs while the app isn't on screen, with no questions: Android lets an app update
  * itself quietly. On older TVs, or before that permission, the app offers the update when it starts
  * (Updater) and Android's installer asks to confirm.
  */
 final class SelfUpdate {
-  private static final String TAG = "MarqueeUpdate";
+  private static final String TAG = "LilinUpdate";
   private static final String PREF_READY = "update_ready";     // version code of the checked APK in the cache
   private static final String PREF_REFUSED = "update_refused"; // a quiet install of this code (or older) didn't go through
   private static final Object LOCK = new Object();
@@ -60,10 +60,10 @@ final class SelfUpdate {
   /** The server's address: the one typed on the TV, else the one the app was built with. Empty when neither. */
   static String server(Context c) {
     String saved = prefs(c).getString(MainActivity.PREF_SERVER, "");
-    return saved.isEmpty() ? BuildConfig.MARQUEE_URL : saved;
+    return saved.isEmpty() ? BuildConfig.LILIN_URL : saved;
   }
 
-  /** Android 12+ and Marquee may install apps: updates need nobody. */
+  /** Android 12+ and Lilin may install apps: updates need nobody. */
   static boolean canInstallQuietly(Context c) {
     return Build.VERSION.SDK_INT >= 31 && c.getPackageManager().canRequestPackageInstalls();
   }
@@ -137,7 +137,7 @@ final class SelfUpdate {
         }
         if (info.size > 0 && got != info.size) throw new IllegalStateException("size " + got + " != " + info.size);
         if (!info.sha256.isEmpty() && !hex(sha.digest()).equals(info.sha256.toLowerCase(Locale.ROOT))) throw new IllegalStateException("sha256");
-        if (!isApp(ctx, part, info.code)) throw new IllegalStateException("not Marquee " + info.code);
+        if (!isApp(ctx, part, info.code)) throw new IllegalStateException("not Lilin " + info.code);
         if (!part.renameTo(done)) throw new IllegalStateException("rename");
         prefs(ctx).edit().putInt(PREF_READY, info.code).commit();
         return done;
@@ -189,7 +189,7 @@ final class SelfUpdate {
       try {
         id = installer.createSession(params);
         try (PackageInstaller.Session session = installer.openSession(id)) {
-          try (InputStream in = new FileInputStream(apk); OutputStream out = session.openWrite("Marquee.apk", 0, apk.length())) {
+          try (InputStream in = new FileInputStream(apk); OutputStream out = session.openWrite("Lilin.apk", 0, apk.length())) {
             byte[] buf = new byte[65536];
             for (int n; (n = in.read(buf)) > 0; ) out.write(buf, 0, n);
             session.fsync(out);
@@ -219,7 +219,7 @@ final class SelfUpdate {
     c.setConnectTimeout(10_000);
     c.setReadTimeout(30_000);
     c.setUseCaches(false);
-    c.setRequestProperty("User-Agent", "MarqueeTV/" + BuildConfig.VERSION_NAME + " (Android TV)");
+    c.setRequestProperty("User-Agent", "LilinTV/" + BuildConfig.VERSION_NAME + " (Android TV)");
     return c;
   }
 

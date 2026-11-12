@@ -166,4 +166,4 @@ export function torrentFileNames(buffer) {
   } catch { return []; }
 }
 
-export const BLOCKED_MESSAGE = 'Marquee doesn’t download adult content, so this download was blocked.';
+export const BLOCKED_MESSAGE = 'Lilin doesn’t download adult content, so this download was blocked.';

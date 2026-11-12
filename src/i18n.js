@@ -1,4 +1,4 @@
-// The server's side of Marquee's languages (the web app's is public/i18n.js). The code stays in English; messages
+// The server's side of Lilin's languages (the web app's is public/i18n.js). The code stays in English; messages
 // on their way to a person are translated from src/i18n-sv.json, where {0}, {1}… stand for the parts that vary.
 // A message that isn't listed stays English, so a missing line can't break anything.
 import fs from 'node:fs';
@@ -29,9 +29,9 @@ export const validLanguage = (code) => LANGUAGES.has(code);
 
 // The app and the TV say which language they're showing; pages reached by a link go by the cookie, then the browser.
 export function languageOf(req) {
-  const asked = String(req.headers['x-marquee-lang'] || '').toLowerCase();
+  const asked = String(req.headers['x-lilin-lang'] || '').toLowerCase();
   if (validLanguage(asked)) return asked;
-  const cookie = String(req.headers.cookie || '').match(/(?:^|;\s*)marquee_lang=(\w+)/)?.[1];
+  const cookie = String(req.headers.cookie || '').match(/(?:^|;\s*)lilin_lang=(\w+)/)?.[1];
   if (validLanguage(cookie)) return cookie;
   return /^sv\b/i.test(String(req.headers['accept-language'] || '')) ? 'sv' : 'en';
 }

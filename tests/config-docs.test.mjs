@@ -12,7 +12,7 @@ for (const f of fs.readdirSync(new URL('../src', import.meta.url))) {
   for (const m of read(`src/${f}`).matchAll(/process\.env\.([A-Za-z_][A-Za-z0-9_]*)/g)) code.add(m[1]);
 }
 // Read by the code but deliberately not in .env.example.
-const INTERNAL = new Set(['CF_API_BASE', 'MARQUEE_ENV_FILE', 'NO_COLOR', 'XDG_SESSION_TYPE', 'PATH', 'PATHEXT', 'Path', 'ProgramData', 'SystemRoot']);
+const INTERNAL = new Set(['CF_API_BASE', 'LILIN_ENV_FILE', 'NO_COLOR', 'XDG_SESSION_TYPE', 'PATH', 'PATHEXT', 'Path', 'ProgramData', 'SystemRoot']);
 
 test('every setting the server reads is in .env.example', () => {
   const missing = [...code].filter((k) => !example.has(k) && !INTERNAL.has(k));

@@ -8,7 +8,7 @@
 // Every request that isn't GET/HEAD is refused unless --allow-writes is given, so pointing this at a
 // live server changes nothing. --overlay serves static files from a local folder instead of the
 // server's (the API stays the server's), which previews a UI branch against real data. --preview
-// sets the marquee_preview cookie. Scenes live in scenes.mjs; each can mock API answers.
+// sets the lilin_preview cookie. Scenes live in scenes.mjs; each can mock API answers.
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -37,7 +37,7 @@ const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/jav
   '.png': 'image/png', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json', '.woff2': 'font/woff2', '.jpg': 'image/jpeg', '.webp': 'image/webp' };
 
 fs.mkdirSync(OUT, { recursive: true });
-const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'mq-shots-'));
+const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'lil-shots-'));
 const chrome = spawn(String(args.chrome || 'chromium'), ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profile}`,
   '--no-first-run', '--no-default-browser-check', '--hide-scrollbars', '--mute-audio', '--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4', '--autoplay-policy=no-user-gesture-required',
   '--disable-features=Translate,MediaRouter,BlockInsecurePrivateNetworkRequests,PrivateNetworkAccessSendPreflights,PrivateNetworkAccessRespectPreflightResults,LocalNetworkAccessChecks', 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'] });
@@ -90,7 +90,7 @@ async function newPage(size, lang, scene) {
     const prev = patches['^/api/status$'];
     patches['^/api/status$'] = (j) => { j = prev ? prev(j) ?? j : j; if (!scene.whatsNew && j.whatsNew) j.whatsNew.unseen = []; return j; };
   }
-  if (args.theme && args.theme !== 'marquee') {
+  if (args.theme && args.theme !== 'lilin') {
     const preset = String(args.theme);
     const prev = patches['^/api/status$'];
     patches['^/api/status$'] = (j) => { j = prev ? prev(j) ?? j : j; j.me.settings.theme = { preset }; return j; };
@@ -150,10 +150,10 @@ async function newPage(size, lang, scene) {
   await s('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: args['reduced-motion'] ? 'reduce' : 'no-preference' }, ...input] }).catch(() =>
     s('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: args['reduced-motion'] ? 'reduce' : 'no-preference' }] }));
   if (size.mobile) await s('Emulation.setUserAgentOverride', { userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Mobile Safari/537.36' });
-  if (args.preview) await s('Network.setCookie', { name: 'marquee_preview', value: '1', url: BASE });
+  if (args.preview) await s('Network.setCookie', { name: 'lilin_preview', value: '1', url: BASE });
   // --as owner@x: an identity header (servers trust them from loopback), for owner screens on a local server
   if (args.as && scene.signedOut !== true) { await s('Network.enable'); await s('Network.setExtraHTTPHeaders', { headers: { 'Cf-Access-Authenticated-User-Email': String(args.as) } }); }
-  await s('Page.addScriptToEvaluateOnNewDocument', { source: `try { localStorage.setItem('marquee:lang', ${JSON.stringify(lang)}); ${scene.storage ? `for (const [k, v] of Object.entries(${JSON.stringify(scene.storage)})) localStorage.setItem(k, v);` : ''} } catch {}\n${HELPERS}` });
+  await s('Page.addScriptToEvaluateOnNewDocument', { source: `try { localStorage.setItem('lilin:lang', ${JSON.stringify(lang)}); ${scene.storage ? `for (const [k, v] of Object.entries(${JSON.stringify(scene.storage)})) localStorage.setItem(k, v);` : ''} } catch {}\n${HELPERS}` });
   return { s, targetId, errors, close: async () => { listeners.delete(onMsg); await send('Target.closeTarget', { targetId }); } };
 }
 

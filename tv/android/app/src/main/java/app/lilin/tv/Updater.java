@@ -1,4 +1,4 @@
-package app.marquee.tv;
+package app.lilin.tv;
 
 import android.content.Intent;
 import android.os.Build;
@@ -9,7 +9,7 @@ import org.json.JSONObject;
 /**
  * The update offer in the app (shell.html), for TVs where the app can't update itself quietly (SelfUpdate):
  * downloads the APK, then hands it to Android's installer, which asks the viewer to confirm. The first time,
- * Android wants Marquee allowed to install apps; the TV's settings screen for that opens, and the install
+ * Android wants Lilin allowed to install apps; the TV's settings screen for that opens, and the install
  * carries on on return. Progress goes to the page as "update" events.
  */
 final class Updater {
@@ -34,7 +34,7 @@ final class Updater {
       } catch (Exception e) {
         app.main.post(() -> { busy = false; send("error", -1); });
       }
-    }, "marquee-update").start();
+    }, "lilin-update").start();
   }
 
   private void install() {
@@ -57,7 +57,7 @@ final class Updater {
     busy = false;
   }
 
-  /** Back from the settings screen: install if Marquee may now. */
+  /** Back from the settings screen: install if Lilin may now. */
   void resume() {
     if (!waitingForPermission) return;
     if (Build.VERSION.SDK_INT >= 26 && !app.getPackageManager().canRequestPackageInstalls()) { send("denied", -1); busy = false; waitingForPermission = false; return; }

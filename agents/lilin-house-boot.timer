@@ -1,5 +1,5 @@
 [Unit]
-Description=Check with Marquee right after boot, then every 30 seconds (only on the home network)
+Description=Check with Lilin right after boot, then every 30 seconds (only on the home network)
 
 [Timer]
 OnBootSec=1s

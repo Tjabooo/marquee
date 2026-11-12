@@ -1,8 +1,8 @@
 [package]
-name = "marquee-tv"
+name = "lilin-tv"
 version = "0.1.0"
 edition = "2021"
-description = "Marquee's Samsung TV app: the whole UI in Rust, drawn with WebGL"
+description = "Lilin's Samsung TV app: the whole UI in Rust, drawn with WebGL"
 license = "MIT"
 build = "build.rs"
 

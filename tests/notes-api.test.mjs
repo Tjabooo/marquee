@@ -9,8 +9,8 @@ import { NotesStore } from '../src/notes.js';
 
 test('notes API denies non-admins and shares messages safely between admins', { timeout: 20000 }, async () => {
   const root = fileURLToPath(new URL('../', import.meta.url));
-  const app = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-notes-api-'));
-  const fileDir = await fs.mkdtemp(path.join(os.tmpdir(),'marquee-notes-external-'));
+  const app = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-notes-api-'));
+  const fileDir = await fs.mkdtemp(path.join(os.tmpdir(),'lilin-notes-external-'));
   for (const name of await fs.readdir(root)) if (name.endsWith('.js') || name === 'package.json') await fs.copyFile(path.join(root, name), path.join(app, name));
   await fs.cp(path.join(root, 'public'), path.join(app, 'public'), { recursive: true });
   await fs.cp(path.join(root, 'src'), path.join(app, 'src'), { recursive: true });
@@ -26,7 +26,7 @@ test('notes API denies non-admins and shares messages safely between admins', { 
   try {
     await new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(Error('Startup timeout: ' + logs)), 8000);
-      child.stdout.on('data', (c) => { const ready = /Marquee is running: http:\/\/localhost:(\d+)/.exec(String(c)); if (ready) { port = Number(ready[1]); clearTimeout(timer); resolve(); } });
+      child.stdout.on('data', (c) => { const ready = /Lilin is running: http:\/\/localhost:(\d+)/.exec(String(c)); if (ready) { port = Number(ready[1]); clearTimeout(timer); resolve(); } });
       child.once('error', reject); child.once('exit', () => { clearTimeout(timer); reject(Error(logs)); });
     });
     const request = async (endpoint, body, email = 'owner@notes.test', expected = 200) => {

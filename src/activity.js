@@ -19,7 +19,7 @@ let resolveAvatar = null;
 export function initActivity({ dataDir, nameForUser = null, avatarForUser = null }) {
   resolveName = nameForUser;
   resolveAvatar = avatarForUser;
-  file = path.join(dataDir, '.marquee-activity.jsonl');
+  file = path.join(dataDir, '.lilin-activity.jsonl');
   try {
     events = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).slice(-KEEP).map((l) => {
       try { return JSON.parse(l); } catch { return null; }

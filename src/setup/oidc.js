@@ -1,4 +1,4 @@
-// Marquee as Cloudflare Access's sign-in (src/oidc.js, docs/remote-access.md): the .env values setup
+// Lilin as Cloudflare Access's sign-in (src/oidc.js, docs/remote-access.md): the .env values setup
 // writes for it, and the login method the owner adds in Cloudflare Zero Trust (Settings →
 // Authentication → Login methods → OpenID Connect). Used by `setup.js`, `setup.js oidc` and the
 // Windows wizard (`setup.js wizard oidc`).
@@ -61,7 +61,7 @@ export function loginMethod(env) {
 export function loginMethodLines(m) {
   return [
     'Cloudflare Zero Trust > Settings > Authentication > Login methods > Add new > OpenID Connect:',
-    `  Name:             Marquee`,
+    `  Name:             Lilin`,
     `  App ID:           ${m.appId}`,
     `  Client secret:    ${m.clientSecret}`,
     `  Auth URL:         ${m.authUrl}`,
@@ -69,8 +69,8 @@ export function loginMethodLines(m) {
     `  Certificate URL:  ${m.certUrl}`,
     `  Proof Key for Code Exchange (PKCE): on`,
     `  Scopes:           ${m.scopes}`,
-    'Then in the Marquee application in Access > Login methods: allow only Marquee and turn on Instant Auth.',
-    'In its Allow policy, add Include > Login methods > Marquee next to the email list. New invitees then get in at once:',
-    'Cloudflare can take minutes to see a freshly added list email, and only your invites and password links make Marquee logins.',
+    'Then in the Lilin application in Access > Login methods: allow only Lilin and turn on Instant Auth.',
+    'In its Allow policy, add Include > Login methods > Lilin next to the email list. New invitees then get in at once:',
+    'Cloudflare can take minutes to see a freshly added list email, and only your invites and password links make Lilin logins.',
   ];
 }

@@ -56,7 +56,7 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
     el.classList.add('is-open'); el.querySelector('.note-more')?.setAttribute('aria-expanded', 'true');
     requestAnimationFrame(() => el.querySelector(':scope > .note-actions')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
   }
-  // Share links: Discord shows a preview card; opening the link still needs a Marquee sign-in.
+  // Share links: Discord shows a preview card; opening the link still needs a Lilin sign-in.
   // Videos (and images Discord can't show) get a copy made first; the link is copied once it's ready.
   const preparing = (note) => note.shareToken && note.shareMedia && !note.shareMedia.ready;
   async function shareNote(note, stop = false) {
@@ -94,7 +94,7 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
       h('header', { class: 'note-meta' }, h('strong', {}, note.authorName || T('Admin')),
         h('time', { datetime: new Date(note.createdAt).toISOString(), title: new Date(note.createdAt).toISOString() }, date(note.createdAt)),
         note.pinned && h('span', { class: 'note-tag' }, T('Pinned')),
-        note.shareToken && !note.deletedAt && h('span', { class: 'note-tag is-shared', title: T('Anyone with the link sees a preview; opening it needs Marquee access') }, T('Shared')),
+        note.shareToken && !note.deletedAt && h('span', { class: 'note-tag is-shared', title: T('Anyone with the link sees a preview; opening it needs Lilin access') }, T('Shared')),
         !note.sourceId && note.editedAt && h('span', { title: date(note.editedAt) }, T('edited')),
         note.sourceId && h('span', { class: 'note-tag', title: T('Original Discord message {0}', note.sourceId) }, 'Discord'),
         !editing && h('button', { type: 'button', class: 'note-more', 'aria-label': T('Note actions'), 'aria-expanded': String(state.open === note.id),
@@ -153,7 +153,7 @@ export function createNotesView({ h, icon, api, jsonPost, toast, query, clearQue
       preview = h('a', { href: `${href}?view=1`, target: '_blank', rel: 'noopener', class: 'note-image',
         onclick: (e) => { if (!overlay || e.ctrlKey || e.metaKey || e.shiftKey) return; e.preventDefault(); showImage(`${href}?view=1`, a.name); } }, img);
     } else if (a.fileId && a.mime?.startsWith('video/')) {
-      // A still of the first frame; playing opens Marquee's own player.
+      // A still of the first frame; playing opens Lilin's own player.
       const still = h('video', { muted: true, playsinline: true, preload: 'metadata', tabindex: -1, 'aria-hidden': 'true' });
       showStill(still, `${href}?view=1#t=0.1`);
       preview = h('button', { type: 'button', class: 'note-video', 'aria-label': T('Play {0}', a.name), onclick: () => playVideo(a) }, still,

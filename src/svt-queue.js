@@ -56,7 +56,7 @@ export function expectedSize({ bytes, progress, minutes, size }) {
 
 // deps: { mediaDir, dataDir, ffmpeg, freeBytes?(), onSaved(job, fullPath), onChange?(), log? }
 export function createSvtQueue(deps) {
-  const stateFile = path.join(deps.dataDir, '.marquee-svt.json');
+  const stateFile = path.join(deps.dataDir, '.lilin-svt.json');
   const jobs = new Map(); // hash -> job
   const running = new Map(); // hash -> ffmpeg process
   const log = deps.log || (() => {});

@@ -1,11 +1,11 @@
-// Marquee on a TV (tv/tizen): the parts of the TV app that are plain logic, kept apart so tests can run them.
+// Lilin on a TV (tv/tizen): the parts of the TV app that are plain logic, kept apart so tests can run them.
 // Written for the TV's browser engine (Samsung 2020 = Chrome 69): no ?. or ??, no newer built-ins.
 (function (root) {
   'use strict';
 
   // Translates an English line with public/tv/sv.js (loaded first by the shell); {0}, {1}… are filled in.
   function T(text) {
-    var strings = root.MarqueeTvStrings || {};
+    var strings = root.LilinTvStrings || {};
     var args = arguments;
     return String(strings[text] || text).replace(/\{(\d+)\}/g, function (m, i) { return args[+i + 1]; });
   }
@@ -69,7 +69,7 @@
   function progressRef(f) { return f.mediaKey ? 'm:' + f.mediaKey : 'l:' + f.id; }
   function resumable(p) { return Boolean(p && p.time > 30 && p.duration > 0 && p.duration - p.time > DONE_SECONDS); }
 
-  // "movie:603" / "tv:1399", for Wrapped and Popular on Marquee (same as public/social.js titleKeyOf).
+  // "movie:603" / "tv:1399", for Wrapped and Popular on Lilin (same as public/social.js titleKeyOf).
   function titleKey(f) {
     var show = /^tv-(\d+)$/.exec(String(f.show || ''));
     if (show) return 'tv:' + show[1];
@@ -241,5 +241,5 @@
     titleKey: titleKey, transferWord: transferWord, pendingTitles: pendingTitles, homeRows: homeRows, genreRows: genreRows, searchKey: searchKey, showSeasons: showSeasons, startEpisode: startEpisode, parseVtt: parseVtt, cueText: cueText,
   };
   if (typeof module === 'object' && module.exports) module.exports = api;
-  else root.MarqueeTvLogic = api;
+  else root.LilinTvLogic = api;
 })(this);

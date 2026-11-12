@@ -10,8 +10,8 @@ const first = { id: 1283515, title: 'Verity', release_date: '2026-09-30', poster
 const second = { id: 1812260, title: 'Verity', release_date: '2026-10-31', poster_path: '/b.jpg', overview: 'A wish.' };
 
 test('same-name, same-year films stay unresolved until a per-file choice; old guesses are refreshed', async () => {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-identity-'));
-  await fs.writeFile(path.join(dir, '.marquee-shows.json'), JSON.stringify({ films: { 'verity|2026': { id: first.id, at: Date.now() } } }));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-identity-'));
+  await fs.writeFile(path.join(dir, '.lilin-shows.json'), JSON.stringify({ films: { 'verity|2026': { id: first.id, at: Date.now() } } }));
   initShows({ dataDir: dir });
   let lookups = 0;
   const tmdb = async () => { lookups++; return { results: [first, second] }; };

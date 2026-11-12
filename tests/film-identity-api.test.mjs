@@ -14,7 +14,7 @@ const movies = [
 
 test('film identification API requires owner access and changes only the selected file', { timeout: 15000 }, async () => {
   const root = fileURLToPath(new URL('../', import.meta.url));
-  const app = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-api-'));
+  const app = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-api-'));
   const media = path.join(app, 'media'); await fs.mkdir(media);
   let lastTorrentForm = '', torrentAdded = false;
   const mock = http.createServer((req, res) => {
@@ -50,7 +50,7 @@ test('film identification API requires owner access and changes only the selecte
   try {
     await new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(Error('Startup timeout: ' + logs)), 7000);
-      child.stdout.on('data', (c) => { const ready = /Marquee is running: http:\/\/localhost:(\d+)/.exec(String(c)); if (ready) { port = Number(ready[1]); clearTimeout(timer); resolve(); } });
+      child.stdout.on('data', (c) => { const ready = /Lilin is running: http:\/\/localhost:(\d+)/.exec(String(c)); if (ready) { port = Number(ready[1]); clearTimeout(timer); resolve(); } });
       child.once('error', reject); child.once('exit', () => { clearTimeout(timer); reject(Error(logs)); });
     });
     const request = async (endpoint, body, email = 'owner@test.local', expectedStatus = 200) => {

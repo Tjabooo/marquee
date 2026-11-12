@@ -13,7 +13,7 @@ test('selected audio links bind source and stream and retain signed range playba
   const run = promisify(execFile);
   try { await run(process.env.FFMPEG || 'ffmpeg', ['-version']); await run(process.env.FFPROBE || 'ffprobe', ['-version']); }
   catch { t.skip('FFmpeg unavailable'); return; }
-  const app = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-audio-api-'));
+  const app = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-audio-api-'));
   const root = fileURLToPath(new URL('../', import.meta.url));
   const media = path.join(app, 'media'); await fs.mkdir(media);
   const name = 'Example.Show.S01E01.mp4', file = path.join(media, name);
@@ -37,7 +37,7 @@ test('selected audio links bind source and stream and retain signed range playba
   });
   await new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('Startup timeout: ' + logs)), 7000);
-    child.stdout.on('data', (c) => { const ready = /Marquee is running: http:\/\/localhost:(\d+)/.exec(String(c)); if (ready) { port = Number(ready[1]); clearTimeout(timer); resolve(); } });
+    child.stdout.on('data', (c) => { const ready = /Lilin is running: http:\/\/localhost:(\d+)/.exec(String(c)); if (ready) { port = Number(ready[1]); clearTimeout(timer); resolve(); } });
     child.once('error', reject); child.once('exit', () => { clearTimeout(timer); reject(new Error(logs)); });
   });
   const base = `http://127.0.0.1:${port}`;

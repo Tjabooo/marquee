@@ -1,4 +1,4 @@
-// Which proxy headers Marquee believes. Accounts come from Cloudflare Access: the email in
+// Which proxy headers Lilin believes. Accounts come from Cloudflare Access: the email in
 // Cf-Access-Authenticated-User-Email is the account, and Cf-Connecting-IP / Cf-Ray tell a visit
 // over the internet from one at home. Any client can send those headers, so before a request is
 // handled, sanitize() removes them unless they are trustworthy:
@@ -77,7 +77,7 @@ export function createAccessVerifier({ teamDomain, audience, fetchImpl = fetch, 
 
   async function loadKeys(force = false) {
     // Access rotates its signing keys every few weeks; refresh hourly, or at once for an unknown key
-    // (at most once a minute, so forged tokens can't make Marquee hammer the certs endpoint).
+    // (at most once a minute, so forged tokens can't make Lilin hammer the certs endpoint).
     if (!force && now() - fetchedAt < 3600_000 && keys.size) return keys;
     if (force && now() - fetchedAt < 60_000) return keys;
     pending ??= (async () => {

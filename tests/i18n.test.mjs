@@ -39,7 +39,7 @@ test('the app defaults to English outside a browser and fills in blanks', () => 
 test('every line in the TV app has Swedish, with the same blanks', () => {
   const sandbox = { window: {} };
   vm.runInNewContext(read('public/tv/sv.js'), sandbox);
-  const strings = sandbox.window.MarqueeTvStrings;
+  const strings = sandbox.window.LilinTvStrings;
   const lines = [...linesIn(read('public/tv/tv.js')), ...linesIn(read('public/tv/logic.js')),
     ...linesIn(read('tv/android/app/src/main/assets/shell.html'))]; // the Android shell's update offer too
   assert.ok(lines.length > 80);
@@ -48,16 +48,16 @@ test('every line in the TV app has Swedish, with the same blanks', () => {
 });
 
 test('the TV app speaks Swedish when the shell loads sv.js, else English, and asks the server for the same', () => {
-  const sandbox = { MarqueeTvStrings: { 'Season {0}': 'Säsong {0}' } };
+  const sandbox = { LilinTvStrings: { 'Season {0}': 'Säsong {0}' } };
   vm.runInNewContext(read('public/tv/logic.js'), sandbox);
-  assert.equal(sandbox.MarqueeTvLogic.T('Season {0}', 3), 'Säsong 3');
+  assert.equal(sandbox.LilinTvLogic.T('Season {0}', 3), 'Säsong 3');
   const english = {};
   vm.runInNewContext(read('public/tv/logic.js'), english);
-  assert.equal(english.MarqueeTvLogic.T('Season {0}', 3), 'Season 3');
-  assert.match(read('public/tv/tv.js'), /'X-Marquee-Lang': window\.MarqueeTvStrings \? 'sv' : 'en'/);
+  assert.equal(english.LilinTvLogic.T('Season {0}', 3), 'Season 3');
+  assert.match(read('public/tv/tv.js'), /'X-Lilin-Lang': window\.LilinTvStrings \? 'sv' : 'en'/);
   assert.match(read('tv/tizen/shell.js'), /\/tv\/sv\.js/); // Samsung: always Swedish
   const android = read('tv/android/app/src/main/assets/shell.html');
-  assert.match(android, /MARQUEE_SWEDISH \? \['sv\.js', 'logic\.js', 'tv\.js'\] : \['logic\.js', 'tv\.js'\]/); // Android: the TV's language
+  assert.match(android, /LILIN_SWEDISH \? \['sv\.js', 'logic\.js', 'tv\.js'\] : \['logic\.js', 'tv\.js'\]/); // Android: the TV's language
 });
 
 test('server messages: exact lines, lines with blanks, and unknown text', () => {
@@ -84,10 +84,10 @@ test('every fixed HttpError message has Swedish', () => {
 });
 
 test('the language of a request: app header, then cookie, then browser', () => {
-  assert.equal(languageOf({ headers: { 'x-marquee-lang': 'sv', cookie: 'marquee_lang=en' } }), 'sv');
-  assert.equal(languageOf({ headers: { cookie: 'a=1; marquee_lang=sv' } }), 'sv');
+  assert.equal(languageOf({ headers: { 'x-lilin-lang': 'sv', cookie: 'lilin_lang=en' } }), 'sv');
+  assert.equal(languageOf({ headers: { cookie: 'a=1; lilin_lang=sv' } }), 'sv');
   assert.equal(languageOf({ headers: { 'accept-language': 'sv-SE,en;q=0.5' } }), 'sv');
-  assert.equal(languageOf({ headers: { 'x-marquee-lang': 'xx', 'accept-language': 'en-GB' } }), 'en');
+  assert.equal(languageOf({ headers: { 'x-lilin-lang': 'xx', 'accept-language': 'en-GB' } }), 'en');
   assert.equal(languageOf({ headers: {} }), 'en');
 });
 

@@ -1,6 +1,6 @@
-//! Marquee's Samsung TV app, in Rust. host.js (public/tv-rs) loads this as WebAssembly 1.0 (the 2020 TV runs
+//! Lilin's Samsung TV app, in Rust. host.js (public/tv-rs) loads this as WebAssembly 1.0 (the 2020 TV runs
 //! Chrome 69) and gives it a WebGL canvas, fetch, timers, storage and AVPlay. Rust keeps every screen's state,
-//! handles the remote, talks to the Marquee API, and draws each frame as one vertex buffer.
+//! handles the remote, talks to the Lilin API, and draws each frame as one vertex buffer.
 //! Frames are drawn only when something changed or is moving; a still screen costs nothing.
 #![no_std]
 extern crate alloc;
@@ -85,7 +85,7 @@ impl Res {
         if !e.is_empty() {
             return String::from(e);
         }
-        t!("Marquee answered {0}.", self.status.to_string())
+        t!("Lilin answered {0}.", self.status.to_string())
     }
     pub fn done() -> Res {
         Res { status: 200, body: String::new(), json: Value::Null }
@@ -225,8 +225,8 @@ struct Join {
     then: Option<(u32, u32)>,
 }
 
-pub const TOKEN_KEY: &str = "marquee:tv-session";
-pub const WATCHED_KEY: &str = "marquee:tv-watched";
+pub const TOKEN_KEY: &str = "lilin:tv-session";
+pub const WATCHED_KEY: &str = "lilin:tv-watched";
 
 pub struct Cx {
     pub server: String,
@@ -276,10 +276,10 @@ impl Cx {
         self.next_req += 1;
         let id = self.next_req;
         self.reqs.insert(id, route);
-        let mut headers = String::from("X-Marquee-TV: 1\nX-Marquee-Lang: sv\n");
+        let mut headers = String::from("X-Lilin-TV: 1\nX-Lilin-Lang: sv\n");
         if let Some(t) = self.token() {
             if t != "home" && !t.is_empty() {
-                headers.push_str("X-Marquee-Session: ");
+                headers.push_str("X-Lilin-Session: ");
                 headers.push_str(&t);
                 headers.push('\n');
             }

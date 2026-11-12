@@ -2,7 +2,7 @@
 // Phones swipe between them (a scroll-snap row, so it's native and cheap). Wide screens advance every
 // 9 s, paused while you point at it, focus it or the page is hidden. On a desktop on an unmetered
 // connection the slide you're looking at plays its trailer muted after a few seconds (never on phones,
-// with Save-Data or with reduced motion). The slides are listed as a row of marquee bulbs.
+// with Save-Data or with reduced motion). The slides are listed as a row of lilin bulbs.
 import { T } from './i18n.js';
 
 const ADVANCE_MS = 9000;

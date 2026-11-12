@@ -14,7 +14,7 @@ test('a freshly downloaded HEVC file gets an H.264 browser copy before anyone pl
   const ffmpeg = process.env.FFMPEG || 'ffmpeg';
   try { await run(ffmpeg, ['-version']); await run(process.env.FFPROBE || 'ffprobe', ['-version']); }
   catch { t.skip('FFmpeg unavailable'); return; }
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-h264-'));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-h264-'));
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
   const file = path.join(dir, 'Film.2026.2160p.WEB-DL.mp4');
   try {
@@ -49,7 +49,7 @@ test('an unavailable candidate inventory preserves existing browser copies', { t
   try { await run(process.env.FFMPEG || 'ffmpeg', ['-version']); await run(process.env.FFPROBE || 'ffprobe', ['-version']); }
   catch { t.skip('FFmpeg unavailable'); return; }
 
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-cache-outage-'));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-cache-outage-'));
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
   const cache = path.join(dir, 'cache', 'audio');
   await fs.mkdir(cache, { recursive: true });

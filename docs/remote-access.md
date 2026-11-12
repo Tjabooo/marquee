@@ -1,13 +1,13 @@
 # Remote access and security
 
-Marquee is built for a home network. Out of the box it listens on your LAN and treats everyone who
+Lilin is built for a home network. Out of the box it listens on your LAN and treats everyone who
 connects directly from it as one shared "Home network" account; anyone else has to sign in. Even so,
-**don't forward Marquee's port on your router**: Marquee speaks plain HTTP, so passwords and video
+**don't forward Lilin's port on your router**: Lilin speaks plain HTTP, so passwords and video
 would cross the internet unencrypted. Put something in front of it that adds HTTPS:
 
 | Option | Good for | Accounts |
 | --- | --- | --- |
-| [Marquee's own sign-in](#marquees-own-sign-in) behind any of these | everyone | personal accounts with passwords |
+| [Lilin's own sign-in](#lilins-own-sign-in) behind any of these | everyone | personal accounts with passwords |
 | [Tailscale](#tailscale) | your own devices | one shared account |
 | [Cloudflare Tunnel + Access](#cloudflare-tunnel-and-access) | family and friends, no VPN app | personal accounts, owner role, invites |
 | [Reverse proxy with authentication](#reverse-proxy) | you already run Caddy or nginx with SSO | shared, or personal through a trusted header |
@@ -20,7 +20,7 @@ Each request belongs to one account, decided in this order:
 
 1. **A proxy's identity.** `Cf-Access-Authenticated-User-Email`, set by Cloudflare Access or your
    authenticating proxy (only believed as described below).
-2. **Marquee's own sign-in.** A session from the sign-in page at `/signin`.
+2. **Lilin's own sign-in.** A session from the sign-in page at `/signin`.
 3. **The shared Home network account**, for visitors connecting directly from the home network
    (private, loopback and Tailscale `100.64.0.0/10` addresses) while `HOME_NETWORK_ACCESS=shared`,
    the default. It is never an owner, and it's never given to visitors from the internet, not even
@@ -28,9 +28,9 @@ Each request belongs to one account, decided in this order:
 
 A person's account (library, progress, preferences) is the same whichever way they sign in with the
 same email. Emails listed in `ADMIN_EMAILS` are owners (the first is the main owner, whose library
-receives files added outside Marquee).
+receives files added outside Lilin).
 
-## Marquee's own sign-in
+## Lilin's own sign-in
 
 Accounts are created on the server, never over the network:
 
@@ -43,7 +43,7 @@ node setup.js user remove friend@example.com      # their library and settings a
 node setup.js user list
 ```
 
-People sign in at `/signin` (Marquee sends them there) and can change their password and sign out in
+People sign in at `/signin` (Lilin sends them there) and can change their password and sign out in
 Settings. Passwords are hashed with scrypt; sessions are random 256-bit tokens stored only as hashes,
 in `HttpOnly; SameSite=Lax` cookies (`Secure` over HTTPS) that last `SESSION_DAYS` (30) unused.
 After 5 wrong passwords an account waits 30 seconds, doubling up to 15 minutes, and an address with
@@ -52,19 +52,19 @@ After 5 wrong passwords an account waits 30 seconds, doubling up to 15 minutes, 
 To make everyone sign in, at home too, set `HOME_NETWORK_ACCESS=signin`. Smart TVs fetching
 subtitles from the server's LAN address keep working.
 
-### Requests Marquee refuses
+### Requests Lilin refuses
 
 - **From other websites.** A page you open could otherwise make your browser send requests to
-  Marquee on your LAN (CSRF). Changes are accepted only from Marquee's own pages (`Origin` and
+  Lilin on your LAN (CSRF). Changes are accepted only from Lilin's own pages (`Origin` and
   `Sec-Fetch-Site` checks); tools without a browser, like the House and Screen Time agents, are
   unaffected.
 - **For unknown host names.** A malicious site can point its own domain at your server's LAN
-  address (DNS rebinding). Marquee answers only to IP addresses, `localhost`, single-label names
+  address (DNS rebinding). Lilin answers only to IP addresses, `localhost`, single-label names
   (`http://nas:8080`), home-network suffixes (`.local`, `.lan`, `.home.arpa`, `.internal`, `.ts.net`),
   `PUBLIC_URL`'s host and `ALLOWED_HOSTS`. Requests through Cloudflare are exempt, since Cloudflare
   only routes your own hostnames. If you use another name, add it to `ALLOWED_HOSTS`.
 
-Because any client can send any header, Marquee only believes identity and proxy headers
+Because any client can send any header, Lilin only believes identity and proxy headers
 (`Cf-Access-*`, `Cf-Connecting-IP`, `Cf-Ray`, `X-Forwarded-*`) when one of these holds:
 
 1. **The connection comes from a trusted proxy.** `TRUSTED_PROXIES` lists addresses or CIDR ranges;
@@ -73,19 +73,19 @@ Because any client can send any header, Marquee only believes identity and proxy
    on your LAN that sends `Cf-Access-Authenticated-User-Email: owner@example.com` gets the Home
    network account, not the owner's.
 2. **The request carries a valid Cloudflare Access token.** With `CF_ACCESS_TEAM_DOMAIN` and
-   `CF_ACCESS_AUD` set, Marquee verifies the `Cf-Access-Jwt-Assertion` header (or the
+   `CF_ACCESS_AUD` set, Lilin verifies the `Cf-Access-Jwt-Assertion` header (or the
    `CF_Authorization` cookie) against your team's published signing keys: RS256 signature, audience,
    issuer and expiry. The email comes from the verified token; a request without a valid token gets
    no identity, even from a trusted proxy. Use this when cloudflared runs on another machine or in
    another container, or whenever you want the strongest guarantee.
 
-Marquee logs which mode it uses at startup (`Accounts: ...`).
+Lilin logs which mode it uses at startup (`Accounts: ...`).
 
 ### What stays public
 
 `/c/...` is reachable without signing in by design, and you must exclude it from Access (see
 below): it serves only clips you chose to share, link previews of notes you shared (clicking one
-leads to the protected app), open invite links, the Marquee preview card, and the Jellyfin plugin's
+leads to the protected app), open invite links, the Lilin preview card, and the Jellyfin plugin's
 API under `/c/jf/` (every call there needs a connected server's key or a link signed for one video;
 see [jellyfin.md](jellyfin.md)). `/api/house/*` and
 `/api/screentime` accept requests only with `HOUSE_TOKEN` / `SCREENTIME_TOKEN`, and House reports
@@ -93,13 +93,13 @@ are refused when they come through Cloudflare.
 
 ## Tailscale
 
-The simplest private option: Marquee stays LAN-only, and your devices reach it through your tailnet.
+The simplest private option: Lilin stays LAN-only, and your devices reach it through your tailnet.
 
-1. Install Tailscale on the Marquee machine and on your phone/laptop, signed in to the same tailnet.
+1. Install Tailscale on the Lilin machine and on your phone/laptop, signed in to the same tailnet.
 2. Open `http://<machine name>:8080` (MagicDNS) or `http://<100.x.y.z>:8080` from any of them.
 
 Everyone on the tailnet shares the Home network account. Casting to TVs works only for visitors
-Marquee sees as being at home (`CAST_WHEN_AWAY=on` changes that). To restrict who in the tailnet can
+Lilin sees as being at home (`CAST_WHEN_AWAY=on` changes that). To restrict who in the tailnet can
 reach the port, use Tailscale ACLs. `tailscale serve` can add HTTPS; it does not add accounts.
 
 ## Cloudflare Tunnel and Access
@@ -109,19 +109,19 @@ This gives each person their own account without a VPN app: Cloudflare Access si
 on your router.
 
 1. **Tunnel.** In Cloudflare Zero Trust → Networks → Tunnels, create a tunnel and install cloudflared
-   on the Marquee machine. Add a public hostname, e.g. `marquee.example.com`, with the service
+   on the Lilin machine. Add a public hostname, e.g. `lilin.example.com`, with the service
    `http://localhost:8080`. cloudflared then connects from `127.0.0.1`, which the default
    `TRUSTED_PROXIES` already trusts.
 2. **Access application.** Zero Trust → Access → Applications → Add → Self-hosted, for
-   `marquee.example.com`. Add a policy that allows your people (an email list works well; see
+   `lilin.example.com`. Add a policy that allows your people (an email list works well; see
    [Invites](#invites)). Under the application's settings, copy the **Application Audience (AUD) tag**.
-3. **Public paths.** Add a second self-hosted application for `marquee.example.com/c` with a
+3. **Public paths.** Add a second self-hosted application for `lilin.example.com/c` with a
    **Bypass** policy for Everyone, so shared clips, note previews and invites open without signing in.
-4. **Marquee settings** (`node setup.js` asks for these when you pick Cloudflare):
+4. **Lilin settings** (`node setup.js` asks for these when you pick Cloudflare):
 
    ```ini
    ADMIN_EMAILS=you@example.com
-   PUBLIC_URL=https://marquee.example.com
+   PUBLIC_URL=https://lilin.example.com
    CF_ACCESS_TEAM_DOMAIN=yourteam.cloudflareaccess.com
    CF_ACCESS_AUD=<the AUD tag>
    ```
@@ -130,7 +130,7 @@ on your router.
    and required for a correct setup when it doesn't (e.g. cloudflared in its own container). Without
    them, set `TRUSTED_PROXIES` to cloudflared's address, and make sure nothing else can connect from
    that address.
-5. Restart Marquee and run `node setup.js doctor`: it checks that the team's signing keys are reachable.
+5. Restart Lilin and run `node setup.js doctor`: it checks that the team's signing keys are reachable.
 
 Sign-in duration is Cloudflare's setting (Access → Applications → Session duration). Location in the
 Activity tab comes from Cloudflare's visitor location headers (Rules → Managed Transforms → "Add
@@ -138,10 +138,10 @@ visitor location headers").
 
 ### Invites
 
-Owners can create one-time invite links in Marquee. Whoever opens one enters their email, and
-Marquee adds it to the Zero Trust email list your Access policy allows.
+Owners can create one-time invite links in Lilin. Whoever opens one enters their email, and
+Lilin adds it to the Zero Trust email list your Access policy allows.
 
-1. Zero Trust → Reusable components → Lists: create an email list and use it in the Marquee
+1. Zero Trust → Reusable components → Lists: create an email list and use it in the Lilin
    application's Allow policy. Copy the list ID from its URL.
 2. Create an API token (My Profile → API Tokens) with the account permission **Zero Trust: Edit**.
 3. Set `CF_API_TOKEN`, `CF_ACCOUNT_ID` and `CF_ACCESS_LIST_ID`. `node setup.js doctor` reads the list
@@ -149,26 +149,26 @@ Marquee adds it to the Zero Trust email list your Access policy allows.
 
 Invite links expire after `INVITE_DAYS` and work once. Send them privately.
 
-### Marquee as the sign-in for Access (no email codes)
+### Lilin as the sign-in for Access (no email codes)
 
-Access can use Marquee's own accounts as its login, so people sign in with a Marquee password and
+Access can use Lilin's own accounts as its login, so people sign in with a Lilin password and
 an invite signs the new person straight in: they pick a password on the invite page and land in
-Marquee without seeing a login page. Marquee acts as an OpenID Connect provider under `/c/oidc/`
+Lilin without seeing a login page. Lilin acts as an OpenID Connect provider under `/c/oidc/`
 (already public through the `/c` bypass).
 
-1. Run `node setup.js` (or Marquee Setup on Windows), pick Cloudflare Tunnel + Access, give the team domain
-   and choose **With their Marquee password**. It writes the three settings below and keeps them on later runs;
+1. Run `node setup.js` (or Lilin Setup on Windows), pick Cloudflare Tunnel + Access, give the team domain
+   and choose **With their Lilin password**. It writes the three settings below and keeps them on later runs;
    `node setup.js oidc` prints everything step 2 needs. By hand instead: in `.env` set `OIDC_CLIENT_ID`
    (e.g. `cloudflare`), `OIDC_CLIENT_SECRET` (a long random string,
    `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`) and
-   `OIDC_REDIRECT_URIS=https://<team>.cloudflareaccess.com/cdn-cgi/access/callback`. Restart Marquee.
+   `OIDC_REDIRECT_URIS=https://<team>.cloudflareaccess.com/cdn-cgi/access/callback`. Restart Lilin.
 2. Zero Trust → Settings → Authentication → Login methods → Add new → **OpenID Connect**:
-   App ID and Client secret as above; Auth URL `https://<your Marquee>/c/oidc/authorize`, Token URL
+   App ID and Client secret as above; Auth URL `https://<your Lilin>/c/oidc/authorize`, Token URL
    `.../c/oidc/token`, Certificate URL `.../c/oidc/jwks`; PKCE on; scopes `openid email profile`.
-3. In the Marquee application: allow only this login method and turn on **Instant Auth**, so Access
-   goes straight to Marquee. Keep the email-list policy: it still decides who is let in.
+3. In the Lilin application: allow only this login method and turn on **Instant Auth**, so Access
+   goes straight to Lilin. Keep the email-list policy: it still decides who is let in.
 
-With it set up, anyone who still signs in through Access without a Marquee password gets a step in
+With it set up, anyone who still signs in through Access without a Lilin password gets a step in
 the app they can't close until they pick one (the API refuses everything else meanwhile). Owners see
 "No password yet" in People and can send such a person a **Password link**: an invite tied to their
 email that only sets their password. Open invites never accept an email that's already on the list.
@@ -177,19 +177,19 @@ Removing someone deletes their password and ends their Access sign-ins.
 ## Reverse proxy
 
 If you already run a reverse proxy with an authentication layer (Authelia, Authentik, oauth2-proxy,
-Caddy's `forward_auth`, nginx `auth_request`), Marquee can sit behind it.
+Caddy's `forward_auth`, nginx `auth_request`), Lilin can sit behind it.
 
-- Bind Marquee to the proxy: `HOST=127.0.0.1` when the proxy is on the same machine, otherwise keep
+- Bind Lilin to the proxy: `HOST=127.0.0.1` when the proxy is on the same machine, otherwise keep
   `HOST=0.0.0.0` and firewall the port so only the proxy can connect.
 - Without personal accounts, the proxy only needs to authenticate; everyone shares one account.
 - For personal accounts, have the proxy set `Cf-Access-Authenticated-User-Email` to the
   authenticated user's email **and strip any copy the client sent**, and list the proxy's address in
-  `TRUSTED_PROXIES`. Marquee trusts that header from that address only.
+  `TRUSTED_PROXIES`. Lilin trusts that header from that address only.
 
 Caddy with forward auth (Authelia shown; adjust to your provider):
 
 ```caddy
-marquee.example.com {
+lilin.example.com {
 	forward_auth authelia:9091 {
 		uri /api/authz/forward-auth
 		copy_headers Remote-Email
@@ -206,7 +206,7 @@ nginx with `auth_request`:
 ```nginx
 server {
     listen 443 ssl;
-    server_name marquee.example.com;
+    server_name lilin.example.com;
     # ssl_certificate ...;
 
     location = /authz {
@@ -244,6 +244,6 @@ With either proxy on another host, set `TRUSTED_PROXIES` to that host's address.
 
 - `.env` holds API keys and passwords. `setup.js` creates it readable only by you; keep it that way
   and out of backups you share.
-- Keep Marquee and Node.js updated (`node setup.js doctor` shows versions).
+- Keep Lilin and Node.js updated (`node setup.js doctor` shows versions).
 - Downloads and deletions are available to every account the owner allows (Settings → who may
   download). The Home network account can download too unless the owner turns that off.

@@ -9,7 +9,7 @@ import { cleanSubtitle } from './subfix.js';
 const API_KEY = process.env.OPENSUBTITLES_API_KEY || '';
 const USER = process.env.OPENSUBTITLES_USER || '';
 const PASS = process.env.OPENSUBTITLES_PASS || '';
-const UA = 'Marquee v1.0';
+const UA = 'Lilin v1.0';
 
 export const LANG_NAMES = {
   en: 'English', sv: 'Swedish', da: 'Danish', no: 'Norwegian', fi: 'Finnish', is: 'Icelandic',
@@ -34,7 +34,7 @@ function langName(code) {
   } catch { return LANG_NAMES[code]; }
 }
 const langList = (codes) => LANGS.filter((c) => codes.has(c)).map((code) => ({ code, name: langName(code) }));
-// Every language Marquee looks for (SUB_LANGS), for the default-subtitles setting.
+// Every language Lilin looks for (SUB_LANGS), for the default-subtitles setting.
 export const subtitleLanguages = () => LANGS.map((code) => ({ code, name: langName(code) }));
 
 export const subtitlesConfigured = () => Boolean(API_KEY);
@@ -374,7 +374,7 @@ let wants = {}; // infohash -> { name, langs: { en: 'waiting' | 'ready' | 'missi
 
 export function initSubtitles({ dataDir, onDownload }) {
   onDownloaded = onDownload || null;
-  wantsFile = path.join(dataDir, '.marquee-subs.json');
+  wantsFile = path.join(dataDir, '.lilin-subs.json');
   try { wants = JSON.parse(fs.readFileSync(wantsFile, 'utf8')); } catch { wants = {}; }
 }
 const saveWants = () => { try { fs.writeFileSync(wantsFile, JSON.stringify(wants, null, 2)); } catch { /* best effort */ } };

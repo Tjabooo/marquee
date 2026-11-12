@@ -1,4 +1,4 @@
-/* Marquee styles. Mobile-first: phones are the default, wider screens add to it.
+/* Lilin styles. Mobile-first: phones are the default, wider screens add to it.
    Design brief: docs/design/revamp.md. Tokens first, then components, then screens. */
 
 /* ---------- display font (self-hosted, SIL OFL: fonts/OFL.txt) ---------- */
@@ -22,7 +22,7 @@
   --line: #4B2C3F;
   --paper: #F6EADF;    /* text */
   --dust: #BA9DAD;     /* secondary text */
-  --bulb: #F4C152;     /* the marquee's bulbs: the one warm light */
+  --bulb: #F4C152;     /* the lilin's bulbs: the one warm light */
   --bulb-dim: rgba(244, 193, 82, 0.2);
   --on-bulb: #1F1019;  /* text on the bulb colour */
   --alert: #FF9B85;
@@ -281,7 +281,7 @@ body.has-billboard:not(.searching) .wordmark { text-shadow: 0 0 22px color-mix(i
 }
 .news-btn:hover { color: var(--text); border-color: color-mix(in srgb, var(--bulb) 45%, var(--line)); }
 .news-btn:not(.has-new) .news-label { display: none; }
-/* an unlit marquee bulb that lights up while there's an update you haven't seen */
+/* an unlit lilin bulb that lights up while there's an update you haven't seen */
 .news-bulb {
   width: 9px; height: 9px; border-radius: 50%;
   border: 1.5px solid color-mix(in srgb, var(--bulb) 55%, var(--dust));
@@ -812,7 +812,7 @@ html.has-vt .view { animation: none; }
 .resume-track { height: 3px; margin-top: 8px; border-radius: 2px; background: var(--surface-2); overflow: hidden; }
 .resume-track i { display: block; height: 100%; background: var(--bulb); }
 
-/* Downloads: progress shown as a strip of marquee bulbs lighting up */
+/* Downloads: progress shown as a strip of lilin bulbs lighting up */
 .dl {
   padding: var(--s4);
   background: var(--surface-1);
@@ -853,14 +853,14 @@ html.has-vt .view { animation: none; }
 .notice h3 { margin: 0 0 6px; font: 700 var(--t-h3)/1.3 var(--display); color: var(--text); }
 .notice p { margin: 0 auto; max-width: 40ch; }
 .notice code { font-size: 14px; color: var(--bulb); }
-/* An unlit marquee sign above empty states */
-.marquee-sign { display: inline-flex; flex-direction: column; align-items: center; gap: 10px; margin-bottom: var(--s4); }
-.marquee-sign-bulbs { display: flex; gap: 9px; }
-.marquee-sign-bulbs i { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid color-mix(in srgb, var(--bulb) 45%, var(--dust)); }
-.marquee-sign-bulbs i:nth-child(3n + 1) { background: var(--bulb); border-color: var(--bulb); box-shadow: 0 0 10px var(--bulb); animation: flicker 4s steps(1) infinite; }
-.marquee-sign-bulbs i:nth-child(5) { animation-delay: 1.3s; }
+/* An unlit lilin sign above empty states */
+.lilin-sign { display: inline-flex; flex-direction: column; align-items: center; gap: 10px; margin-bottom: var(--s4); }
+.lilin-sign-bulbs { display: flex; gap: 9px; }
+.lilin-sign-bulbs i { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid color-mix(in srgb, var(--bulb) 45%, var(--dust)); }
+.lilin-sign-bulbs i:nth-child(3n + 1) { background: var(--bulb); border-color: var(--bulb); box-shadow: 0 0 10px var(--bulb); animation: flicker 4s steps(1) infinite; }
+.lilin-sign-bulbs i:nth-child(5) { animation-delay: 1.3s; }
 @keyframes flicker { 0%, 100% { opacity: 1; } 47% { opacity: .35; } 49% { opacity: 1; } 51% { opacity: .4; } 53% { opacity: 1; } }
-.marquee-sign-word { font: 800 22px/1 var(--display); letter-spacing: .06em; text-transform: uppercase; color: color-mix(in srgb, var(--bulb) 55%, var(--dust)); }
+.lilin-sign-word { font: 800 22px/1 var(--display); letter-spacing: .06em; text-transform: uppercase; color: color-mix(in srgb, var(--bulb) 55%, var(--dust)); }
 .notice .play-btn { margin-top: var(--s5); }
 
 /* ---------- sheets: a page on phones, a panel on wide screens (title sheet); small dialogs (picker) ---------- */
@@ -1118,7 +1118,7 @@ html.has-vt .view { animation: none; }
   box-shadow: 0 24px 60px -16px rgb(0 0 0 / .7);
   animation: menu-in var(--d-3) var(--ease-out);
 }
-/* Play now: the video has stopped to wait for the download. A little marquee sign over the picture. */
+/* Play now: the video has stopped to wait for the download. A little lilin sign over the picture. */
 .part-popup {
   position: absolute; z-index: 4; left: 50%; top: 50%; translate: -50% -50%;
   width: min(420px, calc(100% - var(--pad-x) * 2));
@@ -1249,7 +1249,7 @@ html.has-vt .view { animation: none; }
   background: inherit; border: inherit; border-width: 0 1px 1px 0; border-radius: 0 0 2px 0;
   transform: rotate(45deg);
 }
-/* Timeline preview: the frame at the hovered time, its time underneath between two marquee bulbs. */
+/* Timeline preview: the frame at the hovered time, its time underneath between two lilin bulbs. */
 .seek-tip.has-frame {
   display: flex; flex-direction: column; align-items: center; gap: 4px;
   padding: 4px 4px 5px; border-radius: 11px;
@@ -1632,7 +1632,7 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .tor .play-btn svg, .play-btn.is-added svg { fill: none; stroke: currentColor; stroke-width: 2.4; }
 .tor-search + .tor-filters { margin-top: 0; }
 .play-btn:disabled:not(.is-added) { opacity: 0.7; }
-/* Seeder health as a marquee bulb: lit, dim, or out */
+/* Seeder health as a lilin bulb: lit, dim, or out */
 .seeds { display: inline-flex; align-items: center; gap: 6px; color: var(--paper); }
 .seeds::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--bulb); }
 .seeds-good::before { box-shadow: 0 0 6px color-mix(in srgb, var(--bulb) 90%, transparent); }
@@ -2650,7 +2650,7 @@ body.has-nowbar .preview-pill { bottom: calc(var(--tabs-h) + var(--safe-bottom) 
   .up-next-art { display: none; }
 }
 
-/* ---------- House → Screen Time (screentime.js): iPhone-style, in Marquee's colours ---------- */
+/* ---------- House → Screen Time (screentime.js): iPhone-style, in Lilin's colours ---------- */
 #view-house {
   --st-social: #E2668A; --st-games: #EE8A4A; --st-entertainment: #9B7FE8; --st-web: #4F92E3;
   --st-development: #2FB3A4; --st-productivity: #E0AE37; --st-creativity: #5DBB6E; --st-education: #C8955A;
@@ -2766,7 +2766,7 @@ button.st-col:hover .st-stack { filter: brightness(1.12); }
 .update-items li + li { border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent); }
 .update-items strong { display: block; font-size: 15px; line-height: 1.35; }
 .update-items p { margin: 3px 0 0; font-size: 14px; line-height: 1.5; color: var(--dust); }
-/* a small marquee bulb beside each change */
+/* a small lilin bulb beside each change */
 .update-bulb {
   width: 8px; height: 8px; margin-top: 6px; border-radius: 50%;
   background: var(--bulb); box-shadow: 0 0 0 3px var(--bulb-dim), 0 0 10px var(--bulb-dim);
@@ -2808,7 +2808,7 @@ button.st-col:hover .st-stack { filter: brightness(1.12); }
 .push-devices .row { align-items: center; }
 .push-devices .row .chip { flex: none; }
 .set-row.push-test { justify-content: flex-end; background: none; padding: 0 0 4px; }
-/* ---------- Social: thumbs, Popular on Marquee, watch parties, room chat, Wrapped ---------- */
+/* ---------- Social: thumbs, Popular on Lilin, watch parties, room chat, Wrapped ---------- */
 .rate-row { display: flex; align-items: center; gap: 8px; margin: 4px 0 14px; min-height: 40px; }
 .thumb {
   width: 40px; height: 40px; display: grid; place-items: center; flex: none;
@@ -3058,7 +3058,7 @@ html.wrapped-on { overflow: hidden; }
   .pc-row .watch-start { margin: 0 8px 0 4px; }
 }
 
-/* A strip of marquee bulbs either side of a small sign */
+/* A strip of lilin bulbs either side of a small sign */
 .room-sign { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .room-bulbs {
   flex: 1; min-width: 16px; height: 8px;
@@ -3301,7 +3301,7 @@ html.wrapped-on { overflow: hidden; }
 .jf-link-seen { grid-column: 1; grid-row: 2; margin: 0; }
 .jf-link .chip { grid-column: 2; grid-row: 1 / span 2; }
 
-/* ---------- password step: Cloudflare-code users pick a Marquee password before anything else ---------- */
+/* ---------- password step: Cloudflare-code users pick a Lilin password before anything else ---------- */
 /* Pick a password: a full-screen step before anything else (app.js showPasswordGate). The same room as the
    sign-in page: the lit wordmark, a row of bulbs, one card, one lit button. Nothing behind it shows or reacts. */
 .password-gate {

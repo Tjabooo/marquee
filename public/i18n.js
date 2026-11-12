@@ -1,8 +1,8 @@
-// Marquee's languages. The code is written in English: T('Save') looks the line up in the chosen language's
+// Lilin's languages. The code is written in English: T('Save') looks the line up in the chosen language's
 // catalogue (public/i18n-sv.js) and fills in {0}, {1}…. A line that's missing stays English.
 // tests/i18n.test.mjs fails when a line in the code has no Swedish, so nothing slips through.
 export const LANGUAGES = [{ code: 'en', name: 'English' }, { code: 'sv', name: 'Svenska' }];
-const STORE_KEY = 'marquee:lang';
+const STORE_KEY = 'lilin:lang';
 
 function chooseLanguage() {
   const known = (code) => LANGUAGES.some((l) => l.code === code);
@@ -10,7 +10,7 @@ function chooseLanguage() {
     const saved = globalThis.localStorage?.getItem(STORE_KEY);
     if (known(saved)) return saved;
   } catch { /* storage blocked: go by the cookie or the browser */ }
-  const cookie = String(globalThis.document?.cookie || '').match(/(?:^|;\s*)marquee_lang=(\w+)/)?.[1];
+  const cookie = String(globalThis.document?.cookie || '').match(/(?:^|;\s*)lilin_lang=(\w+)/)?.[1];
   if (known(cookie)) return cookie;
   return /^sv\b/i.test(globalThis.navigator?.language || '') ? 'sv' : 'en';
 }
@@ -34,7 +34,7 @@ export function T(text, ...args) {
 // Remembers a language on this device, and in a cookie for the pages the server draws (sign-in, shared clips).
 export function saveLanguage(code) {
   try { globalThis.localStorage?.setItem(STORE_KEY, code); } catch { /* the cookie still works */ }
-  if (globalThis.document) document.cookie = `marquee_lang=${code}; path=/; max-age=31536000; samesite=lax`;
+  if (globalThis.document) document.cookie = `lilin_lang=${code}; path=/; max-age=31536000; samesite=lax`;
 }
 
 // index.html is written in English too: swap its fixed text and labels once, before the app draws anything.

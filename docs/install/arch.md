@@ -20,7 +20,7 @@ sudo pacman -S python-pipx && pipx install pyatv   # Apple TV
 ## 2. Install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Tjabooo/marquee/v1.3.0/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/Tjabooo/lilin/v2.0.0/install.sh -o install.sh
 less install.sh
 sh install.sh
 ```
@@ -31,18 +31,18 @@ As in [README.md](README.md#first-run).
 
 ## 4. Start
 
-`npm start` in `~/marquee`, or let the service start it.
+`npm start` in `~/lilin`, or let the service start it.
 
 ## 5. Autostart
 
 systemd. Run from your desktop or an SSH login, setup proposes a user unit
-(`~/.config/systemd/user/marquee.service`) and enables lingering so it starts at boot. For a
-headless server, `node ~/marquee/setup.js service install --scope system`. Details:
+(`~/.config/systemd/user/lilin.service`) and enables lingering so it starts at boot. For a
+headless server, `node ~/lilin/setup.js service install --scope system`. Details:
 [Debian and Ubuntu](debian-ubuntu.md#5-autostart).
 
 ## 6. Update
 
-Run `sh install.sh` again, then `node ~/marquee/setup.js service restart` (it finds the installed unit). `pacman -Syu` can move Node.js to a new major version; Marquee needs no rebuild, and
+Run `sh install.sh` again, then `node ~/lilin/setup.js service restart` (it finds the installed unit). `pacman -Syu` can move Node.js to a new major version; Lilin needs no rebuild, and
 `/usr/bin/node` stays the path the unit uses.
 
 ## 7. Troubleshooting

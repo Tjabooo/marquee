@@ -5,12 +5,15 @@ here="$(cd "$(dirname "$0")" && pwd)"
 res="$here/../app/src/main/res"
 browser="$(command -v chromium || command -v google-chrome-stable || command -v google-chrome)"
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
-# The font goes in as a data: URL (a file:// page may not load fonts beside it).
-python3 - "$here/banner.html" "$here/../../../public/fonts/bricolage-grotesque-latin.woff2" "$tmp/banner.html" <<'PY'
+# The fonts go in as data: URLs (a file:// page may not load fonts beside it).
+python3 - "$here/banner.html" "$here/../../../public/fonts" "$tmp/banner.html" <<'PY'
 import sys, base64
-html, font, out = sys.argv[1:]
-data = "data:font/woff2;base64," + base64.b64encode(open(font, "rb").read()).decode()
-open(out, "w").write(open(html).read().replace("../../../public/fonts/bricolage-grotesque-latin.woff2", data))
+html, fonts, out = sys.argv[1:]
+page = open(html).read()
+for name in ("bricolage-grotesque-latin-ext.woff2", "bricolage-grotesque-latin.woff2"):
+    data = "data:font/woff2;base64," + base64.b64encode(open(f"{fonts}/{name}", "rb").read()).decode()
+    page = page.replace(f"../../../public/fonts/{name}", data)
+open(out, "w").write(page)
 PY
 "$browser" --headless=new --disable-gpu --hide-scrollbars --force-device-scale-factor=1 --virtual-time-budget=3000 \
   --window-size=1280,720 --screenshot="$tmp/banner.png" "file://$tmp/banner.html" >/dev/null 2>&1

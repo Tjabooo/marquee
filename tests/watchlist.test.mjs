@@ -11,7 +11,7 @@ import { topicFor } from '../src/live.js';
 
 const HOUR = 3600e3, DAY = 24 * HOUR;
 const at = (iso) => Date.parse(`${iso}T12:00:00Z`);
-const tempStore = async () => new WatchlistStore(await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-watchlist-')));
+const tempStore = async () => new WatchlistStore(await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-watchlist-')));
 const meta = (title) => ({ title, year: 2026, poster: null, backdrop: null, overview: null, rating: null });
 
 test('a film is expected at its earliest digital or disc release, else its first release date', () => {
@@ -159,7 +159,7 @@ test('watchlist changes reach the person’s other pages', () => {
 
 test('watchlist API: list, validation, removal and a clear message without TMDB', { timeout: 20000 }, async () => {
   const root = fileURLToPath(new URL('../', import.meta.url));
-  const app = await fs.mkdtemp(path.join(os.tmpdir(), 'marquee-watchlist-api-'));
+  const app = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-watchlist-api-'));
   for (const name of await fs.readdir(root)) if (name.endsWith('.js') || name.endsWith('.json')) await fs.copyFile(path.join(root, name), path.join(app, name));
   await fs.cp(path.join(root, 'public'), path.join(app, 'public'), { recursive: true });
   await fs.cp(path.join(root, 'src'), path.join(app, 'src'), { recursive: true });
@@ -170,7 +170,7 @@ test('watchlist API: list, validation, removal and a clear message without TMDB'
   const exited = new Promise((r) => child.once('exit', r));
   await new Promise((resolve, reject) => {
     let logs = ''; const timer = setTimeout(() => reject(Error('Startup timeout: ' + logs)), 8000);
-    child.stdout.on('data', (c) => { logs += c; const ready = /Marquee is running: http:\/\/localhost:(\d+)/.exec(logs); if (ready) { port = Number(ready[1]); clearTimeout(timer); resolve(); } });
+    child.stdout.on('data', (c) => { logs += c; const ready = /Lilin is running: http:\/\/localhost:(\d+)/.exec(logs); if (ready) { port = Number(ready[1]); clearTimeout(timer); resolve(); } });
     child.stderr.on('data', (c) => { logs += c; });
   });
   const call = async (method, p, body, status = 200) => {

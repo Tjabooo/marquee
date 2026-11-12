@@ -57,7 +57,7 @@ test('trimming with no new copy only enforces the cap', () => {
 });
 
 test('freeBytes and sameDrive read the real file system', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'marquee-space-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lilin-space-'));
   try {
     fs.mkdirSync(path.join(dir, 'a'));
     assert.ok((await freeBytes(dir)) > 0);
