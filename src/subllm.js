@@ -44,6 +44,9 @@ export function initProofread({ llmUrl = '', llmModel = '', cacheDir, mediaRoots
   roots = mediaRoots.filter(Boolean);
   if (characters) charactersOf = characters;
   if (title) titleOf = title;
+  if (url && process.env.SUBTITLE_LLM_PAUSE) {
+    busyNow().then((busy) => console.log(`[proofread] pause check works: ${busy ? 'busy now' : 'free now'}${lastPauseNote ? ` (${lastPauseNote})` : ''}`));
+  }
   if (!proofreadEnabled() || !dir) return;
   // The whole library, a few minutes after start and then every six hours (new downloads).
   const sweep = () => { for (const r of roots) walk(r, 0); kick(); };
@@ -113,19 +116,30 @@ function kick() {
 // SUBTITLE_LLM_PAUSE: a command that exits 0 while the model's machine is busy with something that
 // matters more (a game on the desktop whose graphics card runs the model), checked before every
 // chunk. Proofreading waits until it says otherwise.
+// Exit 0: busy. Any other exit: free. No answer within 20 s: busy too (if it can't tell, it waits).
+let lastPauseNote = '';
 function busyNow() {
   const cmd = process.env.SUBTITLE_LLM_PAUSE;
   if (!cmd) return Promise.resolve(false);
   const [exe, ...rest] = args(cmd);
   return new Promise((resolve) => {
     let done = false;
-    const finish = (v) => { if (!done) { done = true; resolve(v); } };
+    let err = '';
+    const finish = (v, note) => {
+      if (done) return;
+      done = true;
+      if (note && note !== lastPauseNote) console.warn(`[proofread] pause check: ${note}`);
+      lastPauseNote = note || '';
+      resolve(v);
+    };
     try {
-      const p = spawn(exe, rest, { stdio: 'ignore', windowsHide: true });
-      const t = setTimeout(() => { p.kill(); finish(false); }, 20000);
-      p.on('exit', (code) => { clearTimeout(t); finish(code === 0); });
-      p.on('error', () => { clearTimeout(t); finish(false); });
-    } catch { finish(false); }
+      const p = spawn(exe, rest, { stdio: ['pipe', 'ignore', 'pipe'], windowsHide: true });
+      p.stdin.end();
+      p.stderr.on('data', (d) => { err = (err + d).slice(-300); });
+      const t = setTimeout(() => { p.kill(); finish(true, `no answer in 20 s, waiting to be safe ${err.trim()}`); }, 20000);
+      p.on('exit', (code) => { clearTimeout(t); finish(code === 0, code === 0 || code === 1 ? '' : `exit ${code} ${err.trim()}`); });
+      p.on('error', (e) => { clearTimeout(t); finish(true, `couldn't run it (${e.message}), waiting to be safe`); });
+    } catch (e) { finish(true, `couldn't run it (${e.message}), waiting to be safe`); }
   });
 }
 let pausedSince = 0;
