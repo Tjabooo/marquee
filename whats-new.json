@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-13-subtitle-names",
+    "date": "2026-11-13",
+    "title": "Better English subtitles",
+    "items": [
+      {
+        "title": "Names and typos fixed in more subtitles",
+        "text": "Some subtitles write characters' names in lowercase (\"talk to cuddy\") or come with scanning mistakes. Lilin now uses each show's and film's cast list to put names right, even when every release of the show gets them wrong. It also fixes split words (\"w rong\"), stray spaces (\"he' s\"), run-together numbers (\"$12,0001967\") and single letters (\"vitamin c\", \"flying v\"). Subtitles that were already fine stay as they are."
+      }
+    ]
+  },
+  {
     "id": "2026-11-13-clip-save-again",
     "date": "2026-11-13",
     "title": "See your camera edits being made",

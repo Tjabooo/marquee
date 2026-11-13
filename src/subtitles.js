@@ -342,12 +342,24 @@ function decodeText(buf) {
   return s.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
 }
 
+// The server's look-up of a video's cast list (character names from TMDB), for subfix.js.
+let charactersOf = null;
+export function setCharacterSource(fn) { charactersOf = fn; }
+async function charactersFor(file) {
+  if (!charactersOf) return [];
+  let timer;
+  try {
+    return await Promise.race([charactersOf(file), new Promise((r) => { timer = setTimeout(() => r([]), 2000); })]) || [];
+  } catch { return []; } finally { clearTimeout(timer); }
+}
+
 export async function readSubtitle(file, lang) {
-  const p = findSidecar(file, String(lang).toLowerCase());
+  lang = String(lang).toLowerCase();
+  const p = findSidecar(file, lang);
   if (!p) throw fail(404, 'Those subtitles aren’t on the server.');
-  const [buf, st] = await Promise.all([fs.promises.readFile(p), fs.promises.stat(p)]);
+  const [buf, st, characters] = await Promise.all([fs.promises.readFile(p), fs.promises.stat(p), lang === 'en' ? charactersFor(file) : []]);
   // English text that came from OCR gets its names, acronyms and I/l mix-ups fixed (see subfix.js).
-  return cleanSubtitle(decodeText(buf), { lang: String(lang).toLowerCase(), file: p, mtimeMs: st.mtimeMs });
+  return cleanSubtitle(decodeText(buf), { lang, file: p, mtimeMs: st.mtimeMs, characters });
 }
 
 // SRT to WebVTT: header, dotted timestamps, ASS override tags removed. Lines tagged {\an7}–{\an9}

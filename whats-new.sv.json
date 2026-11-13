@@ -1,4 +1,13 @@
 {
+  "2026-11-13-subtitle-names": {
+    "title": "Bättre engelska undertexter",
+    "items": {
+      "Names and typos fixed in more subtitles": {
+        "title": "Namn och skrivfel rättas i fler undertexter",
+        "text": "Vissa undertexter skriver rollfigurernas namn med liten bokstav (\"talk to cuddy\") eller har fel från textinläsningen. Lilin använder nu rollistan för varje serie och film för att rätta namnen, även när alla utgåvor av serien har fel. Den rättar också delade ord (\"w rong\"), lösa mellanslag (\"he' s\"), ihopskrivna tal (\"$12,0001967\") och enstaka bokstäver (\"vitamin c\", \"flying v\"). Undertexter som redan var bra lämnas som de är."
+      }
+    }
+  },
   "2026-11-13-clip-save-again": {
     "title": "Se när dina kameraredigeringar görs",
     "items": {

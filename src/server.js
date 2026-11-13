@@ -269,6 +269,18 @@ cast.initCasting({ lanIp: LAN_IP });
 subsync.initSubsync({ dataDir: DATA_DIR, cacheDir: CACHE_DIR, audioShift: (video) => converter.syncState(video).shift });
 // English subtitles get OCR mistakes fixed as they're served, using words learned from the library.
 initSubfix({ roots: [MEDIA_DIR], cacheFile: path.join(CACHE_DIR, 'subtitle-words.json') });
+// English subtitles get the title's character names right ("cuddy" → "Cuddy") from its TMDB cast
+// list, even when every release of the show writes them in lowercase (see subfix.js). Main
+// characters (3+ episodes, top 20 billed in a film) are trusted more than one-off roles.
+subtitles.setCharacterSource(async (video) => {
+  if (!tmdbOn()) return [];
+  const media = parseFile(video);
+  const tv = media.season != null;
+  const id = (tv ? shows.knownShow(media.title, media.year) : shows.knownFilm(accounts.mediaKey(video), media.title, media.year))?.id;
+  if (!id) return [];
+  const d = await cachedTmdb(tv ? `/tv/${id}/aggregate_credits` : `/movie/${id}/credits`, {}, 24 * 3600 * 1000);
+  return (d.cast || []).flatMap((c) => (c.roles ? c.roles.map((r) => ({ name: r.character, main: r.episode_count >= 3 })) : [{ name: c.character, main: c.order < 20 }])).filter((c) => c.name);
+});
 subtitles.initSubtitles({
   dataDir: DATA_DIR,
   // Downloaded subtitles get their timing checked in the background. Even a file-hash match is checked:

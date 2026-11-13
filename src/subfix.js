@@ -2,8 +2,12 @@
 // Many releases carry subtitle text made by OCR: whoever ripped the disc read the Blu-ray/DVD
 // picture subtitles with a text recogniser. Those often have names and acronyms in lowercase
 // ("Dinner with cuddy.", "the nicu"), "I" and "l" mixed up ("wiIl", "l'm", "iike") and lowercase
-// sentence starts. Fixes come from two sources:
-// - rules that are always safe ("l'm" → "I'm", a lone "i" → "I", capital after a full stop), and
+// sentence starts. Fixes come from three sources:
+// - rules that are always safe ("l'm" → "I'm", a lone "i" → "I", capital after a full stop, "w rong"
+//   → "wrong", "he' s" → "he's", "$12,0001967" → "$12,000 1967", "vitamin c" → "vitamin C"),
+// - the film's or show's cast list from TMDB: main characters' names that are never ordinary words
+//   elsewhere in the library ("kutner"), names this title's own subtitles capitalise ("house" in
+//   House) and full names ("Jimmy quidd"), even when every release of the show gets them wrong, and
 // - a word list learned from every English subtitle in the library. Each file votes once per word
 //   for how it writes that word mid-sentence (cuddy / Cuddy / CUDDY), so one broken release can't
 //   outvote a season of clean ones. A lowercase word is capitalised only when clean files almost
@@ -13,7 +17,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const LEXICON_VERSION = 1;
+const LEXICON_VERSION = 2; // 2: which titles write each word lowercase / capitalised
 const REBUILD_MS = 24 * 3600 * 1000;
 const MAX_FILES = 3000;
 const MAX_BYTES = 2 * 1024 * 1024; // per file
@@ -30,7 +34,9 @@ const INTERJECTIONS = new Set(['oh', 'ah', 'uh', 'um', 'umm', 'hmm', 'mm', 'eh',
 
 const L_FOR_I = { ls: 'is', lt: 'it', lf: 'if', ln: 'in', "lt's": "it's", "lsn't": "isn't", "lt'll": "it'll", "lt'd": "it'd" };
 
-let lexicon = null; // { files, words: { lower: [lowFiles, capFiles, upperFiles, anyFiles] } }
+// words: lower → [lowFiles, capFiles, upperFiles, anyFiles, { title: lowFiles }, { title: capFiles }]. Words never
+// capitalised keep just four of their lowercase titles (enough to call them ordinary words).
+let lexicon = null; // { files, words }
 let lexiconFile = null;
 let roots = [];
 let building = null;
@@ -50,8 +56,26 @@ function looksEnglish(srt) {
 }
 const WORD = /[A-Za-z][A-Za-z']*|\d+(?:[.,:]\d+)*%?/g;
 
+// Which film or show a subtitle belongs to, from its folder ("House.S04.1080p…" → "house") or,
+// for a file loose in a library folder, its own name. Files of one title agree on how its names are
+// written; other titles show whether a name is also an ordinary word ("house", "chase").
+const GENERIC_DIR = /^(tv|tv shows|shows|series|movies|films|media|anime|documentaries|seasons?[ ._-]*\d*|s\d{1,2}|subs?|subtitles|specials|extras|featurettes|[a-z]:)$/i;
+const keyOfName = (n) => n.replace(/\.[a-z0-9]{2,4}$/i, '')
+  .split(/[ ._()[\]-]+(?=(?:s\d{1,2}(?:e\d+)?|season|complete|(?:19|20)\d\d|\d{3,4}p|bluray|web(?:-?dl|rip)?|hdtv)\b)/i)[0]
+  .toLowerCase().replace(/[^a-z0-9]+/g, '');
+export function titleKeyOf(file) {
+  const parts = String(file || '').split(/[\\/]+/);
+  const name = parts.pop() || '';
+  for (let i = parts.length - 1; i >= Math.max(0, parts.length - 3); i--) {
+    if (!parts[i] || GENERIC_DIR.test(parts[i])) continue;
+    const k = keyOfName(parts[i]);
+    if (k) return k;
+  }
+  return keyOfName(name);
+}
+
 function stripMarkup(line) {
-  return line.replace(/\{\\[^}]*\}/g, '').replace(/<[^>]*>/g, '');
+  return line.replace(/\{[^}]*\}/g, '').replace(/<[^>]*>/g, '');
 }
 
 // Cue blocks: [{ head: ['1', '00:00:01,000 --> ...'], lines: ['text', ...] }]
@@ -122,7 +146,7 @@ function fileVotes(srt, repeated) {
   return { mid, seen };
 }
 
-function addFile(words, srt, repeated = null) {
+function addFile(words, srt, repeated = null, title = '') {
   const { mid, seen } = fileVotes(srt, repeated);
   for (const lower of seen) {
     let e = words[lower];
@@ -132,7 +156,18 @@ function addFile(words, srt, repeated = null) {
     if (v) {
       const best = v.indexOf(Math.max(...v));
       e[best]++;
+      if (!title) continue;
+      e[4] ||= {};
+      if (best > 0) e[5] ||= {};
+      const votes = best === 0 ? e[4] : e[5];
+      votes[title] = (votes[title] || 0) + 1;
     }
+  }
+}
+
+function pruneTitles(words) {
+  for (const e of Object.values(words)) {
+    if (e[4] && !e[5]) e[4] = Object.fromEntries(Object.entries(e[4]).slice(0, 4));
   }
 }
 
@@ -166,7 +201,7 @@ async function build() {
       const digest = crypto.createHash('sha1').update(text).digest('hex');
       if (seen.has(digest)) continue;
       seen.add(digest);
-      texts.push(text);
+      texts.push({ text, title: titleKeyOf(f) });
       for (const k of lineKeys(text)) lineFiles.set(k, (lineFiles.get(k) || 0) + 1);
     } catch { /* locked or gone */ }
     if (texts.length % 25 === 0) await new Promise((r) => setImmediate(r));
@@ -174,10 +209,11 @@ async function build() {
   const repeated = new Set([...lineFiles].filter(([, n]) => n >= 3).map(([k]) => k));
   lineFiles.clear();
   let used = 0;
-  for (const text of texts) {
-    addFile(words, text, repeated);
+  for (const { text, title } of texts) {
+    addFile(words, text, repeated, title);
     if (++used % 25 === 0) await new Promise((r) => setImmediate(r));
   }
+  pruneTitles(words);
   lexicon = { version: LEXICON_VERSION, at: Date.now(), files: used, words };
   fixedCache.clear();
   if (lexiconFile) {
@@ -211,7 +247,9 @@ export function initSubfix({ roots: dirs = [], cacheFile = null } = {}) {
 export const rebuildLexicon = rebuild;
 export function setLexiconForTest(srts) {
   const words = Object.create(null);
-  for (const s of srts) addFile(words, s);
+  // A plain string, or { text, title } to say which film or show it belongs to.
+  for (const s of srts) addFile(words, s.text ?? s, null, s.title || '');
+  pruneTitles(words);
   lexicon = { version: LEXICON_VERSION, at: Date.now(), files: srts.length, words };
   fixedCache.clear();
 }
@@ -262,7 +300,106 @@ function ilFix(word) {
 
 const capFirst = (w) => w[0].toUpperCase() + w.slice(1);
 
-function fixWord(word, { start, prev, broken, next = '' }) {
+// ---------- character names (TMDB) ----------
+// Words in cast lists that are roles, not names ("Nurse", "Patient's Mother", "Man #2").
+const ROLE_WORDS = new Set(['self', 'himself', 'herself', 'themselves', 'voice', 'narrator', 'uncredited', 'archive', 'footage',
+  'doctor', 'nurse', 'patient', 'man', 'woman', 'boy', 'girl', 'guy', 'kid', 'baby', 'mother', 'father', 'mom', 'dad', 'wife', 'husband',
+  'son', 'daughter', 'brother', 'sister', 'uncle', 'aunt', 'grandma', 'grandpa', 'friend', 'cop', 'officer', 'guard', 'detective',
+  'agent', 'reporter', 'waiter', 'waitress', 'receptionist', 'lawyer', 'judge', 'young', 'old', 'older', 'younger', 'little', 'big',
+  'various', 'additional', 'voices', 'the', 'and', 'of', 'his', 'her', 'their', 'with', 'from', 'student', 'teacher', 'driver',
+  'paramedic', 'surgeon', 'resident', 'intern', 'fellow', 'manager', 'owner', 'clerk', 'soldier', 'priest', 'host', 'customer',
+  'neighbor', 'neighbour', 'king', 'queen', 'prince', 'princess', 'lord', 'lady', 'sir', 'mister', 'miss', 'mrs', 'ms', 'mr', 'dr',
+  // Said to someone like a name, but not one ("Thanks, honey.").
+  'honey', 'sweetie', 'sweetheart', 'darling', 'dear', 'babe', 'buddy', 'pal', 'dude', 'love', 'doc', 'boss', 'chief', 'champ', 'sport',
+  // Name particles ("Juan del Rio", "van Helsing") are lowercase in names too.
+  'deputy', 'warden', 'prisoner', 'inmate', 'orderly', 'investigator', 'private', 'female', 'male', 'marshal', 'sheriff', 'head',
+  'senior', 'junior', 'staff', 'crew', 'member', 'worker', 'assistant', 'secretary', 'technician', 'tech', 'pilot', 'captain', 'major',
+  'del', 'della', 'van', 'von', 'der', 'den', 'bin', 'ibn', 'les', 'los', 'las']);
+// Before a name these make it one even when it's also an ordinary word ("Dr. house", "Agent chase").
+// After the first four any word the library doesn't know as an ordinary one is a name ("Dr sheehan").
+const NAME_ABBREVIATIONS = new Set(['dr', 'mr', 'mrs', 'ms']);
+const NAME_TITLES = new Set(['dr', 'mr', 'mrs', 'ms', 'miss', 'nurse', 'detective', 'agent', 'officer', 'sergeant', 'sgt', 'captain',
+  'capt', 'professor', 'prof', 'lieutenant', 'lt', 'judge', 'senator', 'governor', 'father', 'sister', 'uncle', 'aunt']);
+
+// Name words from a title's cast list ("Dr. Lisa Cuddy", "Remy 'Thirteen' Hadley") for one subtitle:
+// lower → { form, kind, firsts }. kind 'name': a main character's name that's not an ordinary word
+// anywhere else in the library, fixed wherever it's lowercase; 'title': also an ordinary word, but
+// this title's clean subtitles write it as a name ("House" in House); 'weak': an ordinary word or a
+// minor role ("Cartel Member", "Manacled Patient"), fixed only after "Dr." or when someone is
+// addressed ("Thanks, chase."). firsts: the names written before it ("Jimmy" for "Jimmy quidd").
+// characters: [{ name, main }] (or plain strings, all main).
+const NAME_TOKEN = /^(?:Mc|Mac|O'|D')?[A-Z][a-z]+(?:-[A-Z][a-z]+)?$/;
+function nameTable(characters, title) {
+  const out = new Map();
+  if (!characters?.length) return out;
+  const learned = lexicon && lexicon.files >= 50;
+  for (const c of characters) {
+    const { name, main = true } = typeof c === 'string' ? { name: c } : c;
+    let before = '';
+    for (const raw of String(name || '').split(/[\s"“”()/,&;:]+/)) {
+      const t = raw.replace(/^['‘’-]+|['‘’.-]+$/g, '').replace(/['’]s$/, '');
+      const lower = t.toLowerCase();
+      const first = before;
+      before = NAME_TOKEN.test(t) && !ROLE_WORDS.has(lower) ? lower : '';
+      if (t.length < 3 || !NAME_TOKEN.test(t) || ROLE_WORDS.has(lower) || COMMON.has(lower)) continue;
+      const known = out.get(lower);
+      if (known) {
+        if (first) known.firsts.add(first);
+        if (!main || known.main) continue;
+      }
+      const e = entry(lower);
+      const elsewhere = Object.keys(e?.[4] || {}).filter((k) => k !== title).length;
+      // This title's subtitles capitalise it often enough that it can't be chance or one odd release.
+      const here = e?.[5]?.[title] || 0;
+      const kind = !learned ? 'weak' : here >= 5 && here >= 0.25 * (here + (e[4][title] || 0)) ? 'title' : elsewhere === 0 && main ? 'name' : 'weak';
+      const firsts = known?.firsts || new Set();
+      if (first) firsts.add(first);
+      out.set(lower, { form: t, kind, main, firsts });
+    }
+  }
+  return out;
+}
+
+// Ordinary words ("good", "out") are never names after "Miss" or in "Oh, good."; words the library
+// sometimes writes as a name ("chase", "house") can be.
+function nameLike(lower, title) {
+  const e = entry(lower);
+  if (!e) return true;
+  const votes = e[0] + e[1] + e[2];
+  return votes === 0 || (e[1] + e[2]) >= 0.1 * votes || !Object.keys(e[4] || {}).some((k) => k !== title);
+}
+
+// ---------- OCR repairs on whole lines ----------
+const CONTRACTION_ENDS = /^(s|t|d|m|ll|re|ve)$/;
+const known = (w, n = 20) => fileCount(w.toLowerCase()) >= n;
+function repairText(text) {
+  let t = text;
+  // "$12,0001967" → "$12,000 1967": a thousands group has three digits, the rest is the next number.
+  t = t.replace(/\b(\d{1,3}(?:,\d{3})+)(\d+)\b/g, '$1 $2');
+  // "b.S.", "c.B." → "B.S.", "C.B." (not "a.m." / "e.g.", whose letters are both lowercase).
+  t = t.replace(/(^|[^A-Za-z.])([a-z])\.(?=[A-Z]\.)/g, (m, a, l) => a + l.toUpperCase() + '.');
+  // "he' s", "don' t" → "he's", "don't".
+  t = t.replace(/\b([A-Za-z]+)['’] (s|t|d|m|ll|re|ve)\b(?!['’])/g, '$1\'$2');
+  if (lexicon && lexicon.files >= 20) {
+    // "don t", "it s" → "don't", "it's" when the library knows the contraction.
+    t = t.replace(/\b([A-Za-z]+) (s|t|d|m|ll|re|ve)\b(?![A-Za-z'’-])/g, (m, w, end) =>
+      (CONTRACTION_ENDS.test(end) && known(`${w}'${end}`) ? `${w}'${end}` : m));
+    // "w rong", "s orry" → "wrong", "sorry": a split word the library knows, whose second half it doesn't.
+    t = t.replace(/(^|[^A-Za-z'’-])([b-hj-zB-HJ-Z]) ([a-z]{2,})\b(?![A-Za-z'’-])/g, (m, a, l, rest) =>
+      (known(l + rest) && fileCount(rest) * 10 < fileCount(l + rest) ? a + l + rest : m));
+  }
+  return t;
+}
+// Only the text between markup tags is repaired.
+const repairLine = (line) => line.split(/(\{[^}]*\}|<[^>]*>)/).map((part, i) => (i % 2 ? part : repairText(part))).join('');
+
+function fixWord(word, { start, prev, prevRaw = '', lone = false, broken, next = '', next2 = '', before = '', prevChar = '', names = null, title = '', titled = false, vocative = false, possessive = false }) {
+  // A letter on its own is a capital ("vitamin c", "row d", "a flying v"). Not "a"/"i"/"l", nor
+  // m/n/o/s/y (French "il y a", romaji "kage o", "rock n roll"), nor a letter touching anything but
+  // spaces and punctuation (one letter of a styled word "<b>A{\\frz3}f{\\frz4}t…", "x-ray",
+  // "o'clock", "wouldn´t"), nor "x"/"h" after a number ("2 x 3", "18 h"), nor a letter alone on a line.
+  if (/^[b-hj-kp-rt-xz]$/.test(word) && (/^[\s,?!;:)\]…]?$/.test(next) || (next === '.' && !/[A-Za-z]/.test(next2))) && /^[\s(\["“‘]?$/.test(prevChar)
+    && !(/^[xh]$/.test(word) && /^\d/.test(prevRaw)) && !lone) return word.toUpperCase();
   let w = word;
   // l'm, l'll, l've, l'd, lone l → I (not the stutter in "i-it's")
   if (/^[li]('(m|ll|ve|d))?$/.test(w) && !(w.length === 1 && next === '-')) return 'I' + w.slice(1);
@@ -275,7 +412,18 @@ function fixWord(word, { start, prev, broken, next = '' }) {
   const il = ilFix(w);
   if (il) w = il;
   if (w === w.toLowerCase()) {
-    const shape = preferredShape(w.replace(/'s$/, ''), broken);
+    const base = w.replace(/'s$/, '');
+    const name = names?.get(base);
+    const fullName = name?.firsts.has(prev) && /^[A-Z]/.test(prevRaw) && /^\s+$/.test(before);
+    if (name && (start || fullName || (broken && (name.kind === 'name' ? !DETERMINERS.has(prev)
+      : name.kind === 'title' ? !DETERMINERS.has(prev) && !possessive : vocative && nameLike(base, title)))
+      || (titled && (NAME_ABBREVIATIONS.has(prev) || nameLike(base, title))))) {
+      return name.form + w.slice(base.length);
+    }
+    // "Dr sheehan", "Mr. breene": a word the library doesn't use as an ordinary one.
+    if (titled && NAME_ABBREVIATIONS.has(prev) && base.length > 1 && !COMMON.has(base) && lexicon?.files >= 50
+      && !Object.keys(entry(base)?.[4] || {}).some((k) => k !== title)) return capFirst(w);
+    const shape = preferredShape(base, broken);
     if (shape === 'upper') {
       const base = w.replace(/'s$/, '');
       return base.toUpperCase() + w.slice(base.length);
@@ -295,19 +443,28 @@ function strongShape(lower) {
   const votes = e[0] + e[1] + e[2];
   return Math.max(e[1], e[2]) >= 8 && Math.max(e[1], e[2]) >= 0.85 * votes;
 }
-function casingBroken(cues) {
+// A cast name that's never an ordinary word, lowercase mid-sentence three times, also counts.
+function casingBroken(cues, names) {
   const odd = new Set();
+  let nameHits = 0;
   for (const { word, start } of wordsOf(cues)) {
     if (start || word !== word.toLowerCase() || word.length < 2) continue;
-    if (strongShape(word.replace(/'s$/, ''))) odd.add(word);
-    if (odd.size >= 2) return true;
+    const base = word.replace(/'s$/, '');
+    if (strongShape(base)) odd.add(word);
+    if (names?.get(base)?.kind === 'name') { odd.add(word); nameHits++; }
+    if (odd.size >= 2 || nameHits >= 3) return true;
   }
   return false;
 }
 
-export function fixEnglishSrt(srt) {
+// characters: the title's cast list from TMDB ("Dr. Lisa Cuddy"); title: titleKeyOf(subtitle file).
+export function fixEnglishSrt(srt, { characters = [], title = '' } = {}) {
+  // A track labelled English that isn't (French in an ".en.2.srt") is left as it is.
   const cues = parseCues(srt);
-  const broken = casingBroken(cues);
+  if (srt.length > 4000 && !looksEnglish(cues.flatMap((c) => c.lines.map(stripMarkup)).join('\n'))) return srt;
+  for (const c of cues) c.lines = c.lines.map(repairLine);
+  const names = nameTable(characters, title);
+  const broken = casingBroken(cues, names);
   // Walk the words in order, tracking sentence starts across cues, and rewrite each line.
   let start = true;
   let prev = '';
@@ -319,7 +476,7 @@ export function fixEnglishSrt(srt) {
       let out = '';
       let last = 0;
       // Words outside markup only.
-      const re = /(\{\\[^}]*\}|<[^>]*>)|([A-Za-z][A-Za-z']*|\d+(?:[.,:]\d+)*%?)/g;
+      const re = /(\{[^}]*\}|<[^>]*>)|([A-Za-z][A-Za-z']*|\d+(?:[.,:]\d+)*%?)/g;
       let m;
       while ((m = re.exec(raw))) {
         if (m[1]) continue;
@@ -334,7 +491,14 @@ export function fixEnglishSrt(srt) {
         // The second half of "uh-oh" / "two-week" keeps its case.
         const joined = /-$/.test(gap);
         const next = raw[m.index + m[2].length] || '';
-        const fixed = /^[A-Za-z]/.test(word) && !joined ? fixWord(word, { start: start && !depth, prev, broken, next }) : word;
+        const rest = stripMarkup(raw.slice(m.index + m[2].length));
+        const fixed = /^[A-Za-z]/.test(word) && !joined ? fixWord(word, {
+          next2: raw[m.index + m[2].length + 1] || '',
+          start: start && !depth, prev, prevRaw, lone: !/[A-Za-z]{2}|[A-Za-z][^A-Za-z]+[A-Za-z]/.test(stripMarkup(raw)), broken, next, before: gap, prevChar: raw[m.index - 1] || '', names, title,
+          titled: NAME_TITLES.has(prev) && /^\.?\s+$/.test(gap),
+          vocative: /,\s*$/.test(gap) && /^['’]?s?\s*(?:$|[.?!,…])/.test(rest),
+          possessive: /['’]s?$/.test(prevRaw) || /^[A-Za-z]+s['’]$/.test(prevRaw),
+        }) : word;
         out += raw.slice(last, m.index) + fixed + trail;
         last = m.index + m[2].length;
         prev = word.toLowerCase();
@@ -352,12 +516,13 @@ export function fixEnglishSrt(srt) {
 }
 
 // Cached by file path + modification time + word list age.
-export function cleanSubtitle(text, { lang, file = '', mtimeMs = 0 } = {}) {
+// characters: the film's or show's cast list (character names) from TMDB, when known.
+export function cleanSubtitle(text, { lang, file = '', mtimeMs = 0, characters = [] } = {}) {
   if (lang !== 'en' || process.env.SUBTITLE_FIX === 'off') return text;
-  const key = `${file}|${mtimeMs}|${lexicon?.at || 0}`;
+  const key = `${file}|${mtimeMs}|${lexicon?.at || 0}|${characters.length}`;
   if (file && fixedCache.has(key)) return fixedCache.get(key);
   let out = text;
-  try { out = fixEnglishSrt(text); } catch (e) { console.warn(`[subfix] ${path.basename(file)}: ${e.message}`); }
+  try { out = fixEnglishSrt(text, { characters, title: titleKeyOf(file) }); } catch (e) { console.warn(`[subfix] ${path.basename(file)}: ${e.message}`); }
   if (file) {
     if (fixedCache.size > 200) fixedCache.delete(fixedCache.keys().next().value);
     fixedCache.set(key, out);
