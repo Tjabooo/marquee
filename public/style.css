@@ -147,7 +147,7 @@ h1, h2, h3, h4 { text-wrap: balance; }
   transition: transform var(--d-1) var(--ease-out), box-shadow var(--d-2) var(--ease-out), filter var(--d-2);
 }
 .play-btn svg, .btn-primary svg { width: 18px; height: 18px; fill: currentColor; stroke: none; }
-.play-btn.stroke-icon svg { fill: none; stroke: currentColor; stroke-width: 2.4; }
+.play-btn.stroke-icon svg, .btn-primary.stroke-icon svg { fill: none; stroke: currentColor; stroke-width: 2.4; }
 .play-btn:active, .btn-primary:active { transform: scale(0.96); }
 .play-btn.round { width: 48px; padding: 0; }
 .play-btn:disabled, .play-btn[aria-disabled="true"] { opacity: .55; cursor: default; box-shadow: none; }

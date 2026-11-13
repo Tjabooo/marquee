@@ -27,7 +27,7 @@ export function createPeek({ h, icon, pageInfo, openDetails, quickAction, owners
         h('p', { class: 'peek-meta' }, metaFor(t)),
         t.overview && h('p', { class: 'peek-overview' }, t.overview),
         h('div', { class: 'peek-actions' },
-          quick && h('button', { type: 'button', class: 'play-btn', onclick: (e) => { const b = e.currentTarget; hide(); quick.run(b); } }, icon(quick.icon), h('span', {}, quick.label)),
+          quick && h('button', { type: 'button', class: quick.icon === 'plus' ? 'play-btn stroke-icon' : 'play-btn', onclick: (e) => { const b = e.currentTarget; hide(); quick.run(b); } }, icon(quick.icon), h('span', {}, quick.label)),
           h('button', { type: 'button', class: 'chip', onclick: () => { const opener = card; hide(); openDetails(t, opener); } }, icon('info'), T('More info')))),
     ];
     panel.replaceChildren(...body);

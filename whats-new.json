@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-13-add-icon",
+    "date": "2026-11-13",
+    "title": "Add button shows its plus",
+    "items": [
+      {
+        "title": "Plus sign is back",
+        "text": "The Add button on the card that pops up when you hover over a title, and on the big banner at the top of Home, was missing its plus sign and showed an empty gap. The plus is back."
+      }
+    ]
+  },
+  {
     "id": "2026-11-13-anime-signs",
     "date": "2026-11-13",
     "title": "Anime signs read properly",
