@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-13-subtitle-reference",
+    "date": "2026-11-13",
+    "title": "Subtitles check their spelling of names",
+    "items": [
+      {
+        "title": "Names learned from another subtitle",
+        "text": "When an episode's English subtitles get names wrong, Lilin now fetches a second English subtitle of the same episode in the background and copies how it writes names, films and brands (\"Shyamalan\", \"a large Coke\", \"Star Wars\"). Only the capital letters change: the words and timing stay the ones that match your video. The next episode's is fetched while you watch."
+      }
+    ]
+  },
+  {
     "id": "2026-11-13-subtitle-names",
     "date": "2026-11-13",
     "title": "Better English subtitles",

@@ -281,6 +281,15 @@ subtitles.setCharacterSource(async (video) => {
   const d = await cachedTmdb(tv ? `/tv/${id}/aggregate_credits` : `/movie/${id}/credits`, {}, 24 * 3600 * 1000);
   return (d.cast || []).flatMap((c) => (c.roles ? c.roles.map((r) => ({ name: r.character, main: r.episode_count >= 3 })) : [{ name: c.character, main: c.order < 20 }])).filter((c) => c.name);
 });
+// Broken English subtitles are guided by a human-made one of the same episode (subtitles.js).
+subtitles.setReferenceSource({
+  dir: path.join(CACHE_DIR, 'subtitle-references'),
+  info: (video) => {
+    const info = infoFor(video);
+    if (info.season != null) info.parentTmdbId = shows.knownShow(info.title, info.year)?.id || null;
+    return info;
+  },
+});
 subtitles.initSubtitles({
   dataDir: DATA_DIR,
   // Downloaded subtitles get their timing checked in the background. Even a file-hash match is checked:

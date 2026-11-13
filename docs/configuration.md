@@ -89,7 +89,9 @@ See [remote-access.md](remote-access.md) for how accounts work and how to publis
 | `OPENSUBTITLES_PASS` 🔒 | | Its password. |
 | `SUB_LANGS` | `en,sv,da,no,fi,de,nl,fr,es,pt-pt,pt-br,it,pl,ar,tr,ka,tl` | Languages offered, in order. |
 | `SUBSYNC` | `on` | Fix the timing of downloaded subtitles automatically (needs ffmpeg). |
-| `SUBTITLE_FIX` | `on` | Fix OCR mistakes in English subtitles as they're served: lowercase names and acronyms ("cuddy", "nicu"), I/l mix-ups ("l'm", "wiIl", "ls") and lowercase sentence starts. Learns how names are written from the library's other English subtitles (kept in `CACHE_DIR/subtitle-words.json`, refreshed daily). Files on disk are never changed. `off` serves them as they are. |
+| `SUBTITLE_FIX` | `on` | Fix OCR mistakes in English subtitles as they're served: lowercase names and acronyms ("cuddy", "nicu"), I/l mix-ups ("l'm", "wiIl", "ls") and lowercase sentence starts. Uses the title's TMDB cast list and learns how names are written from the library's other English subtitles (kept in `CACHE_DIR/subtitle-words.json`, refreshed daily). Files on disk are never changed. `off` serves them as they are. |
+| `SUBTITLE_REFERENCE` | `on` | When an English subtitle's casing looks broken, fetch the most downloaded human-made English subtitle of the same episode or film from OpenSubtitles (kept in `CACHE_DIR/subtitle-references`) and copy how it capitalises words ("Shyamalan", "a large Coke"): only words it always capitalises, or capitalises in the same company, and never words the library writes in lowercase. Its text and timing aren't used. The next episode's is fetched ahead. `off` never fetches one. |
+| `SUBTITLE_REFERENCE_RESERVE` | `10` | OpenSubtitles downloads per day kept for subtitles people ask for: references are only fetched while more than this many are left. |
 
 ## Casting
 

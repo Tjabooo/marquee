@@ -4,7 +4,8 @@
 import { currentLanguage, tr } from './i18n.js';
 import fs from 'node:fs';
 import path from 'node:path';
-import { cleanSubtitle } from './subfix.js';
+import crypto from 'node:crypto';
+import { cleanSubtitle, wantsReference, referenceFits, titleKeyOf } from './subfix.js';
 
 const API_KEY = process.env.OPENSUBTITLES_API_KEY || '';
 const USER = process.env.OPENSUBTITLES_USER || '';
@@ -329,6 +330,7 @@ async function download(file, info, lang, { properOnly = false } = {}) {
   const out = auto ? autoSidecarPath(file, lang) : sidecarPath(file, lang);
   await fs.promises.writeFile(out, text, 'utf8');
   if (!auto) await fs.promises.rm(autoSidecarPath(file, lang), { force: true }).catch(() => {});
+  noteDownloadsLeft(dl.remaining);
   console.log(`[subtitles] saved ${path.basename(out)} (${dl.remaining ?? '?'} downloads left today)`);
   // Lets the timing check run (whether or not the file hash matched).
   try { onDownloaded?.(file, out, { exact: best.sub.attributes.moviehash_match === true }); } catch { /* best effort */ }
@@ -358,8 +360,133 @@ export async function readSubtitle(file, lang) {
   const p = findSidecar(file, lang);
   if (!p) throw fail(404, 'Those subtitles aren’t on the server.');
   const [buf, st, characters] = await Promise.all([fs.promises.readFile(p), fs.promises.stat(p), lang === 'en' ? charactersFor(file) : []]);
-  // English text that came from OCR gets its names, acronyms and I/l mix-ups fixed (see subfix.js).
-  return cleanSubtitle(decodeText(buf), { lang, file: p, mtimeMs: st.mtimeMs, characters });
+  const text = decodeText(buf);
+  // English text that came from OCR gets its names, acronyms and I/l mix-ups fixed (see subfix.js),
+  // with a human-made subtitle of the same episode as a guide when one has been fetched.
+  const reference = lang === 'en' ? await referenceFor(file, p, text, characters) : null;
+  return cleanSubtitle(text, { lang, file: p, mtimeMs: st.mtimeMs, characters, reference });
+}
+
+// ---------- reference subtitles ----------
+// When an English subtitle's casing looks broken (OCR'd from the disc: "talk to cuddy", "an m. Night
+// shyamalan movie", "a large coke"), Lilin fetches one popular human-made English subtitle of the
+// same episode or film from OpenSubtitles and keeps it in the cache. subfix.js copies only how it
+// capitalises words, never its text or timing. Downloads are limited per day, so references only
+// use what's left above SUBTITLE_REFERENCE_RESERVE (10), keeping those for subtitles people ask for.
+// SUBTITLE_REFERENCE=off turns it off.
+let refDir = null;
+let refInfo = null;
+let downloadsLeft = null;
+let downloadsLeftAt = 0;
+const refJobs = new Map();
+const refFailed = new Map(); // key -> when a fetch last failed (retried after an hour)
+const REF_WAIT_MS = 5000;
+const DAY = 24 * 3600 * 1000;
+const refReserve = () => Math.max(0, Number(process.env.SUBTITLE_REFERENCE_RESERVE ?? 10) || 0);
+
+function noteDownloadsLeft(n) {
+  if (n == null || !Number.isFinite(Number(n))) return;
+  downloadsLeft = Number(n);
+  downloadsLeftAt = Date.now();
+}
+
+// dir: where references are kept; info: video → { title, year, season, episode, tmdbId, parentTmdbId }.
+export function setReferenceSource({ dir, info }) {
+  refDir = dir;
+  refInfo = info;
+}
+
+// One reference per video, whichever English sidecar (.en.srt, .en.sdh.srt) is shown.
+const refKey = (srtPath) => crypto.createHash('sha1')
+  .update(srtPath.replace(/\.(en|eng)(\.[a-z0-9]+)*\.srt$/i, '').toLowerCase()).digest('hex').slice(0, 24);
+
+// ahead: fetching for the next episode in the background (that doesn't fetch the one after it).
+async function referenceFor(video, srtPath, text, characters, { ahead = false } = {}) {
+  if (!refDir || !refInfo || !API_KEY || process.env.SUBTITLE_REFERENCE === 'off') return null;
+  const key = refKey(srtPath);
+  const file = path.join(refDir, `${key}.srt`);
+  try {
+    const ref = decodeText(await fs.promises.readFile(file));
+    if (!ahead) prefetchNext(video, characters);
+    return ref;
+  } catch { /* not fetched yet */ }
+  if (!refJobs.has(key)) {
+    const none = await fs.promises.stat(path.join(refDir, `${key}.none`)).catch(() => null);
+    if (none && Date.now() - none.mtimeMs < 30 * DAY) return null;
+    if (Date.now() - (refFailed.get(key) || 0) < 3600 * 1000) return null;
+    const title = titleKeyOf(srtPath);
+    if (!wantsReference(text, { characters, title })) return null;
+    const job = fetchReference(video, key, text, { characters, title })
+      .then((ref) => {
+        // Watching a season: the next episode gets its reference ahead of time.
+        if (ref && !ahead) prefetchNext(video, characters);
+        return ref;
+      })
+      .catch((e) => {
+        refFailed.set(key, Date.now());
+        console.warn(`[subtitles] no reference for ${path.basename(srtPath)}: ${e.message}`);
+        return null;
+      })
+      .finally(() => refJobs.delete(key));
+    refJobs.set(key, job);
+  }
+  // The first showing waits a little; if the download takes longer, the next one has it.
+  let timer;
+  const waited = await Promise.race([refJobs.get(key), new Promise((r) => { timer = setTimeout(() => r(null), REF_WAIT_MS); })]);
+  clearTimeout(timer);
+  return waited;
+}
+
+async function fetchReference(video, key, text, { characters, title }) {
+  if (downloadsLeft != null && downloadsLeft <= refReserve() && Date.now() - downloadsLeftAt < DAY) return null;
+  const info = refInfo(video);
+  if (!info?.title) return null;
+  const episode = info.season != null;
+  const params = info.parentTmdbId
+    ? { parent_tmdb_id: info.parentTmdbId, season_number: info.season, episode_number: info.episode, type: 'episode' }
+    : searchParams(info);
+  const results = (await osFetch(query({ ...params, languages: 'en', ai_translated: 'exclude' }))).data || [];
+  // The most downloaded human-made one for this exact episode: popular files are the clean ones.
+  const sameEpisode = (a) => !episode || (Number(a.feature_details?.season_number) === info.season
+    && (info.episode == null || Number(a.feature_details?.episode_number) === info.episode));
+  const best = results
+    .filter((r) => isProperUpload(r) && String(r.attributes?.language).toLowerCase() === 'en' && sameEpisode(r.attributes) && r.attributes.files?.[0]?.file_id)
+    .sort((a, b) => (a.attributes.hearing_impaired - b.attributes.hearing_impaired) || (b.attributes.download_count || 0) - (a.attributes.download_count || 0))[0];
+  await fs.promises.mkdir(refDir, { recursive: true });
+  const none = () => fs.promises.writeFile(path.join(refDir, `${key}.none`), '').then(() => null);
+  if (!best) return none();
+  await login().catch(() => {});
+  let dl;
+  try { dl = await osFetch('/download', { method: 'POST', body: { file_id: best.attributes.files[0].file_id } }); } catch (e) {
+    if (e.quota) noteDownloadsLeft(0);
+    throw e;
+  }
+  noteDownloadsLeft(dl.remaining);
+  if (!dl.link) throw fail(502, 'no download link');
+  const r = await fetch(dl.link, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(20000) });
+  if (!r.ok) throw fail(502, `download failed (${r.status})`);
+  const ref = decodeText(Buffer.from(await r.arrayBuffer()));
+  // The wrong episode, another language or OCR'd itself: not used, and not fetched again for a month.
+  if (!/-->/.test(ref) || !referenceFits(text, ref, { characters, title })) {
+    console.log(`[subtitles] reference for ${path.basename(video)} didn't fit (${dl.remaining ?? '?'} downloads left today)`);
+    return none();
+  }
+  await fs.promises.writeFile(path.join(refDir, `${key}.srt`), ref, 'utf8');
+  console.log(`[subtitles] saved a reference for ${path.basename(video)} (${dl.remaining ?? '?'} downloads left today)`);
+  return ref;
+}
+
+const VIDEO_FILE = /\.(mkv|mp4|m4v|mov|webm|avi)$/i;
+function prefetchNext(video, characters) {
+  let names;
+  try { names = fs.readdirSync(path.dirname(video)).filter((n) => VIDEO_FILE.test(n)).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })); } catch { return; }
+  const next = names[names.indexOf(path.basename(video)) + 1];
+  if (!next || !refDir) return;
+  const nextVideo = path.join(path.dirname(video), next);
+  const p = findSidecar(nextVideo, 'en');
+  if (!p) return;
+  if (refJobs.has(refKey(p)) || fs.existsSync(path.join(refDir, `${refKey(p)}.srt`))) return;
+  fs.promises.readFile(p).then((buf) => referenceFor(nextVideo, p, decodeText(buf), characters, { ahead: true })).catch(() => {});
 }
 
 // SRT to WebVTT: header, dotted timestamps, ASS override tags removed. Lines tagged {\an7}–{\an9}

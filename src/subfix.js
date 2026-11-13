@@ -369,6 +369,113 @@ function nameLike(lower, title) {
   return votes === 0 || (e[1] + e[2]) >= 0.1 * votes || !Object.keys(e[4] || {}).some((k) => k !== title);
 }
 
+// ---------- a reference subtitle ----------
+// A second, human-made English subtitle for the same episode or film (subtitles.js fetches one from
+// OpenSubtitles when a file looks broken). Only its capitalisation is used, never its text or
+// timing: how it writes each word mid-sentence ("Shyamalan" every time) and in which company
+// ("a large Coke, no" but "do some coke"). Words inside [sound tags] and ALL-CAPS speaker labels
+// don't count.
+const TOKEN = /([A-Za-z][A-Za-z']*|\d+(?:[.,:]\d+)*%?)/g;
+function* tokensOf(cues) {
+  let start = true;
+  let prev = '';
+  let prevRaw = '';
+  for (const cue of cues) {
+    let depth = 0;
+    for (const raw of cue.lines) {
+      const line = stripMarkup(raw);
+      const toks = [...line.matchAll(TOKEN)];
+      let last = 0;
+      for (let i = 0; i < toks.length; i++) {
+        const m = toks[i];
+        const gap = line.slice(last, m.index);
+        for (const c of gap) if (c === '[' || c === '(') depth++; else if ((c === ']' || c === ')') && depth) depth--;
+        if (endsSentence(gap.replace(/[[(]+\s*$/, ' '), prevRaw)) start = true;
+        if (/(\.\.\.|…)\s*$/.test(gap)) start = false;
+        const word = m[0].replace(/'+$/, '');
+        const next = toks[i + 1] ? toks[i + 1][0].replace(/'+$/, '').toLowerCase() : '';
+        if (/^[A-Za-z]/.test(word) && !depth) yield { word, start, prev, next };
+        prev = word.toLowerCase();
+        prevRaw = word;
+        last = m.index + m[0].length;
+        if (!depth) start = false;
+      }
+      const tail = line.slice(last);
+      for (const c of tail) if (c === '[' || c === '(') depth++; else if ((c === ']' || c === ')') && depth) depth--;
+      if (endsSentence(tail, prevRaw, true)) start = true;
+    }
+  }
+}
+
+// { words: lower → Map(form → count), ctx: "prev word next" / "prev word|" / "|word next" → Map(form → count) }
+function referenceTable(refSrt) {
+  const words = new Map();
+  const ctx = new Map();
+  const add = (map, key, form) => {
+    if (!map.has(key)) map.set(key, new Map());
+    map.get(key).set(form, (map.get(key).get(form) || 0) + 1);
+  };
+  for (const { word, start, prev, next } of tokensOf(parseCues(refSrt))) {
+    if (start || word.length < 2) continue;
+    const base = word.replace(/'s$/i, '');
+    if (base.length > 1 && base === base.toUpperCase()) continue; // "HOUSE:" labels, shouting
+    const lower = base.toLowerCase();
+    add(words, lower, base);
+    add(ctx, `${prev} ${lower} ${next}`, base);
+    add(ctx, `${prev} ${lower}|`, base);
+    add(ctx, `|${lower} ${next}`, base);
+  }
+  return { words, ctx };
+}
+
+// The form the reference uses for a lowercase word here, or null. Every mid-sentence use capitalised
+// (twice or more, or once in the same company), or the same company capitalised and never lowercase.
+function referenceForm(ref, lower, prev, next) {
+  const all = ref.words.get(lower);
+  if (!all || all.has(lower)) {
+    for (const key of [`${prev} ${lower} ${next}`, `${prev} ${lower}|`, `|${lower} ${next}`]) {
+      const forms = ref.ctx.get(key);
+      if (!forms || forms.has(lower) || forms.size !== 1) continue;
+      return [...forms.keys()][0];
+    }
+    return null;
+  }
+  if (all.size !== 1) return null;
+  const [form, n] = [...all][0];
+  if (n >= 2) return form;
+  const near = [`${prev} ${lower}|`, `|${lower} ${next}`].some((k) => ref.ctx.get(k)?.has(form));
+  return near ? form : null;
+}
+
+// A word the library writes in lowercase almost everywhere ("if", "medicine", "room"): the
+// reference's own style ("Dean of Medicine", "...If you") doesn't change it.
+function ordinaryWord(lower) {
+  const e = entry(lower);
+  return Boolean(e) && e[0] >= 8 && e[1] + e[2] < 0.1 * (e[0] + e[1] + e[2]);
+}
+
+// Is this subtitle worth fetching a reference for (OpenSubtitles downloads are limited)? Only when
+// its casing looks broken.
+export function wantsReference(srt, { characters = [], title = '' } = {}) {
+  const cues = parseCues(srt);
+  if (srt.length > 4000 && !looksEnglish(cues.flatMap((c) => c.lines.map(stripMarkup)).join('\n'))) return false;
+  return casingBroken(cues, nameTable(characters, title));
+}
+
+// Does a downloaded reference fit: English, capitalising names properly, and the same episode
+// (most of this subtitle's longer words appear in it)?
+export function referenceFits(srt, refSrt, { characters = [], title = '' } = {}) {
+  const refCues = parseCues(refSrt);
+  if (refSrt.length > 4000 && !looksEnglish(refCues.flatMap((c) => c.lines.map(stripMarkup)).join('\n'))) return false;
+  if (casingBroken(refCues, nameTable(characters, title))) return false;
+  const bag = (text) => new Set((stripMarkup(text).toLowerCase().match(/[a-z']{5,}/g) || []));
+  const mine = bag(srt);
+  const theirs = bag(refSrt);
+  let shared = 0;
+  for (const w of mine) if (theirs.has(w)) shared++;
+  return mine.size > 0 && shared >= 0.5 * mine.size;
+}
+
 // ---------- OCR repairs on whole lines ----------
 const CONTRACTION_ENDS = /^(s|t|d|m|ll|re|ve)$/;
 const known = (w, n = 20) => fileCount(w.toLowerCase()) >= n;
@@ -393,7 +500,7 @@ function repairText(text) {
 // Only the text between markup tags is repaired.
 const repairLine = (line) => line.split(/(\{[^}]*\}|<[^>]*>)/).map((part, i) => (i % 2 ? part : repairText(part))).join('');
 
-function fixWord(word, { start, prev, prevRaw = '', lone = false, broken, next = '', next2 = '', before = '', prevChar = '', names = null, title = '', titled = false, vocative = false, possessive = false }) {
+function fixWord(word, { start, prev, prevRaw = '', nextWord = '', reference = null, lone = false, broken, next = '', next2 = '', before = '', prevChar = '', names = null, title = '', titled = false, vocative = false, possessive = false }) {
   // A letter on its own is a capital ("vitamin c", "row d", "a flying v"). Not "a"/"i"/"l", nor
   // m/n/o/s/y (French "il y a", romaji "kage o", "rock n roll"), nor a letter touching anything but
   // spaces and punctuation (one letter of a styled word "<b>A{\\frz3}f{\\frz4}t…", "x-ray",
@@ -413,6 +520,9 @@ function fixWord(word, { start, prev, prevRaw = '', lone = false, broken, next =
   if (il) w = il;
   if (w === w.toLowerCase()) {
     const base = w.replace(/'s$/, '');
+    // A human-made subtitle of the same episode knows best ("shyamalan", "a large coke").
+    const ref = !start && reference && base.length > 1 && !ordinaryWord(base) ? referenceForm(reference, base, prev, nextWord) : null;
+    if (ref) return ref + w.slice(base.length);
     const name = names?.get(base);
     const fullName = name?.firsts.has(prev) && /^[A-Z]/.test(prevRaw) && /^\s+$/.test(before);
     if (name && (start || fullName || (broken && (name.kind === 'name' ? !DETERMINERS.has(prev)
@@ -444,27 +554,32 @@ function strongShape(lower) {
   return Math.max(e[1], e[2]) >= 8 && Math.max(e[1], e[2]) >= 0.85 * votes;
 }
 // A cast name that's never an ordinary word, lowercase mid-sentence three times, also counts.
+// So does a name this title's own subtitles capitalise ("cuddy" in House), when it isn't after
+// "the"/"my"/"Bob's" (where "house" is just a house).
 function casingBroken(cues, names) {
   const odd = new Set();
   let nameHits = 0;
-  for (const { word, start } of wordsOf(cues)) {
+  for (const { word, start, prev } of tokensOf(cues)) {
     if (start || word !== word.toLowerCase() || word.length < 2) continue;
     const base = word.replace(/'s$/, '');
     if (strongShape(base)) odd.add(word);
-    if (names?.get(base)?.kind === 'name') { odd.add(word); nameHits++; }
+    const kind = names?.get(base)?.kind;
+    if (kind === 'name' || (kind === 'title' && !DETERMINERS.has(prev) && !/'s?$/.test(prev))) { odd.add(word); nameHits++; }
     if (odd.size >= 2 || nameHits >= 3) return true;
   }
   return false;
 }
 
 // characters: the title's cast list from TMDB ("Dr. Lisa Cuddy"); title: titleKeyOf(subtitle file).
-export function fixEnglishSrt(srt, { characters = [], title = '' } = {}) {
+// reference: a human-made English subtitle of the same episode/film (see referenceTable).
+export function fixEnglishSrt(srt, { characters = [], title = '', reference = null } = {}) {
   // A track labelled English that isn't (French in an ".en.2.srt") is left as it is.
   const cues = parseCues(srt);
   if (srt.length > 4000 && !looksEnglish(cues.flatMap((c) => c.lines.map(stripMarkup)).join('\n'))) return srt;
   for (const c of cues) c.lines = c.lines.map(repairLine);
   const names = nameTable(characters, title);
   const broken = casingBroken(cues, names);
+  const refTable = reference ? referenceTable(reference) : null;
   // Walk the words in order, tracking sentence starts across cues, and rewrite each line.
   let start = true;
   let prev = '';
@@ -494,6 +609,8 @@ export function fixEnglishSrt(srt, { characters = [], title = '' } = {}) {
         const rest = stripMarkup(raw.slice(m.index + m[2].length));
         const fixed = /^[A-Za-z]/.test(word) && !joined ? fixWord(word, {
           next2: raw[m.index + m[2].length + 1] || '',
+          nextWord: (rest.match(/^[^A-Za-z0-9]*?([A-Za-z][A-Za-z']*|\d+(?:[.,:]\d+)*%?)/)?.[1] || '').replace(/'+$/, '').toLowerCase(),
+          reference: refTable,
           start: start && !depth, prev, prevRaw, lone: !/[A-Za-z]{2}|[A-Za-z][^A-Za-z]+[A-Za-z]/.test(stripMarkup(raw)), broken, next, before: gap, prevChar: raw[m.index - 1] || '', names, title,
           titled: NAME_TITLES.has(prev) && /^\.?\s+$/.test(gap),
           vocative: /,\s*$/.test(gap) && /^['’]?s?\s*(?:$|[.?!,…])/.test(rest),
@@ -517,12 +634,12 @@ export function fixEnglishSrt(srt, { characters = [], title = '' } = {}) {
 
 // Cached by file path + modification time + word list age.
 // characters: the film's or show's cast list (character names) from TMDB, when known.
-export function cleanSubtitle(text, { lang, file = '', mtimeMs = 0, characters = [] } = {}) {
+export function cleanSubtitle(text, { lang, file = '', mtimeMs = 0, characters = [], reference = null } = {}) {
   if (lang !== 'en' || process.env.SUBTITLE_FIX === 'off') return text;
-  const key = `${file}|${mtimeMs}|${lexicon?.at || 0}|${characters.length}`;
+  const key = `${file}|${mtimeMs}|${lexicon?.at || 0}|${characters.length}|${reference?.length || 0}`;
   if (file && fixedCache.has(key)) return fixedCache.get(key);
   let out = text;
-  try { out = fixEnglishSrt(text, { characters, title: titleKeyOf(file) }); } catch (e) { console.warn(`[subfix] ${path.basename(file)}: ${e.message}`); }
+  try { out = fixEnglishSrt(text, { characters, title: titleKeyOf(file), reference }); } catch (e) { console.warn(`[subfix] ${path.basename(file)}: ${e.message}`); }
   if (file) {
     if (fixedCache.size > 200) fixedCache.delete(fixedCache.keys().next().value);
     fixedCache.set(key, out);

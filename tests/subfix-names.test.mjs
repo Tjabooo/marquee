@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fixEnglishSrt, setLexiconForTest, titleKeyOf } from '../src/subfix.js';
+import { fixEnglishSrt, setLexiconForTest, titleKeyOf, referenceFits } from '../src/subfix.js';
 
 const srt = (...lines) => lines.map((l, i) => `${i + 1}\n00:00:0${i},000 --> 00:00:0${i},900\n${l}`).join('\n\n');
 const textOf = (s) => s.split('\n\n').map((b) => b.split('\n').slice(2).join('\n'));
@@ -68,4 +68,21 @@ test('subtitles are grouped by title from their folder', () => {
   assert.equal(titleKeyOf('/m/TV/Better.Call.Saul.S02.1080p/Subs/Better.Call.Saul.S02E01.1080p/3_English.srt'), 'bettercallsaul');
   assert.equal(titleKeyOf('/m/Movies/Shutter Island (2010) [1080p]/Shutter.Island.en.srt'), 'shutterisland');
   assert.equal(titleKeyOf('/m/TV/Gilmore Girls/Season 1/Gilmore Girls S01E16.en.srt'), 'gilmoregirls');
+});
+
+test('a human-made subtitle of the same episode guides capitals, only where it is sure', () => {
+  const mine = srt('I saw an m. Night shyamalan movie.', 'And a large coke, no ice.', 'Do some coke now.', 'He is wrong here.');
+  const ref = srt('Saw an M. Night Shyamalan movie, man.', 'Shyamalan again.', 'And a large Coke, no ice.', 'He is Wrong here.');
+  assert.deepEqual(textOf(fixEnglishSrt(mine, { reference: ref })), [
+    'I saw an m. Night Shyamalan movie.', // once in the reference, in the same company
+    'And a large Coke, no ice.',
+    'Do some coke now.', // once, elsewhere: could be the other coke
+    'He is wrong here.', // an ordinary word in the library stays as the library writes it
+  ]);
+});
+
+test('a reference must be the same episode and not broken itself', () => {
+  const mine = srt('Dinner with Cuddy tonight, really late.', 'Another dinner tomorrow evening.');
+  assert.equal(referenceFits(mine, srt('Dinner with Cuddy tonight, really late.', 'Another dinner tomorrow evening.')), true);
+  assert.equal(referenceFits(mine, srt('Something completely different happens here.', 'Nothing matches anything.')), false);
 });

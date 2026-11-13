@@ -1,4 +1,13 @@
 {
+  "2026-11-13-subtitle-reference": {
+    "title": "Undertexter kollar hur namn stavas",
+    "items": {
+      "Names learned from another subtitle": {
+        "title": "Namn hämtade från en annan undertext",
+        "text": "När ett avsnitts engelska undertexter skriver namn fel hämtar Lilin nu en andra engelsk undertext för samma avsnitt i bakgrunden och tar efter hur den skriver namn, filmer och märken (\"Shyamalan\", \"a large Coke\", \"Star Wars\"). Bara de stora bokstäverna ändras: orden och tiderna är fortfarande de som passar din video. Nästa avsnitts hämtas medan du tittar."
+      }
+    }
+  },
   "2026-11-13-subtitle-names": {
     "title": "Bättre engelska undertexter",
     "items": {
