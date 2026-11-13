@@ -374,7 +374,18 @@ export async function readSubtitle(file, lang) {
   // English text that came from OCR gets its names, acronyms and I/l mix-ups fixed (see subfix.js),
   // with a human-made subtitle of the same episode as a guide when one has been fetched.
   const reference = lang === 'en' ? await referenceFor(file, p, text, characters) : null;
-  return cleanSubtitle(text, { lang, file: p, mtimeMs: st.mtimeMs, variant: proofread, characters, reference });
+  return assBraces(cleanSubtitle(text, { lang, file: p, mtimeMs: st.mtimeMs, variant: proofread, characters, reference }));
+}
+
+// Text left in {…} by ASS subtitles that ffmpeg turned into SRT. Fansubs keep optional honorifics
+// as {*-san} / {**-san} ("Hirasawa Yui{**-san}"): those show as "-san", like the Japanese audio
+// says. Any other non-tag block is a translator's comment that players never show, so it goes;
+// {\tag} blocks are removed later by srtToVtt (they carry positions).
+export function assBraces(text) {
+  return String(text).replace(/\{(?!\\)([^{}\n]*)\}/g, (_, inner) => {
+    const m = /^\*+\s*(-?[^\s*{}\\][^{}\\]*?)\s*$/.exec(inner);
+    return m ? m[1] : '';
+  });
 }
 
 // ---------- reference subtitles ----------

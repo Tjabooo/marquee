@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-13-anime-honorifics",
+    "date": "2026-11-13",
+    "title": "Cleaner anime subtitles",
+    "items": [
+      {
+        "title": "Honorifics show properly",
+        "text": "Some anime subtitles showed names like \"Yui{**-san}\". They now read \"Yui-san\", and translator comments hidden in the subtitle file no longer show up on screen."
+      }
+    ]
+  },
+  {
     "id": "2026-11-13-subtitle-proofread",
     "date": "2026-11-13",
     "title": "Subtitles get proofread",
