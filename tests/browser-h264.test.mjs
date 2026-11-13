@@ -98,3 +98,31 @@ test('the background scan does not remake a browser copy that was deleted to mak
   assert.equal(existsSync(copy), false, 'an evicted copy is not re-encoded in the background');
   assert.equal(convert.jobState(file), null);
 });
+
+test('an audio-fix copy deleted to make room is not made again by the background scan', { timeout: 90000 }, async (t) => {
+  const run = promisify(execFile);
+  const ffmpeg = process.env.FFMPEG || 'ffmpeg';
+  try { await run(ffmpeg, ['-version']); await run(process.env.FFPROBE || 'ffprobe', ['-version']); }
+  catch { t.skip('FFmpeg unavailable'); return; }
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-evicted-fix-'));
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  // H.264 video with AC-3 audio: browsers can't play it, so the scan wants an audio-fixed copy.
+  const file = path.join(dir, 'Show.S01E02.1080p.mp4');
+  try {
+    await run(ffmpeg, ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=blue:s=128x128:r=4:d=2',
+      '-f', 'lavfi', '-i', 'sine=frequency=440:duration=2', '-c:v', 'libx264', '-c:a', 'ac3', '-y', file]);
+  } catch { t.skip('FFmpeg without libx264/ac3'); return; }
+  process.env.MIN_FREE_GB = '0';
+
+  const probe = await import('../src/convert.js?evicted-fix-name');
+  await probe.startConverter({ dataDir: dir, listCandidates: async () => null });
+  const copy = probe.fixPath(file);
+  await fs.writeFile(path.join(dir, '.lilin-convert.json'),
+    JSON.stringify({ failures: {}, copyEvicted: { [path.basename(copy)]: 1 } })); // old entry: no time limit
+
+  const convert = await import('../src/convert.js?evicted-fix-test');
+  await convert.startConverter({ dataDir: dir, listCandidates: async () => [{ file, deleteOriginal: false }] });
+  await new Promise((r) => setTimeout(r, 8000)); // the first scan runs after five seconds
+  assert.equal(existsSync(copy), false, 'an evicted audio-fix copy is not remade in the background');
+  assert.equal(convert.jobState(file), null);
+});

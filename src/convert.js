@@ -49,9 +49,9 @@ let audioChecked = {}; // file key -> true once its audio is known to be browser
 let syncShift = {};    // source key -> manual audio correction in seconds (negative = earlier)
 let syncApplied = {};  // source key -> correction baked into the current copy
 let copyUsed = {};     // cached copy file name -> last time it was streamed (ms)
-// cached copy file name -> when it was deleted to make room. The background scan doesn't make such a copy
-// again (Play or the next-episode prep still does): otherwise more recent HEVC files than the cap holds
-// keep pushing each other out and the same episodes are re-encoded over and over.
+// cached copy file name (H.264 copy or audio-fixed copy) -> when it was deleted to make room. The background
+// scan never makes such a copy again (Play or the next-episode prep still does): otherwise more files than the
+// cap holds keep pushing each other out and the same episodes are re-encoded over and over.
 let copyEvicted = {};
 const CHECK_VERSION = 'v3|'; // bump to re-check files after the audio checks change
 const SYNC_TOLERANCE = 0.04; // seconds; below one video frame
@@ -1152,9 +1152,9 @@ export async function startConverter({ dataDir, cacheDir = path.join(dataDir, 'c
       syncApplied = saved.syncApplied || {};
       pendingDeletes = saved.pendingDeletes || [];
       copyUsed = saved.copyUsed || {};
-      // Past the background window the file wouldn't be queued anyway, so the entry can go.
-      const evictedSince = Date.now() - Math.max(BROWSER_H264_DAYS, 1) * 864e5;
-      copyEvicted = Object.fromEntries(Object.entries(saved.copyEvicted || {}).filter(([, at]) => at >= evictedSince));
+      // Kept while the source is in the library (pruned in the scan): a time limit would let the
+      // background scan make the copy again later and restart the evict/re-encode cycle.
+      copyEvicted = saved.copyEvicted || {};
       // Earlier versions recorded a locked original as a failed conversion although its copy was made.
       for (const [key, f] of Object.entries(failures)) {
         const file = key.split('|')[0];
@@ -1209,10 +1209,14 @@ export async function startConverter({ dataDir, cacheDir = path.join(dataDir, 'c
         const h264 = await browserH264Job(c.file, c.file); // runs beside the audio fix below (another lane)
         if (h264) queue.push(h264);
         if (fs.existsSync(fixed) || failures[failureKey(c.file)]) continue;
+        if (copyEvicted[path.basename(fixed)]) continue; // removed to make room: only Play makes it again
         if (hasJob(c.file, 'fix')) continue;
         if (await audioNeedsFix(c.file)) queue.push({ file: c.file, fix: true });
       }
       cleanFixDir(keep);
+      let pruned = false;
+      for (const name of Object.keys(copyEvicted)) if (!keep.has(name)) { delete copyEvicted[name]; pruned = true; }
+      if (pruned) saveFailures();
       await makeRoom(null).catch(() => {}); // a lowered BROWSER_COPIES_MAX_GB takes effect without new copies
       drain(onConverted);
     } catch (e) {
