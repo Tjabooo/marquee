@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-13-tv-4k-dv",
+    "date": "2026-11-13",
+    "title": "4K Dolby Vision episodes play on the Samsung TV",
+    "items": [
+      {
+        "title": "No more \"can't play\" error",
+        "text": "Some 4K episodes (like The Rings of Power) stopped on the Samsung TV with an error, because the TV can't read how their video is labelled. The TV now gets a copy it can play. The first time you press Play on one of these it may load for a minute or two while that copy is made; after that it starts right away."
+      }
+    ]
+  },
+  {
     "id": "2026-11-13-stuck-peek",
     "date": "2026-11-13",
     "title": "Hover cards don't get stuck",

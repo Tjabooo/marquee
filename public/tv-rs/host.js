@@ -347,14 +347,14 @@
           onerror: function (e) { ev(5, 0, String(e))(); },
           onevent: function () {},
         });
-        av.prepareAsync(function () { ev(6, av.getDuration())(); }, function (e) { ev(7, 0, String(e && e.name || e))(); });
+        av.prepareAsync(function () { ev(6, av.getDuration())(); }, function (e) { ev(7, 0, String(e && (e.message || e.name) || e))(); });
         return 1;
       }),
       av_play: function () { try { av.play(); return 1; } catch (e) { return 0; } },
       av_pause: function () { try { av.pause(); return 1; } catch (e) { return 0; } },
       av_seek: function (ms) {
         var ev = function (k, s) { return guard(function () { var b = utf8(s || ''); ex.av_event(k, 0, give(b), b.length); }); };
-        try { av.seekTo(Math.floor(ms), function () { ev(8)(); }, function (e) { ev(9, String(e && e.name || e))(); }); return 1; } catch (e) { return 0; }
+        try { av.seekTo(Math.floor(ms), function () { ev(8)(); }, function (e) { ev(9, String(e && (e.message || e.name) || e))(); }); return 1; } catch (e) { return 0; }
       },
       av_time: function () { try { return av.getCurrentTime(); } catch (e) { return -1; } },
       av_close: function () {

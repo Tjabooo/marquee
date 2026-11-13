@@ -2411,6 +2411,26 @@ async function bridgeLink(kind, id, variant, audio, audioSource) {
   return { ...link, ready: true, bridge: true, track, audioSource };
 }
 
+// Samsung (Tizen) TVs refuse HEVC labelled "hev1" (common in 4K Dolby Vision WEB-DLs): AVPlay answers
+// PLAYER_ERROR_NOT_SUPPORTED_FORMAT. Such a TV gets the H.264 copy when one exists (and the relabelled HEVC
+// copy is queued for next time), else the relabelled copy is made now (a stream copy, a minute or two)
+// while the TV's request waits on its "Loading" screen.
+const TIZEN_FIX_WAIT_MS = 10 * 60 * 1000;
+async function tizenLink(req, kind, id) {
+  const served = await streamFile(kind, id, 'browser-hevc');
+  let vid = null;
+  try { vid = await converter.probeVideo(served); } catch { /* unreadable: try it as is */ }
+  if (!vid || vid.codec !== 'hevc' || vid.tag === 'hvc1') return playLink(kind, id, 'browser-hevc');
+  const source = await sourceFile(kind, id);
+  const fix = converter.requestBrowserAudio(source);
+  if ((await streamFile(kind, id, 'browser')) !== served) return playLink(kind, id, 'browser');
+  if (!fix.fixable) return playLink(kind, id, 'browser-hevc');
+  console.log(`[tv] ${path.basename(served)}: hev1 HEVC, waiting for the relabelled copy`);
+  const until = Date.now() + TIZEN_FIX_WAIT_MS;
+  while (Date.now() < until && !req.destroyed && converter.jobState(source)) await new Promise((r) => setTimeout(r, 2000));
+  return playLink(kind, id, 'browser-hevc');
+}
+
 async function playLink(kind, id, variant, audio = null, audioSource = null, retry = false, quality = null, bridge = false) {
   if (!/^[A-Za-z0-9_-]+$/.test(id)) throw new HttpError(400, 'Invalid file.');
   if (bridge && audio !== null && !PHONE_VARIANT.test(variant)) return bridgeLink(kind, id, variant, audio, audioSource);
@@ -3889,7 +3909,8 @@ async function handleApi(req, res, url) {
   }
   if (p === '/api/play-link') {
     const q = url.searchParams;
-    const link = await playLink(q.get('kind') || '', q.get('id') || '', q.get('variant') || 'browser', q.get('audio'), q.get('audioSource'), q.get('audioRetry') === '1', q.get('quality'), q.get('bridge') === '1');
+    const tizen = /tizen/i.test(req.headers['user-agent'] || '') && q.get('variant') === 'browser-hevc' && q.get('audio') === null && !q.get('quality');
+    const link = tizen ? await tizenLink(req, q.get('kind') || '', q.get('id') || '') : await playLink(q.get('kind') || '', q.get('id') || '', q.get('variant') || 'browser', q.get('audio'), q.get('audioSource'), q.get('audioRetry') === '1', q.get('quality'), q.get('bridge') === '1');
     // Named from the library/download file: browsers often stream a cached copy named by a hash.
     if (link.url && q.get('audio') === null) activity.record(req, 'play', titleOf(await sourceFile(q.get('kind'), q.get('id'))), { quietMs: 3 * 3600 * 1000 });
     return sendJson(res, link.ready === false ? 202 : 200, link);

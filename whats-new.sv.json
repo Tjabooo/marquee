@@ -1,4 +1,13 @@
 {
+  "2026-11-13-tv-4k-dv": {
+    "title": "4K-avsnitt med Dolby Vision spelas på Samsung-tv:n",
+    "items": {
+      "No more \"can't play\" error": {
+        "title": "Inget mer felmeddelande",
+        "text": "Vissa 4K-avsnitt (som The Rings of Power) stannade på Samsung-tv:n med ett fel, eftersom tv:n inte förstår hur videon är märkt. Nu får tv:n en kopia den kan spela. Första gången du trycker på Spela på ett sådant avsnitt kan det ladda en minut eller två medan kopian görs; sedan startar det direkt."
+      }
+    }
+  },
   "2026-11-13-anime-signs": {
     "title": "Skyltar i anime går att läsa",
     "items": {
