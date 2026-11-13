@@ -75,6 +75,7 @@ test('the camera is listed with its clip, burned in where it was placed, and del
     // saving again while the first edit renders: the older render stops, the newer one gets its own file
     const first = clips.startTrim(list[0].id, [{ start: 0, end: 6 }], { overlay: { x: 0.5, y: 0.5, w: 0.5 } });
     const second = clips.startTrim(list[0].id, [{ start: 1, end: 6 }], { overlay: { x: 0, y: 0, w: 0.5 } });
+    assert.ok((await clips.listClips()).clips.find((x) => x.id === list[0].id).editing, 'the clip shows its edit in progress');
     for (let i = 0; i < 600 && [first, second].some((j) => clips.renderState(j.job).state === 'working'); i++) await new Promise((ok) => setTimeout(ok, 100));
     assert.equal(clips.renderState(first.job).state, 'failed');
     assert.match(clips.renderState(first.job).error, /newer edit/);
@@ -82,6 +83,9 @@ test('the camera is listed with its clip, burned in where it was placed, and del
     const trimmed = await fs.readdir(path.join(clipsDir, 'Trimmed Clips', 'Game'));
     assert.deepEqual(trimmed.filter((n) => !n.startsWith('.')).sort(), [`${r.title}.mp4`, `${clips.renderState(second.job).title}.mp4`].sort());
     assert.notEqual(clips.renderState(second.job).title, r.title);
+    assert.match(clips.renderState(second.job).title, /\(edit\) 2$/, 'the replaced edit left its name free');
+    assert.equal(clips.renderState(second.job).progress, 1);
+    assert.equal((await clips.listClips()).clips.find((x) => x.id === list[0].id).editing, null);
 
     await assert.rejects(clips.checkTrim(list[0].id, [{ start: 0, end: 6 }], { overlay: { x: 0, y: 0, w: 0.001 } }), /inside the picture/);
 

@@ -1,4 +1,13 @@
 {
+  "2026-11-13-clip-save-again": {
+    "title": "Se när dina kameraredigeringar görs",
+    "items": {
+      "Camera edits in progress": {
+        "title": "Kameraredigeringar som pågår",
+        "text": "Medan din kamera läggs in i en redigerad kopia står det nu på klippet under Klipp hur långt det har kommit, och redigeraren säger det också. Sparar du samma klipp igen innan det är klart stoppar Lilin den första och gör bara din senaste redigering. Tidigare kördes båda samtidigt och kunde förstöra varandras kopia."
+      }
+    }
+  },
   "2026-11-12-clip-camera": {
     "title": "Lägg in kameran i dina klipp",
     "items": {

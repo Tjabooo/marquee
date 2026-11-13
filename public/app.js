@@ -2033,7 +2033,7 @@ function refreshMediaLibrary() {
 let pollTimer;
 function schedulePoll() {
   clearTimeout(pollTimer);
-  const clipsBusy = state.view === 'clips' && state.clips?.clips?.some((c) => c.share && !c.share.ready && !c.share.error);
+  const clipsBusy = state.view === 'clips' && state.clips?.clips?.some((c) => (c.share && !c.share.ready && !c.share.error) || c.editing);
   const powerBusy = state.view === 'house' && state.house?.power?.some((pw) => pw.pending);
   const downloading = state.downloads.some((d) => d.mine !== false && !d.done);
   const delay = state.view === 'downloads' ? 2000 : state.view === 'notes' ? 5000 : state.view === 'library' || downloading || current || clipsBusy || powerBusy ? 3000 : ['activity', 'house'].includes(state.view) ? 10000 : 15000;
@@ -8682,6 +8682,7 @@ async function openTrim(c, opener) {
     trackRow,
     camRow,
     info,
+    c.editing && h('p', { class: 'edit-info edit-busy', role: 'status' }, T('Your last edit of this clip is still being saved ({0}%). Saving again replaces it.', Math.round(c.editing.progress * 100))),
     h('div', { class: 'edit-actions' }, previewBtn, save),
     h('label', { class: 'trim-del', for: 'trim-del' }, delOrig, T(' Move the original to Deleted afterwards (kept 30 days)')),
     h('p', { class: 'edit-keys muted' }, T('Space play · S split · X remove or restore · [ ] start or end here · ← → 1 s · , . one frame · Ctrl+Z undo')));
@@ -8875,6 +8876,8 @@ function clipCard(c) {
       setTimeout(() => { if (b.isConnected && !b.disabled) { delete b.dataset.sure; b.classList.remove('is-sure'); b.innerHTML = ICONS.trash; } }, 4000);
     },
   });
+  // a camera edit renders for a few minutes: say so on the clip, or it looks like nothing happened
+  if (c.editing) actions.unshift(h('span', { class: 'muted clip-working clip-editing', role: 'status' }, T('Adding your camera… {0}%', Math.round(c.editing.progress * 100))));
   actions.push(h('button', { class: 'icon-btn clip-trim', 'aria-label': T('Edit {0}', c.title), title: T('Edit: trim or cut out parts (no quality loss)'), onclick: (e) => openTrim(c, e.currentTarget) }));
   actions.push(del);
   if (s?.ready) thumb.append(h('span', { class: 'clip-badge' }, T('Shared')));

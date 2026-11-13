@@ -2173,6 +2173,8 @@ body.has-nowbar .preview-pill { bottom: calc(var(--tabs-h) + var(--safe-bottom) 
 .edit-chip.is-off { color: var(--dust); background: none; border-color: var(--line); text-decoration: line-through; text-decoration-thickness: 1.5px; }
 .edit-info { margin: 12px 0; font-size: 14px; color: var(--dust); }
 .edit-info.is-error { color: var(--alert); }
+.edit-busy { color: var(--text); }
+.clip-editing { font-variant-numeric: tabular-nums; }
 .edit-actions { display: flex; align-items: center; gap: 10px; }
 .edit-actions .retry { margin: 0; flex: none; }
 .edit-save { flex: 1; }

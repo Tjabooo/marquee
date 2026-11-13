@@ -1728,4 +1728,6 @@ export default {
   "iPhone only pops videos out in Safari: open Lilin in Safari to use it": "iPhone lyfter bara ut videor i Safari: öppna Lilin i Safari för att använda det",
   "Press play, then the pop-out button": "Tryck på spela, sedan på knappen för bild i bild",
   "That video isn’t in your library any more": "Den videon finns inte längre i ditt bibliotek",
+  "Adding your camera… {0}%": "Lägger in din kamera… {0} %",
+  "Your last edit of this clip is still being saved ({0}%). Saving again replaces it.": "Din förra redigering av klippet sparas fortfarande ({0} %). Sparar du igen ersätts den.",
 };

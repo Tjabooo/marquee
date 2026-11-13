@@ -116,7 +116,7 @@ function fullPath(rel) {
 }
 
 // ---------- ffmpeg helpers ----------
-function run(cmd, args, { signal } = {}) {
+function run(cmd, args, { signal, onProgress } = {}) {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) return reject(signal.reason);
     let child;
@@ -130,7 +130,12 @@ function run(cmd, args, { signal } = {}) {
     background(child);
     let out = '';
     let err = '';
-    child.stdout.on('data', (d) => { out += d; });
+    // with "-progress pipe:1" ffmpeg reports out_time_us= on stdout: seconds written so far
+    child.stdout.on('data', (d) => {
+      if (!onProgress) { out += d; return; }
+      const t = String(d).match(/out_time_us=(\d+)/g)?.at(-1);
+      if (t) onProgress(Number(t.slice(12)) / 1e6);
+    });
     child.stderr.on('data', (d) => { err = (err + d).slice(-2000); });
     child.on('error', reject);
     child.on('close', (code) => {
@@ -216,7 +221,11 @@ function shareState(c) {
 
 // ---------- API (owner only; checked by the caller) ----------
 export async function listClips() {
-  return { configured: clipsConfigured(), clips: (await scan()).map((c) => ({ ...c, rel: undefined, share: shareState(c) })) };
+  const editing = (id) => {
+    const r = rendering.get(id)?.state;
+    return r?.state === 'working' ? { progress: Math.round(r.progress * 100) / 100 } : null;
+  };
+  return { configured: clipsConfigured(), clips: (await scan()).map((c) => ({ ...c, rel: undefined, share: shareState(c), editing: editing(c.id) })) };
 }
 export const clipFile = async (id) => fullPath((await byId(id)).rel);
 export async function camFile(id) {
@@ -567,8 +576,8 @@ export function camTimeline(parts, cam) {
   }
   return out;
 }
-async function burnCam(stage, camSrc, box, spans, v, out, signal) {
-  const args = ['-hide_banner', '-nostdin', '-y', '-i', stage];
+async function burnCam(stage, camSrc, box, spans, v, out, signal, onProgress) {
+  const args = ['-hide_banner', '-nostdin', '-y', ...(onProgress ? ['-progress', 'pipe:1', '-nostats'] : []), '-i', stage];
   for (const s of spans) args.push('-ss', secs(s.ss), '-t', secs(s.t), '-i', camSrc);
   const graph = [];
   let last = '0:v';
@@ -580,26 +589,31 @@ async function burnCam(stage, camSrc, box, spans, v, out, signal) {
   args.push('-filter_complex', graph.join(';'), '-map', `[${last}]`, '-map', '0:a?', '-map_metadata', '0', ...SHARE_X264);
   if (v.color_range === 'pc') args.push('-color_range', 'pc');
   args.push('-c:a', 'copy', '-movflags', '+faststart', out);
-  await run(FFMPEG, args, { signal });
+  await run(FFMPEG, args, { signal, onProgress });
 }
 
 // Burning the camera in re-encodes the whole picture (minutes), longer than a request may take
 // behind Cloudflare, so those edits run in the background and the editor asks how they're doing.
 // Saving again while the clip's previous edit is still rendering replaces that edit: the older
 // render is stopped (two at once only slowed both down and used to write the same file).
-const renders = new Map(); // job id -> { state: 'working' | 'done' | 'failed', title, error, at }
-const rendering = new Map(); // clip id -> AbortController of its edit in progress
+// The clip list shows the edit in progress (with how far it got), so it doesn't look like nothing happened.
+const renders = new Map(); // job id -> { state: 'working' | 'done' | 'failed', title, error, at, progress }
+const rendering = new Map(); // clip id -> { ctl, state, done } of its edit in progress
 export function startTrim(id, segments, options) {
   const job = crypto.randomBytes(8).toString('hex');
-  const state = { state: 'working', title: null, error: null, at: Date.now() };
+  const state = { state: 'working', title: null, error: null, at: Date.now(), progress: 0 };
   renders.set(job, state);
   for (const [k, r] of renders) if (r.state !== 'working' && Date.now() - r.at > 3600 * 1000) renders.delete(k);
-  rendering.get(id)?.abort(bad('Replaced by your newer edit of this clip.'));
+  const prev = rendering.get(id);
+  prev?.ctl.abort(bad('Replaced by your newer edit of this clip.'));
   const ctl = new AbortController();
-  rendering.set(id, ctl);
-  trim(id, segments, { ...options, signal: ctl.signal })
-    .finally(() => { if (rendering.get(id) === ctl) rendering.delete(id); })
-    .then((r) => Object.assign(state, { state: 'done', title: r.title, at: Date.now() }))
+  // the replaced edit cleans up first, so this one gets its file name (not "(edit) 2")
+  const done = (prev ? prev.done.catch(() => {}) : Promise.resolve())
+    .then(() => trim(id, segments, { ...options, signal: ctl.signal, onProgress: (p) => { state.progress = p; } }));
+  const entry = { ctl, state, done };
+  rendering.set(id, entry);
+  done.finally(() => { if (rendering.get(id) === entry) rendering.delete(id); }).catch(() => {});
+  done.then((r) => Object.assign(state, { state: 'done', title: r.title, progress: 1, at: Date.now() }))
     .catch((e) => Object.assign(state, { state: 'failed', error: e.message, at: Date.now() }));
   return { job };
 }
@@ -618,7 +632,8 @@ export async function checkTrim(id, segments, { removeTracks = [], overlay = nul
   return c.title;
 }
 
-export async function trim(id, segments, { deleteOriginal = false, removeTracks = [], overlay = null, signal } = {}) {
+export async function trim(id, segments, { deleteOriginal = false, removeTracks = [], overlay = null, signal, onProgress } = {}) {
+  signal?.throwIfAborted();
   const c = await byId(id);
   const src = fullPath(c.rel);
   const info = await cutInfo(src);
@@ -680,7 +695,9 @@ export async function trim(id, segments, { deleteOriginal = false, removeTracks 
       const spans = camTimeline(parts, cam);
       if (!spans.length) throw bad('The camera wasn’t recording during the parts you kept.');
       signal?.throwIfAborted();
-      await burnCam(pre, fullPath(camRelOf(c.rel)), box, spans, info.v, tmp, signal);
+      const total = parts.reduce((t, p) => t + (p.end - p.from), 0);
+      await burnCam(pre, fullPath(camRelOf(c.rel)), box, spans, info.v, tmp, signal,
+        onProgress && ((t) => onProgress(Math.min(0.99, Math.max(0, t / (total || 1))))));
     }
     signal?.throwIfAborted();
     await fs.promises.rename(tmp, dest);
