@@ -94,8 +94,9 @@ See [remote-access.md](remote-access.md) for how accounts work and how to publis
 | `SUBTITLE_REFERENCE_RESERVE` | `10` | OpenSubtitles downloads per day kept for subtitles people ask for: references are only fetched while more than this many are left. |
 | `SUBTITLE_LLM_URL` | — | An OpenAI-compatible server (e.g. `http://127.0.0.1:8091/v1` for llama.cpp's `llama-server`) that proofreads every English subtitle once, in the background, the one being watched and the next episode first. It fixes OCR mistakes in context ("iysteria" → "Listeria", "Wizard of 02" → "Oz", "papewvork"). A change is kept only if it looks like an OCR repair: same punctuation at both ends of each row, letters within a small edit distance, no new spelling of a word the library or the reference subtitle has, no capitals on everyday words. Fixes are kept in `CACHE_DIR/subtitle-proofread`; files on disk are never changed. A 4B model (Qwen3-4B-Instruct Q4_K_M, 2.5 GB) fits a 4 GB graphics card. |
 | `SUBTITLE_LLM_MODEL` | `subtitles` | The model name sent to that server. |
-| `SUBTITLE_LLM_SERVER` | — | The command that starts that server. Lilin runs it at low priority when there's proofreading to do and stops it after 10 idle minutes. Leave empty if the server runs on its own. |
+| `SUBTITLE_LLM_SERVER` | — | The command that starts that server. Lilin runs it at low priority when there's proofreading to do and stops it after 10 idle minutes. It can also be an SSH tunnel to a model on another machine (`ssh -N -L 8091:127.0.0.1:13306 desktop`). Leave empty if the server runs on its own. |
 | `SUBTITLE_LLM_KEY` | — | Sent as a Bearer token, for a server that wants one. |
+| `SUBTITLE_LLM_PAUSE` | — | A command that exits 0 while the machine running the model is busy with something that matters more, checked before every chunk (e.g. `ssh desktop pgrep -x cs2` when the model runs on a gaming PC's graphics card). Proofreading waits, checking every 5 minutes. |
 | `SUBTITLE_LLM` | `on` | `off` pauses proofreading (fixes already made are still used only while it's on). |
 
 ## Casting

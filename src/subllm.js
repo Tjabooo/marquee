@@ -110,6 +110,33 @@ function kick() {
   })().finally(() => { running = false; idleLater(); });
 }
 
+// SUBTITLE_LLM_PAUSE: a command that exits 0 while the model's machine is busy with something that
+// matters more (a game on the desktop whose graphics card runs the model), checked before every
+// chunk. Proofreading waits until it says otherwise.
+function busyNow() {
+  const cmd = process.env.SUBTITLE_LLM_PAUSE;
+  if (!cmd) return Promise.resolve(false);
+  const [exe, ...rest] = args(cmd);
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (v) => { if (!done) { done = true; resolve(v); } };
+    try {
+      const p = spawn(exe, rest, { stdio: 'ignore', windowsHide: true });
+      const t = setTimeout(() => { p.kill(); finish(false); }, 20000);
+      p.on('exit', (code) => { clearTimeout(t); finish(code === 0); });
+      p.on('error', () => { clearTimeout(t); finish(false); });
+    } catch { finish(false); }
+  });
+}
+let pausedSince = 0;
+async function waitWhileBusy() {
+  while (await busyNow()) {
+    if (!pausedSince) { pausedSince = Date.now(); console.log('[proofread] paused: the model\'s machine is busy'); }
+    await new Promise((r) => setTimeout(r, 5 * 60 * 1000));
+  }
+  if (pausedSince) { pausedSince = 0; console.log('[proofread] carrying on'); }
+}
+
 async function ping() {
   try { return (await fetch(`${url}/models`, { signal: AbortSignal.timeout(5000) })).ok; } catch { return false; }
 }
@@ -353,6 +380,7 @@ export async function proofreadCues(cues, { title = '', names = [], onChunk = nu
       if (/[A-Za-z]/.test(strip(raw))) part.push(`${j}: ${raw.replace(/\n/g, ' | ')}`);
     }
     if (!part.length) continue;
+    await waitWhileBusy();
     const answer = await ask(system, part.join('\n'));
     for (const [k, v] of Object.entries(answer || {})) {
       const j = Number(k);
