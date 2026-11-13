@@ -263,6 +263,8 @@ function decode(buf) {
 // ---------- fixing ----------
 const entry = (w) => (lexicon && lexicon.words[w.toLowerCase()]) || null;
 const fileCount = (w) => entry(w)?.[3] || 0;
+// How many library subtitles use this word (any case); for the proofreader's guards.
+export const wordFiles = (lower) => fileCount(lower);
 
 // How clean files write this word mid-sentence: 'cap', 'upper' or null (lowercase / unsure).
 // learned = false: only the built-in acronyms.
@@ -480,7 +482,7 @@ function referenceForm(ref, lower, prev, next) {
 
 // A word the library writes in lowercase almost everywhere ("if", "medicine", "room"): the
 // reference's own style ("Dean of Medicine", "...If you") doesn't change it.
-function ordinaryWord(lower) {
+export function ordinaryWord(lower) {
   const e = entry(lower);
   return Boolean(e) && e[0] >= 8 && e[1] + e[2] < 0.1 * (e[0] + e[1] + e[2]);
 }
@@ -669,9 +671,10 @@ export function fixEnglishSrt(srt, { characters = [], title = '', reference = nu
 
 // Cached by file path + modification time + word list age.
 // characters: the film's or show's cast list (character names) from TMDB, when known.
-export function cleanSubtitle(text, { lang, file = '', mtimeMs = 0, characters = [], reference = null } = {}) {
+// variant: anything else that changed the text before it got here (the proofreader's fix count).
+export function cleanSubtitle(text, { lang, file = '', mtimeMs = 0, characters = [], reference = null, variant = 0 } = {}) {
   if (lang !== 'en' || process.env.SUBTITLE_FIX === 'off') return text;
-  const key = `${file}|${mtimeMs}|${lexicon?.at || 0}|${characters.length}|${reference?.length || 0}`;
+  const key = `${file}|${mtimeMs}|${variant}|${lexicon?.at || 0}|${characters.length}|${reference?.length || 0}`;
   if (file && fixedCache.has(key)) return fixedCache.get(key);
   let out = text;
   try { out = fixEnglishSrt(text, { characters, title: titleKeyOf(file), reference }); } catch (e) { console.warn(`[subfix] ${path.basename(file)}: ${e.message}`); }

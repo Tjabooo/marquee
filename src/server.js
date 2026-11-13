@@ -12,7 +12,8 @@ import * as cast from './cast.js';
 import * as converter from './convert.js';
 import * as torrents from './torrents.js';
 import * as subtitles from './subtitles.js';
-import { initSubfix } from './subfix.js';
+import { initSubfix, wordFiles, ordinaryWord } from './subfix.js';
+import { initProofread, setProofreadGuards } from './subllm.js';
 import * as subsync from './subsync.js';
 import * as activity from './activity.js';
 import * as house from './house.js';
@@ -272,7 +273,7 @@ initSubfix({ roots: [MEDIA_DIR], cacheFile: path.join(CACHE_DIR, 'subtitle-words
 // English subtitles get the title's character names right ("cuddy" → "Cuddy") from its TMDB cast
 // list, even when every release of the show writes them in lowercase (see subfix.js). Main
 // characters (3+ episodes, top 20 billed in a film) are trusted more than one-off roles.
-subtitles.setCharacterSource(async (video) => {
+async function castOf(video) {
   if (!tmdbOn()) return [];
   const media = parseFile(video);
   const tv = media.season != null;
@@ -280,7 +281,19 @@ subtitles.setCharacterSource(async (video) => {
   if (!id) return [];
   const d = await cachedTmdb(tv ? `/tv/${id}/aggregate_credits` : `/movie/${id}/credits`, {}, 24 * 3600 * 1000);
   return (d.cast || []).flatMap((c) => (c.roles ? c.roles.map((r) => ({ name: r.character, main: r.episode_count >= 3 })) : [{ name: c.character, main: c.order < 20 }])).filter((c) => c.name);
+}
+subtitles.setCharacterSource(castOf);
+// English subtitles are proofread once by a local language model when SUBTITLE_LLM_URL is set
+// (subllm.js): the whole library in the background, what's being watched first.
+initProofread({
+  llmUrl: process.env.SUBTITLE_LLM_URL,
+  llmModel: process.env.SUBTITLE_LLM_MODEL,
+  cacheDir: path.join(CACHE_DIR, 'subtitle-proofread'),
+  mediaRoots: [MEDIA_DIR],
+  characters: castOf,
+  title: (video) => parseFile(video).title,
 });
+setProofreadGuards({ known: wordFiles, ordinary: ordinaryWord, reference: (srt) => subtitles.cachedReference(srt) });
 // Broken English subtitles are guided by a human-made one of the same episode (subtitles.js).
 subtitles.setReferenceSource({
   dir: path.join(CACHE_DIR, 'subtitle-references'),

@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { cleanSubtitle, wantsReference, referenceFits, titleKeyOf } from './subfix.js';
+import { applyProofread, enqueue as queueProofread } from './subllm.js';
 
 const API_KEY = process.env.OPENSUBTITLES_API_KEY || '';
 const USER = process.env.OPENSUBTITLES_USER || '';
@@ -360,11 +361,20 @@ export async function readSubtitle(file, lang) {
   const p = findSidecar(file, lang);
   if (!p) throw fail(404, 'Those subtitles aren’t on the server.');
   const [buf, st, characters] = await Promise.all([fs.promises.readFile(p), fs.promises.stat(p), lang === 'en' ? charactersFor(file) : []]);
-  const text = decodeText(buf);
+  let text = decodeText(buf);
+  let proofread = 0;
+  if (lang === 'en') {
+    // A language model's proofreading (subllm.js), once it has read this file; this one and the
+    // next episode go to the front of its queue.
+    ({ text, count: proofread } = applyProofread(p, text));
+    queueProofread(p, true);
+    const next = nextSidecar(file);
+    if (next) queueProofread(next, true);
+  }
   // English text that came from OCR gets its names, acronyms and I/l mix-ups fixed (see subfix.js),
   // with a human-made subtitle of the same episode as a guide when one has been fetched.
   const reference = lang === 'en' ? await referenceFor(file, p, text, characters) : null;
-  return cleanSubtitle(text, { lang, file: p, mtimeMs: st.mtimeMs, characters, reference });
+  return cleanSubtitle(text, { lang, file: p, mtimeMs: st.mtimeMs, variant: proofread, characters, reference });
 }
 
 // ---------- reference subtitles ----------
@@ -477,6 +487,23 @@ async function fetchReference(video, key, text, { characters, title }) {
 }
 
 const VIDEO_FILE = /\.(mkv|mp4|m4v|mov|webm|avi)$/i;
+function nextVideo(video) {
+  let names;
+  try { names = fs.readdirSync(path.dirname(video)).filter((n) => VIDEO_FILE.test(n)).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })); } catch { return null; }
+  const at = names.indexOf(path.basename(video));
+  return at >= 0 && names[at + 1] ? path.join(path.dirname(video), names[at + 1]) : null;
+}
+function nextSidecar(video) {
+  const next = nextVideo(video);
+  return next ? findSidecar(next, 'en') : null;
+}
+
+// The reference saved for this subtitle, if any (the proofreader keeps words it contains).
+export function cachedReference(srtPath) {
+  if (!refDir) return null;
+  try { return fs.readFileSync(path.join(refDir, `${refKey(srtPath)}.srt`), 'utf8'); } catch { return null; }
+}
+
 function prefetchNext(video, characters) {
   let names;
   try { names = fs.readdirSync(path.dirname(video)).filter((n) => VIDEO_FILE.test(n)).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })); } catch { return; }
