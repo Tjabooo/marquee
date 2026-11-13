@@ -12,6 +12,10 @@ export function createPeek({ h, icon, pageInfo, openDetails, quickAction, owners
   const shade = h('div', { class: 'peek-shade', hidden: true });
   document.body.append(shade, panel);
   let card = null, hoverTimer = null, pressTimer = null, pressStart = null, swallowUntil = 0, mode = null;
+  // Bumped by every show/hide so a late animation frame or hide timer from an earlier one can't act.
+  // (A hidden tab pauses animation frames: the 'open' of a show could land after its hide and strand
+  // the card on screen with nothing left to close it.)
+  let gen = 0;
 
   const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
   const hoverable = () => matchMedia('(hover: hover) and (pointer: fine) and (min-width: 900px)').matches;
@@ -65,16 +69,18 @@ export function createPeek({ h, icon, pageInfo, openDetails, quickAction, owners
     shade.hidden = how !== 'press';
     if (how === 'hover') place(from);
     else { panel.style.cssText = ''; }
-    requestAnimationFrame(() => { panel.classList.add('open'); shade.classList.add('open'); });
+    const g = ++gen;
+    requestAnimationFrame(() => { if (g === gen) { panel.classList.add('open'); shade.classList.add('open'); } });
     if (how === 'press') { panel.setAttribute('aria-modal', 'true'); panel.querySelector('button')?.focus({ preventScroll: true }); }
     else panel.setAttribute('aria-modal', 'false');
   }
-  function hide() {
+  function hide(instant = false) {
     clearTimeout(hoverTimer);
     if (panel.hidden) return;
+    const g = ++gen;
     panel.classList.remove('open'); shade.classList.remove('open');
-    const was = panel;
-    setTimeout(() => { if (!was.classList.contains('open')) { was.hidden = true; shade.hidden = true; } }, reduced() ? 0 : 200);
+    const done = () => { if (g === gen) { panel.hidden = true; shade.hidden = true; } };
+    if (instant || reduced()) done(); else setTimeout(done, 200);
     if (mode === 'press' && card?.isConnected) card.focus({ preventScroll: true });
     card = null; mode = null;
   }
@@ -85,7 +91,7 @@ export function createPeek({ h, icon, pageInfo, openDetails, quickAction, owners
     const c = e.target.closest?.('.title-card');
     if (!c?._title || c === card) return;
     clearTimeout(hoverTimer);
-    hoverTimer = setTimeout(() => { if (c.matches(':hover')) { if (card) hide(); show(c, 'hover'); } }, HOVER_MS);
+    hoverTimer = setTimeout(() => { if (!document.hidden && c.matches(':hover')) { if (card) hide(); show(c, 'hover'); } }, HOVER_MS);
   });
   document.addEventListener('pointerout', (e) => {
     if (e.pointerType !== 'mouse') return;
@@ -98,10 +104,13 @@ export function createPeek({ h, icon, pageInfo, openDetails, quickAction, owners
   // The page or a row moving under the pointer ends a hover peek (the billboard turning its own slides doesn't).
   window.addEventListener('scroll', (e) => {
     if (e.target?.closest?.('.billboard')) return;
-    if (mode === 'hover') hide();
+    if (mode !== 'press') hide();
     clearTimeout(hoverTimer);
   }, { passive: true, capture: true });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && mode) { e.stopPropagation(); hide(); } }, true);
+  // Leaving the tab or window ends a hover peek at once: the pointer's way out isn't always reported.
+  document.addEventListener('visibilitychange', () => { if (document.hidden && mode !== 'press') hide(true); });
+  window.addEventListener('blur', () => { if (mode !== 'press') hide(true); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !panel.hidden) { e.stopPropagation(); hide(); } }, true);
 
   // ---- touch: long press ----
   document.addEventListener('pointerdown', (e) => {
@@ -125,7 +134,7 @@ export function createPeek({ h, icon, pageInfo, openDetails, quickAction, owners
   document.addEventListener('pointercancel', cancelPress, { passive: true });
   // Android's long-press menu and iOS's callout would otherwise appear over the peek.
   document.addEventListener('contextmenu', (e) => { if (e.target.closest?.('.title-card')?._title && matchMedia('(pointer: coarse)').matches) e.preventDefault(); });
-  shade.addEventListener('click', hide);
+  shade.addEventListener('click', () => hide());
 
   return {
     // A card's click right after its long press opened the peek: don't also open the title.

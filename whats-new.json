@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-13-stuck-peek",
+    "date": "2026-11-13",
+    "title": "Hover cards don't get stuck",
+    "items": [
+      {
+        "title": "No more floating cards",
+        "text": "The card that pops up when you rest the mouse on a title could sometimes stay stuck on the screen and float along as you scrolled, mostly after switching to another tab and back. It now closes when you leave the tab or window, and scrolling always closes it."
+      }
+    ]
+  },
+  {
     "id": "2026-11-13-add-icon",
     "date": "2026-11-13",
     "title": "Add button shows its plus",
