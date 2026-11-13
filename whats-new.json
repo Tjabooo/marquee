@@ -1,5 +1,16 @@
 [
   {
+    "id": "2026-11-13-anime-signs",
+    "date": "2026-11-13",
+    "title": "Anime signs read properly",
+    "items": [
+      {
+        "title": "No more letter columns",
+        "text": "When a letter, poster or sign in an anime shows Japanese text, the subtitles' translation of it sometimes came out as a long column of single letters or a pile of pieces in the middle of the picture. Those translations now show as one short line at the top of the screen, and the dialogue stays at the bottom."
+      }
+    ]
+  },
+  {
     "id": "2026-11-13-seasons-in-order",
     "date": "2026-11-13",
     "title": "Seasons download in order",

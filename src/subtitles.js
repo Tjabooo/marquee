@@ -7,6 +7,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { cleanSubtitle, wantsReference, referenceFits, titleKeyOf } from './subfix.js';
 import { applyProofread, enqueue as queueProofread } from './subllm.js';
+import { tidySigns } from './subsigns.js';
 
 const API_KEY = process.env.OPENSUBTITLES_API_KEY || '';
 const USER = process.env.OPENSUBTITLES_USER || '';
@@ -374,6 +375,8 @@ export async function readSubtitle(file, lang) {
   // English text that came from OCR gets its names, acronyms and I/l mix-ups fixed (see subfix.js),
   // with a human-made subtitle of the same episode as a guide when one has been fetched.
   const reference = lang === 'en' ? await referenceFor(file, p, text, characters) : null;
+  // Fansub signs (text in the picture, typeset word by word or letter by letter) → one cue at the top.
+  text = tidySigns(text);
   return assBraces(cleanSubtitle(text, { lang, file: p, mtimeMs: st.mtimeMs, variant: proofread, characters, reference }));
 }
 
