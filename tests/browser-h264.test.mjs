@@ -66,3 +66,35 @@ test('an unavailable candidate inventory preserves existing browser copies', { t
   await new Promise((r) => setTimeout(r, 6000));
   assert.equal(existsSync(existing), true, 'temporary inventory failure must not delete browser cache files');
 });
+
+// More recent HEVC files than BROWSER_COPIES_MAX_GB holds made the cache evict a copy, the next scan queue
+// that file again, and so on: the same episodes were re-encoded several times a day. A copy deleted to make
+// room stays gone until someone plays the file in a browser that needs it.
+test('the background scan does not remake a browser copy that was deleted to make room', { timeout: 60000 }, async (t) => {
+  const run = promisify(execFile);
+  const ffmpeg = process.env.FFMPEG || 'ffmpeg';
+  try { await run(ffmpeg, ['-version']); await run(process.env.FFPROBE || 'ffprobe', ['-version']); }
+  catch { t.skip('FFmpeg unavailable'); return; }
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-evicted-'));
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  const file = path.join(dir, 'Show.S01E01.1080p.x265.mp4');
+  try {
+    await run(ffmpeg, ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=red:s=128x128:r=4:d=2',
+      '-f', 'lavfi', '-i', 'sine=frequency=440:duration=2', '-c:v', 'libx265', '-x265-params', 'log-level=error',
+      '-tag:v', 'hvc1', '-c:a', 'aac', '-y', file]);
+  } catch { t.skip('FFmpeg without libx265'); return; }
+  process.env.MIN_FREE_GB = '0';
+
+  // Learn the copy's cache name, then record it as evicted the way makeRoom does.
+  const probe = await import('../src/convert.js?evicted-name');
+  await probe.startConverter({ dataDir: dir, listCandidates: async () => null });
+  const copy = probe.h264Path(file);
+  await fs.writeFile(path.join(dir, '.lilin-convert.json'),
+    JSON.stringify({ failures: {}, copyEvicted: { [path.basename(copy)]: Date.now() } }));
+
+  const convert = await import('../src/convert.js?evicted-test');
+  await convert.startConverter({ dataDir: dir, listCandidates: async () => [{ file, deleteOriginal: false }] });
+  await new Promise((r) => setTimeout(r, 8000)); // the first scan runs after five seconds
+  assert.equal(existsSync(copy), false, 'an evicted copy is not re-encoded in the background');
+  assert.equal(convert.jobState(file), null);
+});

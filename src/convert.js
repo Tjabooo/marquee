@@ -49,6 +49,10 @@ let audioChecked = {}; // file key -> true once its audio is known to be browser
 let syncShift = {};    // source key -> manual audio correction in seconds (negative = earlier)
 let syncApplied = {};  // source key -> correction baked into the current copy
 let copyUsed = {};     // cached copy file name -> last time it was streamed (ms)
+// cached copy file name -> when it was deleted to make room. The background scan doesn't make such a copy
+// again (Play or the next-episode prep still does): otherwise more recent HEVC files than the cap holds
+// keep pushing each other out and the same episodes are re-encoded over and over.
+let copyEvicted = {};
 const CHECK_VERSION = 'v3|'; // bump to re-check files after the audio checks change
 const SYNC_TOLERANCE = 0.04; // seconds; below one video frame
 let onConvertedHook = null;
@@ -884,7 +888,7 @@ const failureKey = (file) => {
 };
 
 function saveFailures() {
-  try { fs.writeFileSync(stateFile, JSON.stringify({ failures, audioChecked, syncShift, syncApplied, pendingDeletes, copyUsed }, null, 2)); } catch { /* best effort */ }
+  try { fs.writeFileSync(stateFile, JSON.stringify({ failures, audioChecked, syncShift, syncApplied, pendingDeletes, copyUsed, copyEvicted }, null, 2)); } catch { /* best effort */ }
 }
 
 // Removes cached copies whose source file no longer exists or has changed.
@@ -958,6 +962,7 @@ async function makeRoom(job) {
     try {
       fs.rmSync(path.join(fixDir, name), { force: true });
       delete copyUsed[name];
+      copyEvicted[name] = Date.now();
       console.log(`[convert] removed browser copy ${name} to make room`);
     } catch { /* in use; next time */ }
   }
@@ -995,7 +1000,7 @@ async function browserH264Job(target, added) {
   if (!(BROWSER_H264_DAYS > 0) || !canFix(target)) return null;
   if (hasJob(target, 'h264') || failures[failureKey(target)]) return null;
   const copy = h264Path(target);
-  if (!copy || fs.existsSync(copy)) return null;
+  if (!copy || fs.existsSync(copy) || copyEvicted[path.basename(copy)]) return null;
   try {
     const st = fs.statSync(added);
     if (Date.now() - Math.max(st.birthtimeMs || 0, st.mtimeMs) > BROWSER_H264_DAYS * 864e5) return null;
@@ -1147,6 +1152,9 @@ export async function startConverter({ dataDir, cacheDir = path.join(dataDir, 'c
       syncApplied = saved.syncApplied || {};
       pendingDeletes = saved.pendingDeletes || [];
       copyUsed = saved.copyUsed || {};
+      // Past the background window the file wouldn't be queued anyway, so the entry can go.
+      const evictedSince = Date.now() - Math.max(BROWSER_H264_DAYS, 1) * 864e5;
+      copyEvicted = Object.fromEntries(Object.entries(saved.copyEvicted || {}).filter(([, at]) => at >= evictedSince));
       // Earlier versions recorded a locked original as a failed conversion although its copy was made.
       for (const [key, f] of Object.entries(failures)) {
         const file = key.split('|')[0];
