@@ -41,7 +41,7 @@ import { createSvtQueue, expectedSize } from './svt-queue.js';
 import { createDocumentaries } from './documentaries.js';
 import { scratchPlan, liveRoot, usesScratch } from './scratch.js';
 import * as versions from './versions.js';
-import { planEpisodeOrder } from './episode-order.js';
+import { planEpisodeOrder, activeSeasons, holdSeason } from './episode-order.js';
 import { fakeRelease } from './fake-release.js';
 import { PROFILES, isDualAudio } from './recommend.js';
 import * as accounts from './accounts.js';
@@ -1861,15 +1861,33 @@ async function episodeOrderRound() {
       if (/^(stalledDL|metaDL|forcedMetaDL)$/.test(t.state || '')) lastStalled.set(hashKey, Date.now());
       const wasStalled = Date.now() - (lastStalled.get(hashKey) || 0) < STALL_MEMORY;
       const group = `${entry.key}|${entry.season}`;
-      if (!groups.has(group)) groups.set(group, { season: entry.season, ctx: anime.contextForTitle(entry.key), torrents: [] });
+      if (!groups.has(group)) groups.set(group, { key: entry.key, season: entry.season, ctx: anime.contextForTitle(entry.key), torrents: [] });
       groups.get(group).torrents.push({ hash: hashKey, name: t.name, state: t.state, progress: t.progress, wasStalled,
         files: files.map((f, i) => ({ index: f.index ?? i, name: f.name, progress: f.progress, priority: f.priority })) });
     }
     if (finishedEpisodeFiles.size > 5000) finishedEpisodeFiles.clear();
     for (const hash of lastStalled.keys()) if (!episodeOrder.has(hash)) lastStalled.delete(hash);
     const held = new Set([...episodeOrder].filter(([, e]) => e.held).map(([hash]) => hash));
-    for (const group of groups.values()) {
+    // Seasons in order: per show and person, later seasons wait for the earliest (episode-order.js).
+    const plans = new Map(), byShow = new Map();
+    for (const [id, group] of groups) {
       const plan = planEpisodeOrder(group, held);
+      plans.set(id, plan);
+      const wanters = [...new Set(group.torrents.flatMap((t) => accounts.torrentWanters(t.hash)))];
+      byShow.set(group.key, [...(byShow.get(group.key) || []), { id, season: group.season, wanters, plan }]);
+    }
+    for (const [key, seasons] of byShow) {
+      if (seasons.length < 2) continue;
+      const active = activeSeasons(seasons);
+      for (const s of seasons) {
+        if (active.has(s.season)) continue;
+        const hold = holdSeason(s.plan);
+        if (hold.stop.length) console.log(`[order] ${key} season ${s.season} waits for season ${[...active].sort((a, b) => a - b).join('/')}`);
+        plans.set(s.id, hold);
+      }
+    }
+    for (const id of groups.keys()) {
+      const plan = plans.get(id);
       // Someone is watching this one with Play now: it keeps its own order until they stop.
       const watching = partialStreams.activeHashes();
       plan.priorities = plan.priorities.filter(({ hash }) => !watching.has(hash));

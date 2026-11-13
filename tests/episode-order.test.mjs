@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { planEpisodeOrder, TOP, NORMAL } from '../src/episode-order.js';
+import { planEpisodeOrder, activeSeasons, holdSeason, TOP, NORMAL } from '../src/episode-order.js';
 
 const file = (index, ep, progress = 0, priority = NORMAL) => ({ index, name: `Show.S01/Show.S01E${String(ep).padStart(2, '0')}.1080p.mkv`, progress, priority });
 const single = (hash, ep, extra = {}) => ({ hash, name: `Show.S01E${String(ep).padStart(2, '0')}.1080p.WEB`, state: 'downloading', progress: 0, files: [{ index: 0, name: `Show.S01E${String(ep).padStart(2, '0')}.mkv`, progress: 0, priority: 1 }], ...extra });
@@ -55,4 +55,34 @@ test('a pack waits while an earlier separate episode downloads, then takes over'
   assert.deepEqual(plan.stop, ['p']); assert.deepEqual(plan.running, [{ hash: 'e1', episode: 1 }]);
   const later = planEpisodeOrder({ season: 1, torrents: [single('e1', 1, { progress: 1, state: 'uploading' }), { ...pack, state: 'stoppedDL' }] }, new Set(['p']));
   assert.deepEqual(later.start, ['p']); assert.deepEqual(later.priorities, [{ hash: 'p', ids: [0], priority: TOP }]);
+});
+
+const plan = (running, healthy = true) => ({ running: running.map((hash) => ({ hash, episode: 1 })), healthy, stop: [], start: [], priorities: [] });
+
+test('seasons of one show download one at a time, lowest first', () => {
+  const seasons = [8, 5, 7, 6].map((n) => ({ season: n, wanters: ['oliver'], plan: plan([`s${n}`]) }));
+  assert.deepEqual([...activeSeasons(seasons)], [5]);
+  assert.deepEqual([...activeSeasons(seasons.filter((s) => s.season !== 5))], [6], 'season 5 done: 6 takes over');
+});
+
+test('two people downloading different seasons each get their earliest one running', () => {
+  const seasons = [{ season: 5, wanters: ['oliver'], plan: plan(['a']) }, { season: 6, wanters: ['oliver'], plan: plan(['b']) },
+    { season: 2, wanters: ['anita'], plan: plan(['c']) }, { season: 3, wanters: ['anita'], plan: plan(['d']) }];
+  assert.deepEqual([...activeSeasons(seasons)].sort(), [2, 5]);
+  // both want season 5: it's the only one running
+  assert.deepEqual([...activeSeasons([{ season: 5, wanters: ['oliver', 'anita'], plan: plan(['a']) }, { season: 6, wanters: ['anita'], plan: plan(['b']) }])], [5]);
+});
+
+test('a stalled or unrunnable season lets the next season run', () => {
+  const seasons = [{ season: 1, wanters: [], plan: plan([]) }, { season: 2, wanters: [], plan: plan(['a'], false) },
+    { season: 3, wanters: [], plan: plan(['b']) }, { season: 4, wanters: [], plan: plan(['c']) }];
+  assert.deepEqual([...activeSeasons(seasons)], [2, 3]);
+});
+
+test('a waiting season stops what would run and starts nothing', () => {
+  const p = { running: [{ hash: 'a', episode: 1 }, { hash: 'b', episode: 2 }], start: ['b'], stop: ['c'], priorities: [{ hash: 'a', ids: [0], priority: TOP }], healthy: true };
+  assert.deepEqual(holdSeason(p), { priorities: [], stop: ['c', 'a'], start: [], running: [], healthy: false });
+  const real = planEpisodeOrder({ season: 1, torrents: [single('x', 1), single('y', 2)] });
+  assert.equal(real.healthy, true);
+  assert.deepEqual(holdSeason(real).stop.sort(), ['x', 'y']);
 });

@@ -1,4 +1,13 @@
 {
+  "2026-11-13-seasons-in-order": {
+    "title": "Säsonger laddas ner i ordning",
+    "items": {
+      "One season at a time": {
+        "title": "En säsong i taget",
+        "text": "Laddar du ner flera säsonger av en serie kommer de nu en i taget, lägsta säsongen först, så att nästa säsong du ska se blir klar snabbare. De andra står i kö. Laddar två personer ner olika säsonger av samma serie laddas varderas nästa säsong ner samtidigt."
+      }
+    }
+  },
   "2026-11-13-subtitle-proofread": {
     "title": "Undertexter korrekturläses",
     "items": {
