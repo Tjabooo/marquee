@@ -416,11 +416,13 @@ function referenceTable(refSrt) {
   const words = new Map();
   const ctx = new Map();
   const phrases = new Map();
+  const slots = new Map(); // "prev|next" → Map(word → count): what sits between two words
   const add = (map, key, form) => {
     if (!map.has(key)) map.set(key, new Map());
     map.get(key).set(form, (map.get(key).get(form) || 0) + 1);
   };
   for (const { word, start, prev, prevRaw, prevStart, next, nextRaw } of tokensOf(parseCues(refSrt))) {
+    add(slots, `${prev}|${next}`, word);
     if (word.length < 2) continue;
     const base = word.replace(/'s$/i, '');
     if (base.length > 1 && base === base.toUpperCase()) continue; // "HOUSE:" labels, shouting
@@ -433,7 +435,20 @@ function referenceTable(refSrt) {
     add(ctx, `${prev} ${lower}|`, base);
     add(ctx, `|${lower} ${next}`, base);
   }
-  return { words, ctx, phrases };
+  return { words, ctx, phrases, slots };
+}
+
+// OCR reads letters as look-alike digits: "the Wizard of 02" is "Oz". A number becomes the
+// reference's word in the same spot (same words before and after) when they're the same
+// characters once look-alikes are folded together.
+const LOOKALIKE = { 0: 'o', 1: 'l', 2: 'z', 5: 's', 6: 'g', 8: 'b', i: 'l' };
+const fold = (w) => [...w.toLowerCase()].map((c) => LOOKALIKE[c] || c).join('');
+function referenceDigits(ref, token, prev, next) {
+  if (!ref || !/\d/.test(token) || !/^[0-9a-z]+$/i.test(token) || token.length > 6) return null;
+  const forms = ref.slots.get(`${prev}|${next}`);
+  if (!forms) return null;
+  const hits = [...forms.keys()].filter((w) => /^[A-Za-z]/.test(w) && w.length === token.length && fold(w) === fold(token));
+  return hits.length === 1 ? hits[0] : null;
 }
 
 // An ordinary word that's part of a name in the reference, in exactly the same three words
@@ -624,7 +639,10 @@ export function fixEnglishSrt(srt, { characters = [], title = '', reference = nu
         const joined = /-$/.test(gap);
         const next = raw[m.index + m[2].length] || '';
         const rest = stripMarkup(raw.slice(m.index + m[2].length));
-        const fixed = /^[A-Za-z]/.test(word) && !joined ? fixWord(word, {
+        const digits = /^\d/.test(word) && !joined && refTable
+          ? referenceDigits(refTable, word, prev, (rest.match(/^[^A-Za-z0-9]*?([A-Za-z][A-Za-z']*|\d+(?:[.,:]\d+)*%?)/)?.[1] || '').replace(/'+$/, '').toLowerCase())
+          : null;
+        const fixed = digits || (/^[A-Za-z]/.test(word) && !joined ? fixWord(word, {
           next2: raw[m.index + m[2].length + 1] || '',
           nextWord: (rest.match(/^[^A-Za-z0-9]*?([A-Za-z][A-Za-z']*|\d+(?:[.,:]\d+)*%?)/)?.[1] || '').replace(/'+$/, '').toLowerCase(),
           reference: refTable,
@@ -632,7 +650,7 @@ export function fixEnglishSrt(srt, { characters = [], title = '', reference = nu
           titled: NAME_TITLES.has(prev) && /^\.?\s+$/.test(gap),
           vocative: /,\s*$/.test(gap) && /^['’]?s?\s*(?:$|[.?!,…])/.test(rest),
           possessive: /['’]s?$/.test(prevRaw) || /^[A-Za-z]+s['’]$/.test(prevRaw),
-        }) : word;
+        }) : word);
         out += raw.slice(last, m.index) + fixed + trail;
         last = m.index + m[2].length;
         prev = word.toLowerCase();

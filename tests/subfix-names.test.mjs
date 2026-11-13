@@ -87,3 +87,9 @@ test('a reference must be the same episode and not broken itself', () => {
   assert.equal(referenceFits(mine, srt('Dinner with Cuddy tonight, really late.', 'Another dinner tomorrow evening.')), true);
   assert.equal(referenceFits(mine, srt('Something completely different happens here.', 'Nothing matches anything.')), false);
 });
+
+test('digits OCR read instead of letters take the reference word in the same spot', () => {
+  const mine = srt('Ebsen was in the wizard of 02, for a day.', 'He had 02 tanks of 02.');
+  const ref = srt('Ebsen was in the Wizard of Oz, for a day.', 'He had two tanks of oxygen.');
+  assert.deepEqual(textOf(fixEnglishSrt(mine, { reference: ref })), ['Ebsen was in the Wizard of Oz, for a day.', 'He had 02 tanks of 02.']);
+});
