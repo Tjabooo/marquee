@@ -1,4 +1,40 @@
 {
+  "2026-11-13-clip-rendering-hidden": {
+    "title": "Klipp: redigeringar som pågår syns inte i listan",
+    "items": {
+      "No broken clip while a trim saves": {
+        "title": "Inget trasigt klipp medan en klippning sparas",
+        "text": "Medan en klippning eller redigering fortfarande sparades dök den ofärdiga filen upp under Klipp som ett eget klipp, utan bild och med fel när du öppnade det. Nu är den dold tills redigeringen är klar."
+      }
+    }
+  },
+  "2026-11-13-stuck-peek": {
+    "title": "Kort som visas vid hovring fastnar inte",
+    "items": {
+      "No more floating cards": {
+        "title": "Inga fler svävande kort",
+        "text": "Kortet som dyker upp när du vilar musen på en titel kunde ibland fastna på skärmen och följa med när du scrollade, mest efter att du bytt till en annan flik och tillbaka. Nu stängs det när du lämnar fliken eller fönstret, och det stängs alltid när du scrollar."
+      }
+    }
+  },
+  "2026-11-13-add-icon": {
+    "title": "Lägg till-knappen visar sitt plustecken",
+    "items": {
+      "Plus sign is back": {
+        "title": "Plustecknet är tillbaka",
+        "text": "Lägg till-knappen på kortet som dyker upp när du hovrar över en titel, och på den stora bannern högst upp på Hem, saknade sitt plustecken och visade ett tomt mellanrum. Nu är plustecknet tillbaka."
+      }
+    }
+  },
+  "2026-11-13-anime-honorifics": {
+    "title": "Renare anime-undertexter",
+    "items": {
+      "Honorifics show properly": {
+        "title": "Hederstitlar visas rätt",
+        "text": "Vissa anime-undertexter visade namn som \"Yui{**-san}\". Nu står det \"Yui-san\", och översättarkommentarer som gömts i undertextfilen syns inte längre på skärmen."
+      }
+    }
+  },
   "2026-11-13-tv-4k-dv": {
     "title": "4K-avsnitt med Dolby Vision spelas på Samsung-tv:n",
     "items": {
