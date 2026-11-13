@@ -1,5 +1,17 @@
 [
   {
+    "id": "2026-11-13-subtitle-proofread",
+    "date": "2026-11-13",
+    "title": "Subtitles get proofread",
+    "items": [
+      {
+        "title": "Scanning mistakes fixed by AI",
+        "audience": "owner",
+        "text": "Every English subtitle in the library is now read through once by an AI model on the desktop's graphics card, which fixes the mistakes left by subtitles that were scanned off a disc, like \"iysteria in the cream cheese\" (Listeria) or \"the Wizard of 02\". Only fixes that look like scanning mistakes are kept, never rewordings. What you're watching and the next episode go first. It waits while CS2 is running and when the desktop is off."
+      }
+    ]
+  },
+  {
     "id": "2026-11-13-subtitle-reference",
     "date": "2026-11-13",
     "title": "Subtitles check their spelling of names",

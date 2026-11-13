@@ -1,4 +1,13 @@
 {
+  "2026-11-13-subtitle-proofread": {
+    "title": "Undertexter korrekturläses",
+    "items": {
+      "Scanning mistakes fixed by AI": {
+        "title": "Inläsningsfel rättas av AI",
+        "text": "Varje engelsk undertext i biblioteket läses nu igenom en gång av en AI-modell på den stationära datorns grafikkort, som rättar felen i undertexter som lästs in från en skiva, som \"iysteria in the cream cheese\" (Listeria) eller \"the Wizard of 02\". Bara rättelser som ser ut som inläsningsfel behålls, aldrig omformuleringar. Det du tittar på och nästa avsnitt går först. Det väntar medan CS2 körs och när datorn är avstängd."
+      }
+    }
+  },
   "2026-11-13-subtitle-reference": {
     "title": "Undertexter kollar hur namn stavas",
     "items": {
