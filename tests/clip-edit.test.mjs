@@ -173,3 +173,22 @@ test('AV1 clips are cut on the exact frame and every frame matches the original'
     await fs.rm(data, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 });
+
+test('edits still rendering (<name>.lilin-tmp.mp4) are not listed as clips', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-clip-tmp-'));
+  const data = await fs.mkdtemp(path.join(os.tmpdir(), 'lilin-clip-data-'));
+  process.env.CLIPS_DIR = dir;
+  const fresh = await import(`../src/clips.js?rendering=${Date.now()}`);
+  try {
+    fresh.initClips({ dataDir: data });
+    await fs.mkdir(path.join(dir, 'Trimmed Clips', 'Game'), { recursive: true });
+    await fs.writeFile(path.join(dir, 'Trimmed Clips', 'Game', 'round.mp4'), 'x');
+    await fs.writeFile(path.join(dir, 'Trimmed Clips', 'Game', 'round (2).lilin-tmp.mp4'), '');
+    await fs.writeFile(path.join(dir, 'Trimmed Clips', 'Game', 'other.LILIN-TMP.MP4'), '');
+    const rels = (await fresh.scan(true)).map((c) => c.rel);
+    assert.deepEqual(rels, ['Trimmed Clips/Game/round.mp4']);
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    await fs.rm(data, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+});

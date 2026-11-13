@@ -56,7 +56,8 @@ async function walk(dir, rel = '', depth = 0, out = []) {
   let entries;
   try { entries = await fs.promises.readdir(dir, { withFileTypes: true }); } catch { return out; }
   for (const e of entries) {
-    if (e.name.startsWith('.')) continue;
+    // dotfiles, and edits/share copies still rendering ("<name>.lilin-tmp.mp4"): half-written, not clips yet
+    if (e.name.startsWith('.') || e.name.toLowerCase().endsWith('.lilin-tmp.mp4')) continue;
     const r = rel ? `${rel}/${e.name}` : e.name;
     if (e.isDirectory()) await walk(path.join(dir, e.name), r, depth + 1, out);
     else if (EXT.has(path.extname(e.name).toLowerCase())) {

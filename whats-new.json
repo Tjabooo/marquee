@@ -1,5 +1,17 @@
 [
   {
+    "id": "2026-11-13-clip-rendering-hidden",
+    "date": "2026-11-13",
+    "title": "Clips: edits in progress stay out of the list",
+    "items": [
+      {
+        "title": "No broken clip while a trim saves",
+        "audience": "owner",
+        "text": "While a trim or edit was still being saved, its unfinished file showed up in Clips as a clip of its own, with no picture and errors when you opened it. It now stays hidden until the edit is done."
+      }
+    ]
+  },
+  {
     "id": "2026-11-13-tv-4k-dv",
     "date": "2026-11-13",
     "title": "4K Dolby Vision episodes play on the Samsung TV",
