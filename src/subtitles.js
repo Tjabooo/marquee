@@ -480,7 +480,8 @@ const VIDEO_FILE = /\.(mkv|mp4|m4v|mov|webm|avi)$/i;
 function prefetchNext(video, characters) {
   let names;
   try { names = fs.readdirSync(path.dirname(video)).filter((n) => VIDEO_FILE.test(n)).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })); } catch { return; }
-  const next = names[names.indexOf(path.basename(video)) + 1];
+  const at = names.indexOf(path.basename(video));
+  const next = at >= 0 ? names[at + 1] : null;
   if (!next || !refDir) return;
   const nextVideo = path.join(path.dirname(video), next);
   const p = findSidecar(nextVideo, 'en');

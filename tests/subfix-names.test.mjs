@@ -71,13 +71,14 @@ test('subtitles are grouped by title from their folder', () => {
 });
 
 test('a human-made subtitle of the same episode guides capitals, only where it is sure', () => {
-  const mine = srt('I saw an m. Night shyamalan movie.', 'And a large coke, no ice.', 'Do some coke now.', 'He is wrong here.');
-  const ref = srt('Saw an M. Night Shyamalan movie, man.', 'Shyamalan again.', 'And a large Coke, no ice.', 'He is Wrong here.');
+  const mine = srt('I saw an m. Night shyamalan movie.', 'And a large coke, no ice.', 'Do some coke now.', 'He is wrong here.', "It's buddy ebsen, the actor.");
+  const ref = srt('Saw an M. Night Shyamalan movie, man.', 'Shyamalan again.', 'And a large Coke, no ice.', 'He is Wrong here.', "It's Buddy Ebsen, the actor.");
   assert.deepEqual(textOf(fixEnglishSrt(mine, { reference: ref })), [
     'I saw an m. Night Shyamalan movie.', // once in the reference, in the same company
     'And a large Coke, no ice.',
     'Do some coke now.', // once, elsewhere: could be the other coke
     'He is wrong here.', // an ordinary word in the library stays as the library writes it
+    "It's Buddy Ebsen, the actor.", // ...unless it's part of a name in exactly the same words
   ]);
 });
 

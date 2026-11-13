@@ -380,6 +380,7 @@ function* tokensOf(cues) {
   let start = true;
   let prev = '';
   let prevRaw = '';
+  let prevStart = false;
   for (const cue of cues) {
     let depth = 0;
     for (const raw of cue.lines) {
@@ -393,10 +394,11 @@ function* tokensOf(cues) {
         if (endsSentence(gap.replace(/[[(]+\s*$/, ' '), prevRaw)) start = true;
         if (/(\.\.\.|…)\s*$/.test(gap)) start = false;
         const word = m[0].replace(/'+$/, '');
-        const next = toks[i + 1] ? toks[i + 1][0].replace(/'+$/, '').toLowerCase() : '';
-        if (/^[A-Za-z]/.test(word) && !depth) yield { word, start, prev, next };
+        const nextRaw = toks[i + 1] ? toks[i + 1][0].replace(/'+$/, '') : '';
+        if (/^[A-Za-z]/.test(word) && !depth) yield { word, start, prev, prevRaw, prevStart, next: nextRaw.toLowerCase(), nextRaw };
         prev = word.toLowerCase();
         prevRaw = word;
+        prevStart = start;
         last = m.index + m[0].length;
         if (!depth) start = false;
       }
@@ -407,25 +409,39 @@ function* tokensOf(cues) {
   }
 }
 
-// { words: lower → Map(form → count), ctx: "prev word next" / "prev word|" / "|word next" → Map(form → count) }
+// { words: lower → Map(form → count), ctx: "prev word next" / "prev word|" / "|word next" → Map(form → count),
+//   phrases: "prev word next" → Map(form → count) where a neighbour is capitalised too ("Buddy Ebsen") }
+const NAMEISH = /^[A-Z][a-z]/;
 function referenceTable(refSrt) {
   const words = new Map();
   const ctx = new Map();
+  const phrases = new Map();
   const add = (map, key, form) => {
     if (!map.has(key)) map.set(key, new Map());
     map.get(key).set(form, (map.get(key).get(form) || 0) + 1);
   };
-  for (const { word, start, prev, next } of tokensOf(parseCues(refSrt))) {
-    if (start || word.length < 2) continue;
+  for (const { word, start, prev, prevRaw, prevStart, next, nextRaw } of tokensOf(parseCues(refSrt))) {
+    if (word.length < 2) continue;
     const base = word.replace(/'s$/i, '');
     if (base.length > 1 && base === base.toUpperCase()) continue; // "HOUSE:" labels, shouting
     const lower = base.toLowerCase();
+    if (NAMEISH.test(base) && ((NAMEISH.test(prevRaw) && !prevStart) || NAMEISH.test(nextRaw))) add(phrases, `${prev} ${lower} ${next}`, base);
+    else if (!start) add(phrases, `${prev} ${lower} ${next}`, lower); // counts against it
+    if (start) continue;
     add(words, lower, base);
     add(ctx, `${prev} ${lower} ${next}`, base);
     add(ctx, `${prev} ${lower}|`, base);
     add(ctx, `|${lower} ${next}`, base);
   }
-  return { words, ctx };
+  return { words, ctx, phrases };
+}
+
+// An ordinary word that's part of a name in the reference, in exactly the same three words
+// ("it's buddy ebsen", "from brigham young", "the mayo clinic").
+function referencePhrase(ref, lower, prev, next) {
+  const forms = ref.phrases.get(`${prev} ${lower} ${next}`);
+  if (!forms || forms.size !== 1 || forms.has(lower)) return null;
+  return [...forms.keys()][0];
 }
 
 // The form the reference uses for a lowercase word here, or null. Every mid-sentence use capitalised
@@ -521,7 +537,8 @@ function fixWord(word, { start, prev, prevRaw = '', nextWord = '', reference = n
   if (w === w.toLowerCase()) {
     const base = w.replace(/'s$/, '');
     // A human-made subtitle of the same episode knows best ("shyamalan", "a large coke").
-    const ref = !start && reference && base.length > 1 && !ordinaryWord(base) ? referenceForm(reference, base, prev, nextWord) : null;
+    const ref = !start && reference && base.length > 1
+      ? (ordinaryWord(base) ? referencePhrase(reference, base, prev, nextWord) : referenceForm(reference, base, prev, nextWord)) : null;
     if (ref) return ref + w.slice(base.length);
     const name = names?.get(base);
     const fullName = name?.firsts.has(prev) && /^[A-Z]/.test(prevRaw) && /^\s+$/.test(before);
