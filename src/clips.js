@@ -577,7 +577,25 @@ export function camTimeline(parts, cam) {
   }
   return out;
 }
+// Burning the camera in re-encodes the whole picture, so it's done on the GPU (NVENC). Measured
+// 2026-11-13 on a 1440p60 CS2 clip with the camera on top, VMAF against a lossless render,
+// mean / worst 5 % of frames, time per 15 s: x264 slow CRF 10 (what share copies use) 99.42 /
+// 97.71 at 66 Mbps in 43 s; NVENC p7 CQ 12 99.46 / 97.81 at 69 Mbps in 6.7 s. Same quality and
+// size, ~6x faster: a 2-minute clip takes ~1 minute instead of ~6. If NVENC isn't there (or is
+// busy with all its sessions), x264 veryfast CRF 8 (99.34 / 97.50, 8.4 s) does it on the CPU.
+const CAM_NVENC = ['-c:v', 'h264_nvenc', '-preset', 'p7', '-tune', 'hq', '-rc', 'vbr', '-cq', '12', '-b:v', '0',
+  '-maxrate', '150M', '-bufsize', '300M', '-profile:v', 'high', '-pix_fmt', 'yuv420p'];
+const CAM_X264 = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '8', '-pix_fmt', 'yuv420p', '-profile:v', 'high'];
 async function burnCam(stage, camSrc, box, spans, v, out, signal, onProgress) {
+  try {
+    await burnCamWith(CAM_NVENC, stage, camSrc, box, spans, v, out, signal, onProgress);
+  } catch (e) {
+    if (signal?.aborted) throw e;
+    console.warn(`[clips] camera burn-in on NVENC failed (${e.message}); using x264`);
+    await burnCamWith(CAM_X264, stage, camSrc, box, spans, v, out, signal, onProgress);
+  }
+}
+async function burnCamWith(encoder, stage, camSrc, box, spans, v, out, signal, onProgress) {
   const args = ['-hide_banner', '-nostdin', '-y', ...(onProgress ? ['-progress', 'pipe:1', '-nostats'] : []), '-i', stage];
   for (const s of spans) args.push('-ss', secs(s.ss), '-t', secs(s.t), '-i', camSrc);
   const graph = [];
@@ -587,13 +605,13 @@ async function burnCam(stage, camSrc, box, spans, v, out, signal, onProgress) {
     graph.push(`[${last}][c${i}]overlay=${box.x}:${box.y}:eof_action=pass:repeatlast=0[o${i}]`);
     last = `o${i}`;
   });
-  args.push('-filter_complex', graph.join(';'), '-map', `[${last}]`, '-map', '0:a?', '-map_metadata', '0', ...SHARE_X264);
+  args.push('-filter_complex', graph.join(';'), '-map', `[${last}]`, '-map', '0:a?', '-map_metadata', '0', ...encoder);
   if (v.color_range === 'pc') args.push('-color_range', 'pc');
   args.push('-c:a', 'copy', '-movflags', '+faststart', out);
   await run(FFMPEG, args, { signal, onProgress });
 }
 
-// Burning the camera in re-encodes the whole picture (minutes), longer than a request may take
+// Burning the camera in re-encodes the whole picture (about half the clip's length on NVENC), longer than a request may take
 // behind Cloudflare, so those edits run in the background and the editor asks how they're doing.
 // Saving again while the clip's previous edit is still rendering replaces that edit: the older
 // render is stopped (two at once only slowed both down and used to write the same file).

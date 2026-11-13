@@ -1,4 +1,13 @@
 {
+  "2026-11-13-cam-gpu": {
+    "title": "Klipp: att lägga till kameran går ungefär 6 gånger snabbare",
+    "items": {
+      "Camera edits in about a minute": {
+        "title": "Kameraredigeringar på ungefär en minut",
+        "text": "Att lägga din kamera ovanpå ett klipp tog förut flera minuter, eftersom servern gjorde om hela bilden med processorn. Nu används grafikkortet, så ett helt klipp är klart på ungefär en minut, med samma bildkvalitet."
+      }
+    }
+  },
   "2026-11-13-clip-rendering-hidden": {
     "title": "Klipp: redigeringar som pågår syns inte i listan",
     "items": {

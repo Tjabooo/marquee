@@ -1,5 +1,17 @@
 [
   {
+    "id": "2026-11-13-cam-gpu",
+    "date": "2026-11-13",
+    "title": "Clips: adding your camera is about 6x faster",
+    "items": [
+      {
+        "title": "Camera edits in about a minute",
+        "audience": "owner",
+        "text": "Putting your camera on top of a clip used to take several minutes, because the server redid the whole picture on its processor. It now uses the graphics card, so a full clip is done in about a minute, with the same picture quality."
+      }
+    ]
+  },
+  {
     "id": "2026-11-13-clip-rendering-hidden",
     "date": "2026-11-13",
     "title": "Clips: edits in progress stay out of the list",
