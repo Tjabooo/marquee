@@ -1,5 +1,17 @@
 [
   {
+    "id": "2026-11-13-clip-save-again",
+    "date": "2026-11-13",
+    "title": "Saving a clip edit twice",
+    "items": [
+      {
+        "title": "Changed your mind while it saves?",
+        "audience": "owner",
+        "text": "If you save the same clip again while its camera copy is still being made, Lilin now stops the first one and only makes your newest edit. Before, both ran at once and could spoil each other's copy."
+      }
+    ]
+  },
+  {
     "id": "2026-11-12-clip-camera",
     "date": "2026-11-12",
     "title": "Put your camera in your clips",

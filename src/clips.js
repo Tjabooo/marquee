@@ -116,10 +116,16 @@ function fullPath(rel) {
 }
 
 // ---------- ffmpeg helpers ----------
-function run(cmd, args) {
+function run(cmd, args, { signal } = {}) {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(signal.reason);
     let child;
     try { child = spawn(cmd, args, { windowsHide: true }); } catch (e) { return reject(e); }
+    if (signal) {
+      const stop = () => child.kill();
+      signal.addEventListener('abort', stop, { once: true });
+      child.on('close', () => signal.removeEventListener('abort', stop));
+    }
     trackChild(child, cmd, args, 'clips');
     background(child);
     let out = '';
@@ -127,7 +133,10 @@ function run(cmd, args) {
     child.stdout.on('data', (d) => { out += d; });
     child.stderr.on('data', (d) => { err = (err + d).slice(-2000); });
     child.on('error', reject);
-    child.on('close', (code) => (code === 0 ? resolve(out) : reject(new Error(errorLine(err) || `exit code ${code}`))));
+    child.on('close', (code) => {
+      if (signal?.aborted) return reject(signal.reason);
+      return code === 0 ? resolve(out) : reject(new Error(errorLine(err) || `exit code ${code}`));
+    });
   });
 }
 // The meaningful line of ffmpeg's stderr (its last line is usually just "Conversion failed!").
@@ -558,7 +567,7 @@ export function camTimeline(parts, cam) {
   }
   return out;
 }
-async function burnCam(stage, camSrc, box, spans, v, out) {
+async function burnCam(stage, camSrc, box, spans, v, out, signal) {
   const args = ['-hide_banner', '-nostdin', '-y', '-i', stage];
   for (const s of spans) args.push('-ss', secs(s.ss), '-t', secs(s.t), '-i', camSrc);
   const graph = [];
@@ -571,18 +580,26 @@ async function burnCam(stage, camSrc, box, spans, v, out) {
   args.push('-filter_complex', graph.join(';'), '-map', `[${last}]`, '-map', '0:a?', '-map_metadata', '0', ...SHARE_X264);
   if (v.color_range === 'pc') args.push('-color_range', 'pc');
   args.push('-c:a', 'copy', '-movflags', '+faststart', out);
-  await run(FFMPEG, args);
+  await run(FFMPEG, args, { signal });
 }
 
 // Burning the camera in re-encodes the whole picture (minutes), longer than a request may take
 // behind Cloudflare, so those edits run in the background and the editor asks how they're doing.
+// Saving again while the clip's previous edit is still rendering replaces that edit: the older
+// render is stopped (two at once only slowed both down and used to write the same file).
 const renders = new Map(); // job id -> { state: 'working' | 'done' | 'failed', title, error, at }
+const rendering = new Map(); // clip id -> AbortController of its edit in progress
 export function startTrim(id, segments, options) {
   const job = crypto.randomBytes(8).toString('hex');
   const state = { state: 'working', title: null, error: null, at: Date.now() };
   renders.set(job, state);
   for (const [k, r] of renders) if (r.state !== 'working' && Date.now() - r.at > 3600 * 1000) renders.delete(k);
-  trim(id, segments, options).then((r) => Object.assign(state, { state: 'done', title: r.title, at: Date.now() }))
+  rendering.get(id)?.abort(bad('Replaced by your newer edit of this clip.'));
+  const ctl = new AbortController();
+  rendering.set(id, ctl);
+  trim(id, segments, { ...options, signal: ctl.signal })
+    .finally(() => { if (rendering.get(id) === ctl) rendering.delete(id); })
+    .then((r) => Object.assign(state, { state: 'done', title: r.title, at: Date.now() }))
     .catch((e) => Object.assign(state, { state: 'failed', error: e.message, at: Date.now() }));
   return { job };
 }
@@ -601,7 +618,7 @@ export async function checkTrim(id, segments, { removeTracks = [], overlay = nul
   return c.title;
 }
 
-export async function trim(id, segments, { deleteOriginal = false, removeTracks = [], overlay = null } = {}) {
+export async function trim(id, segments, { deleteOriginal = false, removeTracks = [], overlay = null, signal } = {}) {
   const c = await byId(id);
   const src = fullPath(c.rel);
   const info = await cutInfo(src);
@@ -613,8 +630,14 @@ export async function trim(id, segments, { deleteOriginal = false, removeTracks 
   await fs.promises.mkdir(dir, { recursive: true });
   const stem = c.title.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '-').replace(/[ .]+$/, '').slice(0, 100) || 'Clip';
   const base = `${stem} (${parts.length > 1 || tracks || box ? 'edit' : 'trim'})`;
+  // reserve the name by creating its temp file: an edit still rendering owns "<name>.lilin-tmp.mp4"
   let name = `${base}.mp4`;
-  for (let i = 2; fs.existsSync(path.join(dir, name)); i++) name = `${base} ${i}.mp4`;
+  for (let i = 2; ; i++) {
+    if (!fs.existsSync(path.join(dir, name))) {
+      try { await fs.promises.writeFile(path.join(dir, `${name}.lilin-tmp.mp4`), '', { flag: 'wx' }); break; } catch (e) { if (e.code !== 'EEXIST') throw e; }
+    }
+    name = `${base} ${i}.mp4`;
+  }
   const dest = path.join(dir, name);
   const tmp = `${dest}.lilin-tmp.mp4`;
   // a dot-folder next to the result: same drive, and the clip scan skips it
@@ -656,8 +679,10 @@ export async function trim(id, segments, { deleteOriginal = false, removeTracks 
     if (box) {
       const spans = camTimeline(parts, cam);
       if (!spans.length) throw bad('The camera wasn’t recording during the parts you kept.');
-      await burnCam(pre, fullPath(camRelOf(c.rel)), box, spans, info.v, tmp);
+      signal?.throwIfAborted();
+      await burnCam(pre, fullPath(camRelOf(c.rel)), box, spans, info.v, tmp, signal);
     }
+    signal?.throwIfAborted();
     await fs.promises.rename(tmp, dest);
   } finally {
     await fs.promises.rm(tmp, { force: true });
