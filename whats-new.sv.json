@@ -1,4 +1,13 @@
 {
+  "2026-11-14-finished-page-updates": {
+    "title": "Klara nedladdningar går att spela direkt",
+    "items": {
+      "No more stuck \"Almost ready\"": {
+        "title": "Inget mer fastnat \"Nästan klar\"",
+        "text": "En filmsida som var öppen medan filmen laddades ner kunde stå kvar på \"Nästan klar 100 %\" när den var klar, och du fick ladda om för att spela. Nu byter sidan till filmen av sig själv."
+      }
+    }
+  },
   "2026-11-14-play-now-start-progress": {
     "title": "Spela nu visar hur länge det är kvar tills den startar",
     "items": {

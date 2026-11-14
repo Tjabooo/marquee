@@ -1,5 +1,16 @@
 [
 {
+  "id": "2026-11-14-finished-page-updates",
+  "date": "2026-11-14",
+  "title": "Finished downloads become playable right away",
+  "items": [
+    {
+      "title": "No more stuck \"Almost ready\"",
+      "text": "A film's page left open while it downloaded could stay on \"Almost ready 100%\" after it finished, and you had to reload to play it. The page now switches to the film by itself."
+    }
+  ]
+},
+{
   "id": "2026-11-14-play-now-start-progress",
   "date": "2026-11-14",
   "title": "Play now shows how long until it starts",

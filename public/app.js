@@ -1654,11 +1654,18 @@ function followFilmId() {
   const moved = state.library.find((f) => f.mediaKey === filmView.mediaKey);
   if (moved) filmView.id = moved.id;
 }
+// An open title page is redrawn when what it shows changes (a download finished, a file left), except
+// while someone is typing in it. A focused button doesn't count: holding the redraw for that left a
+// finished download stuck on "Almost ready 100%" until the page was reloaded.
+function sheetBusy() {
+  const el = document.activeElement;
+  return Boolean(el && $('#sheet-body').contains(el) && (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable));
+}
 function updateOpenFilm() {
   followFilmId();
   const entry = unifiedLibrary().find(e => filmView.id === `entry:${e.key}` || e.files.some(f => f.id === filmView.id) || filmView.hashes?.some(hash => e.transfers.some(d => d.hash === hash)));
   const signature = JSON.stringify([filmView.id, entry?.files, entry?.transfers.map(d => d.hash)]);
-  if (filmStructure !== signature && !$('#sheet-body').contains(document.activeElement)) { const top = $('#sheet').scrollTop; renderFilm(); $('#sheet').scrollTop = top; }
+  if (filmStructure !== signature && !sheetBusy()) { const top = $('#sheet').scrollTop; renderFilm(); $('#sheet').scrollTop = top; }
 }
 function openFilm(f, opener) {
   filmView.hashes = null;
@@ -1776,7 +1783,7 @@ function showEntry() { return unifiedLibrary().find(e => e.show && (e.show.id ==
 function updateOpenShow() {
   const entry = showEntry();
   const signature = JSON.stringify([showView.id, showView.season, entry?.files, entry?.transfers.map(d => [d.hash, d.season, (d.episodes || []).map(ep => [ep.season, ep.episode, ep.available, ep.started, ep.libraryId])])]);
-  if (signature !== showStructure && !$('#sheet-body').contains(document.activeElement)) { const top = $('#sheet').scrollTop; renderShow(); $('#sheet').scrollTop = top; }
+  if (signature !== showStructure && !sheetBusy()) { const top = $('#sheet').scrollTop; renderShow(); $('#sheet').scrollTop = top; }
 }
 // A title's downloads in its sheet: state, percentage, Pause/Resume and Details (speed, files, peers).
 function transferPanel(entry) {
@@ -2129,7 +2136,12 @@ function patchTransferNodes() {
   drawTransferDetails();
   refreshCommandViews();
 }
-function patchUnifiedLibrary() { if (state.view === 'library') renderLibrary(); patchTransferNodes(); }
+// An open title page follows along from any tab (renderLibrary does it too when the Library is shown).
+function patchUnifiedLibrary() {
+  if (state.view === 'library') renderLibrary();
+  else { if (filmView.id) updateOpenFilm(); if (showView.id) updateOpenShow(); }
+  patchTransferNodes();
+}
 
 // Downloads claims completed files before replying, so read it before refreshing the library.
 let mediaRefreshRequest = null;
