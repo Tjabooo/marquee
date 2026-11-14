@@ -47,7 +47,11 @@ export function scratchPlan({ torrents = [], scratchDir, freeBytes, reserveBytes
     if (!unfinished || t.download_path || !(Number(t.size) > 0) || STOPPED.test(t.state || '')) continue;
     // Once anything is written, qBittorrent's files exist at full (sparse) size and a move copies all of
     // it: a 25 GB film moved at 4 % meant minutes of "moving" with the download stopped.
-    if ((Number(t.completed) || 0) > 0 && (Number(t.size) || 0) > maxCopyBytes) continue;
+    // A big torrent is only moved while it isn't downloading (queued or stopped): one that is can write
+    // its first data between this plan and qBittorrent's move, and the move then copies its full size
+    // with the download stopped (Primetime, 18 GB, sat at 5 % "moving"). New downloads start on the
+    // scratch drive instead (server.js), so this only catches ones added elsewhere.
+    if ((Number(t.size) || 0) > maxCopyBytes && ((Number(t.completed) || 0) > 0 || !/^(queued|paused|stopped)/i.test(t.state || ''))) continue;
     candidates.push(t);
   }
   const pending = on.reduce((n, t) => n + (Number(t.amount_left) || 0), 0) + queued;

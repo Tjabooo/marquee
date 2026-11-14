@@ -5081,7 +5081,7 @@ async function scratchFree(dir = SCRATCH_DIR) {
 }
 // Free room for a conversion's temporary copy: free space minus other conversions' copies and the
 // reserve, and minus what downloads still have to write when they share the drive.
-const SCRATCH_START_ROOM = 80 * 1024 ** 3; // a new download starts on the scratch drive only with this much to spare
+const SCRATCH_START_ROOM = 25 * 1024 ** 3; // a new download starts on the scratch drive with this much to spare (after the reserve)
 async function scratchRoom({ forDownloads = false } = {}) {
   if (forDownloads) {
     let pending = 0;

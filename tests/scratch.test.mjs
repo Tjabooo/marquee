@@ -6,7 +6,7 @@ import { scratchPlan, liveRoot, usesScratch } from '../src/scratch.js';
 const GiB = 1024 ** 3;
 const S = path.resolve('/scratch'), M = path.resolve('/media/TV');
 const t = (o) => ({ hash: o.hash, save_path: M, download_path: '', content_path: path.join(M, o.hash), progress: 0.01,
-  amount_left: o.size ?? 10 * GiB, size: 10 * GiB, completed: 0, state: 'downloading', added_on: 1, auto_tmm: false, ...o });
+  amount_left: o.size ?? 10 * GiB, size: 10 * GiB, completed: 0, state: 'queuedDL', added_on: 1, auto_tmm: false, ...o });
 
 test('downloads that fit go to the scratch drive, oldest first, within the reserve', () => {
   const plan = scratchPlan({ scratchDir: S, freeBytes: 100 * GiB, reserveBytes: 40 * GiB, torrents: [
@@ -35,6 +35,7 @@ test('finished, stopped, managed and half-done downloads stay where they are', (
     t({ hash: 'auto', auto_tmm: true }),
     t({ hash: 'half', completed: 5 * GiB }),
     t({ hash: 'barely-started', completed: 50 * 1024 ** 2 }), // 50 MB in, but a move copies all 10 GB
+    t({ hash: 'downloading', state: 'downloading' }), // could start writing before the move: stays
     t({ hash: 'other', download_path: path.resolve('/elsewhere') }),
     t({ hash: 'ok' }),
   ] });
