@@ -1843,7 +1843,9 @@ function renderShow() {
   // Downloads you're on, finished or not: with nothing ready yet the show is still in your library.
   const leaving = entry.transfers.filter(d => d.mine !== false && !d.done && d.others !== undefined);
   const deleteShow = (files.length > 0 || leaving.length > 0) && h('button', { type: 'button', class: 'chip delete-many', onclick: e => openDeleteMany({ files, transfers: leaving, what: T('this show'), label: show.title, onDone: closeTopOverlay }, e.currentTarget) }, icon('trash'), files.length ? T('Delete show') : T('Remove from my library'));
-  const deleteSeason = !single && seasonFiles.length > 0 && h('button', { type: 'button', class: 'chip delete-many', onclick: e => openDeleteMany({ files: seasonFiles, what: T('this season'), label: `${show.title} · ${open.name}`, onDone: () => { showView.season = null; renderShow(); } }, e.currentTarget) }, icon('trash'), T('Delete season'));
+  // Downloads of only this season go with it: cancelled, not left to finish and come back.
+  const seasonLeaving = open ? leaving.filter(d => pendingFor(open.number).includes(d) && (d.episodes || []).every(ep => ep.season == null || ep.season === open.number)) : [];
+  const deleteSeason = !single && (seasonFiles.length > 0 || seasonLeaving.length > 0) && h('button', { type: 'button', class: 'chip delete-many', onclick: e => openDeleteMany({ files: seasonFiles, transfers: seasonLeaving, what: T('this season'), label: `${show.title} · ${open.name}`, onDone: () => { showView.season = null; renderShow(); } }, e.currentTarget) }, icon('trash'), T('Delete season'));
   let content;
   if (!open) content = [h('h3', {}, T('Seasons')), h('ul', { class: 'grid season-grid' }, seasons.map(se => {
     const ready = episodeCount(files.filter(f => f.season === se.number)), transfers = pendingFor(se.number).filter(d => !d.done);
@@ -3557,7 +3559,8 @@ async function openDeleteMany({ files, transfers = [], what, label, onDone }, op
     status.textContent = '';
     try {
       const r = ids.length ? await api('/api/library/delete-many', jsonPost({ ids, everyone })) : { deleted: 0, removed: 0, failed: 0 };
-      for (const d of transfers) await api(`/api/downloads/${encodeURIComponent(d.hash)}/leave`, jsonPost({}));
+      // A download the delete above already cancelled as a whole is gone by now (404): that's fine.
+      for (const d of transfers) await api(`/api/downloads/${encodeURIComponent(d.hash)}/leave`, jsonPost({})).catch((e) => { if (e.status !== 404) throw e; });
       const gone = new Set(ids);
       dropFromLibrary(gone);
       if (transfers.length) { const left = new Set(transfers.map((d) => d.hash)); state.downloads = state.downloads.filter((d) => !left.has(d.hash)); invalidateDownloadsRead(); }

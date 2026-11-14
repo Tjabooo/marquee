@@ -4750,14 +4750,21 @@ async function deleteManyItems(ids, user) {
   return items;
 }
 
-// Hashes of the downloads that go as a whole.
+// Hashes of the downloads that go as a whole. A video of the same season that nobody has in a library
+// yet (still downloading, or never finished) doesn't keep its download alive: deleting a season mid-
+// download cancels the rest of the pack instead of letting it finish and come back.
 function wholeDownloads(items, user, everyone) {
   const whole = new Set();
   for (const { plan: { torrent: t } } of items) {
     if (!t || whole.has(t.hash)) continue;
     const listed = items.filter((i) => i.plan.torrent?.hash === t.hash && (everyone || !i.shared));
-    if (!t.videos.every((v) => listed.some((i) => samePath(i.plan.original, v.full)))) continue;
+    if (!listed.length) continue;
+    const seasons = new Set(listed.map((i) => parseName(path.basename(i.plan.original)).season ?? null));
+    const unclaimed = (v) => !accounts.holders(accounts.mediaKey(v.full)).length
+      && seasons.has(parseName(path.basename(v.full)).season ?? null);
+    if (!t.videos.every((v) => listed.some((i) => samePath(i.plan.original, v.full)) || unclaimed(v))) continue;
     if (!everyone && t.videos.some((v) => accounts.heldOutside(accounts.mediaKey(v.full), user.id))) continue;
+    if (!everyone && accounts.torrentClaimants(t.hash).some((id) => !accounts.sameLibrary(id, user.id))) continue;
     whole.add(t.hash);
   }
   return whole;

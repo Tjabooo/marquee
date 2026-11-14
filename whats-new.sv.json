@@ -1,4 +1,13 @@
 {
+  "2026-11-14-delete-cancels": {
+    "title": "Att radera en säsong stoppar nedladdningen",
+    "items": {
+      "No more waiting for a download you deleted": {
+        "title": "Ingen väntan på en nedladdning du raderat",
+        "text": "Om du raderade en säsong eller serie medan den laddades ner försvann bara de färdiga avsnitten, och resten fortsatte laddas ner och kom tillbaka. Nu avbryts nedladdningen och eventuell konvertering direkt, och säsongens Radera-knapp syns redan innan första avsnittet är klart."
+      }
+    }
+  },
   "2026-11-14-trailer-stage": {
     "title": "Trailers får plats på skärmen",
     "items": {

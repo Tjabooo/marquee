@@ -1,5 +1,16 @@
 [
 {
+  "id": "2026-11-14-delete-cancels",
+  "date": "2026-11-14",
+  "title": "Deleting a season stops its download",
+  "items": [
+    {
+      "title": "No more waiting for a download you deleted",
+      "text": "Deleting a season or a show while it was still downloading only removed the finished episodes, and the rest kept downloading and came back. Delete now cancels the download and any conversion straight away, and the season's Delete button shows up even before the first episode is ready."
+    }
+  ]
+},
+{
   "id": "2026-11-14-trailer-stage",
   "date": "2026-11-14",
   "title": "Trailers fit on the screen",
