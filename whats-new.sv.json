@@ -1,4 +1,13 @@
 {
+  "2026-11-14-play-now-waits": {
+    "title": "Spela nu dyker upp när det finns något att spela",
+    "items": {
+      "Play now waits for the start": {
+        "title": "Spela nu väntar på början",
+        "text": "Knappen Spela nu på en nedladdning visas nu först när början av videon faktiskt har kommit, så du hamnar inte längre på en laddningsskärm medan nedladdningen inte riktigt har kommit igång. Nya nedladdningar hämtar början först, så knappen brukar dyka upp inom några sekunder."
+      }
+    }
+  },
   "2026-11-14-night-mode-quieter": {
     "title": "Nattläget höjer inte längre ljudet",
     "items": {

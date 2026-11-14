@@ -359,6 +359,7 @@ test('downloads list Play now and only the people it belongs to can open it', { 
   const [d] = (await (await call('/api/downloads', 'member@test.local')).json()).items;
   assert.equal(d.canPlayNow, true);
   assert.equal(d.files[0].index, 0);
+  assert.equal(d.files[0].started, false, 'Play now waits until the first piece of the video is on disk');
   const id = `${hash}-0`;
   assert.equal((await call(`/api/part/open?id=${id}`, 'stranger@test.local')).status, 403, 'someone else\u2019s download');
   assert.equal(posts.includes('toggleSequentialDownload'), false, 'a refused request changes nothing');

@@ -1,5 +1,16 @@
 [
 {
+  "id": "2026-11-14-play-now-waits",
+  "date": "2026-11-14",
+  "title": "Play now shows up when there's something to play",
+  "items": [
+    {
+      "title": "Play now waits for the start",
+      "text": "The Play now button on a download now only appears once the beginning of the video has actually arrived, so pressing it no longer leaves you staring at a loading screen while the download hasn't really started. New downloads fetch the start first, so it usually shows up within seconds."
+    }
+  ]
+},
+{
   "id": "2026-11-14-night-mode-quieter",
   "date": "2026-11-14",
   "title": "Night mode no longer turns the sound up",

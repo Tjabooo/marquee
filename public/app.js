@@ -1665,7 +1665,7 @@ let showStructure = '';
 function showEntry() { return unifiedLibrary().find(e => e.show && (e.show.id === showView.id || showView.hashes?.some(hash => e.transfers.some(d => d.hash === hash)))); }
 function updateOpenShow() {
   const entry = showEntry();
-  const signature = JSON.stringify([showView.id, showView.season, entry?.files, entry?.transfers.map(d => [d.hash, d.season, (d.episodes || []).map(ep => [ep.season, ep.episode, ep.available, ep.libraryId])])]);
+  const signature = JSON.stringify([showView.id, showView.season, entry?.files, entry?.transfers.map(d => [d.hash, d.season, (d.episodes || []).map(ep => [ep.season, ep.episode, ep.available, ep.started, ep.libraryId])])]);
   if (signature !== showStructure && !$('#sheet-body').contains(document.activeElement)) { const top = $('#sheet').scrollTop; renderShow(); $('#sheet').scrollTop = top; }
 }
 // A title's downloads in its sheet: state, percentage, Pause/Resume and Details (speed, files, peers).
@@ -1729,7 +1729,7 @@ function renderShow() {
     const rows = ready.map(f => ({ number: f.episode, node: (() => { const row = fileRow(libraryFile(f)); row.classList.add('episode-row'); row.dataset.episode = f.episode; row.prepend(playThumb(f)); $('.row-title', row).textContent = epTitle(f.episode, f.episodeName); $('.row-title', row).title = f.file; return row; })() }));
     const tvId = { id: show.tmdbId ?? null, title: show.title, type: 'tv' }; // episodeDownload decides Add / Download / nothing
     const upgrade = seasonUpgrade(tvId, open.number);
-    for (const {d,ep} of byEpisode.values()) rows.push({ number: ep.episode, node: h('li', { class: 'row episode-row pending-episode', 'data-episode': ep.episode, 'data-transfer-hash': d.hash, 'data-episode-number': ep.episode, 'data-episode-season': ep.season }, thumb(ep.episode), h('div', { class: 'row-text' }, h('div', { class: 'row-title' }, epTitle(ep.episode)), h('div', { class: 'row-meta episode-transfer-state' }, ep.available ? T('Ready · watch it from Details') : `${transferState(d)}${Number.isFinite(ep.progress) ? ` · ${Math.floor(ep.progress*100)}%` : ''}`)), d.canPlayNow && !ep.available && ep.fileIndex != null && h('button', { class: 'play-btn', onclick: () => openPlayer(playNowItem(d, ep, ep)) }, icon('play'), T('Play now')), h('button', { class: 'chip', onclick: e => openTransferDetails({ ...entry, transfers: [d] }, e.currentTarget) }, T('Details'))) });
+    for (const {d,ep} of byEpisode.values()) rows.push({ number: ep.episode, node: h('li', { class: 'row episode-row pending-episode', 'data-episode': ep.episode, 'data-transfer-hash': d.hash, 'data-episode-number': ep.episode, 'data-episode-season': ep.season }, thumb(ep.episode), h('div', { class: 'row-text' }, h('div', { class: 'row-title' }, epTitle(ep.episode)), h('div', { class: 'row-meta episode-transfer-state' }, ep.available ? T('Ready · watch it from Details') : `${transferState(d)}${Number.isFinite(ep.progress) ? ` · ${Math.floor(ep.progress*100)}%` : ''}`)), d.canPlayNow && !ep.available && ep.started && ep.fileIndex != null && h('button', { class: 'play-btn', onclick: () => openPlayer(playNowItem(d, ep, ep)) }, icon('play'), T('Play now')), h('button', { class: 'chip', onclick: e => openTransferDetails({ ...entry, transfers: [d] }, e.currentTarget) }, T('Details'))) });
     if (Number.isInteger(open.total) && open.total > 0 && open.total <= 1000) for (let number = open.first || 1; number < (open.first || 1) + open.total; number++) if (!rows.some(row => row.number === number)) rows.push({ number, node: h('li', { class: 'row episode-row missing-episode', 'data-episode': number }, thumb(number), h('div', { class: 'row-text' }, h('div', { class: 'row-title' }, epTitle(number)), h('div', { class: 'row-meta' }, T('Not added yet'))), tvId && episodeDownload(tvId, open.number, number)) });
     content = [!single && h('button', { class: 'chip season-back', onclick: () => pick(null) }, icon('back'), T('All seasons')), h('h3', {}, open.name),
       seasonVersionPick(ready, () => renderShow()),
@@ -1750,7 +1750,7 @@ function renderShow() {
       h('section', { class: 'page-section show-episodes' }, ...content),
       castRail('tv', show.tmdbId) || castLine('tv', show.tmdbId), moreLike('tv', show.tmdbId)));
   if (open && show.tmdbId && state.status.search) fillEpisodeDetails(show.tmdbId, open.number);
-  showStructure = JSON.stringify([showView.id, showView.season, entry.files, entry.transfers.map(d => [d.hash, d.season, (d.episodes || []).map(ep => [ep.season, ep.episode, ep.available, ep.libraryId])])]);
+  showStructure = JSON.stringify([showView.id, showView.season, entry.files, entry.transfers.map(d => [d.hash, d.season, (d.episodes || []).map(ep => [ep.season, ep.episode, ep.available, ep.started, ep.libraryId])])]);
 }
 
 // ---------- Downloads ----------
@@ -1912,7 +1912,7 @@ function seedersChip(d) {
 function playNowFile(d) {
   if (!d?.canPlayNow || d.ready || d.done || !d.files?.length) return null;
   const [main, next] = d.files.toSorted((a, b) => b.size - a.size);
-  return main.available || (next && main.size < next.size * 3) ? null : main;
+  return main.available || !main.started || (next && main.size < next.size * 3) ? null : main;
 }
 const playNowItem = (d, file, ep = null) => ({ kind: 'part', key: `${d.hash}-${file.index ?? file.fileIndex}`, hash: d.hash, mediaKey: file.mediaKey || undefined,
   title: d.canonicalTitle || d.title, filmTitle: d.canonicalTitle || d.title, show: d.showId || undefined, tmdbId: d.tmdbId ?? undefined,

@@ -1186,6 +1186,25 @@ async function statDownloadFile(full) {
   try { return await fs.promises.stat(full).catch(() => null); }
   finally { const next = downloadStatWaiters.shift(); if (next) next(); else downloadStatRequests--; }
 }
+// Play now only shows once the start of the video is really on disk: the file's first piece downloaded and
+// verified. qBittorrent's piece states are cached briefly because the downloads list polls every few seconds.
+const pieceStatesCache = new Map();
+function torrentPieceStates(hash) {
+  const cached = pieceStatesCache.get(hash);
+  if (cached && Date.now() - cached.at < 3000) return cached.promise;
+  const entry = { at: Date.now(), promise: qbit(`/api/v2/torrents/pieceStates?hash=${encodeURIComponent(hash)}`)
+    .then((states) => (Array.isArray(states) ? states : null)).catch(() => null) };
+  pieceStatesCache.set(hash, entry);
+  if (pieceStatesCache.size > 500) pieceStatesCache.delete(pieceStatesCache.keys().next().value);
+  return entry.promise;
+}
+export function fileStarted(f, states) {
+  if (f.progress >= 1) return true;
+  const first = Array.isArray(f.piece_range) ? f.piece_range[0] : null;
+  if (states && Number.isInteger(first)) return states[first] === 2; // 2 = downloaded and verified
+  return false;
+}
+
 function downloadAvailable(t, f, { fresh = false } = {}) {
   if (!(f.progress >= 1) || BUSY_STATES.test(t.state || '')) return Promise.resolve(false);
   let full;
@@ -1281,6 +1300,8 @@ async function addDownloadNow({ link, file, user = null, name = '', film = null,
     }
     form.append('urls', url);
   }
+  // The first and last pieces come early, so Play now (which waits for the start) shows up quickly.
+  if (PARTIAL_ENABLED) form.append('firstLastPiecePrio', 'true');
   const r = await qbitRequest('/api/v2/torrents/add', { method: 'POST', body: form });
   const text = (await r.text()).trim();
   // Rejected input: "Fails." on older versions, 415 on newer ones.
@@ -2094,13 +2115,15 @@ async function listDownloads(user, all = false) {
     const tmdbId = film?.id || show?.id || art?.id || null;
     const canonicalTitle = art?.title || parsed.title;
     const showKey = mediaType === 'tv' ? shows.showKey(canonicalTitle) : null;
+    const streamable = PARTIAL_ENABLED && filesKnown && videos.length > 0 && STREAMABLE_TORRENT.test(t.state || '');
+    const states = streamable && t.progress < 1 ? await torrentPieceStates(t.hash) : null;
     const safeFiles = await Promise.all(videos.map(async (f) => {
       let full = null;
       try { full = torrentFilePath(t, f); } catch { /* Invalid metadata cannot become playable. */ }
       const key = full && accounts.mediaKey(full);
       const item = key && mine.has(key) && library.get(key);
       return { name: path.basename(f.name.replace(/\\/g, '/')), size: f.size || 0, progress: f.progress || 0,
-        available: await downloadAvailable(t, f),
+        available: await downloadAvailable(t, f), started: fileStarted(f, states),
         index: f.index ?? files.indexOf(f), mediaKey: key || null,
         libraryId: item?.id || null };
     }));
@@ -2115,7 +2138,7 @@ async function listDownloads(user, all = false) {
       const list = placed?.length ? placed : (own.length ? own : season.episodesIn(videos[i].name, fileSeason)).map((episode) => ({ season: fileSeason, episode }));
       for (const { season: s, episode } of list) {
         episodes.push({ season: s, episode, progress: safeFiles[i].progress,
-          available: safeFiles[i].available, libraryId: safeFiles[i].libraryId,
+          available: safeFiles[i].available, started: safeFiles[i].started, libraryId: safeFiles[i].libraryId,
           fileIndex: safeFiles[i].index, mediaKey: safeFiles[i].mediaKey });
       }
     }
@@ -2130,7 +2153,7 @@ async function listDownloads(user, all = false) {
     poster: art?.poster || null, backdrop: art?.backdrop || null,
     added: t.added_on ? t.added_on * 1000 : accounts.torrentRow(t.hash)?.added_at || null,
     ready: Boolean(primary?.available), hasVideo: filesKnown ? videos.length > 0 : null, files: safeFiles, episodes,
-    canPlayNow: PARTIAL_ENABLED && filesKnown && videos.length > 0 && STREAMABLE_TORRENT.test(t.state || ''),
+    canPlayNow: streamable,
     packFiles, skippedFiles: packFiles - videos.length, dualAudio: isDualAudio(t.name),
     others: accounts.torrentWanters(t.hash).some((id) => id !== user.id),
     libraryIds: [...new Set(safeFiles.map((f) => f.libraryId).filter(Boolean))],
