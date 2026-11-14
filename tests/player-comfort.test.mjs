@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import { subLook, subRaise, secondChoices, sleepTimer, sleepSecondsLeft, sleepFade, sleepLabel,
-  SLEEP_FADE_SECONDS, createNightAudio, NIGHT } from '../public/player-comfort.js';
+  SLEEP_FADE_SECONDS, createNightAudio, NIGHT, autoMakeup } from '../public/player-comfort.js';
 
 test('subtitle look falls back to the defaults for anything unknown', () => {
   assert.deepEqual(subLook(), { size: 1, background: 'box', position: 'low' });
@@ -79,20 +79,30 @@ test('the night chain runs filters, compressor, makeup and limiter to the speake
   class Spy extends FakeContext { constructor() { super(); ctx = this; } createMediaElementSource(m) { this.src = super.createMediaElementSource(m); return this.src; } }
   const night = createNightAudio({}, Spy);
   night.set(true);
-  assert.deepEqual(path(ctx.src), ['source', 'biquad', 'biquad', 'biquad', 'compressor', 'gain', 'compressor', 'destination']);
+  assert.deepEqual(path(ctx.src), ['source', 'biquad', 'biquad', 'biquad', 'compressor', 'gain', 'compressor', 'gain', 'destination']);
   const chain = [];
   for (let n = ctx.src.outputs[0]; n.kind !== 'destination'; n = n.outputs[0]) chain.push(n);
-  const [highpass, bass, voice, squeeze, makeup] = chain;
+  const [highpass, bass, voice, squeeze, makeup, , limiterTrim] = chain;
   assert.equal(highpass.type, 'highpass');
   assert.equal(bass.type, 'lowshelf');
   assert.ok(bass.gain.value < 0, 'bass is turned down');
   assert.equal(voice.type, 'peaking');
   assert.ok(voice.gain.value > 0, 'voices are lifted');
   assert.equal(squeeze.ratio.value, NIGHT.compressor.ratio);
-  assert.equal(makeup.gain.value, NIGHT.makeup);
+  assert.ok(Math.abs(makeup.gain.value - NIGHT.makeup / autoMakeup(NIGHT.compressor)) < 1e-9, 'browser makeup is cancelled');
+  assert.ok(limiterTrim.gain.value < 1, 'the limiter adds no hidden boost either');
   assert.equal(ctx.resumed, 1, 'switching on resumes the audio context');
   night.set(false);
   assert.deepEqual(path(ctx.src), ['source', 'destination']);
+});
+
+test('night mode never turns dialog up: the browser compressor makeup is cancelled', () => {
+  // Makeup the Web Audio spec gives a DynamicsCompressorNode at these settings.
+  const db = (g) => 20 * Math.log10(g);
+  assert.ok(Math.abs(db(autoMakeup({ threshold: -24, knee: 10, ratio: 4 })) - 8.7) < 0.2);
+  assert.ok(Math.abs(db(autoMakeup({ threshold: -34, knee: 20, ratio: 6 })) - 11.6) < 0.2);
+  assert.ok(db(autoMakeup({ threshold: -2, knee: 0, ratio: 20 })) < 2);
+  assert.ok(db(NIGHT.makeup) <= 3, 'our own lift stays small');
 });
 
 test('night mode reports false where Web Audio is missing or capture fails', () => {

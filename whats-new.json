@@ -1,5 +1,16 @@
 [
 {
+  "id": "2026-11-14-night-mode-quieter",
+  "date": "2026-11-14",
+  "title": "Night mode no longer turns the sound up",
+  "items": [
+    {
+      "title": "Quieter night mode",
+      "text": "Switching on night mode (the moon in the player) used to make everything louder at once. Now dialogue stays about as loud as before and loud scenes like explosions and music come down, so you can keep the volume low without missing what people say."
+    }
+  ]
+},
+{
   "id": "2026-11-14-member-invites",
   "date": "2026-11-14",
   "title": "Let people you trust invite others",

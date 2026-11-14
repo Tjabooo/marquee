@@ -54,17 +54,41 @@ export function sleepLabel(timer, now = Date.now(), endLabel = T('the end of thi
 // ---- night mode ----
 // The film's sound goes through Web Audio: rumble and booming bass are trimmed, the range where
 // voices sit is lifted, and a compressor evens out loud and quiet scenes, with a limiter after it
-// so nothing clips. A media element can only be captured once, so turning it off routes the
+// so nothing clips. Browsers' compressors quietly add their own makeup gain (about +9 dB at these
+// settings, +12 dB with the old ones), which made night mode louder overall; autoMakeup works that
+// out the way the Web Audio spec does and the chain cancels it, so dialog stays where it was and
+// only loud scenes come down. A media element can only be captured once, so turning it off routes the
 // captured sound straight to the speakers instead. The graph is built on the first switch-on,
 // which must come from a click or key press (browsers start an AudioContext only from one).
 export const NIGHT = {
   highpass: 70, // Hz
   bass: { frequency: 180, gain: -5 },
-  voice: { frequency: 2500, Q: 0.9, gain: 5 },
-  compressor: { threshold: -34, knee: 20, ratio: 6, attack: 0.004, release: 0.25 },
-  makeup: 1.3,
+  voice: { frequency: 2500, Q: 0.9, gain: 4 },
+  compressor: { threshold: -24, knee: 10, ratio: 4, attack: 0.005, release: 0.3 },
+  makeup: 1.26, // +2 dB of our own, after the browser's makeup is cancelled
   limiter: { threshold: -2, knee: 0, ratio: 20, attack: 0.001, release: 0.1 },
 };
+
+// The linear makeup gain a DynamicsCompressorNode adds on its own (Web Audio spec, "makeup gain":
+// (1 / curve(1))^0.6, with the knee shaped as Chromium/WebKit/Firefox do).
+export function autoMakeup({ threshold, knee, ratio }) {
+  const toLin = (d) => 10 ** (d / 20), toDb = (x) => 20 * Math.log10(x);
+  const lt = toLin(threshold);
+  const kneeCurve = (x, k) => (x < lt ? x : lt + (1 - Math.exp(-k * (x - lt))) / k);
+  const slopeAt = (x, k) => {
+    if (x < lt) return 1;
+    const x2 = x * 1.001;
+    return (toDb(kneeCurve(x2, k)) - toDb(kneeCurve(x, k))) / (toDb(x2) - toDb(x));
+  };
+  const kneeEnd = toLin(threshold + knee);
+  let lo = 0.1, hi = 10000, k = 5;
+  for (let i = 0; i < 15; i++) {
+    if (slopeAt(kneeEnd, k) < 1 / ratio) hi = k; else lo = k;
+    k = Math.sqrt(lo * hi);
+  }
+  const full = 1 < kneeEnd ? kneeCurve(1, k) : toLin(toDb(kneeCurve(kneeEnd, k)) + (0 - toDb(kneeEnd)) / ratio);
+  return (1 / full) ** 0.6;
+}
 
 export function createNightAudio(media, AudioCtx = globalThis.AudioContext || globalThis.webkitAudioContext) {
   let ctx = null, source = null, input = null, on = false;
@@ -84,11 +108,11 @@ export function createNightAudio(media, AudioCtx = globalThis.AudioContext || gl
       for (const [k, v] of Object.entries(opts)) set(c[k], v);
       return c;
     };
-    const makeup = ctx.createGain();
-    set(makeup.gain, NIGHT.makeup);
+    const gain = (value) => { const g = ctx.createGain(); set(g.gain, value); return g; };
     const chain = [filter('highpass', NIGHT.highpass), filter('lowshelf', NIGHT.bass.frequency, NIGHT.bass.gain),
       filter('peaking', NIGHT.voice.frequency, NIGHT.voice.gain, NIGHT.voice.Q),
-      compressor(NIGHT.compressor), makeup, compressor(NIGHT.limiter)];
+      compressor(NIGHT.compressor), gain(NIGHT.makeup / autoMakeup(NIGHT.compressor)),
+      compressor(NIGHT.limiter), gain(1 / autoMakeup(NIGHT.limiter))];
     chain.reduce((a, b) => { a.connect(b); return b; }).connect(ctx.destination);
     input = chain[0];
   }

@@ -1,4 +1,13 @@
 {
+  "2026-11-14-night-mode-quieter": {
+    "title": "Nattläget höjer inte längre ljudet",
+    "items": {
+      "Quieter night mode": {
+        "title": "Tystare nattläge",
+        "text": "Förut blev allt högre direkt när du slog på nattläget (månen i spelaren). Nu ligger dialogen kvar på ungefär samma nivå medan höga scener som explosioner och musik sänks, så du kan ha volymen lågt utan att missa vad folk säger."
+      }
+    }
+  },
   "2026-11-14-member-invites": {
     "title": "Låt folk du litar på bjuda in andra",
     "items": {
