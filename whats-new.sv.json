@@ -1,4 +1,13 @@
 {
+  "2026-11-14-delete-while-converting": {
+    "title": "Radera fungerar på nya nedladdningar",
+    "items": {
+      "Delete right after downloading": {
+        "title": "Radera direkt efter nedladdning",
+        "text": "Att radera en film eller ett avsnitt som precis hade laddats ner kunde misslyckas utan att något hände medan Lilin fortfarande förberedde den för uppspelning. Nu stoppar Radera förberedelsen och tar bort den direkt."
+      }
+    }
+  },
   "2026-11-14-play-now-waits": {
     "title": "Spela nu dyker upp när det finns något att spela",
     "items": {

@@ -4623,7 +4623,6 @@ async function deleteMedia(id, scope, context = {}) {
   finally { if (hash) deletingDownloads.delete(hash); }
 }
 async function deleteMediaPlan({ original, torrent }, scope, { user = null, everyone = false } = {}) {
-  if (converter.isBusy(original)) throw new HttpError(409, 'This file is being converted right now. Try again when that finishes.');
   const wholeTorrent = torrent && (scope === 'torrent' || torrent.videos.length <= 1);
   const videos = wholeTorrent ? torrent.videos.map((v) => v.full) : [original];
   if (!videos.some((v) => samePath(v, original))) videos.push(original);
@@ -4631,7 +4630,10 @@ async function deleteMediaPlan({ original, torrent }, scope, { user = null, ever
     || (torrent && accounts.torrentClaimants(torrent.hash).some((id) => !accounts.sameLibrary(id, user?.id))))) {
     throw new HttpError(409, 'Someone else is using a video from this download. Its files have been kept. Try again after their request finishes.');
   }
-  if (videos.some((v) => converter.isBusy(v))) throw new HttpError(409, 'A file from this download is being converted right now. Try again when that finishes.');
+  // A conversion still running (e.g. the MP4 copy of a fresh download) is stopped: it's being deleted anyway.
+  for (const v of videos) if (converter.isBusy(v) && !(await converter.cancel(v))) {
+    throw new HttpError(409, 'A file from this download is busy being converted and couldn’t be stopped. Try again in a minute.');
+  }
   if (videos.some((v) => watchRooms.protects(accounts.mediaKey(v)))) throw new HttpError(409, 'A Watch Together room is using this video. End the room before deleting it.');
 
   const extras = videos.flatMap((v) => extrasFor(v));
@@ -4804,7 +4806,10 @@ async function deleteDownloadNow(t, withFiles, user = null) {
       throw new HttpError(409, 'Someone else has a video from this download in their library. Remove the download with files kept instead.');
     }
     if (videos.some((v) => watchRooms.protects(accounts.mediaKey(v)))) throw new HttpError(409, 'A Watch Together room is using a video from this download.');
-    if (videos.some((v) => converter.isBusy(v))) throw new HttpError(409, 'A file from this download is being converted right now. Try again when that finishes.');
+    // A conversion still running (e.g. the MP4 copy of a fresh download) is stopped: it's being deleted anyway.
+    for (const v of videos) if (converter.isBusy(v) && !(await converter.cancel(v))) {
+      throw new HttpError(409, 'A file from this download is busy being converted and couldn’t be stopped. Try again in a minute.');
+    }
     extras = videos.flatMap((v) => extrasFor(v));
   }
   await qbitRequest('/api/v2/torrents/delete', {

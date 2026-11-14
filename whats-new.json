@@ -1,5 +1,16 @@
 [
 {
+  "id": "2026-11-14-delete-while-converting",
+  "date": "2026-11-14",
+  "title": "Delete works on fresh downloads",
+  "items": [
+    {
+      "title": "Delete right after downloading",
+      "text": "Deleting a film or episode that had only just finished downloading could quietly fail while Lilin was still preparing it for playback. Delete now stops that preparation and removes it straight away."
+    }
+  ]
+},
+{
   "id": "2026-11-14-play-now-waits",
   "date": "2026-11-14",
   "title": "Play now shows up when there's something to play",

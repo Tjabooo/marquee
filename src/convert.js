@@ -208,6 +208,20 @@ export function forget(file) {
   if (fixed) fs.rmSync(fixed, { force: true });
   if (h264) fs.rmSync(h264, { force: true });
 }
+// Stops a conversion of this file (or its MP4 copy) so it can be deleted: the job is marked cancelled
+// (no fallback retries, no failure recorded), its ffmpeg is killed and the temp copy is cleaned up as
+// on any failure. Resolves once the file is no longer busy, or false after `waitMs`.
+export async function cancel(file, { waitMs = 15_000 } = {}) {
+  const files = new Set([file, twinPath(file)].filter(Boolean));
+  const jobs = activeJobs().filter((j) => files.has(j.file) || files.has(twinPath(j.file)));
+  for (let i = queue.length - 1; i >= 0; i--) if (files.has(queue[i].file)) queue.splice(i, 1);
+  if (!jobs.length) return !isBusy(file);
+  for (const j of jobs) j.cancelled = true;
+  for (const c of children) if ((c.lilinArgs || []).some((a) => files.has(a))) { try { c.kill(); } catch { /* already gone */ } }
+  const until = Date.now() + waitMs;
+  while (isBusy(file) && Date.now() < until) await new Promise((r) => setTimeout(r, 200));
+  return !isBusy(file);
+}
 // A conversion is reading or writing this file (or its MP4 copy).
 export const isBusy = (file) => isActive(file) || (needsConversion(file) && isActive(twinPath(file)));
 
@@ -529,6 +543,7 @@ function run(cmd, args, { onStdout, priorityLow = false } = {}) {
     let child;
     try { child = spawn(cmd, args, { windowsHide: true }); } catch (e) { return reject(e); }
     children.add(child);
+    child.lilinArgs = args;
     trackChild(child, cmd, args, 'convert');
     child.on('close', () => children.delete(child));
     if (priorityLow) background(child);
@@ -724,6 +739,7 @@ async function convert(job, slot) {
       } catch (e) {
         fs.rmSync(tmp, { force: true });
         dropSidecarTemps();
+        if (job.cancelled) throw Object.assign(new Error('cancelled'), { cancelled: true });
         if (!fallbacks.faststart && /reserved_moov_size is too small/i.test(e.stderr || '')) {
           // Checked first: it also ends in "Error writing trailer", which isn't an audio or GPU problem.
           console.warn(`[convert] ${name}: the reserved MP4 index room was too small; converting again with +faststart.`);
@@ -1099,6 +1115,7 @@ async function runJob(lane, job) {
     if (!job.fix) convertSoon(); // a new MP4 copy may still need its H.264 browser copy (browserH264Job)
   } catch (e) {
     if (e.lowSpace) return; // logged once by makeRoom; the next scan queues it again
+    if (job.cancelled) { console.log(`[convert] stopped: ${path.basename(job.file)} (being deleted)`); return; }
     if (e.retryLater) { console.warn(`[convert] ${path.basename(job.file)}: ${e.message?.includes('earlier') ? e.message : 'copy is in use'}, will retry.`); return; }
     const msg = e.message || String(e);
     console.warn(`[convert] failed: ${path.basename(job.file)}: ${msg}`);
