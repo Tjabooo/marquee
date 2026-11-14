@@ -1,5 +1,16 @@
 [
 {
+  "id": "2026-11-14-no-false-text",
+  "date": "2026-11-14",
+  "title": "No more stray \"false\"",
+  "items": [
+    {
+      "title": "Stray \"false\" text",
+      "text": "Some sheets, like Browse while you're in Documentaries, showed the word \"false\" where nothing should be. Gone everywhere."
+    }
+  ]
+},
+{
   "id": "2026-11-14-docs-english-only",
   "date": "2026-11-14",
   "title": "Documentaries in your language",

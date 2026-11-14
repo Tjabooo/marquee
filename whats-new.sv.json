@@ -1,4 +1,13 @@
 {
+  "2026-11-14-no-false-text": {
+    "title": "Inget mer \"false\"",
+    "items": {
+      "Stray \"false\" text": {
+        "title": "Ett \"false\" som inte hörde hemma",
+        "text": "Vissa rutor, som Bläddra när du är i Dokumentärer, visade ordet \"false\" där det inte skulle stå något. Borta överallt."
+      }
+    }
+  },
   "2026-11-14-docs-english-only": {
     "title": "Dokumentärer på ditt språk",
     "items": {

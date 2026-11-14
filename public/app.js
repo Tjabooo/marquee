@@ -24,6 +24,16 @@ saveLanguage(lang);
 const $ = (sel, el = document) => el.querySelector(sel);
 
 // DOM builder. Text is always inserted as text, never parsed as HTML.
+// The DOM's own append/replaceChildren/... drop false, null and undefined like h() does, so the
+// `cond && node` pattern can't print "false" on screen (Browse sheet, delete dialog).
+for (const proto of [Element.prototype, DocumentFragment.prototype]) {
+  for (const name of ['append', 'prepend', 'replaceChildren', 'before', 'after', 'replaceWith']) {
+    const native = proto[name];
+    if (typeof native !== 'function') continue;
+    proto[name] = function (...nodes) { return native.apply(this, nodes.filter((n) => n != null && n !== false)); };
+  }
+}
+
 function h(tag, props = {}, ...kids) {
   const el = document.createElement(tag);
   for (const [k, v] of Object.entries(props || {})) {
