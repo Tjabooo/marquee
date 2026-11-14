@@ -1,4 +1,13 @@
 {
+  "2026-11-14-docs-english-only": {
+    "title": "Dokumentärer på ditt språk",
+    "items": {
+      "English documentaries only": {
+        "title": "Bara engelska dokumentärer",
+        "text": "När Lilin är på engelska visar Dokumentärer nu bara titlar som gjorts på engelska: raderna från SVT Play, Sverige och Norden försvinner och de andra raderna hoppar över filmer och serier på andra språk. När Lilin är på svenska ändras ingenting."
+      }
+    }
+  },
   "2026-11-14-doc-genres-phone": {
     "title": "Dokumentärer passar mobilen",
     "items": {

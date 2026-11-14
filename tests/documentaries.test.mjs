@@ -1,7 +1,7 @@
 // Documentary categories and the parts of SVT Play and Knaben that read other people's data.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CATEGORIES, HOME_ROWS, HOME_ROWS_EN, swedishContent, createDocumentaries, discoverParams, mergeResults } from '../src/documentaries.js';
+import { CATEGORIES, HOME_ROWS, HOME_ROWS_EN, swedishContent, nonEnglishContent, createDocumentaries, discoverParams, mergeResults } from '../src/documentaries.js';
 import { parseCategory, parseSearch, parseTitle, parseVideo, pickVariant, vttToSrt, validPath, pageData } from '../src/svtplay.js';
 import { safeName, targetFile, parseProgress, expectedSize } from '../src/svt-queue.js';
 import { parseKnaben, plainQuery } from '../src/torrents.js';
@@ -83,9 +83,10 @@ test('a category merges its queries and home loads only the first rows', async (
   assert.ok(asked.length <= 12, 'the other categories wait until they scroll into view');
 });
 
-test('English: international rows first, Swedish-language rows last, no SVT in the billboard', async () => {
+test('English: only English-language rows and titles, no SVT anywhere', async () => {
+  const asked = [];
   const docs = createDocumentaries({
-    tmdb: async () => ({ results: [{ id: 1 }], total_pages: 1 }),
+    tmdb: async (endpoint, params) => { asked.push(params); return { results: [{ id: 1 }], total_pages: 1 }; },
     mapTitle: (x, type) => ({ type, id: `${x.id}`, title: 'T', poster: 'p', popularity: 1, backdrop: 'b', overview: 'o' }),
     svtCategory: async () => ({ items: [{ type: 'svt', path: '/a', kind: 'series', title: 'A', backdrop: 'b', overview: 'o' }] }),
     svtOn: () => true, translate: (s) => s, language: () => 'en',
@@ -94,8 +95,11 @@ test('English: international rows first, Swedish-language rows last, no SVT in t
   assert.deepEqual(home.rows.map((r) => r.id), HOME_ROWS_EN);
   assert.ok(home.featured.length > 0 && home.featured.every((t) => t.type !== 'svt'));
   const order = [...home.rows.map((r) => r.id), ...home.more.map((c) => c.id)];
-  const firstSwedish = order.findIndex((id) => swedishContent(CATEGORIES.find((c) => c.id === id)));
-  assert.ok(order.slice(firstSwedish).every((id) => swedishContent(CATEGORIES.find((c) => c.id === id))));
+  assert.ok(order.every((id) => !nonEnglishContent(CATEGORIES.find((c) => c.id === id))), 'no Swedish, SVT or Nordic rows');
+  assert.ok(!order.includes('nordic') && !order.includes('swedish') && !order.some((id) => id.startsWith('svt-')));
+  assert.ok(home.categories.every((c) => c.group !== 'Sweden and the Nordics' && c.source === 'tmdb'));
+  assert.ok(asked.length > 0 && asked.every((p) => p.with_original_language === 'en'), 'TMDB rows ask for English originals');
+  assert.equal(await docs.category('svt-true-crime'), null);
   assert.equal(home.categories[0].group, 'True crime');
 });
 

@@ -1,5 +1,16 @@
 [
 {
+  "id": "2026-11-14-docs-english-only",
+  "date": "2026-11-14",
+  "title": "Documentaries in your language",
+  "items": [
+    {
+      "title": "English documentaries only",
+      "text": "With Lilin in English, Documentaries now only shows titles that were made in English: the SVT Play, Swedish and Nordic rows are gone, and the other rows leave out foreign-language films and shows. With Lilin in Swedish nothing changes."
+    }
+  ]
+},
+{
   "id": "2026-11-14-doc-genres-phone",
   "date": "2026-11-14",
   "title": "Documentaries fit your phone",

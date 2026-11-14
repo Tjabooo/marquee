@@ -49,7 +49,7 @@ export const CATEGORIES = [
   { id: 'svt-inifran', name: 'Dokument inifrån', group: 'Sweden and the Nordics', svt: 'dokument-inifran' },
   { id: 'svt-archive', name: 'From the SVT archive', group: 'Sweden and the Nordics', svt: 'dokumentar-oppet-arkiv' },
   { id: 'swedish', name: 'Swedish documentaries', group: 'Sweden and the Nordics', lively: true, swedish: true, queries: [both({ with_genres: String(DOCUMENTARY), ...SWEDEN })] },
-  { id: 'nordic', name: 'Nordic documentaries', group: 'Sweden and the Nordics', lively: true, queries: [both({ with_genres: String(DOCUMENTARY), with_origin_country: anyOf('NO', 'DK', 'FI', 'IS') })] },
+  { id: 'nordic', name: 'Nordic documentaries', group: 'Sweden and the Nordics', lively: true, foreign: true, queries: [both({ with_genres: String(DOCUMENTARY), with_origin_country: anyOf('NO', 'DK', 'FI', 'IS') })] },
   // History and society
   { id: 'history', name: 'History', group: 'History and society', queries: [
     { movie: { with_genres: `${DOCUMENTARY},${HISTORY}` }, tv: { with_genres: String(DOCUMENTARY), with_keywords: String(KW.history) } },
@@ -88,10 +88,11 @@ export const CATEGORIES = [
 
 // What the page opens with; the others load as they scroll into view.
 export const HOME_ROWS = ['svt-true-crime', 'swedish-true-crime', 'svt-series', 'true-crime'];
-// In English the page leads with titles that have English names and descriptions: SVT Play is Swedish
-// only, and Swedish true crime is mostly Swedish names. Those rows still come, further down.
+// In English the page is English-language only: no SVT Play, Swedish or Nordic rows, and every TMDB row
+// asks for titles originally in English (with_original_language). Swedish keeps everything.
 export const HOME_ROWS_EN = ['true-crime', 'cold-cases', 'nature', 'history'];
 export const swedishContent = (c) => Boolean(c.svt || c.swedish);
+export const nonEnglishContent = (c) => swedishContent(c) || Boolean(c.foreign);
 
 const SORTS = {
   popular: {
@@ -109,7 +110,7 @@ const SORTS = {
 };
 
 // The TMDB parameters for one query of a category. Exported for the tests.
-export function discoverParams(category, query, type, sort, page, today) {
+export function discoverParams(category, query, type, sort, page, today, { englishOnly = false } = {}) {
   const params = query[type];
   if (!params) return null;
   const order = SORTS[sort] || SORTS.popular;
@@ -119,6 +120,7 @@ export function discoverParams(category, query, type, sort, page, today) {
     ...order[type],
     ...(votes ? { 'vote_count.gte': votes } : {}),
     ...(type === 'tv' && !params.with_keywords ? { without_genres: anyOf(NEWS, TALK, SOAP) } : {}),
+    ...(englishOnly ? { with_original_language: 'en' } : {}),
     include_adult: 'false',
     page: String(page),
     [type === 'movie' ? 'primary_release_date.lte' : 'first_air_date.lte']: today,
@@ -141,10 +143,10 @@ export function mergeResults(lists, sort) {
 // deps: { tmdb(endpoint, params) (cached), mapTitle(raw, type), svtCategory(slug), svtOn(), translate(text) }
 export function createDocumentaries(deps) {
   const english = () => (deps.language?.() || 'en') !== 'sv';
-  // Page order. English keeps each group together but moves the Swedish-language rows to its end.
+  // Page order. English leaves out the Swedish and other non-English rows altogether.
   const visible = () => {
     const cats = CATEGORIES.filter((c) => !c.svt || deps.svtOn());
-    return english() ? [...cats.filter((c) => !swedishContent(c)), ...cats.filter(swedishContent)] : cats;
+    return english() ? cats.filter((c) => !nonEnglishContent(c)) : cats;
   };
 
   const publicCategory = (c) => ({
@@ -162,7 +164,7 @@ export function createDocumentaries(deps) {
     const today = new Date().toISOString().slice(0, 10);
     const types = type === 'movie' ? ['movie'] : type === 'tv' ? ['tv'] : ['movie', 'tv'];
     const answers = await Promise.all(c.queries.flatMap((query) => types.map(async (t) => {
-      const params = discoverParams(c, query, t, sort, page, today);
+      const params = discoverParams(c, query, t, sort, page, today, { englishOnly: english() });
       if (!params) return null;
       const data = await deps.tmdb(`/discover/${t}`, params);
       return { results: (data.results || []).map((x) => deps.mapTitle(x, t)), totalPages: Math.min(data.total_pages || 1, 500) };
