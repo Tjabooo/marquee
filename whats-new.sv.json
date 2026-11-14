@@ -1,4 +1,13 @@
 {
+  "2026-11-14-play-now-start-progress": {
+    "title": "Spela nu visar hur länge det är kvar tills den startar",
+    "items": {
+      "Clearer Play now wait": {
+        "title": "Tydligare väntan på Spela nu",
+        "text": "Medan Spela nu hämtar början av en video räknar procenten och tiden nu mot att uppspelningen kan börja, inte hela nedladdningen. Du ser alltså \"40 % · cirka 30 s kvar\" i stället för \"0 % nedladdat · cirka 2 h kvar\"."
+      }
+    }
+  },
   "2026-11-14-no-stuck-moving": {
     "title": "Stora nedladdningar stannar inte i början",
     "items": {

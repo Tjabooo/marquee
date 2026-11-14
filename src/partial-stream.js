@@ -354,6 +354,13 @@ export class PartialStreams {
     return { ready: Boolean(e.info) && e.started, entry: e };
   }
 
+  startStatus(e, speed) {
+    if (e.started) return { startProgress: 1, startEta: 0 };
+    const need = startBytes(e.size, e.info?.bitrate || 0, START_GOAL_SECONDS);
+    const have = Math.min(need, this.readable(e, 0));
+    return { startProgress: need ? have / need : 1, startEta: speed > 0 ? Math.ceil((need - have) / speed) : null };
+  }
+
   // What the player shows about the download.
   status(e) {
     const t = e.torrent || {};
@@ -363,7 +370,10 @@ export class PartialStreams {
     const bitrate = e.info?.bitrate || 0;
     return { id: e.id, done: progress >= 1, progress, inOrder: e.size ? this.readable(e, 0) / e.size : 0, speed, eta: speed > 0 ? Math.round(left / speed) : null,
       state: t.state || '', paused: /^(paused|stopped)/.test(t.state || ''), seeds: Number.isFinite(t.num_seeds) ? t.num_seeds : null,
-      keepsUp: bitrate > 0 ? speed * 8 >= bitrate * 1.1 : null, duration: e.info?.duration || null };
+      keepsUp: bitrate > 0 ? speed * 8 >= bitrate * 1.1 : null, duration: e.info?.duration || null,
+      // Before playback: how far along the start it waits for is (START_GOAL_SECONDS of video, or the
+      // minimum until the video's bitrate is known), and roughly how long that takes at this speed.
+      ...this.startStatus(e, speed) };
   }
 
   activeHashes() { return new Set([...this.entries.values()].map((e) => e.hash)); }

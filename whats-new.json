@@ -1,5 +1,16 @@
 [
 {
+  "id": "2026-11-14-play-now-start-progress",
+  "date": "2026-11-14",
+  "title": "Play now shows how long until it starts",
+  "items": [
+    {
+      "title": "Clearer Play now wait",
+      "text": "While Play now gets the start of a video, the percentage and time now count toward starting playback, not the whole download. So you see \"40% · about 30 s to go\" instead of \"0% downloaded · about 2 h left\"."
+    }
+  ]
+},
+{
   "id": "2026-11-14-no-stuck-moving",
   "date": "2026-11-14",
   "title": "Big downloads don't stall at the start",

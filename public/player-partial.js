@@ -51,6 +51,16 @@ export function progressLine(status) {
   return eta ? T('{0}% downloaded · about {1} left', pct, eta) : T('{0}% downloaded · waiting for sources', pct);
 }
 
+// Before playback starts: progress toward the start it needs (not the whole file).
+export function startLine(status) {
+  if (status?.paused) return T('download paused');
+  if (!Number.isFinite(status?.startProgress)) return progressLine(status);
+  const pct = Math.min(99, Math.floor(status.startProgress * 100));
+  const eta = status.startEta;
+  if (!Number.isFinite(eta)) return T('{0}% · waiting for sources', pct);
+  return eta < 5 ? T('{0}% · almost there', pct) : T('{0}% · about {1} to go', pct, eta < 60 ? T('{0} s', eta) : fmtEta(eta));
+}
+
 // Past the download's reach? Then the wait lasts until the download gets there.
 export const pastDownloaded = (time, status) => Boolean(status?.duration) && time > (status.inOrder || 0) * status.duration + 5;
 
@@ -269,7 +279,7 @@ export async function playPartial(session, ctx) {
       if (!ctx.isCurrent(session)) return;
       paintStatus(opened.status);
       if (opened.ready) break;
-      ctx.showNote(`${T('Getting the start of the video from the download…')} ${progressLine(opened.status)}`);
+      ctx.showNote(`${T('Getting the start of the video from the download…')} ${startLine(opened.status)}`);
       await sleep(OPEN_MS, signal);
       if (signal.aborted) return;
     }

@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileLayout, readableBytes, fileProgress, startBytes, readyToStart, packPriorities, parsePartialId, PartialStreams, roomGate, ROOM_LEAD, ROOM_STOP } from '../src/partial-stream.js';
-import { BufferNotice, RebufferHold, pastDownloaded, progressLine, fmtEta } from '../public/player-partial.js';
+import { BufferNotice, RebufferHold, pastDownloaded, progressLine, startLine, fmtEta } from '../public/player-partial.js';
 import { PhoneStreams } from '../src/phone-stream.js';
 
 const PIECE = 1024;
@@ -301,6 +301,11 @@ test('the popup says how far the download is', () => {
   assert.equal(fmtEta(720), '12 min');
   assert.equal(fmtEta(3900), '1 h 5 min');
   assert.equal(progressLine({ progress: 0.43, eta: 720 }), '43% downloaded · about 12 min left');
+  // Before playback: progress toward the start it needs, not the whole file.
+  assert.equal(startLine({ startProgress: 0.4, startEta: 30 }), '40% · about 30 s to go');
+  assert.equal(startLine({ startProgress: 0.97, startEta: 2 }), '97% · almost there');
+  assert.equal(startLine({ startProgress: 0.1, startEta: null }), '10% · waiting for sources');
+  assert.equal(startLine({ paused: true, startProgress: 0.1 }), 'download paused');
   assert.equal(progressLine({ progress: 0.43, eta: null }), '43% downloaded · waiting for sources');
   assert.equal(progressLine({ progress: 0.43, paused: true, eta: 5 }), '43% downloaded · paused');
 });
