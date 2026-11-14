@@ -1,13 +1,5 @@
 {
-  "2026-11-14-home-icon-any-browser": {
-    "title": "Lilin-ikonen på alla hemskärmar",
-    "items": {
-      "Home Screen icon from Firefox": {
-        "title": "Hemskärmsikon från Firefox",
-        "text": "Lade du till Lilin på hemskärmen från Firefox (och vissa andra webbläsare) fick du ett vanligt L i stället för Lilin-ikonen. Nu blir det den riktiga ikonen. Visar din ett L, ta bort den och lägg till Lilin på hemskärmen igen."
-      }
-    }
-  },
+
   "2026-11-14-removed-card": {
     "title": "Snyggare \"Borttagen från ditt bibliotek\"",
     "items": {

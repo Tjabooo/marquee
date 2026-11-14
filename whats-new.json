@@ -1,16 +1,5 @@
 [
 {
-  "id": "2026-11-14-home-icon-any-browser",
-  "date": "2026-11-14",
-  "title": "The Lilin icon on every Home Screen",
-  "items": [
-    {
-      "title": "Home Screen icon from Firefox",
-      "text": "Adding Lilin to your Home Screen from Firefox (and some other browsers) gave a plain letter L instead of the Lilin icon. It now gets the real icon. If yours shows the L, remove it and add Lilin to your Home Screen again."
-    }
-  ]
-},
-{
   "id": "2026-11-14-removed-card",
   "date": "2026-11-14",
   "title": "A nicer \"Removed from your library\"",
