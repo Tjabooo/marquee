@@ -7,6 +7,10 @@
     {
       "title": "Sharp, smooth trailers",
       "text": "Trailers on title pages and behind the Discover banner played in blurry low quality, because YouTube picks the quality from how big the player is and ours were small. They now ask for full HD, and the frosted buttons over a playing banner trailer turn plain so the video doesn't stutter."
+    },
+    {
+      "title": "One trailer at a time",
+      "text": "The banner trailer kept playing out of sight when you scrolled down or opened a title, so a title page's trailer had to share the computer with it. It now stops as soon as you can't see it and starts again when you come back."
     }
   ]
 },

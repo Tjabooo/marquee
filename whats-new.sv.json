@@ -5,6 +5,10 @@
       "Sharp, smooth trailers": {
         "title": "Skarpa och jämna trailers",
         "text": "Trailers på titelsidor och bakom Upptäck-bannern spelades i suddig låg kvalitet, eftersom YouTube väljer kvalitet efter hur stor spelaren är och våra var små. Nu ber de om full HD, och de frostade knapparna över en banner-trailer som spelas blir enkla så att videon inte hackar."
+      },
+      "One trailer at a time": {
+        "title": "En trailer i taget",
+        "text": "Banner-trailern fortsatte spelas utom synhåll när du scrollade ner eller öppnade en titel, så en titelsidas trailer fick dela datorn med den. Nu stannar den så fort du inte ser den och börjar om när du kommer tillbaka."
       }
     }
   },

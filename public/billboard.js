@@ -108,13 +108,13 @@ export function createBillboard({ h, icon, cachedFor, pageInfo, openDetails, qui
     }
     function scheduleTrailer() {
       clearTimeout(trailerTimer);
-      if (!trailersOk()) return;
+      if (!trailersOk() || hiddenAway()) return;
       const t = slides[index];
       if (!t?.id || !['movie', 'tv'].includes(t.type)) return;
       trailerTimer = setTimeout(async () => {
         let trailer = null;
         try { trailer = (await cachedFor(`/api/title/${t.type}/${t.id}/trailer`, 60 * 60 * 1000)).trailer; } catch { return; }
-        if (!trailer || !root.isConnected || slides[index] !== t || document.hidden || signal?.aborted) return;
+        if (!trailer || !root.isConnected || slides[index] !== t || document.hidden || hiddenAway() || signal?.aborted) return;
         const key = encodeURIComponent(trailer.key);
         frame = h('iframe', {
           class: 'bb-trailer', title: `${t.title}: ${trailer.name}`, tabindex: '-1', 'aria-hidden': 'true',
@@ -146,8 +146,19 @@ export function createBillboard({ h, icon, cachedFor, pageInfo, openDetails, qui
       sound.replaceChildren(icon(on ? 'volumeHigh' : 'muted'));
     });
     const onVisibility = () => { if (document.hidden) stopTrailer(); else scheduleTrailer(); };
+    // Only play while the banner can be seen: scrolled away or under a title page it kept decoding a second
+    // video (a title page's own trailer then played next to it, and both stuttered).
+    let onScreen = true;
+    const sheetEl = document.getElementById('sheet');
+    const hiddenAway = () => !onScreen || !!sheetEl?.classList.contains('open');
+    const onSeen = () => { if (hiddenAway()) stopTrailer(); else if (!frame) scheduleTrailer(); };
+    const io = new IntersectionObserver(([e]) => { onScreen = e.isIntersecting; onSeen(); }, { threshold: 0.35 });
+    io.observe(root);
+    const mo = sheetEl && new MutationObserver(onSeen);
+    mo?.observe(sheetEl, { attributes: true, attributeFilter: ['class'] });
     function stop() {
       clearInterval(timer); stopTrailer();
+      io.disconnect(); mo?.disconnect();
       window.removeEventListener('message', onMessage);
       document.removeEventListener('visibilitychange', onVisibility);
     }
