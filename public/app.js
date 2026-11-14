@@ -7197,7 +7197,7 @@ function settingsLayout(nodes) {
 
 // The Lilin app on a TV (tv/tizen) shows a code; entering it here signs that TV in as you.
 function tvSignInRow() {
-  const input = h('input', { type: 'text', class: 'invite-note tv-code', maxlength: '7', placeholder: T('Code on the TV'), 'aria-label': T('Code shown on the TV'),
+  const input = h('input', { type: 'text', class: 'invite-note tv-code', maxlength: '7', placeholder: T('Code'), 'aria-label': T('Code shown on the TV'),
     autocomplete: 'off', autocapitalize: 'characters', spellcheck: 'false', enterkeyhint: 'done' });
   const go = h('button', { type: 'submit', class: 'chip' }, T('Sign in'));
   const note = h('p', { class: 'set-hint tv-code-note', role: 'status' });
