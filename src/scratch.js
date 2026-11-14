@@ -27,8 +27,8 @@ export function liveRoot(t) {
 // Which torrents to move onto the scratch drive, and which back to the media drive.
 // freeBytes: free space on the scratch drive now; reserveBytes: never planned into (keeps Windows
 // and everything else on that drive healthy); otherReserved: space promised to other writers
-// (conversions in progress); maxCopyBytes: a torrent that has already written more than this
-// stays where it is, since moving it means copying that data.
+// (conversions in progress); maxCopyBytes: a started torrent bigger than this stays where it is,
+// since moving it means copying its files at full size (they are sparse, but a move copies all of it).
 // arriving / leaving: hashes whose move onto / off the scratch drive was asked for but hasn't finished.
 // qBittorrent moves one torrent at a time and reports the new download path only once its move is
 // done, so without these a queued torrent would be planned again and its space promised twice.
@@ -45,7 +45,9 @@ export function scratchPlan({ torrents = [], scratchDir, freeBytes, reserveBytes
     if (arriving.has(t.hash) && !usesScratch(t, scratchDir)) { if (unfinished) queued += Number(t.size) || 0; continue; }
     if (usesScratch(t, scratchDir)) { if (unfinished) on.push(t); continue; }
     if (!unfinished || t.download_path || !(Number(t.size) > 0) || STOPPED.test(t.state || '')) continue;
-    if ((Number(t.completed) || 0) > maxCopyBytes) continue;
+    // Once anything is written, qBittorrent's files exist at full (sparse) size and a move copies all of
+    // it: a 25 GB film moved at 4 % meant minutes of "moving" with the download stopped.
+    if ((Number(t.completed) || 0) > 0 && (Number(t.size) || 0) > maxCopyBytes) continue;
     candidates.push(t);
   }
   const pending = on.reduce((n, t) => n + (Number(t.amount_left) || 0), 0) + queued;

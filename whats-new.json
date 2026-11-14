@@ -1,5 +1,16 @@
 [
 {
+  "id": "2026-11-14-no-stuck-moving",
+  "date": "2026-11-14",
+  "title": "Big downloads don't stall at the start",
+  "items": [
+    {
+      "title": "No more \"moving\" pause",
+      "text": "A big download could stop for a few minutes just after it started while the server shuffled it to a faster drive (Lost in Translation sat at 4 %). New downloads now start on that drive straight away, so they keep going."
+    }
+  ]
+},
+{
   "id": "2026-11-14-five-tweaks",
   "date": "2026-11-14",
   "title": "Undo, thumbs down that counts, and more",

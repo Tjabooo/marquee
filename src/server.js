@@ -1343,6 +1343,14 @@ async function addDownloadNow({ link, file, user = null, name = '', film = null,
   }
   // The first and last pieces come early, so Play now (which waits for the start) shows up quickly.
   if (PARTIAL_ENABLED) form.append('firstLastPiecePrio', 'true');
+  // Start on the scratch drive when it has plenty of room, so the data never has to be moved there
+  // later (qBittorrent's files are sparse: moving a started download copies its full size). The scratch
+  // round still sends it back if it turns out too big.
+  if (SCRATCH_DIR && QBIT_URL) {
+    try {
+      if ((await scratchRoom({ forDownloads: true })) >= SCRATCH_START_ROOM) { form.append('downloadPath', SCRATCH_DIR); form.append('useDownloadPath', 'true'); }
+    } catch { /* unknown: the media drive, as before */ }
+  }
   const r = await qbitRequest('/api/v2/torrents/add', { method: 'POST', body: form });
   const text = (await r.text()).trim();
   // Rejected input: "Fails." on older versions, 415 on newer ones.
@@ -5073,7 +5081,15 @@ async function scratchFree(dir = SCRATCH_DIR) {
 }
 // Free room for a conversion's temporary copy: free space minus other conversions' copies and the
 // reserve, and minus what downloads still have to write when they share the drive.
-async function scratchRoom() {
+const SCRATCH_START_ROOM = 80 * 1024 ** 3; // a new download starts on the scratch drive only with this much to spare
+async function scratchRoom({ forDownloads = false } = {}) {
+  if (forDownloads) {
+    let pending = 0;
+    for (const t of await qbit('/api/v2/torrents/info')) {
+      if (usesScratch(t, SCRATCH_DIR) && Number(t.progress) < 1) pending += Number(t.amount_left) || 0;
+    }
+    return (await scratchFree()) - pending - (CONVERT_SHARES_SCRATCH ? converter.scratchReserved() : 0) - SCRATCH_RESERVE;
+  }
   if (!CONVERT_SCRATCH_DIR) return 0;
   if (!CONVERT_SHARES_SCRATCH) return (await scratchFree(CONVERT_SCRATCH_DIR)) - converter.scratchReserved() - CONVERT_SCRATCH_RESERVE;
   let pending = 0;

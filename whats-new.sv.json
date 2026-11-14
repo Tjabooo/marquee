@@ -1,4 +1,13 @@
 {
+  "2026-11-14-no-stuck-moving": {
+    "title": "Stora nedladdningar stannar inte i början",
+    "items": {
+      "No more \"moving\" pause": {
+        "title": "Ingen paus för \"flyttar\"",
+        "text": "En stor nedladdning kunde stanna i några minuter strax efter starten medan servern flyttade den till en snabbare disk (Lost in Translation stod på 4 %). Nu börjar nya nedladdningar direkt på den disken, så de fortsätter."
+      }
+    }
+  },
   "2026-11-14-five-tweaks": {
     "title": "Ångra, tumme ner som märks och mer",
     "items": {

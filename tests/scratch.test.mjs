@@ -34,6 +34,7 @@ test('finished, stopped, managed and half-done downloads stay where they are', (
     t({ hash: 'meta', state: 'metaDL', size: 0 }),
     t({ hash: 'auto', auto_tmm: true }),
     t({ hash: 'half', completed: 5 * GiB }),
+    t({ hash: 'barely-started', completed: 50 * 1024 ** 2 }), // 50 MB in, but a move copies all 10 GB
     t({ hash: 'other', download_path: path.resolve('/elsewhere') }),
     t({ hash: 'ok' }),
   ] });
