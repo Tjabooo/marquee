@@ -1,4 +1,13 @@
 {
+  "2026-11-14-docs-english": {
+    "title": "Dokumentärer på engelska börjar med engelska titlar",
+    "items": {
+      "English titles first": {
+        "title": "Engelska titlar först",
+        "text": "När Lilin är på engelska börjar fliken Dokumentärer nu med internationell true crime, olösta fall, natur och historia. SVT Play och svensk true crime finns kvar längre ner på sidan."
+      }
+    }
+  },
   "2026-11-13-cam-gpu": {
     "title": "Klipp: att lägga till kameran går ungefär 6 gånger snabbare",
     "items": {

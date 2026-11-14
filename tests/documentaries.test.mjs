@@ -1,7 +1,7 @@
 // Documentary categories and the parts of SVT Play and Knaben that read other people's data.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CATEGORIES, HOME_ROWS, createDocumentaries, discoverParams, mergeResults } from '../src/documentaries.js';
+import { CATEGORIES, HOME_ROWS, HOME_ROWS_EN, swedishContent, createDocumentaries, discoverParams, mergeResults } from '../src/documentaries.js';
 import { parseCategory, parseSearch, parseTitle, parseVideo, pickVariant, vttToSrt, validPath, pageData } from '../src/svtplay.js';
 import { safeName, targetFile, parseProgress, expectedSize } from '../src/svt-queue.js';
 import { parseKnaben, plainQuery } from '../src/torrents.js';
@@ -64,6 +64,7 @@ test('a category merges its queries and home loads only the first rows', async (
     svtCategory: async () => ({ items: [{ type: 'svt', path: '/a', kind: 'series', title: 'A', backdrop: 'b', overview: 'o' }, { type: 'svt', path: '/video/x/b', kind: 'film', title: 'B' }] }),
     svtOn: () => true,
     translate: (s) => s,
+    language: () => 'sv',
   });
   const crime = await docs.category('true-crime', { type: 'movie' });
   assert.equal(crime.results.length, 2);
@@ -80,6 +81,22 @@ test('a category merges its queries and home loads only the first rows', async (
   assert.equal(home.categories.length, CATEGORIES.length);
   assert.ok(home.featured.length > 0);
   assert.ok(asked.length <= 12, 'the other categories wait until they scroll into view');
+});
+
+test('English: international rows first, Swedish-language rows last, no SVT in the billboard', async () => {
+  const docs = createDocumentaries({
+    tmdb: async () => ({ results: [{ id: 1 }], total_pages: 1 }),
+    mapTitle: (x, type) => ({ type, id: `${x.id}`, title: 'T', poster: 'p', popularity: 1, backdrop: 'b', overview: 'o' }),
+    svtCategory: async () => ({ items: [{ type: 'svt', path: '/a', kind: 'series', title: 'A', backdrop: 'b', overview: 'o' }] }),
+    svtOn: () => true, translate: (s) => s, language: () => 'en',
+  });
+  const home = await docs.home();
+  assert.deepEqual(home.rows.map((r) => r.id), HOME_ROWS_EN);
+  assert.ok(home.featured.length > 0 && home.featured.every((t) => t.type !== 'svt'));
+  const order = [...home.rows.map((r) => r.id), ...home.more.map((c) => c.id)];
+  const firstSwedish = order.findIndex((id) => swedishContent(CATEGORIES.find((c) => c.id === id)));
+  assert.ok(order.slice(firstSwedish).every((id) => swedishContent(CATEGORIES.find((c) => c.id === id))));
+  assert.equal(home.categories[0].group, 'True crime');
 });
 
 test('SVT off: only TMDB categories remain', async () => {

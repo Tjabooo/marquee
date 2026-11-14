@@ -30,7 +30,7 @@ const SWEDEN = { with_origin_country: 'SE' };
 export const CATEGORIES = [
   // True crime
   { id: 'svt-true-crime', name: 'True crime on SVT Play', group: 'True crime', svt: 'true-crime' },
-  { id: 'swedish-true-crime', name: 'Swedish true crime', group: 'True crime', lively: true, queries: [
+  { id: 'swedish-true-crime', name: 'Swedish true crime', group: 'True crime', lively: true, swedish: true, queries: [
     both({ with_genres: `${DOCUMENTARY},${CRIME}`, ...SWEDEN }),
     both({ with_keywords: String(KW.trueCrime), ...SWEDEN }), // Efterlyst and Veckans brott count as talk shows
   ] },
@@ -48,7 +48,7 @@ export const CATEGORIES = [
   { id: 'svt-swedish-films', name: 'Swedish documentary films on SVT Play', group: 'Sweden and the Nordics', svt: 'svensk-dokumentarfilm' },
   { id: 'svt-inifran', name: 'Dokument inifrån', group: 'Sweden and the Nordics', svt: 'dokument-inifran' },
   { id: 'svt-archive', name: 'From the SVT archive', group: 'Sweden and the Nordics', svt: 'dokumentar-oppet-arkiv' },
-  { id: 'swedish', name: 'Swedish documentaries', group: 'Sweden and the Nordics', lively: true, queries: [both({ with_genres: String(DOCUMENTARY), ...SWEDEN })] },
+  { id: 'swedish', name: 'Swedish documentaries', group: 'Sweden and the Nordics', lively: true, swedish: true, queries: [both({ with_genres: String(DOCUMENTARY), ...SWEDEN })] },
   { id: 'nordic', name: 'Nordic documentaries', group: 'Sweden and the Nordics', lively: true, queries: [both({ with_genres: String(DOCUMENTARY), with_origin_country: anyOf('NO', 'DK', 'FI', 'IS') })] },
   // History and society
   { id: 'history', name: 'History', group: 'History and society', queries: [
@@ -88,6 +88,10 @@ export const CATEGORIES = [
 
 // What the page opens with; the others load as they scroll into view.
 export const HOME_ROWS = ['svt-true-crime', 'swedish-true-crime', 'svt-series', 'true-crime'];
+// In English the page leads with titles that have English names and descriptions: SVT Play is Swedish
+// only, and Swedish true crime is mostly Swedish names. Those rows still come, further down.
+export const HOME_ROWS_EN = ['true-crime', 'cold-cases', 'nature', 'history'];
+export const swedishContent = (c) => Boolean(c.svt || c.swedish);
 
 const SORTS = {
   popular: {
@@ -136,7 +140,12 @@ export function mergeResults(lists, sort) {
 
 // deps: { tmdb(endpoint, params) (cached), mapTitle(raw, type), svtCategory(slug), svtOn(), translate(text) }
 export function createDocumentaries(deps) {
-  const visible = () => CATEGORIES.filter((c) => !c.svt || deps.svtOn());
+  const english = () => (deps.language?.() || 'en') !== 'sv';
+  // Page order. English keeps each group together but moves the Swedish-language rows to its end.
+  const visible = () => {
+    const cats = CATEGORIES.filter((c) => !c.svt || deps.svtOn());
+    return english() ? [...cats.filter((c) => !swedishContent(c)), ...cats.filter(swedishContent)] : cats;
+  };
 
   const publicCategory = (c) => ({
     id: c.id, name: deps.translate(c.name), group: deps.translate(c.group), source: c.svt ? 'svt' : 'tmdb',
@@ -167,11 +176,11 @@ export function createDocumentaries(deps) {
 
   async function home() {
     const cats = visible();
-    const first = HOME_ROWS.filter((id) => cats.some((c) => c.id === id));
+    const first = (english() ? HOME_ROWS_EN : HOME_ROWS).filter((id) => cats.some((c) => c.id === id));
     const answers = await Promise.all(first.map((id) => category(id).catch(() => null)));
     const rows = answers.filter((a) => a?.results.length)
       .map((a) => ({ id: a.id, title: a.title, source: a.source, items: a.results }));
-    const featured = rows.flatMap((r) => r.items).filter((t) => t.backdrop && t.overview).slice(0, 6);
+    const featured = rows.flatMap((r) => r.items).filter((t) => t.backdrop && t.overview && !(english() && t.type === 'svt')).slice(0, 6);
     return {
       featured,
       categories: cats.map(publicCategory),

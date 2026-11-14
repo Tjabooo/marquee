@@ -695,7 +695,7 @@ async function discoverGenre({ type, movieGenre, tvGenre, sort, page }) {
 
 // ---------- documentaries ----------
 const docs = createDocumentaries({
-  tmdb: (endpoint, params) => cachedTmdb(endpoint, params), mapTitle, svtCategory: svt.svtCategory, svtOn: svt.svtEnabled, translate,
+  tmdb: (endpoint, params) => cachedTmdb(endpoint, params), mapTitle, svtCategory: svt.svtCategory, svtOn: svt.svtEnabled, translate, language: currentLanguage,
 });
 
 // ---------- SVT Play ----------
