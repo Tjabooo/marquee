@@ -4,6 +4,7 @@
 // connection the slide you're looking at plays its trailer muted after a few seconds (never on phones,
 // with Save-Data or with reduced motion). The slides are listed as a row of lilin bulbs.
 import { T } from './i18n.js';
+import { fitTrailer, HD_HINT } from './trailer-size.js';
 
 const ADVANCE_MS = 9000;
 const TRAILER_AFTER_MS = 4500;
@@ -24,7 +25,7 @@ export function createBillboard({ h, icon, cachedFor, pageInfo, openDetails, qui
     const bulbs = h('div', { class: 'bb-bulbs', role: 'group', 'aria-label': T('Choose a title') });
     const sound = h('button', { type: 'button', class: 'bb-sound', hidden: true, 'aria-pressed': 'false', 'aria-label': T('Sound on') }, icon('muted'));
     const root = h('section', { class: 'billboard', 'aria-roledescription': T('carousel'), 'aria-label': label }, track, h('div', { class: 'bb-foot' }, bulbs, sound));
-    let index = 0, timer = null, trailerTimer = null, frame = null, paused = false;
+    let index = 0, timer = null, trailerTimer = null, frame = null, unfit = null, paused = false;
 
     const slideEls = slides.map((t, i) => {
       const quick = quickAction(t);
@@ -102,7 +103,7 @@ export function createBillboard({ h, icon, cachedFor, pageInfo, openDetails, qui
       if (!frame || e.source !== frame.contentWindow) return;
       let data; try { data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; } catch { return; }
       const stateNow = data?.event === 'onStateChange' ? data.info : data?.info?.playerState;
-      if (stateNow === 1) { frame.classList.add('is-playing'); sound.hidden = false; }
+      if (stateNow === 1) { frame.classList.add('is-playing'); sound.hidden = false; document.body.classList.add('bb-trailer-live'); }
       if (stateNow === 0) { stopTrailer(); if (advancing()) go(index + 1); }
     }
     function scheduleTrailer() {
@@ -118,18 +119,22 @@ export function createBillboard({ h, icon, cachedFor, pageInfo, openDetails, qui
         frame = h('iframe', {
           class: 'bb-trailer', title: `${t.title}: ${trailer.name}`, tabindex: '-1', 'aria-hidden': 'true',
           allow: 'autoplay; encrypted-media', referrerpolicy: 'strict-origin-when-cross-origin',
-          src: `https://www.youtube-nocookie.com/embed/${key}?autoplay=1&mute=1&controls=0&disablekb=1&fs=0&iv_load_policy=3&modestbranding=1&playsinline=1&rel=0&enablejsapi=1&origin=${encodeURIComponent(location.origin)}`,
+          src: `https://www.youtube-nocookie.com/embed/${key}?autoplay=1&mute=1&controls=0&disablekb=1&fs=0&iv_load_policy=3&modestbranding=1&playsinline=1&rel=0&${HD_HINT}&enablejsapi=1&origin=${encodeURIComponent(location.origin)}`,
         });
         frame.addEventListener('load', () => {
           // Ask the player to report its state, so the video only shows once it's really playing.
           frame?.contentWindow?.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), '*');
         });
-        slideEls[index].querySelector('.bb-art').append(frame);
+        const art = slideEls[index].querySelector('.bb-art');
+        art.append(frame);
+        unfit = fitTrailer(frame, art, { cover: true, zoom: 1.32 }); // zoomed past the letterbox bars and YouTube's corners
       }, TRAILER_AFTER_MS);
     }
     function stopTrailer() {
       clearTimeout(trailerTimer);
+      unfit?.(); unfit = null;
       frame?.remove(); frame = null;
+      document.body.classList.remove('bb-trailer-live');
       sound.hidden = true; sound.setAttribute('aria-pressed', 'false'); sound.replaceChildren(icon('muted')); sound.setAttribute('aria-label', T('Sound on'));
     }
     sound.addEventListener('click', () => {

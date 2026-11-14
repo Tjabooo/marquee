@@ -1,5 +1,16 @@
 [
 {
+  "id": "2026-11-14-trailer-hd",
+  "date": "2026-11-14",
+  "title": "Trailers in HD",
+  "items": [
+    {
+      "title": "Sharp, smooth trailers",
+      "text": "Trailers on title pages and behind the Discover banner played in blurry low quality, because YouTube picks the quality from how big the player is and ours were small. They now ask for full HD, and the frosted buttons over a playing banner trailer turn plain so the video doesn't stutter."
+    }
+  ]
+},
+{
   "id": "2026-11-14-delete-cancels",
   "date": "2026-11-14",
   "title": "Deleting a season stops its download",

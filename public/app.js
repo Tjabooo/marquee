@@ -17,6 +17,7 @@ import { createSocial, titleKeyOf, REACTIONS, countdownText, startLabel, namesTe
 import { createDocumentaries } from './documentaries.js';
 import { createPeople } from './people.js';
 import { createBillboard } from './billboard.js';
+import { fitTrailer, HD_HINT } from './trailer-size.js';
 import { createPeek } from './peek.js';
 
 translatePage();
@@ -2402,15 +2403,20 @@ function detailsHero(t) {
     const play = h('button', { type: 'button', class: 'trailer-btn', 'aria-label': T('Play {0}: {1}', label.toLowerCase(), t.title) },
       icon('play'), h('span', {}, label));
     play.addEventListener('click', () => {
-      const src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(trailer.key)}?autoplay=1&rel=0&playsinline=1`;
+      const src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(trailer.key)}?autoplay=1&rel=0&playsinline=1&${HD_HINT}`;
       // the backdrop stays behind the player (blurred and dimmed on wide screens, see .is-playing in style.css)
       hero.classList.add('is-playing');
       play.remove();
-      hero.append(h('iframe', {
-        class: 'trailer-frame', src, title: `${t.title}: ${trailer.name}`,
+      // .trailer-frame is the box; the iframe inside is laid out at full-HD size and scaled to fit it (trailer-size.js)
+      const box = h('div', { class: 'trailer-frame' });
+      const frame = h('iframe', {
+        src, title: `${t.title}: ${trailer.name}`,
         allow: 'autoplay; encrypted-media; picture-in-picture; fullscreen', allowfullscreen: true,
         referrerpolicy: 'strict-origin-when-cross-origin',
-      }));
+      });
+      box.append(frame);
+      hero.append(box);
+      fitTrailer(frame, box);
     });
     hero.append(play);
   }).catch(() => {});
