@@ -129,9 +129,12 @@ export function createSocial({ h, api, jsonPost, toast, icon, people }) {
     if (!items.length) return null;
     const cards = items.map((t) => {
       const li = titleCard(t);
-      const note = t.likedBy?.length ? `♥ ${namesText(t.likedBy, t.likes - (t.youLiked ? 1 : 0))}`
+      // A card is too narrow for a list of names: one liker gets their name, more get a count next to
+      // their faces (the full names are in the tooltip and on the title's "Liked by" line).
+      const names = t.likedBy?.length ? namesText(t.likedBy, t.likes - (t.youLiked ? 1 : 0)) : '';
+      const note = t.likedBy?.length ? (t.likes > 1 ? `♥ ${t.likes}` : `♥ ${t.likedBy[0]}`)
         : t.viewers > 1 ? T('{0} people watched', t.viewers) : t.youLiked ? T('♥ You liked this') : t.viewers ? T('Watched here') : '';
-      if (note) li.querySelector('.sub')?.replaceChildren(h('span', { class: 'popular-why' }, faces(t.people, { size: 18, max: 3 }), h('span', {}, note)));
+      if (note) li.querySelector('.sub')?.replaceChildren(h('span', { class: 'popular-why', title: names || null }, faces(t.people, { size: 18, max: 3 }), h('span', {}, note)));
       return li;
     });
     return carousel(T('Popular on Lilin'), h('ul', { class: 'shelf-items', tabindex: '0', 'aria-label': T('Popular on Lilin') }, cards));

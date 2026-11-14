@@ -3005,7 +3005,8 @@ html.wrapped-on { overflow: hidden; }
 #picker, .rate-row, .party-card, .row, .profile { --ring: var(--curtain); }
 .liked-by { display: inline-flex; align-items: center; gap: 8px; }
 .liked-faces:empty { display: none; }
-.popular-why { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.popular-why { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
+.popular-why .faces { flex: none; }
 .popular-why > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Settings → You, People: the picture is the button that changes it */

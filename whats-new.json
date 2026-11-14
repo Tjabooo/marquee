@@ -1,5 +1,16 @@
 [
 {
+  "id": "2026-11-14-popular-likes",
+  "date": "2026-11-14",
+  "title": "Tidier likes on Popular on Lilin",
+  "items": [
+    {
+      "title": "No more cut-off names",
+      "text": "Cards in Popular on Lilin no longer cut a list of names in half. A title liked by one person shows their name; liked by more, it shows their faces and how many liked it. Hold the pointer over it, or open the title, to see everyone."
+    }
+  ]
+},
+{
   "id": "2026-11-14-docs-english",
   "date": "2026-11-14",
   "title": "Documentaries in English start with English titles",

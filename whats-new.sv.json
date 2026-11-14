@@ -1,4 +1,13 @@
 {
+  "2026-11-14-popular-likes": {
+    "title": "Snyggare gillningar i Populärt på Lilin",
+    "items": {
+      "No more cut-off names": {
+        "title": "Inga avklippta namn",
+        "text": "Korten i Populärt på Lilin klipper inte längre av en lista med namn på mitten. Har en person gillat en titel visas namnet; har fler gillat den visas deras ansikten och hur många som gillat. Håll pekaren över den, eller öppna titeln, för att se alla."
+      }
+    }
+  },
   "2026-11-14-docs-english": {
     "title": "Dokumentärer på engelska börjar med engelska titlar",
     "items": {
