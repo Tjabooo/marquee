@@ -1,4 +1,13 @@
 {
+  "2026-11-14-trailer-hd": {
+    "title": "Trailers i HD",
+    "items": {
+      "Sharp, smooth trailers": {
+        "title": "Skarpa och jämna trailers",
+        "text": "Trailers på titelsidor och bakom Upptäck-bannern spelades i suddig låg kvalitet, eftersom YouTube väljer kvalitet efter hur stor spelaren är och våra var små. Nu ber de om full HD, och de frostade knapparna över en banner-trailer som spelas blir enkla så att videon inte hackar."
+      }
+    }
+  },
   "2026-11-14-delete-cancels": {
     "title": "Att radera en säsong stoppar nedladdningen",
     "items": {
