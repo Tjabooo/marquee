@@ -4592,7 +4592,9 @@ function removeEmptyFolders(dir) {
 }
 
 async function deletePlan(id) {
-  const listed = librarySource(id);
+  // An id from before a conversion finished names the MKV; once that's retired, the MP4 copy is the video.
+  const source = librarySource(id);
+  const listed = fs.existsSync(source) ? source : converter.preferConverted(source);
   // The library lists the MP4 copy; the original is the file that gets deleted.
   const original = converter.originalFor(listed) || listed;
   const torrent = await torrentFor(original);

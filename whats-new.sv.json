@@ -1,4 +1,17 @@
 {
+  "2026-11-14-film-page-after-prep": {
+    "title": "Filmsidor ligger kvar, X stänger en gång",
+    "items": {
+      "No false \"Removed from your library\"": {
+        "title": "Inget felaktigt \"Borttagen från ditt bibliotek\"",
+        "text": "En filmsida som var öppen medan Lilin gjorde klart filmen för uppspelning kunde plötsligt visa \"Borttagen från ditt bibliotek\" och tappa sin Radera-knapp, fast inget hade tagits bort. Nu visar den filmen som vanligt."
+      },
+      "Tapping X twice": {
+        "title": "Trycka på X två gånger",
+        "text": "Två tryck i rad på X på en sida kunde ta dig ut ur Lilin helt (på iPad kunde fliken stängas). Nu gör ett andra tryck ingenting."
+      }
+    }
+  },
   "2026-11-14-delete-while-converting": {
     "title": "Radera fungerar på nya nedladdningar",
     "items": {

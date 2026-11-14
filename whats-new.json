@@ -1,5 +1,20 @@
 [
 {
+  "id": "2026-11-14-film-page-after-prep",
+  "date": "2026-11-14",
+  "title": "Film pages stay put, X closes once",
+  "items": [
+    {
+      "title": "No false \"Removed from your library\"",
+      "text": "A film page left open while Lilin finished preparing the film for playback could suddenly say \"Removed from your library\" and lose its Delete button, even though nothing was removed. It now keeps showing the film."
+    },
+    {
+      "title": "Tapping X twice",
+      "text": "Tapping the X on a page twice in a row could take you out of Lilin altogether (on iPad it could close the tab). A second tap now does nothing."
+    }
+  ]
+},
+{
   "id": "2026-11-14-delete-while-converting",
   "date": "2026-11-14",
   "title": "Delete works on fresh downloads",

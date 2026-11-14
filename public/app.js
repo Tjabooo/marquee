@@ -1554,7 +1554,16 @@ function keepBar(files, onDone) {
 
 const filmView = { id: null };
 let filmStructure = '';
+// When a conversion finishes the library lists the MP4 copy under a new id; follow the same video
+// (same mediaKey) so an open page doesn't claim it was removed.
+function followFilmId() {
+  if (!filmView.mediaKey || !filmView.id || filmView.id.startsWith('entry:')) return;
+  if (state.library.some((f) => f.id === filmView.id)) return;
+  const moved = state.library.find((f) => f.mediaKey === filmView.mediaKey);
+  if (moved) filmView.id = moved.id;
+}
 function updateOpenFilm() {
+  followFilmId();
   const entry = unifiedLibrary().find(e => filmView.id === `entry:${e.key}` || e.files.some(f => f.id === filmView.id) || filmView.hashes?.some(hash => e.transfers.some(d => d.hash === hash)));
   const signature = JSON.stringify([filmView.id, entry?.files, entry?.transfers.map(d => d.hash)]);
   if (filmStructure !== signature && !$('#sheet-body').contains(document.activeElement)) { const top = $('#sheet').scrollTop; renderFilm(); $('#sheet').scrollTop = top; }
@@ -1562,6 +1571,7 @@ function updateOpenFilm() {
 function openFilm(f, opener) {
   filmView.hashes = null;
   filmView.id = f.id;
+  filmView.mediaKey = f.mediaKey || null;
   renderFilm();
   pushOverlay(showSheet($('#sheet'), $('#sheet-backdrop'), () => {
     filmView.id = null;
@@ -1569,6 +1579,7 @@ function openFilm(f, opener) {
   }));
 }
 function renderFilm() {
+  followFilmId();
   const entry = unifiedLibrary().find(e => filmView.id === `entry:${e.key}` || e.files.some(f => f.id === filmView.id) || filmView.hashes?.some(hash => e.transfers.some(d => d.hash === hash)));
   filmStructure = JSON.stringify([filmView.id, entry?.files, entry?.transfers.map(d => d.hash)]);
   const f = entry?.files[0] || state.library.find((f) => f.id === filmView.id);
@@ -2135,11 +2146,19 @@ async function applyLive() {
 // ---------- overlays ----------
 // Each overlay pushes a history entry so the browser/phone back gesture closes it.
 const overlayStack = [];
+// history.back() is asynchronous: a second tap on X before its popstate must not go back again, or
+// it steps out of Lilin (on iPad Safari that closes a tab opened from another one).
+let pendingBacks = 0;
 function pushOverlay(close) {
   overlayStack.push(close);
   history.pushState({ overlay: overlayStack.length }, '');
 }
-function closeTopOverlay() { if (overlayStack.length) history.back(); }
+function closeTopOverlay() {
+  if (overlayStack.length <= pendingBacks) return;
+  pendingBacks++;
+  history.back();
+  setTimeout(() => { pendingBacks = Math.max(0, pendingBacks - 1); }, 1500); // a lost popstate never locks the X
+}
 // Browser-back is asynchronous. Transitions must wait before pushing a replacement player.
 function dismissTopOverlay() {
   if (!overlayStack.length) return Promise.resolve();
@@ -2156,7 +2175,7 @@ function swapTopOverlay(close) {
   overlayStack.push(close);
   history.replaceState({ overlay: overlayStack.length }, '');
 }
-window.addEventListener('popstate', () => { overlayStack.pop()?.(); renderUpdatedLibrary(); });
+window.addEventListener('popstate', () => { if (pendingBacks) pendingBacks--; overlayStack.pop()?.(); renderUpdatedLibrary(); });
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
   if (!ccMenu.hidden) { closeCcMenu(); ccBtn.focus(); return; }
