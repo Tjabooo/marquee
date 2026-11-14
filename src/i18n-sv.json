@@ -524,7 +524,7 @@
  "Then press Go.": "Tryck sedan på Go.",
  "Install Lilin": "Installera Lilin",
  "When the download is done, press Install. The first time, the TV asks to let Downloader install apps: choose Settings, turn Downloader on, press Back, then Install.": "När nedladdningen är klar trycker du på Installera. Första gången frågar TV:n om Downloader får installera appar: välj Inställningar, slå på Downloader, tryck Tillbaka och sedan Installera.",
- "Press Open. The TV shows a code: on your phone, open Lilin, go to Settings → Sign in a TV and enter it.": "Tryck på Öppna. TV:n visar en kod: öppna Lilin på telefonen, gå till Inställningar → Logga in en TV och skriv in den.",
+ "Press Open. The TV shows a code: on your phone, open Lilin, go to Settings → Sign in on a TV and enter it.": "Tryck på Öppna. TV:n visar en kod: öppna Lilin på telefonen, gå till Inställningar → Logga in på en TV och skriv in den.",
  "Lilin is now among the TV’s apps. It keeps itself up to date: when there’s a new version, the TV offers it as the app starts. Downloader may offer to delete the file it fetched; the app stays.": "Lilin finns nu bland TV:ns appar. Den håller sig uppdaterad själv: när det finns en ny version erbjuder TV:n den när appen startar. Downloader kan erbjuda att radera filen den hämtade, men appen finns kvar.",
  "The TV has to be on the same network as Lilin.": "TV:n måste vara på samma nätverk som Lilin.",
  "Download the app ({0} · version {1})": "Ladda ner appen ({0} · version {1})",

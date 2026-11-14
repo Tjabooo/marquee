@@ -1,4 +1,4 @@
-//! Starting up and signing the TV in: a code on the TV, approved on a phone (Settings → Sign in a TV),
+//! Starting up and signing the TV in: a code on the TV, approved on a phone (Settings → Sign in on a TV),
 //! or the shared Home network account.
 use super::home::Home;
 use crate::gfx::{hexa, rect};
@@ -193,7 +193,7 @@ impl Screen for Pair {
         let bold = body(38.0, 700);
         let num = display(38.0, 800);
         rich(cx, ui::EDGE, 330.0, &[("1  ", num, ui::BULB), (t!("On your phone, open Lilin and go to "), step, ui::DUST), (t!("Settings"), bold, ui::PAPER), (".", step, ui::DUST)]);
-        rich(cx, ui::EDGE, 388.0, &[("2  ", num, ui::BULB), (t!("Under "), step, ui::DUST), (t!("Sign in a TV"), bold, ui::PAPER), (t!(", enter this code:"), step, ui::DUST)]);
+        rich(cx, ui::EDGE, 388.0, &[("2  ", num, ui::BULB), (t!("Under "), step, ui::DUST), (t!("Sign in on a TV"), bold, ui::PAPER), (t!(", enter this code:"), step, ui::DUST)]);
         // The code: lit letters in little lilin boxes.
         let mut x = ui::EDGE;
         let y = 480.0;

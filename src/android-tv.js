@@ -92,7 +92,7 @@ function page({ home, found, address, prefix = '' }) {
     [tr('Type this address'), `<p>${esc(tr('Open Downloader, select the address box and type:'))}</p>
       <div class="address" aria-label="${esc(typed)}">${esc(typed)}</div><p>${esc(tr('Then press Go.'))}</p>`],
     [tr('Install Lilin'), `<p>${esc(tr('When the download is done, press Install. The first time, the TV asks to let Downloader install apps: choose Settings, turn Downloader on, press Back, then Install.'))}</p>`],
-    [tr('Sign in'), `<p>${esc(tr('Press Open. The TV shows a code: on your phone, open Lilin, go to Settings → Sign in a TV and enter it.'))}</p>`],
+    [tr('Sign in'), `<p>${esc(tr('Press Open. The TV shows a code: on your phone, open Lilin, go to Settings → Sign in on a TV and enter it.'))}</p>`],
   ];
   let body;
   if (!home) {

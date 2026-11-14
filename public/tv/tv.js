@@ -167,7 +167,7 @@
       h('h1', { text: T('Sign in this TV') }),
       h('ol', { class: 'pair-steps' },
         h('li', {}, T('On your phone, open Lilin and go to '), h('b', { text: T('Settings') }), '.'),
-        h('li', {}, T('Under '), h('b', { text: T('Sign in a TV') }), T(', enter this code:'))),
+        h('li', {}, T('Under '), h('b', { text: T('Sign in on a TV') }), T(', enter this code:'))),
       codeEl, noteEl, homeBtn);
     var poll = null, timer = null, alive = true;
     function newCode() {

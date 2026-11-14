@@ -7211,7 +7211,7 @@ function tvSignInRow() {
       input.value = ''; note.textContent = T('Done. The TV is signed in as you.');
     } catch (err) { note.textContent = err.message; } finally { go.disabled = false; }
   } }, input, go);
-  return settingsRow(T('Sign in a TV'), T('Open the Lilin app on the TV and enter the code it shows. The TV then sees your library.'),
+  return settingsRow(T('Sign in on a TV'), T('Open the Lilin app on the TV and enter the code it shows. The TV then sees your library.'),
     h('div', { class: 'tv-code-wrap' }, form, note));
 }
 

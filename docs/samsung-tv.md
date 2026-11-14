@@ -81,7 +81,7 @@ A normal consumer TV does not accept a raw `.wgt` copied over USB; use the devel
 
 ## 5. First launch
 
-Open **Lilin** from Apps and pair it: the TV shows a code, and you enter it under Settings → Sign in a TV on your phone.
+Open **Lilin** from Apps and pair it: the TV shows a code, and you enter it under Settings → Sign in on a TV on your phone.
 
 The home screen shows Continue watching, Shows, Films and then one row per genre you own something in.
 Press **Up** to reach the top controls:

@@ -17,7 +17,7 @@ came from a throwaway server with its own `DATA_DIR`. The Samsung TV app (`publi
 | Sheets | Play on TV picker, TV remote + nowbar, delete one / many, identify film, Download to phone (one, season, list), plan a watch party, invite list, transfer details, release browser (Find torrents), What's new + history, Wrapped stories, profile picture editor |
 | Player | controls, seek preview, subtitles (+ second language, timing), audio, quality / version, bedtime (night mode, sleep timer), keyboard help, stats for nerds, Skip intro, Up next, Play now popups (buffering, full quality ready), spinner, error, OSD |
 | Watch Together | room panel (docked ≥1100 px, floating card, phone sheet), roster, host start/countdown, invite, chat, reactions, floats, join ticket, countdown overlay |
-| Settings | You (picture, name), What's new, Wrapped, Language, Appearance (9 themes + custom), Watching, Sign in a TV, Jellyfin, Library order, Notifications, Downloads, Your library, account; owner: People, server rules, access + invites |
+| Settings | You (picture, name), What's new, Wrapped, Language, Appearance (9 themes + custom), Watching, Sign in on a TV, Jellyfin, Library order, Notifications, Downloads, Your library, account; owner: People, server rules, access + invites |
 | Owner tabs | Activity (now, history folds, people), House (machines, VPN, power, sharing load chart, disks, Screen Time), Clips (+ trim editor), Notes |
 | Server pages | `/signin`, share pages under `/c/` (clip player, note, invite card, Watch Together link) |
 

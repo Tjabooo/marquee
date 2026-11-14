@@ -860,7 +860,7 @@ export default {
   "The code on the TV has 6 letters and numbers.": "Koden på TV:n har 6 bokstäver och siffror.",
   "Signing in the TV…": "Loggar in TV:n…",
   "Done. The TV is signed in as you.": "Klart. TV:n är inloggad som du.",
-  "Sign in a TV": "Logga in en TV",
+  "Sign in on a TV": "Logga in på en TV",
   "Open the Lilin app on the TV and enter the code it shows. The TV then sees your library.": "Öppna Lilin-appen på TV:n och ange koden som visas. Då ser TV:n ditt bibliotek.",
   "Android TV": "Android TV",
   "Put Lilin on an Android TV or Google TV. It takes a few minutes.": "Installera Lilin på en Android TV eller Google TV. Det tar några minuter.",

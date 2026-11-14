@@ -73,7 +73,7 @@ window.LilinTvStrings = {
   'Shared with {0}': 'Delas med {0}',
   'Shows': 'Serier',
   'Signed in as {0}': 'Inloggad som {0}',
-  'Sign in a TV': 'Logga in en TV',
+  'Sign in on a TV': 'Logga in på en TV',
   'Sign in this TV': 'Logga in den här TV:n',
   'Skip intro': 'Hoppa över intro',
   'Space': 'Mellanslag',

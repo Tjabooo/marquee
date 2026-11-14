@@ -16,7 +16,7 @@ Show the steps** (the page is `/android` on your server). It shows these steps w
    `192.168.1.10:8080/android.apk`. Press **Go**.
 3. **Install.** When the download is done, press **Install**. The first time, the TV asks to let Downloader install
    apps: choose **Settings**, turn Downloader on, press **Back**, then **Install**.
-4. **Sign in.** Press **Open**. The TV shows a code: on your phone, open Lilin → Settings → **Sign in a TV** and
+4. **Sign in.** Press **Open**. The TV shows a code: on your phone, open Lilin → Settings → **Sign in on a TV** and
    enter it (or press Down on the TV for the shared Home network account, when there is one).
 
 Lilin then sits among the TV's apps, with its own banner on the home screen. An app built with a home address
