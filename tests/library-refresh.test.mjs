@@ -20,6 +20,7 @@ function harness({ view = 'library', request = async () => ({ items: [], shows: 
     api: (path, opts) => { logs.push(['request', path]); return request(path, opts); },
     updateUpNext: () => logs.push(['next']),
     applyVersion: (item) => item,
+    pendingDeletes: new Set(), pendingDeleteIds: () => new Set(), dropFromLibrary: () => {}, // deletes waiting behind Undo
     renderLibrary: () => { logs.push(['render']); vm.runInContext('libraryRenderPending = false', context); },
     renderDownloads: () => logs.push(['downloads']),
     setTimeout: (fn, delay) => { const timer = { fn, delay }; timers.push(timer); return timer; },
