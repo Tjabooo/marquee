@@ -1470,6 +1470,7 @@ function openUnifiedTitle(entry, opener) {
   if (entry.show) { showView.hashes = entry.transfers.map(d => d.hash); return openShow(entry.show.id, opener); }
   if (entry.files.length) return openFilm(entry.files[0], opener);
   filmView.hashes = entry.transfers.map(d => d.hash);
+  filmView.follow = null;
   filmView.id = `entry:${entry.key}`;
   renderFilm();
   pushOverlay(showSheet($('#sheet'), $('#sheet-backdrop'), () => { filmView.id = null; opener?.focus({ preventScroll: true }); }));
@@ -1661,8 +1662,29 @@ function sheetBusy() {
   const el = document.activeElement;
   return Boolean(el && $('#sheet-body').contains(el) && (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable));
 }
+// A page opened on a download follows it to the film it became: same file (media key) or same TMDB
+// film. Until the server links the two, they can sit in separate entries, and the page then stayed on
+// the finished download ("Almost ready 100%") until a reload.
+function followFinishedDownload() {
+  if (!filmView.hashes?.length) return;
+  const transfers = state.downloads.filter((d) => filmView.hashes.includes(d.hash));
+  // Remembered while the download is listed: it leaves the list once finished.
+  if (transfers.length) filmView.follow = {
+    keys: new Set(transfers.flatMap((d) => (d.files || []).map((f) => f.mediaKey)).filter(Boolean)),
+    ids: new Set(transfers.flatMap((d) => d.libraryIds || [])),
+    tmdb: transfers.map((d) => d.mediaType !== 'tv' && d.tmdbId).find(Boolean) || null,
+  };
+  const done = !transfers.length || transfers.every((d) => d.done || Number(d.progress) >= 1);
+  if (!done || !filmView.follow) return;
+  const { keys, ids, tmdb } = filmView.follow;
+  const f = state.library.find((x) => ids.has(x.id) || (x.mediaKey && keys.has(x.mediaKey)))
+    || (tmdb && state.library.find((x) => x.season == null && Number(x.tmdbId) === Number(tmdb)));
+  if (!f) return;
+  filmView.hashes = null; filmView.follow = null; filmView.id = f.id; filmView.mediaKey = f.mediaKey || null;
+}
 function updateOpenFilm() {
   followFilmId();
+  followFinishedDownload();
   const entry = unifiedLibrary().find(e => filmView.id === `entry:${e.key}` || e.files.some(f => f.id === filmView.id) || filmView.hashes?.some(hash => e.transfers.some(d => d.hash === hash)));
   const signature = JSON.stringify([filmView.id, entry?.files, entry?.transfers.map(d => d.hash)]);
   if (filmStructure !== signature && !sheetBusy()) { const top = $('#sheet').scrollTop; renderFilm(); $('#sheet').scrollTop = top; }
@@ -1679,6 +1701,7 @@ function openFilm(f, opener) {
 }
 function renderFilm() {
   followFilmId();
+  followFinishedDownload();
   const entry = unifiedLibrary().find(e => filmView.id === `entry:${e.key}` || e.files.some(f => f.id === filmView.id) || filmView.hashes?.some(hash => e.transfers.some(d => d.hash === hash)));
   filmStructure = JSON.stringify([filmView.id, entry?.files, entry?.transfers.map(d => d.hash)]);
   const f = entry?.files[0] || state.library.find((f) => f.id === filmView.id);
