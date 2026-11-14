@@ -167,6 +167,10 @@ export function initAccounts({ dataDir, adminEmails, mediaDir: dir }) {
     );
     CREATE INDEX IF NOT EXISTS library_shares_group ON library_shares(group_id);
   `);
+  // Added later: may this person make invite links (the owner switches it on per person).
+  if (!db.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name = 'can_invite'").get()) {
+    db.exec('ALTER TABLE users ADD COLUMN can_invite INTEGER NOT NULL DEFAULT 0');
+  }
 }
 // The open database, for modules that keep their own tables here (social.js).
 export const database = () => db;
@@ -292,6 +296,8 @@ function rowToUser(r) {
     isOwner,
     // the owner can always download; others as the owner allows
     canDownload: isOwner || Boolean(r.can_download),
+    // the owner can always invite; others only once the owner allows it
+    canInvite: isOwner || Boolean(r.can_invite),
     keep: Boolean(r.keep),
     settings: { ...USER_DEFAULTS, ...settings },
     createdAt: r.created_at,
@@ -389,7 +395,7 @@ function cleanTheme(t) {
 
 // What the browser gets about the person signed in.
 export function publicUser(u) {
-  return { id: u.id, email: u.email === HOME ? null : u.email, name: u.name, avatar: u.avatar, isOwner: u.isOwner, canDownload: u.canDownload, keep: u.keep, settings: u.settings,
+  return { id: u.id, email: u.email === HOME ? null : u.email, name: u.name, avatar: u.avatar, isOwner: u.isOwner, canDownload: u.canDownload, canInvite: u.canInvite, keep: u.keep, settings: u.settings,
     sharedWith: libraryMates(u.id).filter((id) => id !== u.id).map((id) => userById(id)).filter(Boolean).map((m) => ({ id: m.id, name: m.name, avatar: m.avatar })) };
 }
 
@@ -411,6 +417,10 @@ export function updateUser(id, patch) {
   if ('canDownload' in patch) {
     if (u.isOwner && !patch.canDownload) throw httpError(400, 'The owner can always download.');
     db.prepare('UPDATE users SET can_download = ? WHERE id = ?').run(patch.canDownload ? 1 : 0, id);
+  }
+  if ('canInvite' in patch) {
+    if (u.isOwner && !patch.canInvite) throw httpError(400, 'The owner can always invite people.');
+    db.prepare('UPDATE users SET can_invite = ? WHERE id = ?').run(patch.canInvite ? 1 : 0, id);
   }
   if ('libraryWith' in patch) shareLibrary(id, patch.libraryWith == null || patch.libraryWith === '' ? null : Number(patch.libraryWith));
   if ('keep' in patch) {

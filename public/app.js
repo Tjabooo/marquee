@@ -7132,6 +7132,7 @@ function renderSettings() {
   out.push(jellyfinRow());
   out.push(settingsRow(T('Library order'), null,
     segmented([['newest', T('Newest')], ['expiring', T('Leaving soonest')], ['title', 'A–Z']], p.librarySort || 'newest', (v) => saveMe({ librarySort: v }).then(renderSettings), T('Library order'))));
+  out.push(...memberInviteSettings());
   out.push(...notificationSettings());
   // ---- downloads: set once, used by every Download ----
   if (canDownload()) {
@@ -7477,6 +7478,11 @@ function ownerSettings() {
             if (u.isOwner) { input.checked = true; toast(T('The owner can always download')); return; }
             await personUpdate(u, { canDownload: on });
           }, T('{0} can download', u.name))),
+        state.access?.configured !== false && h('label', { class: 'person-toggle' }, T('Can invite people'),
+          toggle(u.canInvite, async (on, input) => {
+            if (u.isOwner) { input.checked = true; toast(T('The owner can always invite people')); return; }
+            await personUpdate(u, { canInvite: on });
+          }, T('{0} can invite people', u.name))),
         h('label', { class: 'person-toggle' }, T('Never auto-delete'),
           toggle(u.keep, (on) => personUpdate(u, { keep: on }), T('Never auto-delete {0}’s videos', u.name))),
         h('label', { class: 'person-toggle person-library' }, T('Library'), libraryShareSelect(u)))))));
@@ -7568,6 +7574,48 @@ async function loadActivity() {
 }
 
 // ---------- access: who may sign in (Zero Trust email list) + invite links ----------
+// Settings → Invite people: for members the owner lets invite (the owner invites from People).
+// state.myInvites: undefined = not asked yet, null = loading, else { invites, max, passwords } or { error }.
+function memberInviteSettings() {
+  const me = state.me;
+  if (!me?.canInvite || me.isOwner) return [];
+  if (state.myInvites === undefined) {
+    state.myInvites = null;
+    api('/api/invites').then((r) => { state.myInvites = r; }, (err) => { state.myInvites = { error: err.message }; }).finally(renderSettingsWhenStill);
+  }
+  const r = state.myInvites;
+  const out = [h('h3', { class: 'set-head' }, T('Invite people'))];
+  if (!r) return [...out, h('p', { class: 'muted' }, T('Loading…'))];
+  if (r.error) return [...out, h('p', { class: 'muted' }, r.error)];
+  const reload = () => { state.myInvites = undefined; renderSettings(); };
+  const noteInput = h('input', { class: 'invite-note', type: 'text', maxlength: '60', placeholder: T('Who’s it for?'), 'aria-label': T('Who’s it for?') });
+  const make = async (btn) => {
+    btn.disabled = true;
+    try {
+      const inv = await api('/api/invites', jsonPost({ note: noteInput.value.trim() }));
+      await copyWithToast(inv.url, T('Invite link copied: send it to them'));
+    } catch (err) { toast(err.message); }
+    reload();
+  };
+  const cancel = async (i) => {
+    try { await api(`/api/invites/${i.id}/revoke`, jsonPost({})); toast(T('Invite cancelled')); } catch (err) { toast(err.message); }
+    reload();
+  };
+  out.push(h('div', { class: 'invite-new' }, noteInput,
+    h('button', { class: 'retry', disabled: r.invites.length >= r.max, onclick: (e) => make(e.currentTarget) }, T('Invite someone'))));
+  out.push(h('p', { class: 'muted invite-hint' }, `${r.passwords ? T('Makes a one-time link (valid 7 days). They pick a password and are signed straight in.')
+    : T('Makes a one-time link (valid 7 days). They enter their email and can sign in from then on.')} ${T('Up to {0} open at a time.', r.max)}`));
+  if (r.invites.length) {
+    out.push(h('ul', { class: 'rows invite-rows' }, r.invites.map((i) => h('li', { class: 'row' },
+      h('span', { class: 'row-text' },
+        h('span', { class: 'row-title' }, i.note || T('Invite')),
+        h('span', { class: 'row-meta' }, h('span', {}, T('open · expires {0}', new Date(i.expires).toLocaleDateString(locale, { day: 'numeric', month: 'short' }))))),
+      h('span', { class: 'row-actions' },
+        h('button', { class: 'retry', onclick: () => copyWithToast(`${location.origin}/c/i/${i.token}`, T('Invite link copied')) }, T('Copy link')),
+        h('button', { class: 'retry', onclick: () => cancel(i) }, T('Cancel')))))));
+  }
+  return out;
+}
 async function makeInvite(btn) {
   const note = $('#invite-note')?.value.trim() || '';
   btn.disabled = true;
@@ -7641,7 +7689,8 @@ function peopleSection(q) {
         return h('li', { class: 'row' },
           h('span', { class: 'row-text' },
             h('span', { class: 'row-title' }, i.note || T('Invite')),
-            h('span', { class: 'row-meta' }, h('span', {}, T('open · expires {0}', new Date(i.expires).toLocaleDateString(locale, { day: 'numeric', month: 'short' }))))),
+            h('span', { class: 'row-meta' }, h('span', {}, T('open · expires {0}', new Date(i.expires).toLocaleDateString(locale, { day: 'numeric', month: 'short' }))),
+              i.byName && h('span', {}, T('by {0}', i.byName)))),
           h('span', { class: 'row-actions' },
             h('button', { class: 'retry', onclick: () => copyWithToast(url, T('Invite link copied')) }, T('Copy link')),
             h('button', { class: 'retry', onclick: () => accessAction(`/api/access/invite/${i.id}/revoke`, null, T('Invite cancelled')) }, T('Cancel'))));

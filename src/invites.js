@@ -26,7 +26,7 @@ const INVITE_DAYS = Math.max(1, Number(process.env.INVITE_DAYS) || 7);
 const EMAIL = /^[^\s@<>"']{1,64}@[^\s@<>"']+\.[^\s@<>"']{2,}$/;
 
 let file = null;
-let invites = {};        // token -> { id, note, created, expires, usedAt, email, forEmail }
+let invites = {};        // token -> { id, note, created, expires, usedAt, email, forEmail, by, byName }
 let record = () => {};   // activity logger, from server.js
 const attempts = [];     // timestamps of invite form posts, for a simple global rate limit
 
@@ -91,17 +91,24 @@ export function listInvites() {
     .sort((a, b) => b.created - a.created)
     .slice(0, 50);
 }
-export function createInvite(req, note = '', forEmail = null) {
+// Members the owner lets invite people may have this many open links at a time.
+export const MEMBER_OPEN_INVITES = 3;
+// `by`: the member who made it ({ id, name }), when it isn't the owner.
+export function createInvite(req, note = '', forEmail = null, by = null) {
   const token = crypto.randomBytes(12).toString('base64url');
-  const inv = { id: crypto.randomBytes(4).toString('hex'), note: String(note).slice(0, 60), created: Date.now(), expires: Date.now() + INVITE_DAYS * 86400000, usedAt: null, email: null, forEmail: forEmail ? String(forEmail).toLowerCase() : null };
+  const inv = { id: crypto.randomBytes(4).toString('hex'), note: String(note).slice(0, 60), created: Date.now(), expires: Date.now() + INVITE_DAYS * 86400000, usedAt: null, email: null, forEmail: forEmail ? String(forEmail).toLowerCase() : null,
+    by: by?.id ?? null, byName: by?.name ?? null };
   invites[token] = inv;
   // forget used/expired invites after 30 days
   for (const [t, i] of Object.entries(invites)) if (Date.now() - i.created > 30 * 86400000 && state(i) !== 'open') delete invites[t];
   save();
   return { ...inv, token, state: 'open', url: `${baseUrl(req)}/c/i/${token}` };
 }
-export function revokeInvite(id) {
-  const t = Object.keys(invites).find((k) => invites[k].id === id);
+// A member's own links that are still open.
+export const openInvitesBy = (userId) => listInvites().filter((i) => i.by === userId && i.state === 'open');
+// `byUserId`: a member cancelling, who may only cancel their own.
+export function revokeInvite(id, byUserId = null) {
+  const t = Object.keys(invites).find((k) => invites[k].id === id && (byUserId == null || invites[k].by === byUserId));
   if (!t) throw httpError(404, 'No such invite.');
   delete invites[t];
   save();

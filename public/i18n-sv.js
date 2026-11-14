@@ -1730,4 +1730,10 @@ export default {
   "That video isn’t in your library any more": "Den videon finns inte längre i ditt bibliotek",
   "Adding your camera… {0}%": "Lägger in din kamera… {0} %",
   "Your last edit of this clip is still being saved ({0}%). Saving again replaces it.": "Din förra redigering av klippet sparas fortfarande ({0} %). Sparar du igen ersätts den.",
+  "Can invite people": "Kan bjuda in folk",
+  "The owner can always invite people": "Ägaren kan alltid bjuda in folk",
+  "{0} can invite people": "{0} kan bjuda in folk",
+  "by {0}": "av {0}",
+  "Invite people": "Bjud in folk",
+  "Up to {0} open at a time.": "Högst {0} öppna åt gången.",
 };

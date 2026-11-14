@@ -3360,6 +3360,7 @@ async function handleApi(req, res, url) {
       const body = await readJson(req);
       const u = accounts.updateUser(Number(m[1]), body);
       if ('canDownload' in body) activity.record(req, 'permission', `${u.name} ${body.canDownload ? 'can' : 'can’t'} download`);
+      if ('canInvite' in body) activity.record(req, 'permission', `${u.name} ${body.canInvite ? 'can' : 'can’t'} invite people`);
       if ('keep' in body) activity.record(req, 'permission', `${u.name}’s videos ${body.keep ? 'are never auto-deleted' : 'are auto-deleted again'}`);
       if ('libraryWith' in body) {
         const mates = accounts.libraryMates(u.id).filter((id) => id !== u.id).map((id) => accounts.userById(id)?.name).filter(Boolean);
@@ -3391,6 +3392,29 @@ async function handleApi(req, res, url) {
     const r = await house.powerAction(String(host || ''), String(action || ''), entry == null ? null : String(entry));
     activity.record(req, action === 'wake' ? 'wake' : 'restart', r.detail);
     return sendJson(res, 200, { ok: true, message: r.message });
+  }
+  // Invite links made by members the owner allows to invite ("Can invite people" in People).
+  // Same one-time links as the owner's, at most a few open at a time, and only their own.
+  if (p === '/api/invites' || p.startsWith('/api/invites/')) {
+    if (!user?.canInvite) throw new HttpError(403, 'You can’t invite people. Ask the server’s owner.');
+    if (!invites.invitesConfigured()) throw new HttpError(503, 'Invites aren’t set up on this server.');
+    if (p === '/api/invites' && req.method === 'GET') {
+      return sendJson(res, 200, { invites: invites.openInvitesBy(user.id), max: invites.MEMBER_OPEN_INVITES, passwords: Boolean(oidc.configured) });
+    }
+    if (p === '/api/invites' && req.method === 'POST') {
+      if (invites.openInvitesBy(user.id).length >= invites.MEMBER_OPEN_INVITES) {
+        throw new HttpError(400, `You have ${invites.MEMBER_OPEN_INVITES} open invites. Cancel one, or wait until one is used.`);
+      }
+      const { note } = await readJson(req);
+      const inv = invites.createInvite(req, note, null, { id: user.id, name: user.name });
+      activity.record(req, 'invite', inv.note || 'a new invite');
+      return sendJson(res, 200, inv);
+    }
+    if ((m = p.match(/^\/api\/invites\/([a-f0-9]{8})\/revoke$/)) && req.method === 'POST') {
+      invites.revokeInvite(m[1], user.id);
+      return sendJson(res, 200, { ok: true });
+    }
+    throw new HttpError(404, 'Not found.');
   }
   // Who has access (the Zero Trust email list) and invite links: owner only.
   if (p === '/api/access' || p.startsWith('/api/access/')) {
@@ -4388,7 +4412,7 @@ async function handleRequest(req, res) {
     const allowed = req.method === 'GET' || req.method === 'HEAD'
       || (req.method === 'POST' && (url.pathname.startsWith('/api/cast/') || url.pathname === '/api/downloads/add' || url.pathname === '/api/downloads/smart' || url.pathname === '/api/svt/add' || url.pathname === '/api/subs/fetch' || url.pathname === '/api/subs/sync' || url.pathname === '/api/library/delete' || url.pathname === '/api/library/delete-many' || url.pathname === '/api/library/delete-many-info' || /^\/api\/downloads\/\w+\/(pause|resume|retry|delete|leave)$/.test(url.pathname) || /^\/api\/media\/\w+\/[\w-]+\/sync$/.test(url.pathname)
         || /^\/api\/(house\/(report|boot|power)|screentime|agent\/notify)$/.test(url.pathname) || /^\/api\/clips\/[\w-]+\/(share|unshare|delete|trim|rename)$/.test(url.pathname)
-        || /^\/api\/access\/(invite|remove|rename|password-link|invite\/\w+\/revoke)$/.test(url.pathname) || /^\/c\/i\/[\w-]+\/?$/.test(url.pathname)
+        || /^\/api\/access\/(invite|remove|rename|password-link|invite\/\w+\/revoke)$/.test(url.pathname) || /^\/api\/invites(?:\/[a-f0-9]{8}\/revoke)?$/.test(url.pathname) || /^\/c\/i\/[\w-]+\/?$/.test(url.pathname)
         || /^\/api\/auth\/(login|logout|password|first-password)$/.test(url.pathname) || /^\/c\/oidc\/(login|token|userinfo)$/.test(url.pathname)
         || /^\/api\/(me|me\/progress|me\/avatar|library\/add|library\/extend|library\/identify|admin\/settings|admin\/users\/\d+|admin\/users\/\d+\/avatar|push\/subscribe|push\/unsubscribe|push\/test)$/.test(url.pathname)
         || /^\/api\/title\/(movie|tv)\/\d+\/dub$/.test(url.pathname) || /^\/api\/watchlist(?:\/seen)?$/.test(url.pathname) || /^\/api\/travel(?:\/remove)?$/.test(url.pathname)

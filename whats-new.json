@@ -1,5 +1,17 @@
 [
 {
+  "id": "2026-11-14-member-invites",
+  "date": "2026-11-14",
+  "title": "Let people you trust invite others",
+  "items": [
+    {
+      "title": "Can invite people",
+      "audience": "owner",
+      "text": "In People, each person now has a Can invite people switch (off for everyone). Switched on, they get Invite people in their Settings and can make the same one-time links you make, up to 3 open at a time. Their links show up in your invite list with their name, and you can cancel them there."
+    }
+  ]
+},
+{
   "id": "2026-11-14-popular-likes",
   "date": "2026-11-14",
   "title": "Tidier likes on Popular on Lilin",

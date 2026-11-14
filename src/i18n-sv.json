@@ -534,5 +534,8 @@
  "The Android TV app installs and runs on the home network, where Lilin is.": "Android TV-appen installeras och körs på hemnätverket, där Lilin finns.",
  "This audio can’t be streamed right away.": "Det här ljudet kan inte strömmas direkt.",
  "Only the host sets the room’s audio language.": "Bara värden väljer rummets ljudspråk.",
- "Unknown language.": "Okänt språk."
+ "You can’t invite people. Ask the server’s owner.": "Du kan inte bjuda in folk. Fråga serverns ägare.",
+ "Invites aren’t set up on this server.": "Inbjudningar är inte inställda på den här servern.",
+ "You have {0} open invites. Cancel one, or wait until one is used.": "Du har {0} öppna inbjudningar. Avbryt en, eller vänta tills en används.",
+ "The owner can always invite people.": "Ägaren kan alltid bjuda in folk."
 }

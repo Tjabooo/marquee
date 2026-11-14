@@ -1,4 +1,13 @@
 {
+  "2026-11-14-member-invites": {
+    "title": "Låt folk du litar på bjuda in andra",
+    "items": {
+      "Can invite people": {
+        "title": "Kan bjuda in folk",
+        "text": "Under Personer har varje person nu ett reglage Kan bjuda in folk (av för alla). Slår du på det får de Bjud in folk i sina Inställningar och kan göra samma engångslänkar som du, högst 3 öppna åt gången. Deras länkar syns i din lista med inbjudningar med deras namn, och du kan avbryta dem där."
+      }
+    }
+  },
   "2026-11-14-popular-likes": {
     "title": "Snyggare gillningar i Populärt på Lilin",
     "items": {
