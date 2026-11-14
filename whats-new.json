@@ -15,6 +15,10 @@
     {
       "title": "Smoother in Firefox",
       "text": "The banner trailer asked YouTube for more than full HD, which many computers have to decode without help from the graphics card, so it stuttered in Firefox. Trailers now stay at 1080p, and the page's little glowing animations rest while one plays."
+    },
+    {
+      "title": "Trailers sit higher on phones",
+      "text": "On phones a playing trailer started far down the title page, under a big empty gap. It now sits right below the close button."
     }
   ]
 },

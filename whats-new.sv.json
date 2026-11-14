@@ -13,6 +13,10 @@
       "Smoother in Firefox": {
         "title": "Jämnare i Firefox",
         "text": "Banner-trailern bad YouTube om mer än full HD, vilket många datorer måste avkoda utan hjälp av grafikkortet, så den hackade i Firefox. Nu håller sig trailers på 1080p, och sidans små glödande animationer vilar medan en spelas."
+      },
+      "Trailers sit higher on phones": {
+        "title": "Trailers högre upp på mobilen",
+        "text": "På mobilen började en trailer som spelades långt ner på titelsidan, under ett stort tomt mellanrum. Nu ligger den direkt under stängknappen."
       }
     }
   },

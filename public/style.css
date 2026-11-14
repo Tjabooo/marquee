@@ -948,7 +948,9 @@ html.has-vt .view { animation: none; }
 .sheet-hero .hero-img.is-loaded { opacity: 1; }
 /* Trailer: plays in the backdrop's place. Phones and tablets: a full-width 16:9 screen; desktop: a framed screen on the
    blurred backdrop (see the 900px block), so the logo and title always stay in view below it */
-.sheet-hero.is-playing { aspect-ratio: 16 / 9; height: auto; background: #000; margin-top: calc(var(--safe-top) + 60px); }
+/* 64px = just under the close button: the button's own margin already includes the safe area, so adding it here again
+   left a ~120px empty band above the video on notched phones */
+.sheet-hero.is-playing { aspect-ratio: 16 / 9; height: auto; background: #000; margin-top: 64px; }
 .sheet-hero.is-playing::after { display: none; }
 .sheet-hero.is-playing .hero-img { display: none; }
 #sheet .sheet-hero.is-playing + .sheet-content { padding-top: var(--s5); }
