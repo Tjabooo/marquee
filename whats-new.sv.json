@@ -1,4 +1,13 @@
 {
+  "2026-11-14-doc-genres-phone": {
+    "title": "Dokumentärer passar mobilen",
+    "items": {
+      "Documentary genres on phones": {
+        "title": "Dokumentärgenrer på mobilen",
+        "text": "Genreraderna under Dokumentärer var bredare än en mobilskärm, så hela sidan krympte och affischerna såg pyttesmå ut. Nu får raderna plats och sveps i sidled, och sidan har full storlek igen."
+      }
+    }
+  },
   "2026-11-14-removed-card": {
     "title": "Snyggare \"Borttagen från ditt bibliotek\"",
     "items": {

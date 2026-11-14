@@ -545,7 +545,10 @@ main {
 .title-card.is-wide .poster { aspect-ratio: 16 / 9; }
 .shelf-items.wide-cards { grid-auto-columns: var(--row-wide); }
 .grid.wide-cards { grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); }
-.doc-browse { display: grid; gap: var(--s4); margin: 0 0 var(--s6); }
+.doc-browse { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s4); margin: 0 0 var(--s6); }
+/* min-width 0: a grid item is otherwise as wide as its widest chip row, which made the whole page wider
+   than the phone (iOS then zoomed the page out and the shelves looked shrunk) */
+.doc-group { min-width: 0; }
 .doc-group h3 { margin: 0; font-size: 15px; color: var(--text-2); }
 .doc-group .genre-chips { margin-top: 6px; }
 .chip.is-svt::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 2px; border-radius: 50%; background: #2fbf71; }

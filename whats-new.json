@@ -1,5 +1,16 @@
 [
 {
+  "id": "2026-11-14-doc-genres-phone",
+  "date": "2026-11-14",
+  "title": "Documentaries fit your phone",
+  "items": [
+    {
+      "title": "Documentary genres on phones",
+      "text": "The genre rows under Documentaries were wider than a phone screen, so the whole page shrank and the posters looked tiny. The rows now fit and swipe sideways, and the page is full size again."
+    }
+  ]
+},
+{
   "id": "2026-11-14-removed-card",
   "date": "2026-11-14",
   "title": "A nicer \"Removed from your library\"",
