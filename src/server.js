@@ -4471,6 +4471,11 @@ async function handleRequest(req, res) {
     // Public: shared clips, shared note previews and the Lilin invite card (bypassed in Cloudflare Access; see docs/remote-access.md)
     else if (url.pathname === '/c' || url.pathname.startsWith('/c/')) {
       if (url.pathname.startsWith('/c/jf/')) { if (!(await jellyfin.handlePublic(req, res, url))) throw new HttpError(404, 'Not found.'); }
+      // Home-screen icons: some browsers (Firefox on iOS) fetch them without the sign-in cookie, so the
+      // copies under the public /c/ path are what index.html and the manifest point at.
+      else if (/^\/c\/icons\/(apple-touch-icon|icon-192|icon-512|maskable-192|maskable-512)\.png$/.test(url.pathname) && req.method === 'GET') {
+        await serveStatic(req, res, url.pathname.slice('/c/icons'.length));
+      }
       else if (await oidc.handle(req, res, url)) { /* sign-in provider for Cloudflare Access */ }
       else if (!handleWatchPage(req, res, url, { rooms: watchRooms, artwork: watchArtwork })
         && !(await invites.handlePublic(req, res, url, { auth: oidc.configured ? auth : null }))
