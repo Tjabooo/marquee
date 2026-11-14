@@ -234,6 +234,7 @@
  "Some episodes of this season are still downloading. Upgrade once they’ve finished.": "Några avsnitt i säsongen laddas fortfarande ner. Uppgradera när de är klara.",
  "Someone else also has these episodes, so only the server’s owner can upgrade them.": "Någon annan har också de här avsnitten, så bara serverns ägare kan uppgradera dem.",
  "Someone else has a video from this download in their library. Remove the download with files kept instead.": "Någon annan har en video från nedladdningen i sitt bibliotek. Ta bort nedladdningen och behåll filerna i stället.",
+ "A file from this download is busy being converted and couldn’t be stopped. Try again in a minute.": "En fil från den här nedladdningen håller på att konverteras och gick inte att stoppa. Försök igen om en minut.",
  "Someone else is using a video from this download. Its files have been kept. Try again after their request finishes.": "Någon annan använder en video från den här nedladdningen. Filerna har behållits. Försök igen när deras begäran är klar.",
  "Something broke on the server. Check the console.": "Något gick fel på servern. Kontrollera konsolen.",
  "Starting download…": "Startar nedladdningen…",
