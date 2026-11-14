@@ -3375,10 +3375,10 @@ async function openDelete(f, opener) {
   if (otherVersions.length) {
     lines.splice(1, 0, h('p', { class: 'muted' }, T('This is the {0} version. {1}', f.versionLabel || T('chosen'), otherVersions.length === 1
       ? T('The other one ({0}) stays.', otherVersions[0].versionLabel) : T('The other {0} versions stay.', otherVersions.length))));
-    actions.push(h('button', { class: 'del-confirm del-secondary', onclick: () => { closeTopOverlay(); openDeleteMany({ files: f.versions, what: T('every version'), label }, opener); } },
+    actions.push(h('button', { class: 'del-confirm del-secondary', onclick: () => { dismissTopOverlay().catch(() => {}).then(() => openDeleteMany({ files: f.versions, what: T('every version'), label }, opener)); } },
       T('Delete all {0} versions', f.versions.length)));
   }
-  body.replaceChildren(h('h2', { id: 'picker-title' }, T('Delete this?')), ...lines, h('div', { class: 'del-actions' }, ...actions, cancel), status);
+  body.replaceChildren(h('h2', { id: 'picker-title' }, T('Delete this?')), ...lines.filter(Boolean), h('div', { class: 'del-actions' }, ...actions, cancel), status);
   cancel.focus();
 }
 
@@ -3396,7 +3396,7 @@ async function openDeleteMany({ files, transfers = [], what, label, onDone }, op
     body.replaceChildren(h('h2', { id: 'picker-title' }, T('Can’t delete {0}', what)), h('p', { class: 'muted' }, err.message));
     return;
   }
-  const episodes = plural(episodeCount(files), 'episode');
+  const episodes = files.every((f) => f.season == null) ? plural(ids.length, 'video') : plural(episodeCount(files), 'episode');
   const status = h('p', { class: 'device-status', role: 'status' });
   const allShared = info.shared === info.videos;
   const sole = transfers.filter((d) => !d.others), carryOn = transfers.length - sole.length;

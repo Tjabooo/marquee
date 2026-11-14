@@ -863,6 +863,27 @@ async function scanLibrary() {
   return done;
 }
 
+// Bonus material inside a title's folder (Plex/Jellyfin names): not films of their own, so not in the
+// library (they showed up as extra "versions" of the film). Deleting the film takes them along.
+const EXTRAS_DIR = /^(extras?|featurettes?|behind[ ._-]the[ ._-]scenes|deleted[ ._-]scenes|interviews?|scenes|shorts?|trailers?|bonus|special[ ._-]features|other)$/i;
+const isExtrasDir = (dir) => EXTRAS_DIR.test(path.basename(dir)) && path.relative(MEDIA_DIR, dir).split(path.sep).length >= 3;
+// After a film is deleted: its folder's extras subfolders go too, once no other video is left beside them.
+function removeOrphanExtras(dir, deleted = []) {
+  if (!MEDIA_DIR || !isInside(dir, MEDIA_DIR) || path.relative(MEDIA_DIR, dir).split(path.sep).length < 2) return;
+  let entries;
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+  const gone = new Set(deleted.map((f) => path.resolve(f)));
+  const extras = entries.filter((e) => e.isDirectory() && isExtrasDir(path.join(dir, e.name)));
+  const othersLeft = entries.some((e) => e.isFile() && VIDEO_EXT.has(path.extname(e.name).toLowerCase())
+    && !converter.isTempFile(e.name) && !gone.has(path.resolve(dir, e.name)))
+    || entries.some((e) => e.isDirectory() && !extras.includes(e));
+  if (othersLeft) return;
+  for (const e of extras) {
+    try { fs.rmSync(path.join(dir, e.name), { recursive: true, force: true }); console.log(`[library] deleted extras folder ${e.name} of ${path.basename(dir)}`); }
+    catch (error) { console.warn(`[library] couldn’t delete extras folder ${e.name}: ${error.message}`); }
+  }
+}
+
 async function scanLibraryNow() {
   const items = [];
   async function walk(dir, depth) {
@@ -875,7 +896,7 @@ async function scanLibraryNow() {
     for (const e of entries) {
       if (e.name.startsWith('.') || e.name.startsWith('$')) continue;
       const full = path.join(dir, e.name);
-      if (e.isDirectory()) { await walk(full, depth + 1); continue; }
+      if (e.isDirectory()) { if (!isExtrasDir(full)) await walk(full, depth + 1); continue; }
       const ext = path.extname(e.name).toLowerCase();
       if (!VIDEO_EXT.has(ext) || /\bsample\b/i.test(e.name) || converter.isTempFile(e.name)) continue;
       const stat = await fs.promises.stat(full).catch(() => null);
@@ -4664,7 +4685,11 @@ async function deleteMediaPlan({ original, torrent }, scope, { user = null, ever
   }
   invalidateLibrary();
   // qBittorrent deletes asynchronously; clean up afterwards.
-  setTimeout(() => { removeEmptyFolders(path.dirname(original)); invalidateLibrary(); }, 4000);
+  setTimeout(() => {
+    const dir = path.dirname(original);
+    if (!videos.some((v) => fs.existsSync(v))) removeOrphanExtras(dir, [...videos, ...videos.map((v) => converter.twinPath(v))]);
+    removeEmptyFolders(dir); invalidateLibrary();
+  }, 4000);
   console.log(`[library] deleted ${wholeTorrent ? `torrent "${torrent.name}"` : path.basename(original)}`);
   return videos;
 }

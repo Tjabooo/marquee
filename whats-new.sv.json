@@ -1,4 +1,13 @@
 {
+  "2026-11-14-extras-not-versions": {
+    "title": "Extramaterial är inga extra kopior",
+    "items": {
+      "Featurettes stay out of your library": {
+        "title": "Extramaterial hålls utanför biblioteket",
+        "text": "Nedladdningar med extramaterial (featurettes, intervjuer, trailers) visade varje extravideo som en egen \"version\" av filmen, och Radera alla versioner gick inte igenom. Nu hålls extramappar utanför biblioteket, och när du raderar filmen följer de med."
+      }
+    }
+  },
   "2026-11-14-film-page-after-prep": {
     "title": "Filmsidor ligger kvar, X stänger en gång",
     "items": {

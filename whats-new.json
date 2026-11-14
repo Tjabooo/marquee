@@ -1,5 +1,16 @@
 [
 {
+  "id": "2026-11-14-extras-not-versions",
+  "date": "2026-11-14",
+  "title": "Bonus features aren't extra copies",
+  "items": [
+    {
+      "title": "Featurettes stay out of your library",
+      "text": "Downloads that came with bonus material (featurettes, interviews, trailers) listed each bonus video as another \"version\" of the film, and Delete all versions didn't go through. Bonus folders are now left out of the library, and deleting the film removes them with it."
+    }
+  ]
+},
+{
   "id": "2026-11-14-film-page-after-prep",
   "date": "2026-11-14",
   "title": "Film pages stay put, X closes once",
