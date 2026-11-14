@@ -395,10 +395,51 @@ let toastTimer;
 function toast(msg) {
   const t = $('#toast');
   t.textContent = msg;
+  t.classList.remove('has-action');
   t.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
 }
+
+// A toast with one button (Undo). It stays a little longer than a plain one.
+function actionToast(msg, label, action, ms = 6000) {
+  const t = $('#toast');
+  t.replaceChildren(h('span', {}, msg), h('button', { type: 'button', class: 'toast-action', onclick: () => { t.classList.remove('show'); action(); } }, label));
+  t.classList.add('show', 'has-action');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), ms);
+}
+
+// Deleting waits a few seconds behind an Undo toast: the items leave the screen at once, the server
+// is only asked when the time is up (or right away if the page is closed or hidden meanwhile).
+const UNDO_MS = 6000;
+const pendingDeletes = new Set();
+const pendingDeleteIds = () => new Set([...pendingDeletes].flatMap((j) => j.ids));
+function undoableDelete({ ids, message, commit, after }) {
+  const job = { ids, done: false };
+  const refresh = async () => { await Promise.all([loadLibrary(), loadDownloads()]); if (state.view === 'library') renderLibrary(); if (state.view === 'downloads') renderDownloads(); };
+  job.run = async (keepalive = false) => {
+    if (job.done) return;
+    job.done = true; clearTimeout(job.timer);
+    try { const r = await commit(keepalive); after?.(r); }
+    catch (err) { toast(err.message || T('Couldn’t delete that.')); }
+    finally { pendingDeletes.delete(job); setTimeout(refresh, 4000); } // after the server's own clean-up
+  };
+  pendingDeletes.add(job);
+  dropFromLibrary(ids);
+  libraryRenderPending = true;
+  if (state.view === 'library') renderLibrary();
+  job.timer = setTimeout(() => job.run(), UNDO_MS);
+  actionToast(message, T('Undo'), () => {
+    if (job.done) return;
+    job.done = true; clearTimeout(job.timer); pendingDeletes.delete(job);
+    librarySignature = null; // the next load puts them back even if nothing changed on the server
+    refresh().then(() => toast(T('Kept')));
+  }, UNDO_MS);
+}
+const flushDeletes = () => { for (const j of [...pendingDeletes]) j.run(true); };
+addEventListener('pagehide', flushDeletes);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushDeletes(); });
 
 function resumeKey(f) { return `resume:${f.kind}:${f.key}`; }
 // Where this person stopped, synced through the server so it resumes on their other devices too.
@@ -938,9 +979,13 @@ new MutationObserver(() => document.body.classList.toggle('has-billboard', state
 // ---------- Discover: rows of your own ----------
 const homeType = (f) => (disc.type === 'all' ? true : disc.type === 'tv' ? f.season != null || Boolean(f.show) : f.season == null && !f.show);
 // Continue watching, on Discover too: landscape cards that resume where you stopped.
+// Taken out of Continue watching on this device (the ⋯ menu): ref → when. Watching it again brings it back.
+const CONTINUE_HIDDEN = 'continue:hidden';
+function continueHidden() { try { return JSON.parse(localStorage.getItem(CONTINUE_HIDDEN)) || {}; } catch { return {}; } }
+const hiddenFromContinue = (f, progress) => { const at = continueHidden()[progressRef(libraryFile(f))]; return at != null && at >= (progress?.at || 0); };
 function continueRow() {
   const watching = state.library.filter(homeType).map((f) => ({ f, progress: savedProgress(libraryFile(f)) }))
-    .filter((x) => partlyWatched(x.progress)).sort((a, b) => (b.progress.at || 0) - (a.progress.at || 0));
+    .filter((x) => partlyWatched(x.progress) && !hiddenFromContinue(x.f, x.progress)).sort((a, b) => (b.progress.at || 0) - (a.progress.at || 0));
   const seen = new Set(), cards = [];
   for (const { f, progress } of watching) { // one card per show: its latest episode
     const key = f.show || f.mediaKey || f.id;
@@ -1196,6 +1241,7 @@ function loadLibrary() {
       if (signature !== librarySignature) {
         state.libraryItems = data.items;
         state.library = data.items.map(applyVersion);
+        if (pendingDeletes.size) dropFromLibrary([...pendingDeleteIds()]); // still inside their Undo time
         state.server = data.server || [];
         state.libraryShows = data.shows || [];
         librarySignature = signature;
@@ -1507,10 +1553,46 @@ function continueCard(f, progress) {
       hours <= 0 ? T('Leaving soon') : hours < 1 ? T('<1h left') : hours < 48 ? T('{0}h left', Math.ceil(hours)) : T('{0}d left', Math.ceil(hours / 24))),
     h('span', { class: 'poster-progress', 'aria-label': T('{0}% watched', Math.round(pct)) }, h('i', { style: `width:${pct}%` }))].filter(Boolean));
   return h('li', { class: 'library-card continue-card' },
+    h('button', { type: 'button', class: 'continue-more', 'aria-label': T('More for {0}', name), title: T('More'), onclick: (e) => openContinueMenu(f, progress, name, e.currentTarget) }, icon('more')),
     h('button', { type: 'button', class: 'title-card', 'data-library-focus': `play-${f.id}`, onclick: () => openPlayer(libraryFile(f)) },
       art, h('div', { class: 'name' }, name),
       f.season != null && f.episodeName && h('div', { class: 'sub continue-episode' }, f.episodeName),
       h('div', { class: 'sub' }, [episodeLabel(f), left].filter(Boolean).join(' · '))));
+}
+
+// The ⋯ on a Continue watching card: mark it watched (everywhere), or just take it off the row.
+function openContinueMenu(f, progress, name, opener) {
+  const file = libraryFile(f), ref = progressRef(file);
+  const label = [name, f.season != null && episodeLabel(f)].filter(Boolean).join(' · ');
+  // The card goes at once (on Discover and in the library); the next library render agrees.
+  const refresh = () => {
+    const li = opener?.closest('li'), list = li?.parentElement;
+    li?.remove();
+    if (list && !list.children.length) list.closest('.continue-shelf')?.remove();
+    invalidateLibraryProgress(); libraryRenderPending = true;
+  };
+  const choose = (fn) => () => { closeTopOverlay(); fn(); refresh(); };
+  const watched = choose(() => {
+    delete state.progress[ref];
+    try { localStorage.removeItem(resumeKey(file)); } catch { /* blocked */ }
+    api('/api/me/progress', jsonPost({ ref, time: null, duration: progress?.duration || 0 })).catch(() => toast(T('Couldn’t save that. Try again.')));
+    toast(T('Marked as watched'));
+  });
+  const hide = choose(() => {
+    const hidden = continueHidden();
+    hidden[ref] = progress?.at || Date.now();
+    try { localStorage.setItem(CONTINUE_HIDDEN, JSON.stringify(Object.fromEntries(Object.entries(hidden).slice(-300)))); } catch { /* blocked */ }
+    toast(T('Removed from Continue watching'));
+  });
+  $('#picker-body').replaceChildren(
+    h('h2', { id: 'picker-title' }, label),
+    h('p', { class: 'muted' }, T('{0} min left', Math.max(1, Math.ceil(((progress?.duration || 0) - (progress?.time || 0)) / 60)))),
+    h('div', { class: 'del-actions continue-actions' },
+      h('button', { type: 'button', class: 'del-cancel', onclick: watched }, icon('check'), T('Mark as watched')),
+      h('button', { type: 'button', class: 'del-cancel', onclick: hide }, T('Remove from Continue watching')),
+      h('p', { class: 'muted continue-note' }, T('Removing keeps your place: it comes back when you watch it again.')),
+      h('button', { type: 'button', class: 'del-cancel continue-keep', onclick: () => closeTopOverlay() }, T('Cancel'))));
+  pushOverlay(showSheet($('#picker'), $('#picker-backdrop'), () => opener?.focus({ preventScroll: true })));
 }
 
 function libraryCard(entry, keep = false) {
@@ -1937,10 +2019,17 @@ function seedersChip(d) {
 }
 
 // Play now: one video still downloading, sample files aside. A season pack offers it per episode instead.
-function playNowFile(d) {
+function playNowCandidate(d) {
   if (!d?.canPlayNow || d.ready || d.done || !d.files?.length) return null;
   const [main, next] = d.files.toSorted((a, b) => b.size - a.size);
-  return main.available || !main.started || (next && main.size < next.size * 3) ? null : main;
+  return main.available || (next && main.size < next.size * 3) ? null : main;
+}
+// Play now shows once the start of the video is on the server; until then a line says it's coming.
+function playNowFile(d) { const main = playNowCandidate(d); return main?.started ? main : null; }
+function playNowSoon(d) {
+  const main = playNowCandidate(d);
+  if (!main || main.started || isPaused(d)) return '';
+  return main.startState === 'downloading' ? T('Play now in a moment: getting the start of the video') : T('Play now once the start of the video arrives');
 }
 const playNowItem = (d, file, ep = null) => ({ kind: 'part', key: `${d.hash}-${file.index ?? file.fileIndex}`, hash: d.hash, mediaKey: file.mediaKey || undefined,
   title: d.canonicalTitle || d.title, filmTitle: d.canonicalTitle || d.title, show: d.showId || undefined, tmdbId: d.tmdbId ?? undefined,
@@ -1960,7 +2049,8 @@ function updateDlCard(el, d) {
   if (r.fileKey !== fileKey) { r.fileKey = fileKey; r.files.hidden = !(d.files || []).length; r.files.querySelector('ul').replaceChildren(...(d.files || []).map(f => h('li', {}, `${f.name} · ${fmtBytes(f.size)} · ${f.available ? T('File ready') : `${Math.floor((f.progress || 0)*100)}%`}`))); }
   r.title.textContent = [d.canonicalTitle || d.title, scope ? `${seasonName(d.season)} · ${scope}` : d.season != null && d.episode == null ? T('{0} pack', seasonName(d.season)) : episodeLabel(d), d.year && !d.season ? `(${d.year})` : null].filter(Boolean).join(' ');
   r.title.title = d.name;
-  r.state.textContent = state.dlScope === 'all' && d.owner ? T('{0} · for {1}', label, d.owner) : label;
+  const soon = playNowSoon(d);
+  r.state.textContent = [state.dlScope === 'all' && d.owner ? T('{0} · for {1}', label, d.owner) : label, soon].filter(Boolean).join(' · ');
   r.state.classList.toggle('is-error', d.state === 'error' || d.state === 'missingFiles');
   const playNow = playNowFile(d);
   r.actions.hidden = !playNow && (!d.ready || d.mediaType === 'tv' && d.episode == null);
@@ -2761,7 +2851,8 @@ function transferSummary(getTransfers, name) {
     const progress = known ? active.reduce((n, d) => n + d.size * Math.max(0, Math.min(1, d.progress)), 0) / active.reduce((n, d) => n + d.size, 0) : null;
     const label = attention ? T('Needs attention') : active.length === 1 ? transferState(active[0])
       : active.every((d) => isPaused(d)) ? T('Paused') : T('Downloading · {0}', plural(active.length, 'download'));
-    stateEl.textContent = label;
+    const soon = active.length === 1 && !attention ? playNowSoon(active[0]) : '';
+    stateEl.textContent = soon ? `${label} · ${soon}` : label;
     pct.textContent = progress == null ? '' : `${Math.floor(progress * 100)}%`;
     track.firstChild.style.width = progress == null ? '0%' : `${progress * 100}%`;
     if (progress == null) track.removeAttribute('aria-valuenow'); else track.setAttribute('aria-valuenow', String(Math.floor(progress * 100)));
@@ -3335,25 +3426,14 @@ async function openDelete(f, opener) {
   const t = info.torrent;
   const pack = t && t.videos > 1;
 
-  const run = async (scope, btn, everyone = false) => {
-    body.querySelectorAll('button').forEach((b) => { b.disabled = true; });
-    btn.textContent = everyone || !info.others ? T('Deleting…') : T('Removing…');
-    status.className = 'device-status';
-    status.textContent = '';
-    try {
-      const r = await api('/api/library/delete', jsonPost({ id, scope, everyone }));
-      closeTopOverlay();
-      toast(r.kept ? T('Removed from your library') : scope === 'torrent' && pack ? T('Deleted all {0} videos', t.videos) : T('Deleted'));
-      dropFromLibrary([id]);
-      // Refresh after the server finishes cleaning up.
-      setTimeout(async () => { await Promise.all([loadLibrary(), loadDownloads()]); if (state.view === 'library') renderLibrary(); if (state.view === 'downloads') renderDownloads(); }, 5000);
-      if (state.view === 'library') renderLibrary();
-    } catch (err) {
-      body.querySelectorAll('button').forEach((b) => { b.disabled = false; });
-      btn.textContent = btn.dataset.label;
-      status.className = 'device-status is-error';
-      status.textContent = err.message;
-    }
+  const run = (scope, btn, everyone = false) => {
+    const kept = !everyone && info.others > 0; // someone else has it: it only leaves your library
+    closeTopOverlay();
+    undoableDelete({
+      ids: [id],
+      message: kept ? T('Removed from your library') : scope === 'torrent' && pack ? T('Deleted all {0} videos', t.videos) : T('Deleted'),
+      commit: (keepalive) => api('/api/library/delete', { ...jsonPost({ id, scope, everyone }), keepalive }),
+    });
   };
   const button = (text, cls, scope, everyone) => {
     const b = h('button', { class: cls, 'data-label': text }, text);
@@ -3422,6 +3502,18 @@ async function openDeleteMany({ files, transfers = [], what, label, onDone }, op
     sole.length > 0 && T('{0} only you asked for will be cancelled, and the {1} downloaded so far deleted.', plural(sole.length, 'download'), fmtBytes(soleBytes))].filter(Boolean).join(' ');
 
   const run = async (btn, everyone = false) => {
+    // Library videos only: wait behind Undo. (Leaving downloads still happens at once, below.)
+    if (!transfers.length && ids.length) {
+      await dismissTopOverlay().catch(() => {});
+      undoableDelete({
+        ids,
+        message: !everyone && allShared ? T('Removed {0} from your library', label) : T('Deleted {0}', label),
+        commit: (keepalive) => api('/api/library/delete-many', { ...jsonPost({ ids, everyone }), keepalive }),
+        after: (r) => { if (r?.failed) toast(T('{0} deleted, {1} kept: {2}', r.deleted + r.removed, r.failed, r.error)); },
+      });
+      onDone?.();
+      return;
+    }
     body.querySelectorAll('button').forEach((b) => { b.disabled = true; });
     btn.textContent = !everyone && allShared ? T('Removing…') : T('Deleting…');
     status.className = 'device-status';
@@ -5562,8 +5654,20 @@ landscapeQuery.addEventListener('change', (e) => {
 const nightBtn = $('#night-btn');
 const nightMenu = $('#night-menu');
 const night = createNightAudio(video);
+// Night mode is remembered per title: switched on during a show, it comes back for that show's next
+// episodes (any season); a film remembers it for itself. Everything else starts with it off.
+const NIGHT_TITLES = 'player:night-titles';
+const nightKey = (f) => (f ? f.show || (f.season != null && f.title ? `show:${String(f.title).toLowerCase()}` : f.mediaKey ? `film:${f.mediaKey}` : f.tmdbId ? `film:${f.tmdbId}` : null) : null);
+function nightTitles() { try { return JSON.parse(localStorage.getItem(NIGHT_TITLES)) || []; } catch { return []; } }
+function rememberNight(f, on) {
+  const key = nightKey(f);
+  if (!key) return;
+  const list = nightTitles().filter((k) => k !== key);
+  if (on) list.unshift(key);
+  try { localStorage.setItem(NIGHT_TITLES, JSON.stringify(list.slice(0, 300))); } catch { /* blocked */ }
+}
+const nightRemembered = (f) => { const key = nightKey(f); return Boolean(key) && nightTitles().includes(key); };
 let nightWanted = false;
-try { nightWanted = localStorage.getItem('player:night') === '1'; } catch { /* blocked */ }
 let sleep = null; // { kind: 'minutes', minutes, ends } or { kind: 'episode' }
 let sleepTick = null;
 let sleepVolume = null; // the volume before the fade, put back once paused
@@ -5604,7 +5708,7 @@ function setNight(on, feedback = false) {
   const now = night.set(on);
   if (on && !now) toast(T('Night mode isn’t available in this browser.'));
   nightWanted = now;
-  try { localStorage.setItem('player:night', now ? '1' : ''); } catch { /* blocked */ }
+  rememberNight(current, now);
   if (feedback) osd(now ? T('Night mode on') : T('Night mode off'));
   renderNightMenu();
 }
@@ -6603,7 +6707,8 @@ async function openPlayer(f, opts = {}) {
   document.body.classList.add('in-player');
   setTheme('#000000');
   $('#player-close').focus({ preventScroll: true });
-  if (nightWanted && !night.on && nightAvailable()) night.set(true); // opening the player is a click
+  nightWanted = nightRemembered(f);
+  if (nightWanted !== night.on && nightAvailable()) night.set(nightWanted); // opening the player is a click
   return loadPlayerMedia(f, opts);
 }
 

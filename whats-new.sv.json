@@ -1,4 +1,29 @@
 {
+  "2026-11-14-five-tweaks": {
+    "title": "Ångra, tumme ner som märks och mer",
+    "items": {
+      "Thumbs down hides it": {
+        "title": "Tumme ner döljer den",
+        "text": "Titlar du ger tumme ner syns inte längre i dina rader under Upptäck, Dokumentärer eller Populärt på Lilin. Sökningen hittar dem fortfarande, och tar du bort tummen kommer de tillbaka."
+      },
+      "Undo after deleting": {
+        "title": "Ångra efter radering",
+        "text": "När du raderar något har du några sekunder på dig att trycka Ångra innan det verkligen försvinner."
+      },
+      "Play now is on its way": {
+        "title": "Spela nu är på väg",
+        "text": "Medan en nedladdning hämtar början av videon står det så (\"Spela nu om en liten stund\"), så du vet att knappen Spela nu kommer."
+      },
+      "Tidy Continue watching": {
+        "title": "Städa Fortsätt titta",
+        "text": "Varje kort under Fortsätt titta har en ⋯-knapp: Markera som sedd, eller Ta bort från Fortsätt titta (din plats sparas och den kommer tillbaka när du tittar igen)."
+      },
+      "Night mode remembers the show": {
+        "title": "Nattläget minns serien",
+        "text": "Slår du på nattläget under en serie är det på igen för seriens nästa avsnitt. Andra serier och filmer börjar med det avstängt."
+      }
+    }
+  },
   "2026-11-14-no-false-text": {
     "title": "Inget mer \"false\"",
     "items": {

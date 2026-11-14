@@ -31,6 +31,8 @@ test('thumbs: people see who liked a title, dislikes stay private, clearing remo
   social.rate(anna.id, 'movie:603', 0);
   assert.equal(social.ratingFor(anna.id, 'movie:603', nameOf).mine, 0);
   assert.deepEqual(social.ratingsFor(ben.id, ['movie:603', 'tv:1', 'junk']), { 'movie:603': { mine: 1, likes: 1 } });
+  assert.deepEqual([...social.dislikedKeys(cleo.id)], ['movie:603'], 'Discover leaves out what you disliked');
+  assert.equal(social.dislikedKeys(ben.id).size, 0);
   assert.throws(() => social.rate(anna.id, 'movie:abc', 1), { status: 400 });
   assert.throws(() => social.rate(anna.id, 'tv:1', 5), { status: 400 });
   assert.equal(topicFor('/api/social/rate').topic, 'social');

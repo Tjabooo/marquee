@@ -33,6 +33,12 @@ export function rate(userId, key, value, title = '') {
     .run(userId, key, value, cleanText(title, 200) || null, Date.now());
 }
 
+// Everything one person gave a thumbs down: "movie:603", "tv:1399". Discover leaves these out for them.
+export function dislikedKeys(userId) {
+  if (userId == null) return new Set();
+  return new Set(db().prepare('SELECT title_key FROM ratings WHERE user_id = ? AND value = -1').all(userId).map((r) => r.title_key));
+}
+
 // What one person sees on a title: their own thumb and who else liked it (likedBy: names; people:
 // { name, avatar } for the faces beside them, when avatarOf is given).
 export function ratingFor(userId, key, nameOf, avatarOf = () => null) {

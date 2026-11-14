@@ -625,6 +625,19 @@ async function discoverList(key, page = 1) {
   return { results, page: data.page || page, totalPages: Math.min(data.total_pages || 1, 500) };
 }
 
+// Discover without the titles this person gave a thumbs down (their own browsing only: search still
+// finds them). Works on copies, since the lists themselves are cached for everyone.
+const titleKey = (t) => (t && t.id != null && /^\d+$/.test(String(t.id)) ? `${t.type === 'tv' ? 'tv' : 'movie'}:${t.id}` : null);
+function withoutDisliked(user, data) {
+  const gone = social.dislikedKeys(user?.id);
+  if (!gone.size || !data) return data;
+  const keep = (list) => (Array.isArray(list) ? list.filter((t) => !gone.has(titleKey(t))) : list);
+  const out = { ...data };
+  for (const k of ['featured', 'results', 'items']) if (Array.isArray(out[k])) out[k] = keep(out[k]);
+  if (Array.isArray(out.rows)) out.rows = out.rows.map((r) => ({ ...r, items: keep(r.items) })).filter((r) => !Array.isArray(r.items) || r.items.length);
+  return out;
+}
+
 async function discoverHome(type) {
   const rows = HOME_ROWS[type] || HOME_ROWS.all;
   const lists = await Promise.all(rows.map(([key]) => discoverList(key).catch(() => null)));
@@ -1218,6 +1231,13 @@ function torrentPieceStates(hash) {
   pieceStatesCache.set(hash, entry);
   if (pieceStatesCache.size > 500) pieceStatesCache.delete(pieceStatesCache.keys().next().value);
   return entry.promise;
+}
+// 'done' (first piece verified), 'downloading' (qBittorrent is fetching it) or 'waiting'. qBittorrent
+// reports pieces only as missing / downloading / done, so there is no percentage inside a piece.
+export function fileStartState(f, states) {
+  if (fileStarted(f, states)) return 'done';
+  const first = Array.isArray(f.piece_range) ? f.piece_range[0] : null;
+  return states && Number.isInteger(first) && states[first] === 1 ? 'downloading' : 'waiting';
 }
 export function fileStarted(f, states) {
   if (f.progress >= 1) return true;
@@ -2144,7 +2164,7 @@ async function listDownloads(user, all = false) {
       const key = full && accounts.mediaKey(full);
       const item = key && mine.has(key) && library.get(key);
       return { name: path.basename(f.name.replace(/\\/g, '/')), size: f.size || 0, progress: f.progress || 0,
-        available: await downloadAvailable(t, f), started: fileStarted(f, states),
+        available: await downloadAvailable(t, f), started: fileStarted(f, states), startState: fileStartState(f, states),
         index: f.index ?? files.indexOf(f), mediaKey: key || null,
         libraryId: item?.id || null };
     }));
@@ -3311,7 +3331,8 @@ async function handleApi(req, res, url) {
   if (p === '/api/social/popular') {
     const type = ['movie', 'tv'].includes(url.searchParams.get('type')) ? url.searchParams.get('type') : 'all';
     if (!TMDB_TOKEN && !TMDB_KEY) return sendJson(res, 200, { items: [] });
-    const ranked = social.popular({ type, limit: 20 });
+    const disliked = social.dislikedKeys(user.id);
+    const ranked = social.popular({ type, limit: 20 + disliked.size }).filter((r) => !disliked.has(r.key)).slice(0, 20);
     const cards = await Promise.allSettled(ranked.map(async (r) => {
       const [kind, id] = r.key.split(':');
       const card = mapTitle(await cachedTmdb(`/${kind}/${id}`, {}, 6 * 3600 * 1000), kind);
@@ -3592,11 +3613,11 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, await convertStatusFor(user, plays));
   }
   if (p === '/api/discover/home') {
-    return sendJson(res, 200, await discoverHome(url.searchParams.get('type') || 'all'));
+    return sendJson(res, 200, withoutDisliked(user, await discoverHome(url.searchParams.get('type') || 'all')));
   }
   if (p === '/api/discover/list') {
     const page = Math.max(1, Math.min(500, Number(url.searchParams.get('page')) || 1));
-    return sendJson(res, 200, await discoverList(url.searchParams.get('key'), page));
+    return sendJson(res, 200, withoutDisliked(user, await discoverList(url.searchParams.get('key'), page)));
   }
   // The best trailer TMDB knows for a film or show (YouTube only: that's what the title sheet can embed).
   if ((m = p.match(/^\/api\/title\/(movie|tv)\/(\d+)\/trailer$/))) {
@@ -3721,9 +3742,9 @@ async function handleApi(req, res, url) {
     const type = ['movie', 'tv'].includes(url.searchParams.get('type')) ? url.searchParams.get('type') : 'all';
     const id = (k) => (/^\d+$/.test(url.searchParams.get(k) || '') ? Number(url.searchParams.get(k)) : null);
     const page = Math.max(1, Math.min(500, Number(url.searchParams.get('page')) || 1));
-    return sendJson(res, 200, await discoverGenre({
+    return sendJson(res, 200, withoutDisliked(user, await discoverGenre({
       type, movieGenre: id('movie'), tvGenre: id('tv'), sort: url.searchParams.get('sort'), page,
-    }));
+    })));
   }
   if (p === '/api/search') {
     const q = (url.searchParams.get('q') || '').trim().slice(0, 100);
@@ -3752,7 +3773,7 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, { results: results.filter(onlyScreen).map((x) => mapTitle(x)), svt: svtHits });
   }
   // ---- documentaries ----
-  if (p === '/api/docs/home') return sendJson(res, 200, await docs.home());
+  if (p === '/api/docs/home') return sendJson(res, 200, withoutDisliked(user, await docs.home()));
   if (p === '/api/docs/category') {
     const page = Math.max(1, Math.min(500, Number(url.searchParams.get('page')) || 1));
     const data = await docs.category(url.searchParams.get('id'), {
@@ -3760,7 +3781,7 @@ async function handleApi(req, res, url) {
       sort: url.searchParams.get('sort'), page,
     });
     if (!data) throw new HttpError(404, 'There’s no such category.');
-    return sendJson(res, 200, data);
+    return sendJson(res, 200, withoutDisliked(user, data));
   }
   if (p === '/api/svt/title') {
     const svtPath = url.searchParams.get('path') || '';

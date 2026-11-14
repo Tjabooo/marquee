@@ -1802,6 +1802,12 @@ body.has-nowbar .toast { bottom: calc(var(--tabs-h) + var(--safe-bottom) + 84px)
 .toast::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--bulb); box-shadow: 0 0 10px var(--bulb); }
 .toast:empty { display: none; }
 .toast.show { opacity: 1; transform: translate(-50%, 0) scale(1); }
+.toast.has-action { pointer-events: auto; padding-right: 8px; }
+.toast-action {
+  flex: none; margin-left: 4px; padding: 7px 14px; border: 0; border-radius: 999px;
+  font: inherit; font-weight: 800; color: var(--paper); background: var(--velvet); cursor: pointer;
+}
+.toast-action:active { transform: scale(.95); }
 
 /* ---------- the preview of a redesign (/preview): a small way back to the live app ---------- */
 .preview-pill {
@@ -2652,6 +2658,18 @@ body.has-nowbar .preview-pill { bottom: calc(var(--tabs-h) + var(--safe-bottom) 
 /* Continue watching: landscape cards (other shelves keep portrait posters). */
 .continue-card .continue-episode { margin-top: 1px; color: var(--text); opacity: .85; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .continue-card .continue-episode + .sub { margin-top: 0; }
+.continue-card { position: relative; }
+.continue-more {
+  position: absolute; top: 7px; right: 7px; z-index: 3; display: grid; place-items: center;
+  width: 32px; height: 32px; padding: 0; border: 1px solid rgb(255 255 255 / .18); border-radius: 50%;
+  color: #fff; background: rgb(var(--picture-dark) / .62); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+}
+.continue-more svg { width: 18px; height: 18px; }
+.continue-more:active { transform: scale(.92); }
+.continue-actions .del-cancel { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.continue-actions .del-cancel svg { width: 18px; height: 18px; }
+.continue-actions .continue-keep { background: none; color: var(--dust); }
+.continue-note { margin: -4px 0 0; font-size: 13px; text-align: center; }
 
 /* Episode rows on a show page: the still (plays the episode), then number and title, a line of story and the time
    left before it's deleted; Play and a ⋯ menu on the right. */

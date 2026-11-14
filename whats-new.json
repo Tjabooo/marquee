@@ -1,5 +1,32 @@
 [
 {
+  "id": "2026-11-14-five-tweaks",
+  "date": "2026-11-14",
+  "title": "Undo, thumbs down that counts, and more",
+  "items": [
+    {
+      "title": "Thumbs down hides it",
+      "text": "Titles you give a thumbs down no longer show up in your Discover rows, Documentaries or Popular on Lilin. Search still finds them, and taking the thumbs down back brings them back."
+    },
+    {
+      "title": "Undo after deleting",
+      "text": "After you delete something, you get a few seconds to press Undo before it's really gone."
+    },
+    {
+      "title": "Play now is on its way",
+      "text": "While a download fetches the start of the video, it says so (\"Play now in a moment\"), so you know the Play now button is coming."
+    },
+    {
+      "title": "Tidy Continue watching",
+      "text": "Each Continue watching card has a ⋯ button: Mark as watched, or Remove from Continue watching (your place is kept and it comes back when you watch it again)."
+    },
+    {
+      "title": "Night mode remembers the show",
+      "text": "Turn on night mode during a show and it's on again for that show's next episodes. Other shows and films start with it off."
+    }
+  ]
+},
+{
   "id": "2026-11-14-no-false-text",
   "date": "2026-11-14",
   "title": "No more stray \"false\"",
