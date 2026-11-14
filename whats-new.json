@@ -1,5 +1,16 @@
 [
 {
+  "id": "2026-11-14-removed-card",
+  "date": "2026-11-14",
+  "title": "A nicer \"Removed from your library\"",
+  "items": [
+    {
+      "title": "Removed films",
+      "text": "When a film you have open leaves your library, its page now shows a tidy card with a Back to your library button instead of a bare heading on a coloured background."
+    }
+  ]
+},
+{
   "id": "2026-11-14-extras-not-versions",
   "date": "2026-11-14",
   "title": "Bonus features aren't extra copies",

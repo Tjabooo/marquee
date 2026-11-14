@@ -1588,7 +1588,14 @@ function renderFilm() {
     $('#sheet-body').replaceChildren(pageHero(d?.backdrop), h('div', { class: 'sheet-content' }, pageTitle(entry.name, 'movie', d?.tmdbId),  h('ul', { class: 'facts' }, h('li', {}, libraryAvailability(entry))), h('div', { class: 'sheet-transfer' }, transferPanel(entry)))); return;
   }
   if (!f) {
-    $('#sheet-body').replaceChildren(h('div', { class: 'sheet-content' }, h('h2', { id: 'sheet-title' }, T('Removed from your library'))));
+    // The film went (deleted here, elsewhere or by the clean-up): a calm card instead of a bare heading,
+    // without the old backdrop's colour wash.
+    washPage(null);
+    const gone = emptyState(T('Removed from your library'), T('This film isn’t in your library anymore. Find it again in Discover if you change your mind.'),
+      { label: T('Back to your library'), icon: 'back', run: () => closeTopOverlay() });
+    gone.querySelector('h3').id = 'sheet-title';
+    $('#sheet-body').replaceChildren(h('div', { class: 'sheet-content sheet-gone' }, gone));
+    gone.querySelector('button')?.focus({ preventScroll: true });
     return;
   }
   const file = libraryFile(f);

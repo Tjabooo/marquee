@@ -230,6 +230,8 @@ export default {
   "The extension limit has been reached.": "Gränsen för förlängningar är nådd.",
   "Keep all {0} · {1} more days": "Behåll alla {0} · {1} dagar till",
   "Removed from your library": "Borttagen från ditt bibliotek",
+  "This film isn’t in your library anymore. Find it again in Discover if you change your mind.": "Filmen finns inte längre i ditt bibliotek. Du hittar den igen under Upptäck om du ändrar dig.",
+  "Back to your library": "Tillbaka till biblioteket",
   "Several films match this filename. Choose “Identify film” to select the right one.": "Flera filmer matchar filnamnet. Välj ”Identifiera film” för att hitta rätt.",
   "Several films match this filename. The server’s owner can identify this file.": "Flera filmer matchar filnamnet. Serverns ägare kan identifiera filen.",
   "Preparing playback…": "Förbereder uppspelning…",

@@ -1,4 +1,13 @@
 {
+  "2026-11-14-removed-card": {
+    "title": "Snyggare \"Borttagen från ditt bibliotek\"",
+    "items": {
+      "Removed films": {
+        "title": "Borttagna filmer",
+        "text": "När en film du har öppen försvinner från ditt bibliotek visar sidan nu ett snyggt kort med knappen Tillbaka till biblioteket i stället för en ensam rubrik på färgad bakgrund."
+      }
+    }
+  },
   "2026-11-14-extras-not-versions": {
     "title": "Extramaterial är inga extra kopior",
     "items": {
