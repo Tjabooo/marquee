@@ -255,7 +255,9 @@ async function setup(opts) {
     if (opts.dryRun) console.log(`  would create ${media}`);
     else { try { fs.mkdirSync(media, { recursive: true }); done.push(`Created ${media}`); } catch (e) { manual.push(`Create ${media} (${e.code})`); } }
   }
-  const freshInstall = !fs.existsSync(path.join(cur('DATA_DIR') || APP_DIR, '.lilin.db'));
+  // Fresh = no database where this run's data will live (an answers file's DATA_DIR counts, so an
+  // existing install in the Lilin folder doesn't make a new one elsewhere look old).
+  const freshInstall = !fs.existsSync(path.join((typeof answers.DATA_DIR === 'string' && answers.DATA_DIR) || cur('DATA_DIR') || APP_DIR, '.lilin.db'));
   if (freshInstall && ('DATA_DIR' in answers || !opts.yes)) {
     set.DATA_DIR = await ask.text('DATA_DIR', 'Folder for Lilin\'s database and state (blank = the Lilin folder)', cur('DATA_DIR'));
   }
