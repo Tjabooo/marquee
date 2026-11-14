@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import readline from 'node:readline/promises';
 import { spawn, spawnSync } from 'node:child_process';
-import { APP_DIR, ENV_FILE } from '../env.js';
+import { APP_DIR, ENV_FILE, FROM_ENV_FILE } from '../env.js';
 import { readEnvFile, writeEnvFile, updateEnvText, parseEnv, newSecret, redact } from './envfile.js';
 import * as detect from './detect.js';
 import { checkIntegrations, setQbitSavePath, checkQbit } from './integrations.js';
@@ -690,7 +690,9 @@ function openGui() {
 // what it's for, so it's only printed when asked for).
 function oidcInfo(opts) {
   const file = opts.envFile ? path.resolve(opts.envFile) : ENV_FILE;
-  const env = { ...parseEnv(readEnvFile(file) ?? ''), ...Object.fromEntries(OIDC_KEYS.concat('PUBLIC_URL').filter((k) => process.env[k]).map((k) => [k, process.env[k]])) };
+  // Real environment variables win, but not the ones Lilin's own .env filled in when --env names another file.
+  const overrides = (k) => process.env[k] && !(file !== ENV_FILE && FROM_ENV_FILE.has(k));
+  const env = { ...parseEnv(readEnvFile(file) ?? ''), ...Object.fromEntries(OIDC_KEYS.concat('PUBLIC_URL').filter(overrides).map((k) => [k, process.env[k]])) };
   const m = loginMethod(env);
   if (!oidcConfigured(env)) {
     console.log(`${mark.info} Lilin isn't set up as Cloudflare Access's sign-in. Run node setup.js, pick Cloudflare Tunnel + Access`);

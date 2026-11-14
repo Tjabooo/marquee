@@ -24,6 +24,9 @@ export function parseEnv(text) {
 
 let text = '';
 try { text = fs.readFileSync(ENV_FILE, 'utf8'); } catch { /* no .env: defaults and the real environment */ }
+// Keys this file filled in (not set by the real environment): setup's `--env OTHER_FILE` must not
+// mistake them for real environment overrides.
+export const FROM_ENV_FILE = new Set();
 for (const [key, value] of Object.entries(parseEnv(text))) {
-  if (process.env[key] === undefined) process.env[key] = value;
+  if (process.env[key] === undefined) { process.env[key] = value; FROM_ENV_FILE.add(key); }
 }
