@@ -938,9 +938,12 @@ html.has-vt .view { animation: none; }
 #sheet .sheet-hero:not(.no-image):not(.is-playing) { aspect-ratio: auto; height: min(66vh, 122vw); }
 .sheet-hero .hero-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 25%; opacity: 0; transition: opacity var(--d-3); }
 .sheet-hero .hero-img.is-loaded { opacity: 1; }
-/* Trailer: plays in the backdrop's place (always 16:9) */
+/* Trailer: plays in the backdrop's place. Phones and tablets: a full-width 16:9 screen; desktop: a framed screen on the
+   blurred backdrop (see the 900px block), so the logo and title always stay in view below it */
 .sheet-hero.is-playing { aspect-ratio: 16 / 9; height: auto; background: #000; margin-top: calc(var(--safe-top) + 60px); }
 .sheet-hero.is-playing::after { display: none; }
+.sheet-hero.is-playing .hero-img { display: none; }
+#sheet .sheet-hero.is-playing + .sheet-content { padding-top: var(--s5); }
 .trailer-frame { position: relative; z-index: 1; display: block; width: 100%; height: 100%; border: 0; }
 .trailer-btn {
   /* z-index 3: above the page content, which overlaps the hero's lower edge (z-index 2) and covered the button on wide screens */
@@ -1885,7 +1888,23 @@ body.has-nowbar .preview-pill { bottom: calc(var(--tabs-h) + var(--safe-bottom) 
   #sheet .sheet-close { top: 16px; margin-top: 16px; margin-right: 16px; }
   #sheet .sheet-hero { border-radius: var(--r-lg) var(--r-lg) 0 0; }
   #sheet .sheet-hero:not(.no-image):not(.is-playing) { height: min(60vh, 600px); }
-  #sheet .sheet-hero.is-playing { margin-top: 0; border-radius: var(--r-lg) var(--r-lg) 0 0; }
+  #sheet .sheet-hero.is-playing {
+    --stage-h: min(60vh, 600px); --stage-pad: 44px;
+    display: flex; align-items: center; justify-content: center;
+    aspect-ratio: auto; height: var(--stage-h); margin-top: 0; padding: var(--stage-pad) clamp(28px, 4vw, 56px);
+    background: transparent; border-radius: var(--r-lg) var(--r-lg) 0 0;
+  }
+  #sheet .sheet-hero.is-playing .hero-img {
+    display: block; transform: scale(1.15);
+    filter: blur(32px) brightness(.42) saturate(1.25);
+  }
+  #sheet .sheet-hero.is-playing .trailer-frame {
+    width: min(100%, calc((var(--stage-h) - 2 * var(--stage-pad)) * 16 / 9)); height: auto; aspect-ratio: 16 / 9;
+    border-radius: var(--r-md); background: #000;
+    box-shadow: 0 10px 32px rgb(0 0 0 / .5), 0 0 0 1px rgb(255 255 255 / .08);
+    animation: trailer-in var(--d-3) var(--ease-out);
+  }
+  #sheet .sheet-hero.is-playing + .sheet-content { padding-top: var(--s2); }
   #sheet .sheet-content { padding: 0 clamp(28px, 4vw, 56px); }
   #sheet .sheet-hero:not(.no-image):not(.is-playing) + .sheet-content { margin-top: -170px; }
   #sheet .sheet-hero.no-image + .sheet-content { padding-top: var(--s6); }

@@ -1,4 +1,13 @@
 {
+  "2026-11-14-trailer-stage": {
+    "title": "Trailers får plats på skärmen",
+    "items": {
+      "Trailer and title side by side": {
+        "title": "Trailer och titel samtidigt",
+        "text": "På en dator fyllde en trailer hela fönstret och knuffade ner titeln utanför skärmen. Nu spelas den i en ram ovanpå den suddiga bilden, och titeln syns fortfarande under."
+      }
+    }
+  },
   "2026-11-14-trailer-button": {
     "title": "Trailerknappen fungerar på datorn",
     "items": {

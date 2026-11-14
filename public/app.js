@@ -2401,8 +2401,10 @@ function detailsHero(t) {
       icon('play'), h('span', {}, label));
     play.addEventListener('click', () => {
       const src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(trailer.key)}?autoplay=1&rel=0&playsinline=1`;
+      // the backdrop stays behind the player (blurred and dimmed on wide screens, see .is-playing in style.css)
       hero.classList.add('is-playing');
-      hero.replaceChildren(h('iframe', {
+      play.remove();
+      hero.append(h('iframe', {
         class: 'trailer-frame', src, title: `${t.title}: ${trailer.name}`,
         allow: 'autoplay; encrypted-media; picture-in-picture; fullscreen', allowfullscreen: true,
         referrerpolicy: 'strict-origin-when-cross-origin',

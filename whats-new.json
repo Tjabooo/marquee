@@ -1,5 +1,16 @@
 [
 {
+  "id": "2026-11-14-trailer-stage",
+  "date": "2026-11-14",
+  "title": "Trailers fit on the screen",
+  "items": [
+    {
+      "title": "Trailer and title side by side",
+      "text": "On a computer a playing trailer filled the whole window and pushed the title off the bottom. It now plays in a frame on top of the blurred picture, with the title still in view below."
+    }
+  ]
+},
+{
   "id": "2026-11-14-trailer-button",
   "date": "2026-11-14",
   "title": "Trailer button works on computers",
