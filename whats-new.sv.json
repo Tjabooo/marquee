@@ -1,4 +1,13 @@
 {
+  "2026-11-14-trailer-button": {
+    "title": "Trailerknappen fungerar på datorn",
+    "items": {
+      "Trailer on wide screens": {
+        "title": "Trailer på breda skärmar",
+        "text": "På en dator kunde knappen Trailer på en titels sida hamna under titeltexten, så att klicka på den gjorde ingenting. Nu ligger den överst och spelar trailern."
+      }
+    }
+  },
   "2026-11-14-finished-page-updates": {
     "title": "Klara nedladdningar går att spela direkt",
     "items": {

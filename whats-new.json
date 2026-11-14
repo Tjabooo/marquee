@@ -1,5 +1,16 @@
 [
 {
+  "id": "2026-11-14-trailer-button",
+  "date": "2026-11-14",
+  "title": "Trailer button works on computers",
+  "items": [
+    {
+      "title": "Trailer on wide screens",
+      "text": "On a computer the Trailer button on a title's page could sit under the title text, so clicking it did nothing. It's on top now and plays the trailer."
+    }
+  ]
+},
+{
   "id": "2026-11-14-finished-page-updates",
   "date": "2026-11-14",
   "title": "Finished downloads become playable right away",
