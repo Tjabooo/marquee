@@ -2369,15 +2369,15 @@ function openDetails(t, opener) {
   if (sheet.classList.contains('open') && opener && sheet.contains(opener)) {
     const back = sheetState();
     filmView.id = null; showView.id = null;
-    $('#sheet-body .trailer-frame')?.remove();
+    $('#sheet-body .trailer-frame')?.remove(); document.body.classList.remove('trailer-live');
     renderDetails(t);
     sheet.scrollTo({ top: 0 });
-    pushOverlay(() => { $('#sheet-body .trailer-frame')?.remove(); back(); });
+    pushOverlay(() => { $('#sheet-body .trailer-frame')?.remove(); document.body.classList.remove('trailer-live'); back(); });
     return;
   }
   renderDetails(t);
   pushOverlay(showSheet($('#sheet'), $('#sheet-backdrop'), () => {
-    $('#sheet-body .trailer-frame')?.remove(); // closing the sheet stops the trailer
+    $('#sheet-body .trailer-frame')?.remove(); document.body.classList.remove('trailer-live'); // closing the sheet stops the trailer
     opener?.focus({ preventScroll: true });
   }));
 }
@@ -2406,6 +2406,7 @@ function detailsHero(t) {
       const src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(trailer.key)}?autoplay=1&rel=0&playsinline=1&${HD_HINT}`;
       // the backdrop stays behind the player (blurred and dimmed on wide screens, see .is-playing in style.css)
       hero.classList.add('is-playing');
+      document.body.classList.add('trailer-live');
       play.remove();
       // .trailer-frame is the box; the iframe inside is laid out at full-HD size and scaled to fit it (trailer-size.js)
       const box = h('div', { class: 'trailer-frame' });

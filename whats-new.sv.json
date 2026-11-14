@@ -9,6 +9,10 @@
       "One trailer at a time": {
         "title": "En trailer i taget",
         "text": "Banner-trailern fortsatte spelas utom synhåll när du scrollade ner eller öppnade en titel, så en titelsidas trailer fick dela datorn med den. Nu stannar den så fort du inte ser den och börjar om när du kommer tillbaka."
+      },
+      "Smoother in Firefox": {
+        "title": "Jämnare i Firefox",
+        "text": "Banner-trailern bad YouTube om mer än full HD, vilket många datorer måste avkoda utan hjälp av grafikkortet, så den hackade i Firefox. Nu håller sig trailers på 1080p, och sidans små glödande animationer vilar medan en spelas."
       }
     }
   },

@@ -678,6 +678,9 @@ body.has-billboard .discover-filters .segmented { background: rgb(var(--picture-
 body.has-billboard .discover-filters .segmented button { color: rgb(255 255 255 / .82); }
 body.has-billboard .discover-filters .segmented button[aria-pressed="true"] { color: #141014; background: #fff; }
 body.has-billboard .discover-filters .genres-toggle, body.has-billboard .genre-chips .chip:not([aria-pressed="true"]) { color: #fff; background: rgb(var(--picture-dark) / .42); border-color: rgb(255 255 255 / .16); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+/* while any trailer plays: no endless decorative animations (each one repaints the page every frame) */
+body.bb-trailer-live *, body.trailer-live * { animation-iteration-count: 1 !important; }
+body.trailer-live #sheet .sheet-close { -webkit-backdrop-filter: none; backdrop-filter: none; background: rgb(var(--picture-dark) / .8); }
 body.bb-trailer-live .discover-filters .segmented, body.bb-trailer-live .discover-filters .genres-toggle,
 body.bb-trailer-live .genre-chips .chip:not([aria-pressed="true"]), body.bb-trailer-live .billboard .btn-glass {
   /* blur over a playing video is redone every frame and makes the trailer stutter: plain tint instead */

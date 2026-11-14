@@ -11,6 +11,10 @@
     {
       "title": "One trailer at a time",
       "text": "The banner trailer kept playing out of sight when you scrolled down or opened a title, so a title page's trailer had to share the computer with it. It now stops as soon as you can't see it and starts again when you come back."
+    },
+    {
+      "title": "Smoother in Firefox",
+      "text": "The banner trailer asked YouTube for more than full HD, which many computers have to decode without help from the graphics card, so it stuttered in Firefox. Trailers now stay at 1080p, and the page's little glowing animations rest while one plays."
     }
   ]
 },
