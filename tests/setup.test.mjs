@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { FROM_ENV_FILE } from '../src/env.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -56,8 +57,11 @@ test('.env is written atomically with a backup and owner-only permissions for ne
   assert.deepEqual(fs.readdirSync(dir).sort(), ['.env', '.env.bak']);
 });
 
+// The test process has loaded this checkout's own .env (src/env.js) into process.env; on a machine where
+// Lilin is installed those values would reach setup as if they were real environment variables.
+const realEnv = () => Object.fromEntries(Object.entries(process.env).filter(([k]) => !FROM_ENV_FILE.has(k)));
 const runSetup = (args, env = {}) => spawnSync(process.execPath, ['setup.js', ...args], {
-  cwd: root, encoding: 'utf8', timeout: 60000, env: { ...process.env, NO_COLOR: '1', ...env },
+  cwd: root, encoding: 'utf8', timeout: 60000, env: { ...realEnv(), NO_COLOR: '1', ...env },
 });
 
 test('unattended setup creates .env from answers, generates secrets once, and is idempotent', (t) => {
